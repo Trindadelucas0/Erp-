@@ -1,8 +1,5 @@
 'use client'
 
-/**
- * Tela de login — formulário básico sem design.
- */
 import { FormEvent, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { clienteHttp } from '../../services/api'
