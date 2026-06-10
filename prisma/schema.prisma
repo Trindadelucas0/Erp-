@@ -1,0 +1,75 @@
+// Schema do banco de dados do ERP.
+// DATABASE_URL é montada em runtime a partir de DB_HOST, DB_PORT, etc.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  id        String        @id @default(uuid())
+  name      String
+  cnpj      String        @unique
+  active    Boolean       @default(true)
+  users     UserCompany[]
+  createdAt DateTime      @default(now())
+}
+
+model User {
+  id        String        @id @default(uuid())
+  name      String
+  email     String        @unique
+  password  String
+  active    Boolean       @default(true)
+  roles     UserRole[]
+  companies UserCompany[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+}
+
+model UserCompany {
+  userId    String
+  companyId String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([userId, companyId])
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  description String?
+  permissions RolePermission[]
+  users       UserRole[]
+}
+
+model Permission {
+  id     String           @id @default(uuid())
+  module String
+  action String
+  key    String           @unique
+  roles  RolePermission[]
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
