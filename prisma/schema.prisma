@@ -20,15 +20,16 @@ model Company {
 }
 
 model User {
-  id        String        @id @default(uuid())
-  name      String
-  email     String        @unique
-  password  String
-  active    Boolean       @default(true)
-  roles     UserRole[]
-  companies UserCompany[]
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  id                 String           @id @default(uuid())
+  name               String
+  email              String           @unique
+  password           String
+  active             Boolean          @default(true)
+  roles              UserRole[]
+  companies          UserCompany[]
+  permissoesExtras   UserPermission[]
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
 }
 
 model UserCompany {
@@ -49,11 +50,21 @@ model Role {
 }
 
 model Permission {
-  id     String           @id @default(uuid())
-  module String
-  action String
-  key    String           @unique
-  roles  RolePermission[]
+  id               String           @id @default(uuid())
+  module           String
+  action           String
+  key              String           @unique
+  roles            RolePermission[]
+  usuariosExtras   UserPermission[]
+}
+
+model UserPermission {
+  userId       String
+  permissionId String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, permissionId])
 }
 
 model UserRole {
