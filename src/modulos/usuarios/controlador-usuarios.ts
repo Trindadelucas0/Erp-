@@ -17,7 +17,9 @@ async function criarUsuario(requisicao: FastifyRequest, resposta: FastifyReply) 
   const resultado = esquemaDeCriacaoDeUsuario.safeParse(requisicao.body)
 
   if (!resultado.success) {
-    throw new ErroDaAplicacao(resultado.error.errors[0].message, 400)
+    return resposta
+      .status(400)
+      .send({ mensagem: resultado.error.errors[0].message })
   }
 
   const usuarioCriado = await servicoDeUsuarios.criarUsuario(resultado.data)
@@ -32,7 +34,9 @@ async function editarUsuario(requisicao: FastifyRequest, resposta: FastifyReply)
   const resultado = esquemaDeEdicaoDeUsuario.safeParse(requisicao.body)
 
   if (!resultado.success) {
-    throw new ErroDaAplicacao(resultado.error.errors[0].message, 400)
+    return resposta
+      .status(400)
+      .send({ mensagem: resultado.error.errors[0].message })
   }
 
   const usuarioAtualizado = await servicoDeUsuarios.editarUsuario(
@@ -54,7 +58,9 @@ async function alterarStatusDoUsuario(
   const resultado = esquemaDeAtivarUsuario.safeParse(requisicao.body)
 
   if (!resultado.success) {
-    throw new ErroDaAplicacao(resultado.error.errors[0].message, 400)
+    return resposta
+      .status(400)
+      .send({ mensagem: resultado.error.errors[0].message })
   }
 
   const idDoUsuarioLogado = requisicao.idDoUsuario!

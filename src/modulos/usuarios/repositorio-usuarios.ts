@@ -109,11 +109,7 @@ async function atualizar(
   }
 ) {
   return clientePrisma.$transaction(async (transacao: Prisma.TransactionClient) => {
-    await transacao.userRole.deleteMany({ where: { userId: idDoUsuario } })
-    await transacao.userCompany.deleteMany({ where: { userId: idDoUsuario } })
-    await transacao.userPermission.deleteMany({ where: { userId: idDoUsuario } })
-
-    return transacao.user.update({
+    await transacao.user.update({
       where: { id: idDoUsuario },
       data: {
         name: dados.nome,
@@ -121,18 +117,42 @@ async function atualizar(
         ...(dados.senhaCriptografada
           ? { password: dados.senhaCriptografada }
           : {}),
-        roles: {
-          create: dados.idsDosPapeis.map((roleId) => ({ roleId })),
-        },
-        companies: {
-          create: dados.idsDasEmpresas.map((companyId) => ({ companyId })),
-        },
-        permissoesExtras: {
-          create: dados.idsDasPermissoesExtras.map((permissionId) => ({
-            permissionId,
-          })),
-        },
       },
+    })
+
+    await transacao.userRole.deleteMany({ where: { userId: idDoUsuario } })
+    await transacao.userCompany.deleteMany({ where: { userId: idDoUsuario } })
+    await transacao.userPermission.deleteMany({ where: { userId: idDoUsuario } })
+
+    if (dados.idsDosPapeis.length > 0) {
+      await transacao.userRole.createMany({
+        data: dados.idsDosPapeis.map((roleId) => ({
+          userId: idDoUsuario,
+          roleId,
+        })),
+      })
+    }
+
+    if (dados.idsDasEmpresas.length > 0) {
+      await transacao.userCompany.createMany({
+        data: dados.idsDasEmpresas.map((companyId) => ({
+          userId: idDoUsuario,
+          companyId,
+        })),
+      })
+    }
+
+    if (dados.idsDasPermissoesExtras.length > 0) {
+      await transacao.userPermission.createMany({
+        data: dados.idsDasPermissoesExtras.map((permissionId) => ({
+          userId: idDoUsuario,
+          permissionId,
+        })),
+      })
+    }
+
+    return transacao.user.findUniqueOrThrow({
+      where: { id: idDoUsuario },
       select: camposPublicosDoUsuario,
     })
   })
