@@ -3,3 +3,8 @@ dist/
 .env
 *.log
 .next/
+docs/
+.cursor/
+.env.example
+scripts/linear-connect.mjs
+package-lock.json
