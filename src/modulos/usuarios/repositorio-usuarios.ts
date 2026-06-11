@@ -1,0 +1,159 @@
+/**
+ * Acesso ao banco de dados para usuários.
+ */
+import { Prisma } from '@prisma/client'
+import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
+
+/** Campos retornados nas consultas — nunca inclui a senha. */
+const camposPublicosDoUsuario = {
+  id: true,
+  name: true,
+  email: true,
+  active: true,
+  createdAt: true,
+  updatedAt: true,
+  roles: {
+    include: {
+      role: true,
+    },
+  },
+  companies: {
+    include: {
+      company: true,
+    },
+  },
+  permissoesExtras: {
+    include: {
+      permission: true,
+    },
+  },
+} as const
+
+/**
+ * Busca usuário pelo email (inclui senha — usado apenas no login).
+ */
+async function buscarPorEmail(email: string) {
+  return clientePrisma.user.findUnique({ where: { email } })
+}
+
+/**
+ * Busca usuário pelo ID sem expor a senha.
+ */
+async function buscarPorId(idDoUsuario: string) {
+  return clientePrisma.user.findUnique({
+    where: { id: idDoUsuario },
+    select: camposPublicosDoUsuario,
+  })
+}
+
+/**
+ * Lista todos os usuários sem expor senha.
+ */
+async function listarTodos() {
+  return clientePrisma.user.findMany({
+    select: camposPublicosDoUsuario,
+    orderBy: { name: 'asc' },
+  })
+}
+
+/**
+ * Cria usuário com papéis, empresas e permissões extras.
+ */
+async function criar(dados: {
+  nome: string
+  email: string
+  senhaCriptografada: string
+  idsDosPapeis: string[]
+  idsDasEmpresas: string[]
+  idsDasPermissoesExtras: string[]
+}) {
+  return clientePrisma.$transaction(async (transacao: Prisma.TransactionClient) => {
+    return transacao.user.create({
+      data: {
+        name: dados.nome,
+        email: dados.email,
+        password: dados.senhaCriptografada,
+        roles: {
+          create: dados.idsDosPapeis.map((idDoPapel) => ({
+            roleId: idDoPapel,
+          })),
+        },
+        companies: {
+          create: dados.idsDasEmpresas.map((idDaEmpresa) => ({
+            companyId: idDaEmpresa,
+          })),
+        },
+        permissoesExtras: {
+          create: dados.idsDasPermissoesExtras.map((permissionId) => ({
+            permissionId,
+          })),
+        },
+      },
+      select: camposPublicosDoUsuario,
+    })
+  })
+}
+
+/**
+ * Atualiza usuário e recria vínculos de papéis, empresas e permissões extras.
+ */
+async function atualizar(
+  idDoUsuario: string,
+  dados: {
+    nome: string
+    email: string
+    senhaCriptografada?: string
+    idsDosPapeis: string[]
+    idsDasEmpresas: string[]
+    idsDasPermissoesExtras: string[]
+  }
+) {
+  return clientePrisma.$transaction(async (transacao: Prisma.TransactionClient) => {
+    await transacao.userRole.deleteMany({ where: { userId: idDoUsuario } })
+    await transacao.userCompany.deleteMany({ where: { userId: idDoUsuario } })
+    await transacao.userPermission.deleteMany({ where: { userId: idDoUsuario } })
+
+    return transacao.user.update({
+      where: { id: idDoUsuario },
+      data: {
+        name: dados.nome,
+        email: dados.email,
+        ...(dados.senhaCriptografada
+          ? { password: dados.senhaCriptografada }
+          : {}),
+        roles: {
+          create: dados.idsDosPapeis.map((roleId) => ({ roleId })),
+        },
+        companies: {
+          create: dados.idsDasEmpresas.map((companyId) => ({ companyId })),
+        },
+        permissoesExtras: {
+          create: dados.idsDasPermissoesExtras.map((permissionId) => ({
+            permissionId,
+          })),
+        },
+      },
+      select: camposPublicosDoUsuario,
+    })
+  })
+}
+
+/**
+ * Ativa ou desativa um usuário.
+ */
+async function alterarStatus(idDoUsuario: string, ativo: boolean) {
+  return clientePrisma.user.update({
+    where: { id: idDoUsuario },
+    data: { active: ativo },
+    select: camposPublicosDoUsuario,
+  })
+}
+
+export const repositorioDeUsuarios = {
+  buscarPorEmail,
+  buscarPorId,
+  listarTodos,
+  criar,
+  atualizar,
+  alterarStatus,
+}
