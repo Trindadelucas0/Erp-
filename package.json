@@ -10,6 +10,7 @@
     "parar": "npx kill-port 3333 3000",
     "db:migrate": "tsx scripts/executar-prisma.ts migrate dev",
     "db:seed": "tsx --import ./scripts/carregar-url-do-banco.ts prisma/seed.ts",
+    "db:sync-permissoes": "tsx --import ./scripts/carregar-url-do-banco.ts scripts/sincronizar-permissoes.ts",
     "db:studio": "tsx scripts/executar-prisma.ts studio",
     "db:generate": "tsx scripts/executar-prisma.ts generate"
   },

@@ -43,7 +43,9 @@ async function main() {
 
   const admin = await prisma.user.upsert({
     where: { email: 'admin@erp.local' },
-    update: {},
+    update: {
+      name: 'Administrador',
+    },
     create: {
       name: 'Administrador',
       email: 'admin@erp.local',
@@ -58,6 +60,20 @@ async function main() {
         ],
       },
     },
+  })
+
+  await prisma.userRole.deleteMany({ where: { userId: admin.id } })
+  await prisma.userCompany.deleteMany({ where: { userId: admin.id } })
+
+  await prisma.userRole.create({
+    data: { userId: admin.id, roleId: papelAdmin.id },
+  })
+
+  await prisma.userCompany.createMany({
+    data: [
+      { userId: admin.id, companyId: empresa1.id },
+      { userId: admin.id, companyId: empresa2.id },
+    ],
   })
 
   console.log('Seed concluído!')

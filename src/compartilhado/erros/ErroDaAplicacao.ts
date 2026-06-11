@@ -3,6 +3,9 @@
  * Usado para  mensagens claras ao cliente (400, 401, 403, 404).
  */
 export class ErroDaAplicacao extends Error {
+  /** Lido pelo Fastify para definir o status HTTP da resposta. */
+  statusCode: number
+
   /**
    * @param mensagem - Texto que explica o erro para o usuário
    * @param codigoHttp - Código HTTP (padrão: 400)
@@ -13,5 +16,6 @@ export class ErroDaAplicacao extends Error {
   ) {
     super(mensagem)
     this.name = 'ErroDaAplicacao'
+    this.statusCode = codigoHttp
   }
 }
