@@ -28,8 +28,17 @@ model User {
   roles              UserRole[]
   companies          UserCompany[]
   permissoesExtras   UserPermission[]
+  paginasPermitidas  UserPageAccess[]
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
+}
+
+model UserPageAccess {
+  userId  String
+  pageKey String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, pageKey])
 }
 
 model UserCompany {
