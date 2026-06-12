@@ -18,12 +18,19 @@ export const PAGINAS_VINCULAVEIS: readonly PaginaDoSistema[] = [
     rotulo: 'Cadastros',
     modulo: 'cadastros',
   },
+  {
+    chave: 'clientes',
+    caminho: '/clientes',
+    rotulo: 'Clientes',
+    modulo: 'clientes',
+  },
 ]
 
 /** Páginas exclusivas do administrador (não aparecem no formulário de vínculo). */
 export const PAGINAS_SOMENTE_ADMIN: readonly PaginaDoSistema[] = [
   { chave: 'usuarios', caminho: '/users', rotulo: 'Usuários' },
   { chave: 'papeis', caminho: '/papeis', rotulo: 'Papéis' },
+  { chave: 'auditoria', caminho: '/auditoria', rotulo: 'Auditoria' },
 ]
 
 /** Rota de fallback para usuários sem páginas liberadas. */

@@ -45,6 +45,9 @@ async function main() {
     where: { email: 'admin@erp.local' },
     update: {
       name: 'Administrador',
+      password: senhaCriptografada,
+      active: true,
+      tokenVersion: 0,
     },
     create: {
       name: 'Administrador',

@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation'
 import { Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { SeletorDeEmpresa } from '@/components/layout/seletor-de-empresa'
 
 const TITULOS_POR_ROTA: Record<string, string> = {
   '/login': 'Login',
@@ -10,6 +11,7 @@ const TITULOS_POR_ROTA: Record<string, string> = {
   '/cadastros': 'Cadastros',
   '/users': 'Usuários',
   '/papeis': 'Gerenciar papéis',
+  '/auditoria': 'Auditoria',
 }
 
 type Props = {
@@ -37,7 +39,10 @@ export function Cabecalho({ titulo, acoes, aoAbrirMenuMobile }: Props) {
         </Button>
         <h2 className="text-lg font-semibold tracking-tight">{tituloExibido}</h2>
       </div>
-      {acoes && <div className="flex items-center gap-2">{acoes}</div>}
+      <div className="flex items-center gap-3">
+        <SeletorDeEmpresa />
+        {acoes && <div className="flex items-center gap-2">{acoes}</div>}
+      </div>
     </header>
   )
 }
