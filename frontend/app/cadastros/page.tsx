@@ -13,18 +13,61 @@ import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { InputPadrao } from '@/components/ui/input-padrao'
+import { Modal } from '@/components/ui/modal'
+import { Separator } from '@/components/ui/separator'
+import { exportarCsv } from '@/lib/exportar-csv'
+
+const ESTADOS_BR = [
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA',
+  'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN',
+  'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO',
+]
 
 type Empresa = {
   id: string
   name: string
   cnpj: string
   active: boolean
+  phone?: string | null
+  email?: string | null
+  cep?: string | null
+  logradouro?: string | null
+  numero?: string | null
+  complemento?: string | null
+  bairro?: string | null
+  cidade?: string | null
+  estado?: string | null
 }
 
-function extrairMensagemDeErro(
-  erro: unknown,
-  mensagemPadrao: string
-): string {
+type FormularioEmpresa = {
+  nome: string
+  cnpj: string
+  phone: string
+  email: string
+  cep: string
+  logradouro: string
+  numero: string
+  complemento: string
+  bairro: string
+  cidade: string
+  estado: string
+}
+
+const formularioVazio: FormularioEmpresa = {
+  nome: '',
+  cnpj: '',
+  phone: '',
+  email: '',
+  cep: '',
+  logradouro: '',
+  numero: '',
+  complemento: '',
+  bairro: '',
+  cidade: '',
+  estado: '',
+}
+
+function extrairMensagemDeErro(erro: unknown, mensagemPadrao: string): string {
   const respostaAxios = erro as {
     response?: { data?: { mensagem?: string; message?: string } }
     message?: string
@@ -42,6 +85,49 @@ function extrairMensagemDeErro(
   return dados?.mensagem || dados?.message || mensagemPadrao
 }
 
+function aplicarMascaraCnpj(valor: string): string {
+  const numeros = valor.replace(/\D/g, '').slice(0, 14)
+  return numeros
+    .replace(/^(\d{2})(\d)/, '$1.$2')
+    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d)/, '.$1/$2')
+    .replace(/(\d{4})(\d)/, '$1-$2')
+}
+
+function aplicarMascaraTelefone(valor: string): string {
+  const numeros = valor.replace(/\D/g, '').slice(0, 11)
+  if (numeros.length <= 10) {
+    return numeros
+      .replace(/^(\d{2})(\d)/, '($1) $2')
+      .replace(/(\d{4})(\d)/, '$1-$2')
+  }
+  return numeros
+    .replace(/^(\d{2})(\d)/, '($1) $2')
+    .replace(/(\d{5})(\d)/, '$1-$2')
+}
+
+function aplicarMascaraCep(valor: string): string {
+  const numeros = valor.replace(/\D/g, '').slice(0, 8)
+  return numeros.replace(/^(\d{5})(\d)/, '$1-$2')
+}
+
+function empresaParaFormulario(empresa: Empresa): FormularioEmpresa {
+  const cnpj = empresa.cnpj.replace(/\D/g, '')
+  return {
+    nome: empresa.name,
+    cnpj: aplicarMascaraCnpj(cnpj),
+    phone: empresa.phone ? aplicarMascaraTelefone(empresa.phone) : '',
+    email: empresa.email || '',
+    cep: empresa.cep ? aplicarMascaraCep(empresa.cep) : '',
+    logradouro: empresa.logradouro || '',
+    numero: empresa.numero || '',
+    complemento: empresa.complemento || '',
+    bairro: empresa.bairro || '',
+    cidade: empresa.cidade || '',
+    estado: empresa.estado || '',
+  }
+}
+
 function ConteudoDaPaginaDeCadastros() {
   const { estaAutenticado, carregando: carregandoSessao } = useSessaoDoUsuario()
   const podeCriar = usePermissao('cadastros:create')
@@ -52,11 +138,12 @@ function ConteudoDaPaginaDeCadastros() {
   const [mensagemDeErro, setMensagemDeErro] = useState('')
   const [mensagemDeSucesso, setMensagemDeSucesso] = useState('')
 
+  const [modalAberto, setModalAberto] = useState(false)
   const [modoEdicao, setModoEdicao] = useState(false)
   const [idDaEmpresaEmEdicao, setIdDaEmpresaEmEdicao] = useState('')
+  const [salvando, setSalvando] = useState(false)
 
-  const [nome, setNome] = useState('')
-  const [cnpj, setCnpj] = useState('')
+  const [form, setForm] = useState<FormularioEmpresa>(formularioVazio)
 
   useEffect(() => {
     if (carregandoSessao || !estaAutenticado) return
@@ -68,34 +155,76 @@ function ConteudoDaPaginaDeCadastros() {
       const { data } = await clienteHttp.get('/companies')
       setListaDeEmpresas(data.empresas)
     } catch (erro: unknown) {
-      setMensagemDeErro(
-        extrairMensagemDeErro(erro, 'Erro ao carregar empresas')
-      )
+      setMensagemDeErro(extrairMensagemDeErro(erro, 'Erro ao carregar empresas'))
     }
   }
 
-  function limparFormulario() {
-    setModoEdicao(false)
-    setIdDaEmpresaEmEdicao('')
-    setNome('')
-    setCnpj('')
+  function atualizarCampo<K extends keyof FormularioEmpresa>(
+    campo: K,
+    valor: string
+  ) {
+    setForm((f) => ({ ...f, [campo]: valor }))
   }
 
-  function iniciarEdicao(empresa: Empresa) {
+  function abrirModalNovo() {
+    setForm(formularioVazio)
+    setModoEdicao(false)
+    setIdDaEmpresaEmEdicao('')
+    setMensagemDeErro('')
+    setModalAberto(true)
+  }
+
+  function abrirModalEdicao(empresa: Empresa) {
+    setForm(empresaParaFormulario(empresa))
     setModoEdicao(true)
     setIdDaEmpresaEmEdicao(empresa.id)
-    setNome(empresa.name)
-    setCnpj(empresa.cnpj)
     setMensagemDeErro('')
-    setMensagemDeSucesso('')
+    setModalAberto(true)
+  }
+
+  function fecharModal() {
+    setModalAberto(false)
+    setMensagemDeErro('')
+  }
+
+  async function buscarEnderecoPorCep(cep: string) {
+    const numeros = cep.replace(/\D/g, '')
+    if (numeros.length !== 8) return
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${numeros}/json/`)
+      const dados = await res.json()
+      if (!dados.erro) {
+        setForm((f) => ({
+          ...f,
+          logradouro: dados.logradouro || f.logradouro,
+          bairro: dados.bairro || f.bairro,
+          cidade: dados.localidade || f.cidade,
+          estado: dados.uf || f.estado,
+        }))
+      }
+    } catch {
+      // silencia erro de CEP
+    }
   }
 
   async function aoSalvarEmpresa(evento: FormEvent) {
     evento.preventDefault()
     setMensagemDeErro('')
-    setMensagemDeSucesso('')
+    setSalvando(true)
 
-    const corpo = { nome, cnpj }
+    const corpo = {
+      nome: form.nome,
+      cnpj: form.cnpj,
+      phone: form.phone || undefined,
+      email: form.email || undefined,
+      cep: form.cep || undefined,
+      logradouro: form.logradouro || undefined,
+      numero: form.numero || undefined,
+      complemento: form.complemento || undefined,
+      bairro: form.bairro || undefined,
+      cidade: form.cidade || undefined,
+      estado: form.estado || undefined,
+    }
 
     try {
       if (modoEdicao) {
@@ -104,40 +233,33 @@ function ConteudoDaPaginaDeCadastros() {
       } else {
         await clienteHttp.post('/companies', corpo)
         setMensagemDeSucesso('Empresa criada!')
-        limparFormulario()
       }
+      fecharModal()
       await carregarEmpresas()
     } catch (erro: unknown) {
-      setMensagemDeErro(
-        extrairMensagemDeErro(erro, 'Erro ao salvar empresa')
-      )
+      setMensagemDeErro(extrairMensagemDeErro(erro, 'Erro ao salvar empresa'))
+    } finally {
+      setSalvando(false)
     }
   }
 
   async function alternarStatusDaEmpresa(empresa: Empresa) {
     setMensagemDeErro('')
     setMensagemDeSucesso('')
-
     try {
       await clienteHttp.patch(`/companies/${empresa.id}/ativo`, {
         ativo: !empresa.active,
       })
-      setMensagemDeSucesso(
-        empresa.active ? 'Empresa desativada.' : 'Empresa reativada.'
-      )
+      setMensagemDeSucesso(empresa.active ? 'Empresa desativada.' : 'Empresa reativada.')
       await carregarEmpresas()
     } catch (erro: unknown) {
-      setMensagemDeErro(
-        extrairMensagemDeErro(erro, 'Erro ao alterar status')
-      )
+      setMensagemDeErro(extrairMensagemDeErro(erro, 'Erro ao alterar status'))
     }
   }
 
-  const exibirFormulario = podeCriar || (modoEdicao && podeEditar)
-
   return (
     <div className="space-y-6">
-      {mensagemDeErro && (
+      {mensagemDeErro && !modalAberto && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {mensagemDeErro}
         </p>
@@ -148,9 +270,221 @@ function ConteudoDaPaginaDeCadastros() {
         </p>
       )}
 
+      {/* Modal de criar/editar empresa */}
+      <Modal
+        aberto={modalAberto}
+        aoFechar={fecharModal}
+        titulo={modoEdicao ? 'Editar empresa' : 'Nova empresa'}
+        descricao={
+          modoEdicao
+            ? 'Altere os dados e clique em Salvar'
+            : 'Preencha os dados para cadastrar uma nova empresa'
+        }
+        largura="xl"
+        rodape={
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={fecharModal}
+              disabled={salvando}
+            >
+              Cancelar
+            </Button>
+            <BotaoPrimario
+              form="form-empresa"
+              type="submit"
+              disabled={salvando}
+            >
+              {salvando ? 'Salvando...' : modoEdicao ? 'Salvar' : 'Criar empresa'}
+            </BotaoPrimario>
+          </div>
+        }
+      >
+        {mensagemDeErro && modalAberto && (
+          <p className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {mensagemDeErro}
+          </p>
+        )}
+
+        <form
+          id="form-empresa"
+          onSubmit={aoSalvarEmpresa}
+          className="space-y-5"
+        >
+          {/* Identificação */}
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Identificação
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <InputPadrao
+                rotulo="Razão Social"
+                value={form.nome}
+                onChange={(e) => atualizarCampo('nome', e.target.value)}
+                placeholder="Nome completo da empresa"
+                required
+              />
+              <div className="space-y-1">
+                <label className="text-sm font-medium leading-none">
+                  CNPJ <span className="text-destructive">*</span>
+                </label>
+                <input
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  value={form.cnpj}
+                  onChange={(e) =>
+                    atualizarCampo('cnpj', aplicarMascaraCnpj(e.target.value))
+                  }
+                  placeholder="00.000.000/0000-00"
+                  maxLength={18}
+                  required
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1">
+                <label className="text-sm font-medium leading-none">
+                  Telefone
+                </label>
+                <input
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  value={form.phone}
+                  onChange={(e) =>
+                    atualizarCampo(
+                      'phone',
+                      aplicarMascaraTelefone(e.target.value)
+                    )
+                  }
+                  placeholder="(00) 00000-0000"
+                  maxLength={15}
+                />
+              </div>
+              <InputPadrao
+                rotulo="Email corporativo"
+                type="email"
+                value={form.email}
+                onChange={(e) => atualizarCampo('email', e.target.value)}
+                placeholder="contato@empresa.com.br"
+              />
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Endereço */}
+          <div className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Endereço
+            </p>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-1">
+                <label className="text-sm font-medium leading-none">CEP</label>
+                <input
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  value={form.cep}
+                  onChange={(e) =>
+                    atualizarCampo('cep', aplicarMascaraCep(e.target.value))
+                  }
+                  onBlur={(e) => buscarEnderecoPorCep(e.target.value)}
+                  placeholder="00000-000"
+                  maxLength={9}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <InputPadrao
+                  rotulo="Logradouro"
+                  value={form.logradouro}
+                  onChange={(e) => atualizarCampo('logradouro', e.target.value)}
+                  placeholder="Rua, Avenida, etc."
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <InputPadrao
+                rotulo="Número"
+                value={form.numero}
+                onChange={(e) => atualizarCampo('numero', e.target.value)}
+                placeholder="123"
+              />
+              <div className="sm:col-span-2">
+                <InputPadrao
+                  rotulo="Complemento"
+                  value={form.complemento}
+                  onChange={(e) =>
+                    atualizarCampo('complemento', e.target.value)
+                  }
+                  placeholder="Sala, Andar, Bloco..."
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <InputPadrao
+                rotulo="Bairro"
+                value={form.bairro}
+                onChange={(e) => atualizarCampo('bairro', e.target.value)}
+                placeholder="Bairro"
+              />
+              <InputPadrao
+                rotulo="Cidade"
+                value={form.cidade}
+                onChange={(e) => atualizarCampo('cidade', e.target.value)}
+                placeholder="Cidade"
+              />
+              <div className="space-y-1">
+                <label className="text-sm font-medium leading-none">
+                  Estado
+                </label>
+                <select
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  value={form.estado}
+                  onChange={(e) => atualizarCampo('estado', e.target.value)}
+                >
+                  <option value="">Selecione</option>
+                  {ESTADOS_BR.map((uf) => (
+                    <option key={uf} value={uf}>
+                      {uf}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        </form>
+      </Modal>
+
       <CardPadrao
         titulo="Empresas"
         descricao="Cadastro de empresas do sistema"
+        acoes={
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                exportarCsv(
+                  listaDeEmpresas.map((e) => ({
+                    Nome: e.name,
+                    CNPJ: e.cnpj,
+                    Telefone: e.phone || '',
+                    Email: e.email || '',
+                    Cidade: e.cidade || '',
+                    Estado: e.estado || '',
+                    Status: e.active ? 'Ativa' : 'Inativa',
+                  })),
+                  'empresas'
+                )
+              }
+            >
+              Exportar CSV
+            </Button>
+            {podeCriar && (
+              <BotaoPrimario type="button" onClick={abrirModalNovo}>
+                + Nova empresa
+              </BotaoPrimario>
+            )}
+          </div>
+        }
       >
         <div className="overflow-x-auto rounded-md border border-border">
           <table className="w-full text-sm">
@@ -158,6 +492,8 @@ function ConteudoDaPaginaDeCadastros() {
               <tr className="border-b border-border bg-muted/50">
                 <th className="px-4 py-3 text-left font-medium">Nome</th>
                 <th className="px-4 py-3 text-left font-medium">CNPJ</th>
+                <th className="px-4 py-3 text-left font-medium">Telefone</th>
+                <th className="px-4 py-3 text-left font-medium">Cidade / UF</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
                 {(podeEditar || podeDesativar) && (
                   <th className="px-4 py-3 text-left font-medium">Ações</th>
@@ -165,14 +501,34 @@ function ConteudoDaPaginaDeCadastros() {
               </tr>
             </thead>
             <tbody>
+              {listaDeEmpresas.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-4 py-8 text-center text-sm text-muted-foreground"
+                  >
+                    Nenhuma empresa cadastrada.
+                  </td>
+                </tr>
+              )}
               {listaDeEmpresas.map((empresa) => (
                 <tr
                   key={empresa.id}
                   className="border-b border-border last:border-0 hover:bg-muted/30"
                 >
-                  <td className="px-4 py-3">{empresa.name}</td>
+                  <td className="px-4 py-3 font-medium">{empresa.name}</td>
+                  <td className="px-4 py-3 font-mono text-muted-foreground">
+                    {aplicarMascaraCnpj(empresa.cnpj)}
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground">
-                    {empresa.cnpj}
+                    {empresa.phone
+                      ? aplicarMascaraTelefone(empresa.phone)
+                      : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    {empresa.cidade && empresa.estado
+                      ? `${empresa.cidade} / ${empresa.estado}`
+                      : empresa.cidade || empresa.estado || '—'}
                   </td>
                   <td className="px-4 py-3">
                     <BadgeStatus variante={empresa.active ? 'ativo' : 'inativo'}>
@@ -187,7 +543,7 @@ function ConteudoDaPaginaDeCadastros() {
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => iniciarEdicao(empresa)}
+                            onClick={() => abrirModalEdicao(empresa)}
                           >
                             Editar
                           </Button>
@@ -195,7 +551,7 @@ function ConteudoDaPaginaDeCadastros() {
                         {podeDesativar && (
                           <Button
                             type="button"
-                            variant="destructive"
+                            variant={empresa.active ? 'destructive' : 'outline'}
                             size="sm"
                             onClick={() => alternarStatusDaEmpresa(empresa)}
                           >
@@ -211,45 +567,6 @@ function ConteudoDaPaginaDeCadastros() {
           </table>
         </div>
       </CardPadrao>
-
-      {exibirFormulario && (
-        <CardPadrao
-          titulo={modoEdicao ? 'Editar empresa' : 'Criar empresa'}
-          descricao={
-            modoEdicao
-              ? 'Altere os dados e clique em Salvar'
-              : 'Preencha os campos para cadastrar uma nova empresa'
-          }
-        >
-          <form onSubmit={aoSalvarEmpresa} className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <InputPadrao
-                rotulo="Nome"
-                value={nome}
-                onChange={(evento) => setNome(evento.target.value)}
-                required
-              />
-              <InputPadrao
-                rotulo="CNPJ"
-                value={cnpj}
-                onChange={(evento) => setCnpj(evento.target.value)}
-                placeholder="00000000000000"
-                required
-              />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <BotaoPrimario type="submit">
-                {modoEdicao ? 'Salvar' : 'Criar'}
-              </BotaoPrimario>
-              {modoEdicao && (
-                <Button type="button" variant="outline" onClick={limparFormulario}>
-                  Cancelar
-                </Button>
-              )}
-            </div>
-          </form>
-        </CardPadrao>
-      )}
     </div>
   )
 }
