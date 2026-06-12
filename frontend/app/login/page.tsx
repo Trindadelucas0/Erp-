@@ -11,6 +11,15 @@ import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { InputPadrao } from '@/components/ui/input-padrao'
+import { limparSessaoLocal, salvarTokenNaSessao } from '@/lib/sessao-local'
+
+function extrairMensagemDeErro(erro: unknown, padrao: string): string {
+  const resposta = (erro as {
+    response?: { data?: { mensagem?: string; message?: string } }
+  })?.response?.data
+
+  return resposta?.mensagem || resposta?.message || padrao
+}
 
 export default function PaginaDeLogin() {
   const roteador = useRouter()
@@ -18,6 +27,11 @@ export default function PaginaDeLogin() {
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [mensagemDeErro, setMensagemDeErro] = useState('')
+  const [enviando, setEnviando] = useState(false)
+
+  useEffect(() => {
+    limparSessaoLocal()
+  }, [])
 
   useEffect(() => {
     if (!carregando && estaAutenticado) {
@@ -30,16 +44,18 @@ export default function PaginaDeLogin() {
   async function aoEnviarFormulario(evento: FormEvent) {
     evento.preventDefault()
     setMensagemDeErro('')
+    setEnviando(true)
 
     try {
       const { data } = await clienteHttp.post('/auth/login', { email, senha })
-      localStorage.setItem('token', data.token)
-      await recarregarPerfil()
-      const perfil = await buscarPerfilDoUsuario()
+      salvarTokenNaSessao(data.token)
+      const perfil = await recarregarPerfil()
+      if (!perfil) {
+        throw new Error('Não foi possível carregar o perfil após o login')
+      }
       roteador.push(resolverRotaAposLogin(perfil))
     } catch (erro: unknown) {
-      const resposta = (erro as { response?: { data?: { mensagem?: string }; status?: number } })
-        ?.response
+      const resposta = (erro as { response?: { status?: number } })?.response
 
       if (!resposta) {
         setMensagemDeErro(
@@ -49,8 +65,10 @@ export default function PaginaDeLogin() {
       }
 
       setMensagemDeErro(
-        resposta.data?.mensagem || 'Email ou senha incorretos'
+        extrairMensagemDeErro(erro, 'Email ou senha incorretos')
       )
+    } finally {
+      setEnviando(false)
     }
   }
 
@@ -76,7 +94,7 @@ export default function PaginaDeLogin() {
           <InputPadrao
             rotulo="Email"
             type="email"
-            placeholder="usuario@empresa.com.br"
+            placeholder="admin@erp.local"
             value={email}
             onChange={(evento) => setEmail(evento.target.value)}
             required
@@ -90,18 +108,22 @@ export default function PaginaDeLogin() {
             required
           />
 
+          <p className="text-xs text-muted-foreground">
+            Ambiente de desenvolvimento: admin@erp.local / admin123
+          </p>
+
           {mensagemDeErro && (
             <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {mensagemDeErro}
             </p>
           )}
 
-          <BotaoPrimario type="submit" className="w-full">
-            Entrar
+          <BotaoPrimario type="submit" className="w-full" disabled={enviando}>
+            {enviando ? 'Entrando...' : 'Entrar'}
           </BotaoPrimario>
 
-          <p className="text-center text-sm text-muted-foreground hover:text-foreground">
-            Esqueci minha senha
+          <p className="text-center text-sm text-muted-foreground">
+            Esqueci minha senha — contate o administrador
           </p>
         </form>
       </CardPadrao>

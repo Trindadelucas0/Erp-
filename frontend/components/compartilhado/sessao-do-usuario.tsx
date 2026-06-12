@@ -8,15 +8,16 @@ import {
   useMemo,
   useState,
 } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { buscarPerfilDoUsuario } from '@/services/autenticacao'
+import { limparSessaoLocal } from '@/lib/sessao-local'
 import type { PerfilDoUsuario } from '@/types/sessao'
 
 type ContextoDaSessao = {
   perfil: PerfilDoUsuario | null
   carregando: boolean
   estaAutenticado: boolean
-  recarregarPerfil: () => Promise<void>
+  recarregarPerfil: () => Promise<PerfilDoUsuario | null>
   encerrarSessao: () => void
 }
 
@@ -28,16 +29,17 @@ export function ProvedorSessaoDoUsuario({
   children: React.ReactNode
 }) {
   const roteador = useRouter()
+  const caminho = usePathname()
   const [perfil, setPerfil] = useState<PerfilDoUsuario | null>(null)
   const [carregando, setCarregando] = useState(true)
 
-  const recarregarPerfil = useCallback(async () => {
-    const token = localStorage.getItem('token')
+  const recarregarPerfil = useCallback(async (): Promise<PerfilDoUsuario | null> => {
+    const tokenNoInicio = localStorage.getItem('token')
 
-    if (!token) {
+    if (!tokenNoInicio) {
       setPerfil(null)
       setCarregando(false)
-      return
+      return null
     }
 
     setCarregando(true)
@@ -45,20 +47,37 @@ export function ProvedorSessaoDoUsuario({
     try {
       const perfilAtualizado = await buscarPerfilDoUsuario()
       setPerfil(perfilAtualizado)
+
+      const empresaAtivaIdSalva = localStorage.getItem('empresaAtivaId')
+      const empresas = perfilAtualizado.empresas ?? []
+      const empresaValida = empresas.find((e) => e.company.id === empresaAtivaIdSalva)
+
+      if (!empresaValida && empresas.length > 0) {
+        localStorage.setItem('empresaAtivaId', empresas[0].company.id)
+      }
+
+      return perfilAtualizado
     } catch {
-      localStorage.removeItem('token')
+      if (localStorage.getItem('token') === tokenNoInicio) {
+        limparSessaoLocal()
+      }
       setPerfil(null)
+      return null
     } finally {
       setCarregando(false)
     }
   }, [])
 
   useEffect(() => {
+    if (caminho === '/login') {
+      setCarregando(false)
+      return
+    }
     recarregarPerfil()
-  }, [recarregarPerfil])
+  }, [recarregarPerfil, caminho])
 
   const encerrarSessao = useCallback(() => {
-    localStorage.removeItem('token')
+    limparSessaoLocal()
     setPerfil(null)
     roteador.push('/login')
   }, [roteador])
