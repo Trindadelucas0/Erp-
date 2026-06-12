@@ -1,6 +1,8 @@
 'use client'
 
 import type React from 'react'
+import { Checkbox } from '@/components/ui/checkbox'
+import { cn } from '@/lib/utils'
 
 /**
  * Grade de permissões por módulo e ação (Ver, Criar, Editar, Excluir).
@@ -59,43 +61,59 @@ export function GradePermissoes({
   }
 
   return (
-    <table border={1} cellPadding={6}>
-      <thead>
-        <tr>
-          <th>Módulo</th>
-          {ORDEM_ACOES.map((acao) => (
-            <th key={acao}>{ROTULOS_ACOES[acao]}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {modulos.map((modulo) => (
-          <tr key={modulo}>
-            <td>{ROTULOS_MODULOS[modulo] || modulo}</td>
-            {ORDEM_ACOES.map((acao) => {
-              const permissao = listaDePermissoes.find(
-                (p) => p.module === modulo && p.action === acao
-              )
-
-              if (!permissao) {
-                return <td key={acao}>-</td>
-              }
-
-              return (
-                <td key={acao} style={{ textAlign: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={idsSelecionados.includes(permissao.id)}
-                    disabled={desabilitado}
-                    onChange={() => alternarId(permissao.id)}
-                  />
-                </td>
-              )
-            })}
+    <div className="overflow-x-auto rounded-md border border-border">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border bg-muted/50">
+            <th className="px-4 py-3 text-left font-medium">Módulo</th>
+            {ORDEM_ACOES.map((acao) => (
+              <th
+                key={acao}
+                className="px-4 py-3 text-center font-medium"
+              >
+                {ROTULOS_ACOES[acao]}
+              </th>
+            ))}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {modulos.map((modulo) => (
+            <tr
+              key={modulo}
+              className="border-b border-border last:border-0 hover:bg-muted/30"
+            >
+              <td className="px-4 py-3 font-medium">
+                {ROTULOS_MODULOS[modulo] || modulo}
+              </td>
+              {ORDEM_ACOES.map((acao) => {
+                const permissao = listaDePermissoes.find(
+                  (p) => p.module === modulo && p.action === acao
+                )
+
+                if (!permissao) {
+                  return (
+                    <td key={acao} className="px-4 py-3 text-center text-muted-foreground">
+                      -
+                    </td>
+                  )
+                }
+
+                return (
+                  <td key={acao} className="px-4 py-3 text-center">
+                    <Checkbox
+                      checked={idsSelecionados.includes(permissao.id)}
+                      disabled={desabilitado}
+                      onCheckedChange={() => alternarId(permissao.id)}
+                      className={cn(desabilitado && 'opacity-50')}
+                    />
+                  </td>
+                )
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
