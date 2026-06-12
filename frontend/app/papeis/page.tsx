@@ -4,13 +4,18 @@
  * Tela de gestão de permissões por papel.
  */
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { clienteHttp } from '../../services/api'
+import { clienteHttp } from '@/services/api'
 import {
   GradePermissoes,
   type Permissao,
-} from '../../compartilhado/grade-permissoes'
+} from '@/components/compartilhado/grade-permissoes'
+import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
+import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
+import { BotaoPrimario } from '@/components/ui/botao-primario'
+import { CardPadrao } from '@/components/ui/card-padrao'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 type Papel = {
   id: string
@@ -18,8 +23,9 @@ type Papel = {
   permissions: { permission: Permissao }[]
 }
 
-export default function PaginaDePapeis() {
-  const roteador = useRouter()
+function ConteudoDaPaginaDePapeis() {
+  const { estaAutenticado, carregando: carregandoSessao, perfil } =
+    useSessaoDoUsuario()
   const [listaDePapeis, setListaDePapeis] = useState<Papel[]>([])
   const [listaDePermissoes, setListaDePermissoes] = useState<Permissao[]>([])
   const [papelSelecionado, setPapelSelecionado] = useState<Papel | null>(null)
@@ -27,12 +33,9 @@ export default function PaginaDePapeis() {
   const [mensagem, setMensagem] = useState('')
 
   useEffect(() => {
-    if (!localStorage.getItem('token')) {
-      roteador.push('/login')
-      return
-    }
+    if (carregandoSessao || !estaAutenticado || !perfil?.ehAdmin) return
     carregarDados()
-  }, [roteador])
+  }, [carregandoSessao, estaAutenticado, perfil])
 
   async function carregarDados() {
     try {
@@ -43,7 +46,7 @@ export default function PaginaDePapeis() {
       setListaDePapeis(respostaPapeis.data.papeis)
       setListaDePermissoes(respostaPermissoes.data.permissoes)
     } catch {
-      roteador.push('/login')
+      setMensagem('Erro ao carregar dados.')
     }
   }
 
@@ -83,44 +86,72 @@ export default function PaginaDePapeis() {
   const ehAdmin = papelSelecionado?.name === 'admin'
 
   return (
-    <main>
+    <div className="space-y-6">
       <p>
-        <Link href="/users">← Voltar para usuários</Link>
+        <Link
+          href="/users"
+          className="text-sm text-muted-foreground hover:text-primary"
+        >
+          ← Voltar para usuários
+        </Link>
       </p>
-      <h1>Gerenciar papéis</h1>
-      {mensagem && <p>{mensagem}</p>}
 
-      <h2>Papéis</h2>
-      <ul>
-        {listaDePapeis.map((papel) => (
-          <li key={papel.id}>
-            <button type="button" onClick={() => selecionarPapel(papel)}>
+      {mensagem && (
+        <p
+          className={cn(
+            'rounded-md px-3 py-2 text-sm',
+            mensagem.includes('sucesso')
+              ? 'bg-primary/10 text-primary'
+              : 'bg-destructive/10 text-destructive'
+          )}
+        >
+          {mensagem}
+        </p>
+      )}
+
+      <CardPadrao titulo="Papéis" descricao="Selecione um papel para editar permissões">
+        <div className="flex flex-wrap gap-2">
+          {listaDePapeis.map((papel) => (
+            <Button
+              key={papel.id}
+              type="button"
+              variant={papelSelecionado?.id === papel.id ? 'default' : 'outline'}
+              onClick={() => selecionarPapel(papel)}
+            >
               {papel.name}
-            </button>
-          </li>
-        ))}
-      </ul>
+            </Button>
+          ))}
+        </div>
+      </CardPadrao>
 
       {papelSelecionado && (
-        <section>
-          <h2>Permissões do papel: {papelSelecionado.name}</h2>
+        <CardPadrao titulo={`Permissões do papel: ${papelSelecionado.name}`}>
           {ehAdmin ? (
-            <p>O papel admin tem acesso total ao sistema.</p>
+            <p className="text-sm text-muted-foreground">
+              O papel admin tem acesso total ao sistema.
+            </p>
           ) : (
-            <>
+            <div className="space-y-4">
               <GradePermissoes
                 listaDePermissoes={listaDePermissoes}
                 idsSelecionados={idsDasPermissoes}
                 aoAlterar={setIdsDasPermissoes}
               />
-              <br />
-              <button type="button" onClick={salvarPermissoes}>
+              <BotaoPrimario type="button" onClick={salvarPermissoes}>
                 Salvar permissões
-              </button>
-            </>
+              </BotaoPrimario>
+            </div>
           )}
-        </section>
+        </CardPadrao>
       )}
-    </main>
+    </div>
+  )
+}
+
+export default function PaginaDePapeis() {
+  return (
+    <ProtegerRota somenteAdmin>
+      <ConteudoDaPaginaDePapeis />
+    </ProtegerRota>
   )
 }
