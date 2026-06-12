@@ -12,6 +12,7 @@ const idsDasEmpresas = z
   .min(1, 'Selecione pelo menos uma empresa')
 
 const idsDasPermissoesExtras = z.array(z.string().uuid()).default([])
+const chavesDasPaginasPermitidas = z.array(z.string()).default([])
 
 export const esquemaDeCriacaoDeUsuario = z.object({
   nome: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres'),
@@ -20,6 +21,7 @@ export const esquemaDeCriacaoDeUsuario = z.object({
   idsDosPapeis,
   idsDasEmpresas,
   idsDasPermissoesExtras: idsDasPermissoesExtras.optional(),
+  chavesDasPaginasPermitidas: chavesDasPaginasPermitidas.optional(),
 })
 
 export const esquemaDeEdicaoDeUsuario = z.object({
@@ -29,6 +31,7 @@ export const esquemaDeEdicaoDeUsuario = z.object({
   idsDosPapeis,
   idsDasEmpresas,
   idsDasPermissoesExtras: idsDasPermissoesExtras.optional(),
+  chavesDasPaginasPermitidas: chavesDasPaginasPermitidas.optional(),
 })
 
 export const esquemaDeAtivarUsuario = z.object({

@@ -5,7 +5,6 @@ import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js
 
 /**
  * Lista todas as empresas ativas.
- * @returns Lista ordenada por nome
  */
 async function listarTodasAtivas() {
   return clientePrisma.company.findMany({
@@ -15,13 +14,14 @@ async function listarTodasAtivas() {
 }
 
 /**
- * Busca empresas vinculadas a um usuário.
- * @param idDoUsuario - UUID do usuário
- * @returns Lista de empresas que o usuário pode acessar
+ * Busca empresas vinculadas a um usuário (apenas ativas).
  */
 async function buscarPorIdDoUsuario(idDoUsuario: string) {
   const vinculosEncontrados = await clientePrisma.userCompany.findMany({
-    where: { userId: idDoUsuario },
+    where: {
+      userId: idDoUsuario,
+      company: { active: true },
+    },
     include: { company: true },
   })
 
@@ -30,7 +30,49 @@ async function buscarPorIdDoUsuario(idDoUsuario: string) {
   )
 }
 
+async function buscarPorId(idDaEmpresa: string) {
+  return clientePrisma.company.findUnique({ where: { id: idDaEmpresa } })
+}
+
+async function buscarPorCnpj(cnpj: string) {
+  return clientePrisma.company.findUnique({ where: { cnpj } })
+}
+
+async function criar(dados: { nome: string; cnpj: string }) {
+  return clientePrisma.company.create({
+    data: {
+      name: dados.nome,
+      cnpj: dados.cnpj,
+    },
+  })
+}
+
+async function atualizar(
+  idDaEmpresa: string,
+  dados: { nome: string; cnpj: string }
+) {
+  return clientePrisma.company.update({
+    where: { id: idDaEmpresa },
+    data: {
+      name: dados.nome,
+      cnpj: dados.cnpj,
+    },
+  })
+}
+
+async function alterarStatus(idDaEmpresa: string, ativo: boolean) {
+  return clientePrisma.company.update({
+    where: { id: idDaEmpresa },
+    data: { active: ativo },
+  })
+}
+
 export const repositorioDeEmpresas = {
   listarTodasAtivas,
   buscarPorIdDoUsuario,
+  buscarPorId,
+  buscarPorCnpj,
+  criar,
+  atualizar,
+  alterarStatus,
 }

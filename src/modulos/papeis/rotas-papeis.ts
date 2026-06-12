@@ -3,7 +3,7 @@
  */
 import { FastifyInstance } from 'fastify'
 import { middlewareDeAutenticacao } from '../../infraestrutura/autenticacao/middleware-de-autenticacao.js'
-import { middlewareDeAutorizacao } from '../../infraestrutura/autenticacao/middleware-de-autorizacao.js'
+import { middlewareSomenteAdmin } from '../../infraestrutura/autenticacao/middleware-somente-admin.js'
 import { controladorDePapeis } from './controlador-papeis.js'
 
 /**
@@ -15,10 +15,7 @@ export async function rotasDePapeis(
   aplicacao.get(
     '/',
     {
-      preHandler: [
-        middlewareDeAutenticacao,
-        middlewareDeAutorizacao('configuracoes:view'),
-      ],
+      preHandler: [middlewareDeAutenticacao, middlewareSomenteAdmin],
     },
     controladorDePapeis.listarPapeis
   )
@@ -26,10 +23,7 @@ export async function rotasDePapeis(
   aplicacao.get(
     '/:id',
     {
-      preHandler: [
-        middlewareDeAutenticacao,
-        middlewareDeAutorizacao('configuracoes:view'),
-      ],
+      preHandler: [middlewareDeAutenticacao, middlewareSomenteAdmin],
     },
     controladorDePapeis.buscarPapelPorId
   )
@@ -37,10 +31,7 @@ export async function rotasDePapeis(
   aplicacao.put(
     '/:id/permissoes',
     {
-      preHandler: [
-        middlewareDeAutenticacao,
-        middlewareDeAutorizacao('configuracoes:edit'),
-      ],
+      preHandler: [middlewareDeAutenticacao, middlewareSomenteAdmin],
     },
     controladorDePapeis.salvarPermissoesDoPapel
   )

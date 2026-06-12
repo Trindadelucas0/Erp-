@@ -4,12 +4,10 @@
 import { FastifyInstance } from 'fastify'
 import { middlewareDeAutenticacao } from '../../infraestrutura/autenticacao/middleware-de-autenticacao.js'
 import { middlewareDeAutorizacao } from '../../infraestrutura/autenticacao/middleware-de-autorizacao.js'
-import { servicoDeEmpresas } from './servico-empresas.js'
+import { controladorDeEmpresas } from './controlador-empresas.js'
 
 /**
- * Registra rota para listar empresas disponíveis.
- * @param aplicacao - Instância do servidor Fastify
- * @returns void
+ * Registra rotas de CRUD de empresas (módulo cadastros).
  */
 export async function rotasDeEmpresas(
   aplicacao: FastifyInstance
@@ -19,12 +17,42 @@ export async function rotasDeEmpresas(
     {
       preHandler: [
         middlewareDeAutenticacao,
-        middlewareDeAutorizacao('configuracoes:view'),
+        middlewareDeAutorizacao('cadastros:view'),
       ],
     },
-    async () => {
-      const empresas = await servicoDeEmpresas.listarEmpresas()
-      return { empresas }
-    }
+    controladorDeEmpresas.listarEmpresas
+  )
+
+  aplicacao.post(
+    '/',
+    {
+      preHandler: [
+        middlewareDeAutenticacao,
+        middlewareDeAutorizacao('cadastros:create'),
+      ],
+    },
+    controladorDeEmpresas.criarEmpresa
+  )
+
+  aplicacao.put(
+    '/:id',
+    {
+      preHandler: [
+        middlewareDeAutenticacao,
+        middlewareDeAutorizacao('cadastros:edit'),
+      ],
+    },
+    controladorDeEmpresas.editarEmpresa
+  )
+
+  aplicacao.patch(
+    '/:id/ativo',
+    {
+      preHandler: [
+        middlewareDeAutenticacao,
+        middlewareDeAutorizacao('cadastros:delete'),
+      ],
+    },
+    controladorDeEmpresas.alterarStatusDaEmpresa
   )
 }

@@ -27,6 +27,11 @@ const camposPublicosDoUsuario = {
       permission: true,
     },
   },
+  paginasPermitidas: {
+    select: {
+      pageKey: true,
+    },
+  },
 } as const
 
 /**
@@ -59,6 +64,15 @@ async function listarTodos() {
 /**
  * Cria usuário com papéis, empresas e permissões extras.
  */
+async function buscarChavesDasPaginasPermitidas(idDoUsuario: string) {
+  const registros = await clientePrisma.userPageAccess.findMany({
+    where: { userId: idDoUsuario },
+    select: { pageKey: true },
+  })
+
+  return registros.map((registro) => registro.pageKey)
+}
+
 async function criar(dados: {
   nome: string
   email: string
@@ -66,6 +80,7 @@ async function criar(dados: {
   idsDosPapeis: string[]
   idsDasEmpresas: string[]
   idsDasPermissoesExtras: string[]
+  chavesDasPaginasPermitidas: string[]
 }) {
   return clientePrisma.$transaction(async (transacao: Prisma.TransactionClient) => {
     return transacao.user.create({
@@ -88,6 +103,11 @@ async function criar(dados: {
             permissionId,
           })),
         },
+        paginasPermitidas: {
+          create: dados.chavesDasPaginasPermitidas.map((pageKey) => ({
+            pageKey,
+          })),
+        },
       },
       select: camposPublicosDoUsuario,
     })
@@ -106,6 +126,7 @@ async function atualizar(
     idsDosPapeis: string[]
     idsDasEmpresas: string[]
     idsDasPermissoesExtras: string[]
+    chavesDasPaginasPermitidas: string[]
   }
 ) {
   return clientePrisma.$transaction(async (transacao: Prisma.TransactionClient) => {
@@ -123,6 +144,7 @@ async function atualizar(
     await transacao.userRole.deleteMany({ where: { userId: idDoUsuario } })
     await transacao.userCompany.deleteMany({ where: { userId: idDoUsuario } })
     await transacao.userPermission.deleteMany({ where: { userId: idDoUsuario } })
+    await transacao.userPageAccess.deleteMany({ where: { userId: idDoUsuario } })
 
     if (dados.idsDosPapeis.length > 0) {
       await transacao.userRole.createMany({
@@ -151,6 +173,15 @@ async function atualizar(
       })
     }
 
+    if (dados.chavesDasPaginasPermitidas.length > 0) {
+      await transacao.userPageAccess.createMany({
+        data: dados.chavesDasPaginasPermitidas.map((pageKey) => ({
+          userId: idDoUsuario,
+          pageKey,
+        })),
+      })
+    }
+
     return transacao.user.findUniqueOrThrow({
       where: { id: idDoUsuario },
       select: camposPublicosDoUsuario,
@@ -172,6 +203,7 @@ async function alterarStatus(idDoUsuario: string, ativo: boolean) {
 export const repositorioDeUsuarios = {
   buscarPorEmail,
   buscarPorId,
+  buscarChavesDasPaginasPermitidas,
   listarTodos,
   criar,
   atualizar,

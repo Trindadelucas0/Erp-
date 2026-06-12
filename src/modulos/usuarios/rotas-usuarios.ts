@@ -3,7 +3,7 @@
  */
 import { FastifyInstance } from 'fastify'
 import { middlewareDeAutenticacao } from '../../infraestrutura/autenticacao/middleware-de-autenticacao.js'
-import { middlewareDeAutorizacao } from '../../infraestrutura/autenticacao/middleware-de-autorizacao.js'
+import { middlewareSomenteAdmin } from '../../infraestrutura/autenticacao/middleware-somente-admin.js'
 import { controladorDeUsuarios } from './controlador-usuarios.js'
 
 /**
@@ -15,10 +15,7 @@ export async function rotasDeUsuarios(
   aplicacao.post(
     '/',
     {
-      preHandler: [
-        middlewareDeAutenticacao,
-        middlewareDeAutorizacao('configuracoes:create'),
-      ],
+      preHandler: [middlewareDeAutenticacao, middlewareSomenteAdmin],
     },
     controladorDeUsuarios.criarUsuario
   )
@@ -26,10 +23,7 @@ export async function rotasDeUsuarios(
   aplicacao.get(
     '/',
     {
-      preHandler: [
-        middlewareDeAutenticacao,
-        middlewareDeAutorizacao('configuracoes:view'),
-      ],
+      preHandler: [middlewareDeAutenticacao, middlewareSomenteAdmin],
     },
     controladorDeUsuarios.listarUsuarios
   )
@@ -37,10 +31,7 @@ export async function rotasDeUsuarios(
   aplicacao.get(
     '/:id',
     {
-      preHandler: [
-        middlewareDeAutenticacao,
-        middlewareDeAutorizacao('configuracoes:view'),
-      ],
+      preHandler: [middlewareDeAutenticacao, middlewareSomenteAdmin],
     },
     controladorDeUsuarios.buscarUsuarioPorId
   )
@@ -48,10 +39,7 @@ export async function rotasDeUsuarios(
   aplicacao.put(
     '/:id',
     {
-      preHandler: [
-        middlewareDeAutenticacao,
-        middlewareDeAutorizacao('configuracoes:edit'),
-      ],
+      preHandler: [middlewareDeAutenticacao, middlewareSomenteAdmin],
     },
     controladorDeUsuarios.editarUsuario
   )
@@ -59,10 +47,7 @@ export async function rotasDeUsuarios(
   aplicacao.patch(
     '/:id/ativo',
     {
-      preHandler: [
-        middlewareDeAutenticacao,
-        middlewareDeAutorizacao('configuracoes:edit'),
-      ],
+      preHandler: [middlewareDeAutenticacao, middlewareSomenteAdmin],
     },
     controladorDeUsuarios.alterarStatusDoUsuario
   )

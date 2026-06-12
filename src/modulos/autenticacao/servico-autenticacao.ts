@@ -6,6 +6,10 @@ import { compararSenhaComHash } from '../../compartilhado/utilitarios/criptograf
 import { repositorioDeUsuarios } from '../usuarios/repositorio-usuarios.js'
 import { repositorioDePermissoes } from '../permissoes/repositorio-permissoes.js'
 import { repositorioDeEmpresas } from '../empresas/repositorio-empresas.js'
+import {
+  montarPaginasPermitidasParaUsuario,
+  usuarioEhAdmin,
+} from '../../compartilhado/paginas/registro-de-paginas.js'
 import { DadosDeLogin } from './esquema-autenticacao.js'
 
 /**
@@ -55,8 +59,20 @@ async function buscarPerfilDoUsuarioLogado(idDoUsuario: string) {
   const empresas =
     await repositorioDeEmpresas.buscarPorIdDoUsuario(idDoUsuario)
 
+  const ehAdmin = usuarioEhAdmin(usuario.roles)
+  const chavesDasPaginas = usuario.paginasPermitidas.map(
+    (item) => item.pageKey
+  )
+  const paginasPermitidas = montarPaginasPermitidasParaUsuario(
+    ehAdmin,
+    chavesDasPaginas,
+    permissoesEfetivas
+  )
+
   return {
     usuario,
+    ehAdmin,
+    paginasPermitidas,
     permissoesDosPapeis,
     permissoesExtras,
     permissoesEfetivas,

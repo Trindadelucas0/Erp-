@@ -2,12 +2,26 @@
  * Regras de negócio para usuários.
  */
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
+import { paginaVinculavelExiste } from '../../compartilhado/paginas/registro-de-paginas.js'
 import { criptografarSenha } from '../../compartilhado/utilitarios/criptografia-senha.js'
 import { repositorioDeUsuarios } from './repositorio-usuarios.js'
 import {
   DadosParaCriarUsuario,
   DadosParaEditarUsuario,
 } from './esquema-usuarios.js'
+
+function validarChavesDasPaginasPermitidas(chaves: string[]) {
+  const chavesInvalidas = chaves.filter((chave) => !paginaVinculavelExiste(chave))
+
+  if (chavesInvalidas.length > 0) {
+    throw new ErroDaAplicacao(
+      `Páginas inválidas: ${chavesInvalidas.join(', ')}`,
+      400
+    )
+  }
+
+  return chaves
+}
 
 /**
  * Cria um novo usuário.
@@ -22,6 +36,9 @@ async function criarUsuario(dados: DadosParaCriarUsuario) {
   }
 
   const senhaCriptografada = await criptografarSenha(dados.senha)
+  const chavesDasPaginasPermitidas = validarChavesDasPaginasPermitidas(
+    dados.chavesDasPaginasPermitidas ?? []
+  )
 
   return repositorioDeUsuarios.criar({
     nome: dados.nome,
@@ -30,6 +47,7 @@ async function criarUsuario(dados: DadosParaCriarUsuario) {
     idsDosPapeis: dados.idsDosPapeis,
     idsDasEmpresas: dados.idsDasEmpresas,
     idsDasPermissoesExtras: dados.idsDasPermissoesExtras ?? [],
+    chavesDasPaginasPermitidas,
   })
 }
 
@@ -58,6 +76,10 @@ async function editarUsuario(
     senhaCriptografada = await criptografarSenha(dados.senha)
   }
 
+  const chavesDasPaginasPermitidas = validarChavesDasPaginasPermitidas(
+    dados.chavesDasPaginasPermitidas ?? []
+  )
+
   return repositorioDeUsuarios.atualizar(idDoUsuario, {
     nome: dados.nome,
     email: dados.email,
@@ -65,6 +87,7 @@ async function editarUsuario(
     idsDosPapeis: dados.idsDosPapeis,
     idsDasEmpresas: dados.idsDasEmpresas,
     idsDasPermissoesExtras: dados.idsDasPermissoesExtras ?? [],
+    chavesDasPaginasPermitidas,
   })
 }
 
