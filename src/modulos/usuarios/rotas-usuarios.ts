@@ -51,4 +51,12 @@ export async function rotasDeUsuarios(
     },
     controladorDeUsuarios.alterarStatusDoUsuario
   )
+
+  aplicacao.patch(
+    '/:id/senha',
+    {
+      preHandler: [middlewareDeAutenticacao, middlewareSomenteAdmin],
+    },
+    controladorDeUsuarios.resetarSenha
+  )
 }

@@ -35,4 +35,20 @@ export async function rotasDePapeis(
     },
     controladorDePapeis.salvarPermissoesDoPapel
   )
+
+  aplicacao.post(
+    '/',
+    {
+      preHandler: [middlewareDeAutenticacao, middlewareSomenteAdmin],
+    },
+    controladorDePapeis.criarPapel
+  )
+
+  aplicacao.delete(
+    '/:id',
+    {
+      preHandler: [middlewareDeAutenticacao, middlewareSomenteAdmin],
+    },
+    controladorDePapeis.excluirPapel
+  )
 }

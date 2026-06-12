@@ -53,8 +53,48 @@ async function salvarPermissoesDoPapel(
   )
 }
 
+const PAPEIS_PROTEGIDOS = ['admin']
+
+/**
+ * Cria um novo papel customizado.
+ */
+async function criarPapel(nome: string, descricao?: string) {
+  if (PAPEIS_PROTEGIDOS.includes(nome)) {
+    throw new ErroDaAplicacao(`O papel "${nome}" é reservado e não pode ser criado`, 400)
+  }
+
+  const jaExiste = await repositorioDePapeis.listarTodos().then((lista) =>
+    lista.find((p) => p.name === nome)
+  )
+
+  if (jaExiste) {
+    throw new ErroDaAplicacao('Já existe um papel com este nome', 400)
+  }
+
+  return repositorioDePapeis.criar(nome, descricao)
+}
+
+/**
+ * Exclui um papel customizado. Papéis protegidos não podem ser excluídos.
+ */
+async function excluirPapel(idDoPapel: string) {
+  const papel = await repositorioDePapeis.buscarPorId(idDoPapel)
+
+  if (!papel) {
+    throw new ErroDaAplicacao('Papel não encontrado', 404)
+  }
+
+  if (PAPEIS_PROTEGIDOS.includes(papel.name)) {
+    throw new ErroDaAplicacao(`O papel "${papel.name}" é protegido e não pode ser excluído`, 400)
+  }
+
+  return repositorioDePapeis.excluir(idDoPapel)
+}
+
 export const servicoDePapeis = {
   listarPapeis,
   buscarPapelPorId,
   salvarPermissoesDoPapel,
+  criarPapel,
+  excluirPapel,
 }

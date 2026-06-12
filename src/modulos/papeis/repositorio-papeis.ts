@@ -77,8 +77,27 @@ async function atualizarPermissoesDoPapel(
   })
 }
 
+/**
+ * Cria um novo papel.
+ */
+async function criar(nome: string, descricao?: string) {
+  return clientePrisma.role.create({
+    data: { name: nome, description: descricao },
+    select: camposDoPapel,
+  })
+}
+
+/**
+ * Exclui um papel pelo ID.
+ */
+async function excluir(idDoPapel: string) {
+  return clientePrisma.role.delete({ where: { id: idDoPapel } })
+}
+
 export const repositorioDePapeis = {
   listarTodos,
   buscarPorId,
   atualizarPermissoesDoPapel,
+  criar,
+  excluir,
 }

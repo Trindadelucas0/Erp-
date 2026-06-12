@@ -38,5 +38,10 @@ export const esquemaDeAtivarUsuario = z.object({
   ativo: z.boolean(),
 })
 
+export const esquemaDeResetDeSenha = z.object({
+  novaSenha: z.string().min(6, 'A nova senha deve ter pelo menos 6 caracteres'),
+})
+
 export type DadosParaCriarUsuario = z.infer<typeof esquemaDeCriacaoDeUsuario>
 export type DadosParaEditarUsuario = z.infer<typeof esquemaDeEdicaoDeUsuario>
+export type DadosDeResetDeSenha = z.infer<typeof esquemaDeResetDeSenha>

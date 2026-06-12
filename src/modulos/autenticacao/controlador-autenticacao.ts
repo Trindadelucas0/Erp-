@@ -23,11 +23,11 @@ async function fazerLogin(requisicao: FastifyRequest, resposta: FastifyReply) {
     )
   }
 
-  const { idDoUsuario } = await servicoDeAutenticacao.realizarLogin(
+  const { idDoUsuario, tokenVersion } = await servicoDeAutenticacao.realizarLogin(
     resultadoDaValidacao.data
   )
 
-  const token = await gerarTokenDeAutenticacao(resposta, idDoUsuario)
+  const token = await gerarTokenDeAutenticacao(resposta, idDoUsuario, tokenVersion)
 
   return resposta.send({ token })
 }
@@ -54,7 +54,31 @@ async function buscarMeuPerfil(
   return resposta.send(perfil)
 }
 
+/**
+ * Verifica a senha do usuário logado para confirmar ações críticas.
+ */
+async function verificarSenha(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const idDoUsuario = requisicao.idDoUsuario!
+  const { senha } = requisicao.body as { senha?: string }
+
+  if (!senha) {
+    throw new ErroDaAplicacao('Senha é obrigatória', 400)
+  }
+
+  const senhaCorreta = await servicoDeAutenticacao.verificarSenhaDoUsuario(
+    idDoUsuario,
+    senha
+  )
+
+  if (!senhaCorreta) {
+    throw new ErroDaAplicacao('Senha incorreta', 401)
+  }
+
+  return resposta.send({ valido: true })
+}
+
 export const controladorDeAutenticacao = {
   fazerLogin,
   buscarMeuPerfil,
+  verificarSenha,
 }

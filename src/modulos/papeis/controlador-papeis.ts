@@ -4,19 +4,16 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { servicoDePapeis } from './servico-papeis.js'
-import { esquemaDeSalvarPermissoesDoPapel } from './esquema-papeis.js'
+import {
+  esquemaDeSalvarPermissoesDoPapel,
+  esquemaDeCriacaoDePapel,
+} from './esquema-papeis.js'
 
-/**
- * Lista todos os papéis.
- */
 async function listarPapeis(_requisicao: FastifyRequest, resposta: FastifyReply) {
   const papeis = await servicoDePapeis.listarPapeis()
   return resposta.send({ papeis })
 }
 
-/**
- * Busca um papel pelo ID.
- */
 async function buscarPapelPorId(
   requisicao: FastifyRequest,
   resposta: FastifyReply
@@ -26,9 +23,6 @@ async function buscarPapelPorId(
   return resposta.send({ papel })
 }
 
-/**
- * Salva permissões de um papel.
- */
 async function salvarPermissoesDoPapel(
   requisicao: FastifyRequest,
   resposta: FastifyReply
@@ -48,8 +42,31 @@ async function salvarPermissoesDoPapel(
   return resposta.send({ papel })
 }
 
+async function criarPapel(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const resultado = esquemaDeCriacaoDePapel.safeParse(requisicao.body)
+
+  if (!resultado.success) {
+    throw new ErroDaAplicacao(resultado.error.errors[0].message, 400)
+  }
+
+  const papel = await servicoDePapeis.criarPapel(
+    resultado.data.nome,
+    resultado.data.descricao
+  )
+
+  return resposta.status(201).send({ papel })
+}
+
+async function excluirPapel(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id } = requisicao.params as { id: string }
+  await servicoDePapeis.excluirPapel(id)
+  return resposta.send({ mensagem: 'Papel excluído com sucesso' })
+}
+
 export const controladorDePapeis = {
   listarPapeis,
   buscarPapelPorId,
   salvarPermissoesDoPapel,
+  criarPapel,
+  excluirPapel,
 }

@@ -4,6 +4,7 @@
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { compararSenhaComHash } from '../../compartilhado/utilitarios/criptografia-senha.js'
 import { repositorioDeUsuarios } from '../usuarios/repositorio-usuarios.js'
+import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import { repositorioDePermissoes } from '../permissoes/repositorio-permissoes.js'
 import { repositorioDeEmpresas } from '../empresas/repositorio-empresas.js'
 import {
@@ -35,7 +36,7 @@ async function realizarLogin(dadosDeLogin: DadosDeLogin) {
     throw new ErroDaAplicacao('Email ou senha incorretos', 401)
   }
 
-  return { idDoUsuario: usuarioEncontrado.id }
+  return { idDoUsuario: usuarioEncontrado.id, tokenVersion: usuarioEncontrado.tokenVersion }
 }
 
 /**
@@ -56,8 +57,9 @@ async function buscarPerfilDoUsuarioLogado(idDoUsuario: string) {
     await repositorioDePermissoes.buscarChavesExtrasPorIdDoUsuario(idDoUsuario)
   const permissoesEfetivas =
     await repositorioDePermissoes.buscarChavesPorIdDoUsuario(idDoUsuario)
-  const empresas =
+  const empresasRaw =
     await repositorioDeEmpresas.buscarPorIdDoUsuario(idDoUsuario)
+  const empresas = empresasRaw.map((empresa) => ({ company: empresa }))
 
   const ehAdmin = usuarioEhAdmin(usuario.roles)
   const chavesDasPaginas = usuario.paginasPermitidas.map(
@@ -80,7 +82,26 @@ async function buscarPerfilDoUsuarioLogado(idDoUsuario: string) {
   }
 }
 
+/**
+ * Verifica se a senha fornecida corresponde à senha do usuário logado.
+ * Usado para confirmar identidade antes de ações críticas.
+ */
+async function verificarSenhaDoUsuario(
+  idDoUsuario: string,
+  senha: string
+): Promise<boolean> {
+  const usuario = await clientePrisma.user.findUnique({
+    where: { id: idDoUsuario },
+    select: { password: true },
+  })
+
+  if (!usuario) return false
+
+  return compararSenhaComHash(senha, usuario.password)
+}
+
 export const servicoDeAutenticacao = {
   realizarLogin,
   buscarPerfilDoUsuarioLogado,
+  verificarSenhaDoUsuario,
 }

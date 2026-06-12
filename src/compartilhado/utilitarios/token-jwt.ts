@@ -1,38 +1,40 @@
 /**
  * Configurações e funções auxiliares do JWT.
- * O token carrega apenas o idDoUsuario — permissões ficam no banco.
+ * O token carrega idDoUsuario e tokenVersion — permissões ficam no banco.
  */
 import { FastifyReply, FastifyRequest } from 'fastify'
 
-/** Tempo de expiração padrão do token (7 dias). */
-export const TEMPO_DE_EXPIRACAO_DO_TOKEN = '7d'
+/** Tempo de expiração padrão do token (8 horas). */
+export const TEMPO_DE_EXPIRACAO_DO_TOKEN = '8h'
 
 /** Formato do conteúdo dentro do token JWT. */
 export type ConteudoDoToken = {
   idDoUsuario: string
+  tokenVersion: number
 }
 
 /**
  * Gera o token JWT após login bem-sucedido.
  * @param resposta - Objeto reply do Fastify
  * @param idDoUsuario - ID do usuário autenticado
+ * @param tokenVersion - Versão atual do token do usuário
  * @returns Token assinado em string
  */
 export async function gerarTokenDeAutenticacao(
   resposta: FastifyReply,
-  idDoUsuario: string
+  idDoUsuario: string,
+  tokenVersion: number
 ): Promise<string> {
-  return resposta.jwtSign({ idDoUsuario })
+  return resposta.jwtSign({ idDoUsuario, tokenVersion })
 }
 
 /**
- * Verifica se o token JWT é válido e extrai o idDoUsuario.
+ * Verifica se o token JWT é válido e extrai o conteúdo.
  * @param requisicao - Objeto request do Fastify
- * @returns ID do usuário contido no token
+ * @returns Conteúdo do token (idDoUsuario + tokenVersion)
  */
 export async function verificarTokenDeAutenticacao(
   requisicao: FastifyRequest
-): Promise<string> {
-  const conteudo = await requisicao.jwtVerify<ConteudoDoToken>()
-  return conteudo.idDoUsuario
+): Promise<ConteudoDoToken> {
+  return requisicao.jwtVerify<ConteudoDoToken>()
 }

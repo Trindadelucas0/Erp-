@@ -4,6 +4,7 @@
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { paginaVinculavelExiste } from '../../compartilhado/paginas/registro-de-paginas.js'
 import { criptografarSenha } from '../../compartilhado/utilitarios/criptografia-senha.js'
+import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-auditoria.js'
 import { repositorioDeUsuarios } from './repositorio-usuarios.js'
 import {
   DadosParaCriarUsuario,
@@ -23,13 +24,8 @@ function validarChavesDasPaginasPermitidas(chaves: string[]) {
   return chaves
 }
 
-/**
- * Cria um novo usuário.
- */
-async function criarUsuario(dados: DadosParaCriarUsuario) {
-  const emailJaCadastrado = await repositorioDeUsuarios.buscarPorEmail(
-    dados.email
-  )
+async function criarUsuario(dados: DadosParaCriarUsuario, idDoAutor: string) {
+  const emailJaCadastrado = await repositorioDeUsuarios.buscarPorEmail(dados.email)
 
   if (emailJaCadastrado) {
     throw new ErroDaAplicacao('Email já cadastrado', 400)
@@ -40,7 +36,7 @@ async function criarUsuario(dados: DadosParaCriarUsuario) {
     dados.chavesDasPaginasPermitidas ?? []
   )
 
-  return repositorioDeUsuarios.criar({
+  const usuarioCriado = await repositorioDeUsuarios.criar({
     nome: dados.nome,
     email: dados.email,
     senhaCriptografada,
@@ -49,14 +45,22 @@ async function criarUsuario(dados: DadosParaCriarUsuario) {
     idsDasPermissoesExtras: dados.idsDasPermissoesExtras ?? [],
     chavesDasPaginasPermitidas,
   })
+
+  await registrarAuditoria({
+    usuarioId: idDoAutor,
+    acao: 'criar',
+    entidade: 'usuario',
+    entidadeId: usuarioCriado.id,
+    valoresDepois: { nome: dados.nome, email: dados.email },
+  })
+
+  return usuarioCriado
 }
 
-/**
- * Atualiza um usuário existente.
- */
 async function editarUsuario(
   idDoUsuario: string,
-  dados: DadosParaEditarUsuario
+  dados: DadosParaEditarUsuario,
+  idDoAutor: string
 ) {
   const usuarioExiste = await repositorioDeUsuarios.buscarPorId(idDoUsuario)
 
@@ -80,7 +84,7 @@ async function editarUsuario(
     dados.chavesDasPaginasPermitidas ?? []
   )
 
-  return repositorioDeUsuarios.atualizar(idDoUsuario, {
+  const usuarioAtualizado = await repositorioDeUsuarios.atualizar(idDoUsuario, {
     nome: dados.nome,
     email: dados.email,
     senhaCriptografada,
@@ -89,11 +93,19 @@ async function editarUsuario(
     idsDasPermissoesExtras: dados.idsDasPermissoesExtras ?? [],
     chavesDasPaginasPermitidas,
   })
+
+  await registrarAuditoria({
+    usuarioId: idDoAutor,
+    acao: 'editar',
+    entidade: 'usuario',
+    entidadeId: idDoUsuario,
+    valoresAntes: { nome: usuarioExiste.name, email: usuarioExiste.email },
+    valoresDepois: { nome: dados.nome, email: dados.email },
+  })
+
+  return usuarioAtualizado
 }
 
-/**
- * Ativa ou desativa um usuário.
- */
 async function alterarStatusDoUsuario(
   idDoUsuario: string,
   ativo: boolean,
@@ -109,22 +121,26 @@ async function alterarStatusDoUsuario(
     throw new ErroDaAplicacao('Usuário não encontrado', 404)
   }
 
-  return repositorioDeUsuarios.alterarStatus(idDoUsuario, ativo)
+  const resultado = await repositorioDeUsuarios.alterarStatus(idDoUsuario, ativo)
+
+  await registrarAuditoria({
+    usuarioId: idDoUsuarioLogado,
+    acao: ativo ? 'ativar' : 'desativar',
+    entidade: 'usuario',
+    entidadeId: idDoUsuario,
+    valoresAntes: { ativo: usuarioExiste.active },
+    valoresDepois: { ativo },
+  })
+
+  return resultado
 }
 
-/**
- * Lista todos os usuários.
- */
 async function listarUsuarios() {
   return repositorioDeUsuarios.listarTodos()
 }
 
-/**
- * Busca um usuário pelo ID.
- */
 async function buscarUsuarioPorId(idDoUsuario: string) {
-  const usuarioEncontrado =
-    await repositorioDeUsuarios.buscarPorId(idDoUsuario)
+  const usuarioEncontrado = await repositorioDeUsuarios.buscarPorId(idDoUsuario)
 
   if (!usuarioEncontrado) {
     throw new ErroDaAplicacao('Usuário não encontrado', 404)
@@ -133,10 +149,35 @@ async function buscarUsuarioPorId(idDoUsuario: string) {
   return usuarioEncontrado
 }
 
+async function resetarSenhaPorAdmin(
+  idDoUsuario: string,
+  novaSenha: string,
+  idDoAutor: string
+) {
+  const usuarioExiste = await repositorioDeUsuarios.buscarPorId(idDoUsuario)
+
+  if (!usuarioExiste) {
+    throw new ErroDaAplicacao('Usuário não encontrado', 404)
+  }
+
+  const senhaCriptografada = await criptografarSenha(novaSenha)
+  const resultado = await repositorioDeUsuarios.atualizarSenha(idDoUsuario, senhaCriptografada)
+
+  await registrarAuditoria({
+    usuarioId: idDoAutor,
+    acao: 'resetar_senha',
+    entidade: 'usuario',
+    entidadeId: idDoUsuario,
+  })
+
+  return resultado
+}
+
 export const servicoDeUsuarios = {
   criarUsuario,
   editarUsuario,
   alterarStatusDoUsuario,
   listarUsuarios,
   buscarUsuarioPorId,
+  resetarSenhaPorAdmin,
 }

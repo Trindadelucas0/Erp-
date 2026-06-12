@@ -191,21 +191,39 @@ async function atualizar(
 
 /**
  * Ativa ou desativa um usuário.
+ * Ao desativar, incrementa tokenVersion para invalidar tokens existentes.
  */
 async function alterarStatus(idDoUsuario: string, ativo: boolean) {
   return clientePrisma.user.update({
     where: { id: idDoUsuario },
-    data: { active: ativo },
+    data: {
+      active: ativo,
+      ...(ativo === false ? { tokenVersion: { increment: 1 } } : {}),
+    },
     select: camposPublicosDoUsuario,
+  })
+}
+
+/**
+ * Atualiza a senha de um usuário (usado pelo admin para reset).
+ */
+async function atualizarSenha(idDoUsuario: string, senhaCriptografada: string) {
+  return clientePrisma.user.update({
+    where: { id: idDoUsuario },
+    data: {
+      password: senhaCriptografada,
+      tokenVersion: { increment: 1 },
+    },
+    select: { id: true, name: true, email: true },
   })
 }
 
 export const repositorioDeUsuarios = {
   buscarPorEmail,
   buscarPorId,
-  buscarChavesDasPaginasPermitidas,
   listarTodos,
   criar,
   atualizar,
   alterarStatus,
+  atualizarSenha,
 }

@@ -20,4 +20,10 @@ export async function rotasDeAutenticacao(
     { preHandler: [middlewareDeAutenticacao] },
     controladorDeAutenticacao.buscarMeuPerfil
   )
+
+  aplicacao.post(
+    '/verificar-senha',
+    { preHandler: [middlewareDeAutenticacao] },
+    controladorDeAutenticacao.verificarSenha
+  )
 }

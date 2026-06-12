@@ -8,48 +8,40 @@ import {
   esquemaDeCriacaoDeUsuario,
   esquemaDeEdicaoDeUsuario,
   esquemaDeAtivarUsuario,
+  esquemaDeResetDeSenha,
 } from './esquema-usuarios.js'
 
-/**
- * Cria um novo usuário.
- */
 async function criarUsuario(requisicao: FastifyRequest, resposta: FastifyReply) {
   const resultado = esquemaDeCriacaoDeUsuario.safeParse(requisicao.body)
 
   if (!resultado.success) {
-    return resposta
-      .status(400)
-      .send({ mensagem: resultado.error.errors[0].message })
+    throw new ErroDaAplicacao(resultado.error.errors[0].message, 400)
   }
 
-  const usuarioCriado = await servicoDeUsuarios.criarUsuario(resultado.data)
+  const usuarioCriado = await servicoDeUsuarios.criarUsuario(
+    resultado.data,
+    requisicao.idDoUsuario!
+  )
   return resposta.status(201).send({ usuario: usuarioCriado })
 }
 
-/**
- * Edita um usuário existente.
- */
 async function editarUsuario(requisicao: FastifyRequest, resposta: FastifyReply) {
   const { id } = requisicao.params as { id: string }
   const resultado = esquemaDeEdicaoDeUsuario.safeParse(requisicao.body)
 
   if (!resultado.success) {
-    return resposta
-      .status(400)
-      .send({ mensagem: resultado.error.errors[0].message })
+    throw new ErroDaAplicacao(resultado.error.errors[0].message, 400)
   }
 
   const usuarioAtualizado = await servicoDeUsuarios.editarUsuario(
     id,
-    resultado.data
+    resultado.data,
+    requisicao.idDoUsuario!
   )
 
   return resposta.send({ usuario: usuarioAtualizado })
 }
 
-/**
- * Ativa ou desativa um usuário.
- */
 async function alterarStatusDoUsuario(
   requisicao: FastifyRequest,
   resposta: FastifyReply
@@ -58,9 +50,7 @@ async function alterarStatusDoUsuario(
   const resultado = esquemaDeAtivarUsuario.safeParse(requisicao.body)
 
   if (!resultado.success) {
-    return resposta
-      .status(400)
-      .send({ mensagem: resultado.error.errors[0].message })
+    throw new ErroDaAplicacao(resultado.error.errors[0].message, 400)
   }
 
   const idDoUsuarioLogado = requisicao.idDoUsuario!
@@ -74,9 +64,6 @@ async function alterarStatusDoUsuario(
   return resposta.send({ usuario })
 }
 
-/**
- * Lista todos os usuários.
- */
 async function listarUsuarios(
   _requisicao: FastifyRequest,
   resposta: FastifyReply
@@ -85,9 +72,6 @@ async function listarUsuarios(
   return resposta.send({ usuarios: listaDeUsuarios })
 }
 
-/**
- * Busca usuário por ID.
- */
 async function buscarUsuarioPorId(
   requisicao: FastifyRequest,
   resposta: FastifyReply
@@ -97,10 +81,30 @@ async function buscarUsuarioPorId(
   return resposta.send({ usuario: usuarioEncontrado })
 }
 
+async function resetarSenha(
+  requisicao: FastifyRequest,
+  resposta: FastifyReply
+) {
+  const { id } = requisicao.params as { id: string }
+  const resultado = esquemaDeResetDeSenha.safeParse(requisicao.body)
+
+  if (!resultado.success) {
+    throw new ErroDaAplicacao(resultado.error.errors[0].message, 400)
+  }
+
+  await servicoDeUsuarios.resetarSenhaPorAdmin(
+    id,
+    resultado.data.novaSenha,
+    requisicao.idDoUsuario!
+  )
+  return resposta.send({ mensagem: 'Senha redefinida com sucesso' })
+}
+
 export const controladorDeUsuarios = {
   criarUsuario,
   editarUsuario,
   alterarStatusDoUsuario,
   listarUsuarios,
   buscarUsuarioPorId,
+  resetarSenha,
 }
