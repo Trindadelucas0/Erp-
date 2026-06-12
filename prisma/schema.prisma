@@ -11,26 +11,85 @@ datasource db {
 }
 
 model Company {
-  id        String        @id @default(uuid())
-  name      String
-  cnpj      String        @unique
-  active    Boolean       @default(true)
-  users     UserCompany[]
-  createdAt DateTime      @default(now())
+  id          String        @id @default(uuid())
+  name        String
+  cnpj        String        @unique
+  active      Boolean       @default(true)
+  phone       String?
+  email       String?
+  cep         String?
+  logradouro  String?
+  numero      String?
+  complemento String?
+  bairro      String?
+  cidade      String?
+  estado      String?
+  users       UserCompany[]
+  clientes    Cliente[]
+  createdAt   DateTime      @default(now())
+}
+
+model Cliente {
+  id             String   @id @default(uuid())
+  tipo           String   // "PF" | "PJ"
+  ativo          Boolean  @default(true)
+
+  // Identificação PF
+  cpf            String?
+  rg             String?
+  dataNascimento String?
+
+  // Identificação PJ
+  cnpj           String?
+  nomeFantasia   String?
+  ie             String?
+  im             String?
+  suframa        String?
+
+  // Campo compartilhado (nome completo PF / razão social PJ)
+  nome           String
+
+  // Contato
+  email          String?
+  telefone       String?
+  celular        String?
+
+  // Endereço
+  cep            String?
+  logradouro     String?
+  numero         String?
+  complemento    String?
+  bairro         String?
+  cidade         String?
+  estado         String?
+  codigoIbge     String?
+
+  // Fiscal NF-e: 1=contribuinte ICMS, 2=contribuinte isento, 9=não contribuinte
+  indicadorIe    String   @default("9")
+
+  observacoes    String?
+
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id])
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model User {
-  id                 String           @id @default(uuid())
+  id                 String             @id @default(uuid())
   name               String
-  email              String           @unique
+  email              String             @unique
   password           String
-  active             Boolean          @default(true)
+  active             Boolean            @default(true)
+  tokenVersion       Int                @default(0)
   roles              UserRole[]
   companies          UserCompany[]
   permissoesExtras   UserPermission[]
   paginasPermitidas  UserPageAccess[]
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
+  logsDeAuditoria    LogDeAuditoria[]
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 }
 
 model UserPageAccess {
@@ -92,4 +151,16 @@ model RolePermission {
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
   @@id([roleId, permissionId])
+}
+
+model LogDeAuditoria {
+  id            String   @id @default(uuid())
+  usuarioId     String
+  acao          String
+  entidade      String
+  entidadeId    String
+  valoresAntes  Json?
+  valoresDepois Json?
+  criadoEm      DateTime @default(now())
+  usuario       User     @relation(fields: [usuarioId], references: [id])
 }
