@@ -2,6 +2,7 @@
  * Controlador de empresas — recebe requisições HTTP e chama o serviço.
  */
 import { FastifyReply, FastifyRequest } from 'fastify'
+import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { servicoDeEmpresas } from './servico-empresas.js'
 import {
   esquemaDeAtivarEmpresa,
@@ -22,26 +23,27 @@ async function criarEmpresa(requisicao: FastifyRequest, resposta: FastifyReply) 
   const resultado = esquemaDeCriacaoDeEmpresa.safeParse(requisicao.body)
 
   if (!resultado.success) {
-    return resposta
-      .status(400)
-      .send({ mensagem: resultado.error.errors[0].message })
+    throw new ErroDaAplicacao(resultado.error.errors[0].message, 400)
   }
 
-  const empresaCriada = await servicoDeEmpresas.criarEmpresa(resultado.data)
+  const empresaCriada = await servicoDeEmpresas.criarEmpresa(
+    resultado.data,
+    requisicao.idDoUsuario!
+  )
   return resposta.status(201).send({ empresa: empresaCriada })
 }
 
 async function editarEmpresa(requisicao: FastifyRequest, resposta: FastifyReply) {
   const { id } = requisicao.params as { id: string }
+  const idDoUsuario = requisicao.idDoUsuario!
   const resultado = esquemaDeEdicaoDeEmpresa.safeParse(requisicao.body)
 
   if (!resultado.success) {
-    return resposta
-      .status(400)
-      .send({ mensagem: resultado.error.errors[0].message })
+    throw new ErroDaAplicacao(resultado.error.errors[0].message, 400)
   }
 
   const empresaAtualizada = await servicoDeEmpresas.editarEmpresa(
+    idDoUsuario,
     id,
     resultado.data
   )
@@ -53,15 +55,15 @@ async function alterarStatusDaEmpresa(
   resposta: FastifyReply
 ) {
   const { id } = requisicao.params as { id: string }
+  const idDoUsuario = requisicao.idDoUsuario!
   const resultado = esquemaDeAtivarEmpresa.safeParse(requisicao.body)
 
   if (!resultado.success) {
-    return resposta
-      .status(400)
-      .send({ mensagem: resultado.error.errors[0].message })
+    throw new ErroDaAplicacao(resultado.error.errors[0].message, 400)
   }
 
   const empresa = await servicoDeEmpresas.alterarStatusDaEmpresa(
+    idDoUsuario,
     id,
     resultado.data.ativo
   )

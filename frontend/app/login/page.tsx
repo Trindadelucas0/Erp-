@@ -84,7 +84,7 @@ export default function PaginaDeLogin() {
     <div className="mx-auto flex max-w-md flex-col items-center justify-center py-8">
       <div className="mb-8 text-center">
         <h1 className="text-2xl font-bold tracking-tight text-primary">
-          ERP PRÓPRIO
+          ERP 
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">Sistema de Gestão</p>
       </div>

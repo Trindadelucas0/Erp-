@@ -8,3 +8,15 @@ docs/
 .env.example
 scripts/linear-connect.mjs
 package-lock.json
+
+# Testes
+tests/
+frontend/__tests__/
+vitest.config.ts
+frontend/vitest.config.ts
+frontend/vitest.setup.ts
+
+# Cobertura de testes
+coverage/
+frontend/coverage/
+.vitest-cache/

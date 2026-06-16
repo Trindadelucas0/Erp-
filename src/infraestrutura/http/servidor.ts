@@ -18,7 +18,7 @@ export async function criarServidor() {
   await aplicacao.register(cors, {
     origin: true,
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Company-Id'],
   })
 
   const chaveSecretaJwt = process.env.JWT_SECRET

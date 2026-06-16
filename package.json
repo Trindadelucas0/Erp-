@@ -12,7 +12,11 @@
     "db:seed": "tsx --import ./scripts/carregar-url-do-banco.ts prisma/seed.ts",
     "db:sync-permissoes": "tsx --import ./scripts/carregar-url-do-banco.ts scripts/sincronizar-permissoes.ts",
     "db:studio": "tsx scripts/executar-prisma.ts studio",
-    "db:generate": "tsx scripts/executar-prisma.ts generate"
+    "db:generate": "tsx scripts/executar-prisma.ts generate",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:frontend": "vitest run --config frontend/vitest.config.ts --root frontend"
   },
   "dependencies": {
     "@fastify/cors": "^11.0.1",
@@ -26,11 +30,13 @@
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
     "@types/node": "^22.15.30",
+    "@vitest/coverage-v8": "^4.1.8",
     "concurrently": "^9.1.2",
     "kill-port": "^2.0.1",
     "prisma": "^6.9.0",
     "tsx": "^4.19.4",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.8"
   },
   "prisma": {
     "seed": "tsx --import ./scripts/carregar-url-do-banco.ts prisma/seed.ts"

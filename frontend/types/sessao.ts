@@ -8,6 +8,15 @@ export type PapelDaSessao = {
   role: { name: string }
 }
 
+export type EmpresaDaSessao = {
+  company: {
+    id: string
+    name: string
+    cnpj: string
+    active: boolean
+  }
+}
+
 export type UsuarioDaSessao = {
   id: string
   name: string
@@ -21,4 +30,5 @@ export type PerfilDoUsuario = {
   ehAdmin: boolean
   paginasPermitidas: PaginaDoSistema[]
   permissoesEfetivas: string[]
+  empresas: EmpresaDaSessao[]
 }

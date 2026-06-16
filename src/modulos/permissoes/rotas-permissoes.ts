@@ -27,4 +27,12 @@ export async function rotasDePermissoes(
       return { permissoes }
     }
   )
+
+  aplicacao.get(
+    '/modulos',
+    { preHandler: [middlewareDeAutenticacao] },
+    async () => {
+      return { modulos: servicoDePermissoes.listarModulos() }
+    }
+  )
 }

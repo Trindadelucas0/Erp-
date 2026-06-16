@@ -6,6 +6,7 @@
 /** Módulos do sistema com nome legível em português. */
 export const MODULOS_DO_SISTEMA = {
   cadastros: 'Cadastros',
+  clientes: 'Clientes',
   estoque: 'Estoque',
   vendas: 'Vendas',
   financeiro: 'Financeiro',
@@ -43,6 +44,9 @@ export const PERMISSOES_PADRAO_POR_PAPEL: Record<NomeDoPapel, string[]> = {
   admin: ['*'],
   vendedor: [
     'cadastros:view',
+    'clientes:view',
+    'clientes:create',
+    'clientes:edit',
     'estoque:view',
     'vendas:view',
     'vendas:create',
@@ -50,6 +54,7 @@ export const PERMISSOES_PADRAO_POR_PAPEL: Record<NomeDoPapel, string[]> = {
   ],
   financeiro: [
     'cadastros:view',
+    'clientes:view',
     'financeiro:view',
     'financeiro:create',
     'financeiro:edit',
@@ -57,6 +62,7 @@ export const PERMISSOES_PADRAO_POR_PAPEL: Record<NomeDoPapel, string[]> = {
   ],
   estoque: [
     'cadastros:view',
+    'clientes:view',
     'estoque:view',
     'estoque:create',
     'estoque:edit',
