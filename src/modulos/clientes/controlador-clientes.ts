@@ -83,9 +83,20 @@ async function alterarStatusDoCliente(
   return resposta.send({ cliente })
 }
 
+async function buscarClientePorDocumento(
+  requisicao: FastifyRequest,
+  resposta: FastifyReply
+) {
+  const { documento } = requisicao.params as { documento: string }
+  const companyId = requisicao.empresaAtivaId || ''
+  const resultado = await servicoDeClientes.buscarClientePorDocumento(documento, companyId)
+  return resposta.send(resultado)
+}
+
 export const controladorDeClientes = {
   listarClientes,
   criarCliente,
   editarCliente,
   alterarStatusDoCliente,
+  buscarClientePorDocumento,
 }

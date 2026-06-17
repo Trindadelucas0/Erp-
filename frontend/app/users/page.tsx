@@ -3,7 +3,7 @@
 /**
  * Tela de usuários — listar, criar, editar, desativar e permissões extras.
  */
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { clienteHttp } from '@/services/api'
@@ -28,6 +28,8 @@ import { Separator } from '@/components/ui/separator'
 import { TituloSecao } from '@/components/ui/titulo-secao'
 import { exportarCsv } from '@/lib/exportar-csv'
 
+// ─── Tipos ────────────────────────────────────────────────────────────────────
+
 type Papel = {
   id: string
   name: string
@@ -40,6 +42,7 @@ type Usuario = {
   id: string
   name: string
   email: string
+  cargo: string | null
   active: boolean
   roles: { role: Papel }[]
   companies: { company: Empresa }[]
@@ -47,23 +50,52 @@ type Usuario = {
   paginasPermitidas: { pageKey: string }[]
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function extrairMensagemDeErro(erro: unknown, mensagemPadrao: string): string {
   const respostaAxios = erro as {
     response?: { data?: { mensagem?: string; message?: string } }
     message?: string
     code?: string
   }
-
   if (!respostaAxios.response) {
     if (respostaAxios.code === 'ERR_NETWORK') {
       return 'Não foi possível conectar à API. Verifique se o servidor está rodando.'
     }
     return respostaAxios.message || mensagemPadrao
   }
-
   const dados = respostaAxios.response.data
   return dados?.mensagem || dados?.message || mensagemPadrao
 }
+
+function emailValido(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+}
+
+// ─── Status de cadastro ───────────────────────────────────────────────────────
+
+type StatusCadastro = 'completo' | 'incompleto'
+
+function gerarPendenciasUsuario(usuario: Usuario): string[] {
+  const pendencias: string[] = []
+  if (!usuario.name || usuario.name.trim().length < 2)
+    pendencias.push('Nome inválido (mínimo 2 caracteres)')
+  if (!emailValido(usuario.email))
+    pendencias.push('E-mail inválido')
+  if (!usuario.cargo || usuario.cargo.trim() === '')
+    pendencias.push('Cargo não informado')
+  if (usuario.roles.length === 0)
+    pendencias.push('Nenhum papel vinculado')
+  if (usuario.companies.length === 0)
+    pendencias.push('Nenhuma empresa vinculada')
+  return pendencias
+}
+
+function calcularStatusUsuario(usuario: Usuario): StatusCadastro {
+  return gerarPendenciasUsuario(usuario).length === 0 ? 'completo' : 'incompleto'
+}
+
+// ─── Constantes de abas ───────────────────────────────────────────────────────
 
 const ABAS_USUARIO = [
   { id: 'dados', rotulo: 'Dados básicos' },
@@ -71,11 +103,14 @@ const ABAS_USUARIO = [
   { id: 'permissoes', rotulo: 'Permissões' },
 ]
 
+// ─── Componente principal ─────────────────────────────────────────────────────
+
 function ConteudoDaPaginaDeUsuarios() {
   const roteador = useRouter()
   const { estaAutenticado, carregando: carregandoSessao, perfil } =
     useSessaoDoUsuario()
 
+  // Dados carregados da API
   const [listaDeUsuarios, setListaDeUsuarios] = useState<Usuario[]>([])
   const [listaDePapeis, setListaDePapeis] = useState<Papel[]>([])
   const [listaDeEmpresas, setListaDeEmpresas] = useState<Empresa[]>([])
@@ -84,8 +119,13 @@ function ConteudoDaPaginaDeUsuarios() {
     PaginaDoSistema[]
   >([])
 
+  // Mensagens globais
   const [mensagemDeErro, setMensagemDeErro] = useState('')
   const [mensagemDeSucesso, setMensagemDeSucesso] = useState('')
+
+  // Loading states
+  const [carregandoLista, setCarregandoLista] = useState(true)
+  const [alterandoStatusId, setAlterandoStatusId] = useState<string | null>(null)
 
   // Modal de criar/editar
   const [modalUsuarioAberto, setModalUsuarioAberto] = useState(false)
@@ -98,16 +138,25 @@ function ConteudoDaPaginaDeUsuarios() {
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
+  const [cargo, setCargo] = useState('')
   const [idsDosPapeisSelecionados, setIdsDosPapeisSelecionados] = useState<string[]>([])
   const [idsDasEmpresasSelecionadas, setIdsDasEmpresasSelecionadas] = useState<string[]>([])
   const [idsDasPermissoesExtras, setIdsDasPermissoesExtras] = useState<string[]>([])
   const [chavesDasPaginasSelecionadas, setChavesDasPaginasSelecionadas] = useState<string[]>([])
 
-  // Modais de ação (desativar/resetar senha)
+  // Filtros da tabela
+  const [termoBusca, setTermoBusca] = useState('')
+  const [filtroStatus, setFiltroStatus] = useState<'todos' | 'ativo' | 'inativo'>('todos')
+  const [filtroPapel, setFiltroPapel] = useState('')
+
+  // Modais de ação
   const [usuarioParaDesativar, setUsuarioParaDesativar] = useState<Usuario | null>(null)
   const [usuarioParaResetarSenha, setUsuarioParaResetarSenha] = useState<Usuario | null>(null)
   const [novaSenhaReset, setNovaSenhaReset] = useState('')
   const [salvandoResetSenha, setSalvandoResetSenha] = useState(false)
+
+  // Tooltip de pendências
+  const [tooltipAberto, setTooltipAberto] = useState<string | null>(null)
 
   useEffect(() => {
     if (carregandoSessao || !estaAutenticado || !perfil?.ehAdmin) return
@@ -115,6 +164,7 @@ function ConteudoDaPaginaDeUsuarios() {
   }, [carregandoSessao, estaAutenticado, perfil])
 
   async function carregarDadosDaTela() {
+    setCarregandoLista(true)
     try {
       const [
         respostaUsuarios,
@@ -129,7 +179,6 @@ function ConteudoDaPaginaDeUsuarios() {
         clienteHttp.get('/permissions'),
         clienteHttp.get('/paginas/vinculaveis'),
       ])
-
       setListaDeUsuarios(respostaUsuarios.data.usuarios)
       setListaDePapeis(respostaPapeis.data.papeis)
       setListaDeEmpresas(respostaEmpresas.data.empresas)
@@ -138,8 +187,51 @@ function ConteudoDaPaginaDeUsuarios() {
     } catch {
       setMensagemDeErro('Erro ao carregar dados. Faça login novamente.')
       roteador.push('/login')
+    } finally {
+      setCarregandoLista(false)
     }
   }
+
+  // ─── Filtro client-side ────────────────────────────────────────────────────
+
+  const listaFiltrada = useMemo(() => {
+    return listaDeUsuarios.filter((u) => {
+      const termo = termoBusca.toLowerCase()
+      const matchBusca =
+        !termo ||
+        u.name.toLowerCase().includes(termo) ||
+        u.email.toLowerCase().includes(termo)
+      const matchStatus =
+        filtroStatus === 'todos' ||
+        (filtroStatus === 'ativo' && u.active) ||
+        (filtroStatus === 'inativo' && !u.active)
+      const matchPapel =
+        !filtroPapel ||
+        u.roles.some((r) => r.role.id === filtroPapel)
+      return matchBusca && matchStatus && matchPapel
+    })
+  }, [listaDeUsuarios, termoBusca, filtroStatus, filtroPapel])
+
+  // ─── Validação visual das abas ─────────────────────────────────────────────
+
+  const statusDasAbas = useMemo(() => {
+    const dadosValido = nome.trim().length >= 2 && emailValido(email)
+    const acessoValido =
+      idsDosPapeisSelecionados.length >= 1 && idsDasEmpresasSelecionadas.length >= 1
+
+    return {
+      dados: dadosValido ? ('valid' as const) : ('error' as const),
+      acesso: acessoValido ? ('valid' as const) : ('error' as const),
+      permissoes: 'valid' as const,
+    }
+  }, [nome, email, idsDosPapeisSelecionados, idsDasEmpresasSelecionadas])
+
+  const abasComStatus = ABAS_USUARIO.map((aba) => ({
+    ...aba,
+    status: statusDasAbas[aba.id as keyof typeof statusDasAbas],
+  }))
+
+  // ─── Helpers de formulário ─────────────────────────────────────────────────
 
   function alternarIdNaLista(listaAtual: string[], idParaAlternar: string) {
     return listaAtual.includes(idParaAlternar)
@@ -151,6 +243,7 @@ function ConteudoDaPaginaDeUsuarios() {
     setNome('')
     setEmail('')
     setSenha('')
+    setCargo('')
     setIdsDosPapeisSelecionados([])
     setIdsDasEmpresasSelecionadas([])
     setIdsDasPermissoesExtras([])
@@ -171,6 +264,7 @@ function ConteudoDaPaginaDeUsuarios() {
     setIdDoUsuarioEmEdicao(usuario.id)
     setNome(usuario.name)
     setEmail(usuario.email)
+    setCargo(usuario.cargo ?? '')
     setSenha('')
     setIdsDosPapeisSelecionados(usuario.roles.map((item) => item.role.id))
     setIdsDasEmpresasSelecionadas(
@@ -200,9 +294,12 @@ function ConteudoDaPaginaDeUsuarios() {
     )
   }
 
+  // ─── Ações ─────────────────────────────────────────────────────────────────
+
   async function confirmarAlteracaoDeStatus() {
     if (!usuarioParaDesativar) return
     const novoStatus = !usuarioParaDesativar.active
+    setAlterandoStatusId(usuarioParaDesativar.id)
     try {
       await clienteHttp.patch(`/users/${usuarioParaDesativar.id}/ativo`, {
         ativo: novoStatus,
@@ -212,6 +309,8 @@ function ConteudoDaPaginaDeUsuarios() {
       await carregarDadosDaTela()
     } catch (erro: unknown) {
       setMensagemDeErro(extrairMensagemDeErro(erro, 'Erro ao alterar status'))
+    } finally {
+      setAlterandoStatusId(null)
     }
   }
 
@@ -236,6 +335,7 @@ function ConteudoDaPaginaDeUsuarios() {
     const corpo = {
       nome,
       email,
+      cargo: cargo.trim() || undefined,
       idsDosPapeis: idsDosPapeisSelecionados,
       idsDasEmpresas: idsDasEmpresasSelecionadas,
       idsDasPermissoesExtras,
@@ -288,6 +388,10 @@ function ConteudoDaPaginaDeUsuarios() {
     .filter((p) => idsDosPapeisSelecionados.includes(p.id))
     .map((p) => `${p.name}: ${montarResumoDasPermissoes(p.permissions)}`)
     .join(' | ')
+
+  const operacaoEmAndamento = salvando || alterandoStatusId !== null
+
+  // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6">
@@ -367,7 +471,15 @@ function ConteudoDaPaginaDeUsuarios() {
                 onClick={confirmarResetSenha}
                 disabled={!novaSenhaReset || salvandoResetSenha}
               >
-                {salvandoResetSenha ? 'Salvando...' : 'Redefinir senha'}
+                {salvandoResetSenha ? (
+                  <span className="flex items-center gap-2">
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                    Salvando...
+                  </span>
+                ) : 'Redefinir senha'}
               </BotaoPrimario>
             </div>
           </div>
@@ -381,40 +493,30 @@ function ConteudoDaPaginaDeUsuarios() {
         titulo={modoEdicao ? `Editar: ${nome}` : 'Novo usuário'}
         largura="2xl"
         rodape={
-          <div className="flex items-center justify-between">
-            <div className="flex gap-1">
-              {ABAS_USUARIO.map((aba, idx) => (
-                <button
-                  key={aba.id}
-                  type="button"
-                  onClick={() => setAbaAtiva(aba.id)}
-                  className={`rounded px-2 py-1 text-xs transition-colors ${
-                    abaAtiva === aba.id
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {idx + 1}. {aba.rotulo}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={fecharModalUsuario}
-                disabled={salvando}
-              >
-                Cancelar
-              </Button>
-              <BotaoPrimario
-                form="form-usuario"
-                type="submit"
-                disabled={salvando}
-              >
-                {salvando ? 'Salvando...' : modoEdicao ? 'Salvar' : 'Criar usuário'}
-              </BotaoPrimario>
-            </div>
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={fecharModalUsuario}
+              disabled={salvando}
+            >
+              Cancelar
+            </Button>
+            <BotaoPrimario
+              form="form-usuario"
+              type="submit"
+              disabled={salvando}
+            >
+              {salvando ? (
+                <span className="flex items-center gap-2">
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  Salvando...
+                </span>
+              ) : modoEdicao ? 'Salvar' : 'Criar usuário'}
+            </BotaoPrimario>
           </div>
         }
       >
@@ -425,12 +527,16 @@ function ConteudoDaPaginaDeUsuarios() {
         )}
 
         <Abas
-          abas={ABAS_USUARIO}
+          abas={abasComStatus}
           abaAtiva={abaAtiva}
           aoMudar={setAbaAtiva}
           className="mb-5"
         />
 
+        <div className="relative">
+          {salvando && (
+            <div className="absolute inset-0 z-10 rounded-md bg-background/60 backdrop-blur-[1px]" />
+          )}
         <form id="form-usuario" onSubmit={aoSalvarUsuario}>
           {/* Aba 1: Dados básicos */}
           {abaAtiva === 'dados' && (
@@ -443,25 +549,34 @@ function ConteudoDaPaginaDeUsuarios() {
                   required
                 />
                 <InputPadrao
-                  rotulo="Email"
+                  rotulo="E-mail"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                 />
               </div>
-              <InputPadrao
-                rotulo={
-                  modoEdicao
-                    ? 'Nova senha (deixe vazio para não alterar)'
-                    : 'Senha'
-                }
-                type="password"
-                value={senha}
-                onChange={(e) => setSenha(e.target.value)}
-                required={!modoEdicao}
-                placeholder="Mínimo 6 caracteres"
-              />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <InputPadrao
+                  rotulo="Cargo / Função"
+                  value={cargo}
+                  onChange={(e) => setCargo(e.target.value)}
+                  placeholder="Ex: Vendedor, Analista Financeiro"
+                  maxLength={100}
+                />
+                <InputPadrao
+                  rotulo={
+                    modoEdicao
+                      ? 'Nova senha (deixe vazio para não alterar)'
+                      : 'Senha'
+                  }
+                  type="password"
+                  value={senha}
+                  onChange={(e) => setSenha(e.target.value)}
+                  required={!modoEdicao}
+                  placeholder="Mínimo 6 caracteres"
+                />
+              </div>
               <div className="rounded-md border border-border bg-muted/30 px-4 py-3">
                 <p className="text-xs text-muted-foreground">
                   Após preencher os dados básicos, avance para a aba{' '}
@@ -597,6 +712,7 @@ function ConteudoDaPaginaDeUsuarios() {
             </div>
           )}
         </form>
+        </div>
       </Modal>
 
       {/* Tabela de usuários */}
@@ -614,9 +730,11 @@ function ConteudoDaPaginaDeUsuarios() {
                   listaDeUsuarios.map((u) => ({
                     Nome: u.name,
                     Email: u.email,
+                    Cargo: u.cargo ?? '',
                     Status: u.active ? 'Ativo' : 'Inativo',
                     Papéis: u.roles.map((r) => r.role.name).join('; '),
                     Empresas: u.companies.map((c) => c.company.name).join('; '),
+                    Cadastro: calcularStatusUsuario(u) === 'completo' ? 'Completo' : 'Incompleto',
                   })),
                   'usuarios'
                 )
@@ -630,89 +748,232 @@ function ConteudoDaPaginaDeUsuarios() {
           </div>
         }
       >
+        {/* Barra de busca e filtros */}
+        <div className="mb-4 flex flex-wrap gap-2">
+          <input
+            type="text"
+            value={termoBusca}
+            onChange={(e) => setTermoBusca(e.target.value)}
+            placeholder="Buscar por nome ou e-mail..."
+            className="h-9 flex-1 min-w-[200px] rounded-md border border-border bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          <select
+            value={filtroStatus}
+            onChange={(e) => setFiltroStatus(e.target.value as typeof filtroStatus)}
+            className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="todos">Todos os status</option>
+            <option value="ativo">Ativo</option>
+            <option value="inativo">Inativo</option>
+          </select>
+          <select
+            value={filtroPapel}
+            onChange={(e) => setFiltroPapel(e.target.value)}
+            className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="">Todos os papéis</option>
+            {listaDePapeis.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          {(termoBusca || filtroStatus !== 'todos' || filtroPapel) && (
+            <button
+              type="button"
+              onClick={() => {
+                setTermoBusca('')
+                setFiltroStatus('todos')
+                setFiltroPapel('')
+              }}
+              className="h-9 rounded-md px-3 text-sm text-muted-foreground hover:text-foreground"
+            >
+              Limpar
+            </button>
+          )}
+        </div>
+
         <div className="overflow-x-auto rounded-md border border-border">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/50">
                 <th className="px-4 py-3 text-left font-medium">Nome</th>
+                <th className="px-4 py-3 text-left font-medium">Cargo</th>
                 <th className="px-4 py-3 text-left font-medium">Email</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
                 <th className="px-4 py-3 text-left font-medium">Papéis</th>
-                <th className="px-4 py-3 text-left font-medium">Empresas</th>
+                <th className="px-4 py-3 text-left font-medium">Cadastro</th>
                 <th className="px-4 py-3 text-left font-medium">Ações</th>
               </tr>
             </thead>
             <tbody>
-              {listaDeUsuarios.length === 0 && (
+              {/* Skeleton de carregamento */}
+              {carregandoLista &&
+                Array.from({ length: 4 }).map((_, i) => (
+                  <tr key={i} className="border-b border-border last:border-0">
+                    {Array.from({ length: 7 }).map((__, j) => (
+                      <td key={j} className="px-4 py-3">
+                        <div className="h-4 animate-pulse rounded bg-muted" />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+
+              {!carregandoLista && listaFiltrada.length === 0 && (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-4 py-8 text-center text-sm text-muted-foreground"
                   >
-                    Nenhum usuário cadastrado.
+                    {listaDeUsuarios.length === 0
+                      ? 'Nenhum usuário cadastrado.'
+                      : 'Nenhum usuário encontrado com os filtros aplicados.'}
                   </td>
                 </tr>
               )}
-              {listaDeUsuarios.map((usuario) => (
-                <tr
-                  key={usuario.id}
-                  className="border-b border-border last:border-0 hover:bg-muted/30"
-                >
-                  <td className="px-4 py-3 font-medium">{usuario.name}</td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {usuario.email}
-                  </td>
-                  <td className="px-4 py-3">
-                    <BadgeStatus variante={usuario.active ? 'ativo' : 'inativo'}>
-                      {usuario.active ? 'Ativo' : 'Inativo'}
-                    </BadgeStatus>
-                  </td>
-                  <td className="px-4 py-3">
-                    {usuario.roles.map((r) => r.role.name).join(', ')}
-                  </td>
-                  <td className="px-4 py-3">
-                    {usuario.companies.map((c) => c.company.name).join(', ')}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => abrirModalEdicao(usuario)}
-                      >
-                        Editar
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setUsuarioParaResetarSenha(usuario)
-                          setNovaSenhaReset('')
-                          setMensagemDeErro('')
-                        }}
-                      >
-                        Redefinir senha
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => {
-                          setUsuarioParaDesativar(usuario)
-                          setMensagemDeErro('')
-                        }}
-                      >
-                        {usuario.active ? 'Desativar' : 'Reativar'}
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+
+              {!carregandoLista &&
+                listaFiltrada.map((usuario) => {
+                  const pendencias = gerarPendenciasUsuario(usuario)
+                  const statusCadastro = pendencias.length === 0 ? 'completo' : 'incompleto'
+                  const esteAlterando = alterandoStatusId === usuario.id
+
+                  return (
+                    <tr
+                      key={usuario.id}
+                      className="border-b border-border last:border-0 hover:bg-muted/30"
+                    >
+                      <td className="px-4 py-3 font-medium">{usuario.name}</td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {usuario.cargo || (
+                          <span className="italic text-muted-foreground/60">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {usuario.email}
+                      </td>
+                      <td className="px-4 py-3">
+                        <BadgeStatus variante={usuario.active ? 'ativo' : 'inativo'}>
+                          {usuario.active ? 'Ativo' : 'Inativo'}
+                        </BadgeStatus>
+                      </td>
+                      <td className="px-4 py-3">
+                        {usuario.roles.map((r) => r.role.name).join(', ')}
+                      </td>
+                      {/* Coluna de cadastro com badge e tooltip */}
+                      <td className="px-4 py-3">
+                        <div className="relative inline-block">
+                          <span
+                            className={`inline-flex cursor-default items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                              statusCadastro === 'completo'
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                            }`}
+                            onMouseEnter={() =>
+                              statusCadastro === 'incompleto' &&
+                              setTooltipAberto(usuario.id)
+                            }
+                            onMouseLeave={() => setTooltipAberto(null)}
+                          >
+                            {statusCadastro === 'completo' ? '✓ Completo' : '⚠ Incompleto'}
+                          </span>
+                          {tooltipAberto === usuario.id && pendencias.length > 0 && (
+                            <div className="absolute bottom-full left-0 z-50 mb-1 w-56 rounded-md border border-border bg-popover p-2 shadow-md">
+                              <p className="mb-1 text-xs font-medium text-foreground">
+                                Pendências:
+                              </p>
+                              <ul className="space-y-0.5">
+                                {pendencias.map((p, idx) => (
+                                  <li
+                                    key={idx}
+                                    className="text-xs text-muted-foreground"
+                                  >
+                                    • {p}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => abrirModalEdicao(usuario)}
+                            disabled={operacaoEmAndamento}
+                          >
+                            Editar
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setUsuarioParaResetarSenha(usuario)
+                              setNovaSenhaReset('')
+                              setMensagemDeErro('')
+                            }}
+                            disabled={operacaoEmAndamento}
+                          >
+                            Redefinir senha
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => {
+                              setUsuarioParaDesativar(usuario)
+                              setMensagemDeErro('')
+                            }}
+                            disabled={operacaoEmAndamento}
+                          >
+                            {esteAlterando ? (
+                              <span className="flex items-center gap-1">
+                                <svg
+                                  className="h-3 w-3 animate-spin"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                >
+                                  <circle
+                                    className="opacity-25"
+                                    cx="12"
+                                    cy="12"
+                                    r="10"
+                                    stroke="currentColor"
+                                    strokeWidth="4"
+                                  />
+                                  <path
+                                    className="opacity-75"
+                                    fill="currentColor"
+                                    d="M4 12a8 8 0 018-8v8H4z"
+                                  />
+                                </svg>
+                                Aguarde...
+                              </span>
+                            ) : usuario.active ? (
+                              'Desativar'
+                            ) : (
+                              'Reativar'
+                            )}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
             </tbody>
           </table>
         </div>
+
+        {!carregandoLista && listaFiltrada.length > 0 && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            {listaFiltrada.length} de {listaDeUsuarios.length} usuário
+            {listaDeUsuarios.length === 1 ? '' : 's'}
+          </p>
+        )}
       </CardPadrao>
     </div>
   )

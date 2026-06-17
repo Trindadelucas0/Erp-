@@ -16,6 +16,13 @@ export async function rotasDeClientes(aplicacao: FastifyInstance): Promise<void>
     controladorDeClientes.listarClientes
   )
 
+  // Deve ficar antes de /:id para não ser interceptada como parâmetro
+  aplicacao.get(
+    '/por-documento/:documento',
+    { preHandler: [...auth, middlewareDeAutorizacao('clientes:view')] },
+    controladorDeClientes.buscarClientePorDocumento
+  )
+
   aplicacao.post(
     '/',
     { preHandler: [...auth, middlewareDeAutorizacao('clientes:create')] },
