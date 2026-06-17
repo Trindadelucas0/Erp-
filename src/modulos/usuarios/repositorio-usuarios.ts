@@ -9,6 +9,7 @@ const camposPublicosDoUsuario = {
   id: true,
   name: true,
   email: true,
+  cargo: true,
   active: true,
   createdAt: true,
   updatedAt: true,
@@ -77,6 +78,7 @@ async function criar(dados: {
   nome: string
   email: string
   senhaCriptografada: string
+  cargo?: string
   idsDosPapeis: string[]
   idsDasEmpresas: string[]
   idsDasPermissoesExtras: string[]
@@ -88,6 +90,7 @@ async function criar(dados: {
         name: dados.nome,
         email: dados.email,
         password: dados.senhaCriptografada,
+        cargo: dados.cargo ?? '',
         roles: {
           create: dados.idsDosPapeis.map((idDoPapel) => ({
             roleId: idDoPapel,
@@ -123,6 +126,7 @@ async function atualizar(
     nome: string
     email: string
     senhaCriptografada?: string
+    cargo?: string
     idsDosPapeis: string[]
     idsDasEmpresas: string[]
     idsDasPermissoesExtras: string[]
@@ -135,6 +139,7 @@ async function atualizar(
       data: {
         name: dados.nome,
         email: dados.email,
+        cargo: dados.cargo ?? '',
         ...(dados.senhaCriptografada
           ? { password: dados.senhaCriptografada }
           : {}),

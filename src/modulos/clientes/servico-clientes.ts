@@ -113,9 +113,17 @@ async function alterarStatusDoCliente(
   return atualizado
 }
 
+async function buscarClientePorDocumento(documento: string, companyId: string) {
+  if (!companyId) {
+    throw new ErroDaAplicacao('Empresa ativa não informada.', 400)
+  }
+  return repositorioDeClientes.buscarPessoaPorDocumentoNaEmpresa(documento, companyId)
+}
+
 export const servicoDeClientes = {
   listarClientes,
   criarCliente,
   editarCliente,
   alterarStatusDoCliente,
+  buscarClientePorDocumento,
 }
