@@ -6,7 +6,7 @@ import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js
 import type { Prisma } from '@prisma/client'
 import type { DadosParaCriarCliente, DadosParaEditarCliente } from './esquema-clientes.js'
 
-// ─── Tipos internos ───────────────────────────────────────────────────────────
+// ─── Tipos ────────────────────────────────────────────────────────────────────
 
 type PessoaComRelacoes = Prisma.PessoaGetPayload<{
   include: {
@@ -18,7 +18,14 @@ type PessoaComRelacoes = Prisma.PessoaGetPayload<{
 
 export type ClienteView = ReturnType<typeof mapearParaClienteView>
 
-// ─── Mapeador: Pessoa → visão achatada de Cliente ────────────────────────────
+export type ResultadoBuscaPorDocumento = {
+  encontrado: boolean
+  temPapelCliente: boolean
+  papeis: string[]
+  pessoa: ClienteView | null
+}
+
+// ─── Mapeador ────────────────────────────────────────────────────────────────
 
 function mapearParaClienteView(pessoa: PessoaComRelacoes) {
   const papelCliente = pessoa.papeis.find((p) => p.papel === 'cliente')!
@@ -55,11 +62,10 @@ function mapearParaClienteView(pessoa: PessoaComRelacoes) {
     indicadorIe: pessoa.indicadorIe,
     observacoes: pessoa.observacoes,
     companyId: pessoa.companyId,
-    // Contatos achatados (compatibilidade com frontend atual)
     email: emailPrincipal?.valor ?? null,
     telefone: telefonePrincipal?.valor ?? null,
     celular: celular?.valor ?? null,
-    // Endereço achatado
+    celularWhatsapp: celular?.whatsapp ?? false,
     cep: enderecoPrincipal?.cep ?? null,
     logradouro: enderecoPrincipal?.logradouro ?? null,
     numero: enderecoPrincipal?.numero ?? null,
@@ -68,11 +74,9 @@ function mapearParaClienteView(pessoa: PessoaComRelacoes) {
     cidade: enderecoPrincipal?.cidade ?? null,
     estado: enderecoPrincipal?.estado ?? null,
     codigoIbge: enderecoPrincipal?.codigoIbge ?? null,
-    // DadosCliente
     aceitaNFe55: papelCliente.dadosCliente?.aceitaNFe55 ?? true,
     calculaComissao: papelCliente.dadosCliente?.calculaComissao ?? false,
     statusAprovacao: papelCliente.dadosCliente?.statusAprovacao ?? 'ativo',
-    // Listas completas para uso futuro
     contatos: pessoa.contatos,
     enderecos: pessoa.enderecos,
     createdAt: pessoa.createdAt,
@@ -80,7 +84,7 @@ function mapearParaClienteView(pessoa: PessoaComRelacoes) {
   }
 }
 
-// ─── Opções de include reutilizáveis ─────────────────────────────────────────
+// ─── Include reutilizável ─────────────────────────────────────────────────────
 
 const INCLUDE_COMPLETO = {
   papeis: {
@@ -91,10 +95,31 @@ const INCLUDE_COMPLETO = {
   enderecos: true,
 } as const
 
-// ─── Helpers de normalização ──────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function limparNumeros(v?: string | null): string | null {
   return v ? v.replace(/\D/g, '') : null
+}
+
+type ContatoItem = {
+  tipo: string
+  valor: string
+  descricao?: string | null
+  whatsapp?: boolean
+  principal?: boolean
+}
+
+type EnderecoItem = {
+  tipo: string
+  apelido?: string | null
+  cep?: string | null
+  logradouro?: string | null
+  numero?: string | null
+  complemento?: string | null
+  bairro?: string | null
+  cidade?: string | null
+  estado?: string | null
+  codigoIbge?: string | null
 }
 
 type CamposNormalizados = {
@@ -105,14 +130,21 @@ type CamposNormalizados = {
   cpf: string | null
   rg: string | null
   dataNascimento: string | null
+  aceitaNFe55: boolean
   cnpj: string | null
   nomeFantasia: string | null
+  cnae: string | null
+  dataFundacao: string | null
   ie: string | null
   im: string | null
   suframa: string | null
+  simplesNacional: boolean
+  observacaoNF: string | null
+  // Campos achatados para compatibilidade com tabela e CSV
   email: string | null
   telefone: string | null
   celular: string | null
+  celularWhatsapp: boolean
   cep: string | null
   logradouro: string | null
   numero: string | null
@@ -121,6 +153,9 @@ type CamposNormalizados = {
   cidade: string | null
   estado: string | null
   codigoIbge: string | null
+  // Arrays dinâmicos (opcional; se ausentes, campos achatados são usados)
+  contatosArray?: ContatoItem[]
+  enderecosArray?: EnderecoItem[]
 }
 
 function normalizarDocumento(dados: DadosParaCriarCliente | DadosParaEditarCliente): CamposNormalizados {
@@ -129,9 +164,11 @@ function normalizarDocumento(dados: DadosParaCriarCliente | DadosParaEditarClien
     nome: dados.nome,
     indicadorIe: dados.indicadorIe ?? '9',
     observacoes: dados.observacoes || null,
+    aceitaNFe55: dados.aceitaNFe55 ?? true,
     email: dados.email || null,
     telefone: dados.telefone ? limparNumeros(dados.telefone) : null,
     celular: dados.celular ? limparNumeros(dados.celular) : null,
+    celularWhatsapp: dados.celularWhatsapp ?? false,
     cep: dados.cep ? limparNumeros(dados.cep) : null,
     logradouro: dados.logradouro || null,
     numero: dados.numero || null,
@@ -140,6 +177,8 @@ function normalizarDocumento(dados: DadosParaCriarCliente | DadosParaEditarClien
     cidade: dados.cidade || null,
     estado: dados.estado || null,
     codigoIbge: dados.codigoIbge || null,
+    contatosArray: dados.contatos,
+    enderecosArray: dados.enderecos,
   }
 
   if (dados.tipo === 'PF') {
@@ -150,9 +189,13 @@ function normalizarDocumento(dados: DadosParaCriarCliente | DadosParaEditarClien
       dataNascimento: dados.dataNascimento || null,
       cnpj: null,
       nomeFantasia: null,
+      cnae: null,
+      dataFundacao: null,
       ie: null,
       im: null,
       suframa: null,
+      simplesNacional: false,
+      observacaoNF: null,
     }
   }
 
@@ -160,9 +203,13 @@ function normalizarDocumento(dados: DadosParaCriarCliente | DadosParaEditarClien
     ...base,
     cnpj: limparNumeros(dados.cnpj),
     nomeFantasia: dados.nomeFantasia || null,
+    cnae: dados.cnae || null,
+    dataFundacao: dados.dataFundacao || null,
     ie: dados.ie || null,
     im: dados.im || null,
     suframa: dados.suframa || null,
+    simplesNacional: dados.simplesNacional ?? false,
+    observacaoNF: dados.observacaoNF || null,
     cpf: null,
     rg: null,
     dataNascimento: null,
@@ -202,8 +249,7 @@ async function buscarPorCpfNaEmpresa(cpf: string, companyId: string) {
     },
     include: INCLUDE_COMPLETO,
   })
-  if (!pessoa) return null
-  return mapearParaClienteView(pessoa)
+  return pessoa ? mapearParaClienteView(pessoa) : null
 }
 
 async function buscarPorCnpjNaEmpresa(cnpj: string, companyId: string) {
@@ -216,8 +262,104 @@ async function buscarPorCnpjNaEmpresa(cnpj: string, companyId: string) {
     },
     include: INCLUDE_COMPLETO,
   })
-  if (!pessoa) return null
-  return mapearParaClienteView(pessoa)
+  return pessoa ? mapearParaClienteView(pessoa) : null
+}
+
+/**
+ * Busca Pessoa por CPF ou CNPJ na empresa, independente de papel.
+ * Usada para verificação de duplicidade inteligente.
+ */
+async function buscarPessoaPorDocumentoNaEmpresa(
+  documento: string,
+  companyId: string
+): Promise<ResultadoBuscaPorDocumento> {
+  const nums = documento.replace(/\D/g, '')
+  const ehCpf = nums.length === 11
+  const ehCnpj = nums.length === 14
+
+  if (!ehCpf && !ehCnpj) {
+    return { encontrado: false, temPapelCliente: false, papeis: [], pessoa: null }
+  }
+
+  const include = {
+    papeis: { include: { dadosCliente: true } },
+    contatos: true,
+    enderecos: true,
+  }
+
+  const pessoa = await clientePrisma.pessoa.findFirst({
+    where: {
+      companyId,
+      ...(ehCpf ? { cpf: nums } : { cnpj: nums }),
+    },
+    include,
+  })
+
+  if (!pessoa) {
+    return { encontrado: false, temPapelCliente: false, papeis: [], pessoa: null }
+  }
+
+  const papeis = pessoa.papeis.map((p) => p.papel)
+  const temPapelCliente = papeis.includes('cliente')
+
+  // Se tem papel cliente, montar a view completa
+  const papelClienteObj = pessoa.papeis.find((p) => p.papel === 'cliente')
+  let clienteView: ClienteView | null = null
+
+  if (papelClienteObj) {
+    const pessoaCompleta = await clientePrisma.pessoa.findUniqueOrThrow({
+      where: { id: pessoa.id },
+      include: INCLUDE_COMPLETO,
+    })
+    clienteView = mapearParaClienteView(pessoaCompleta)
+  }
+
+  return {
+    encontrado: true,
+    temPapelCliente,
+    papeis,
+    pessoa: clienteView ?? ({
+      id: pessoa.id,
+      papelId: '',
+      tipo: pessoa.tipo,
+      ativo: true,
+      nome: pessoa.nome,
+      cpf: pessoa.cpf,
+      rg: pessoa.rg,
+      dataNascimento: pessoa.dataNascimento,
+      cnpj: pessoa.cnpj,
+      nomeFantasia: pessoa.nomeFantasia,
+      cnae: pessoa.cnae,
+      dataFundacao: pessoa.dataFundacao,
+      ie: pessoa.ie,
+      im: pessoa.im,
+      suframa: pessoa.suframa,
+      simplesNacional: pessoa.simplesNacional,
+      observacaoNF: pessoa.observacaoNF,
+      indicadorIe: pessoa.indicadorIe,
+      observacoes: pessoa.observacoes,
+      companyId: pessoa.companyId,
+      email: null,
+      telefone: null,
+      celular: null,
+      celularWhatsapp: false,
+      cep: null,
+      logradouro: null,
+      numero: null,
+      complemento: null,
+      bairro: null,
+      cidade: null,
+      estado: null,
+      codigoIbge: null,
+      aceitaNFe55: true,
+      calculaComissao: false,
+      statusAprovacao: 'ativo',
+      contatos: [],
+      enderecos: [],
+      createdAt: pessoa.createdAt,
+      updatedAt: pessoa.updatedAt,
+    } as ClienteView),
+  }
 }
 
 async function criar(dados: DadosParaCriarCliente, companyId: string) {
@@ -233,9 +375,13 @@ async function criar(dados: DadosParaCriarCliente, companyId: string) {
         dataNascimento: campos.dataNascimento,
         cnpj: campos.cnpj,
         nomeFantasia: campos.nomeFantasia,
+        cnae: campos.cnae,
+        dataFundacao: campos.dataFundacao,
         ie: campos.ie,
         im: campos.im,
         suframa: campos.suframa,
+        simplesNacional: campos.simplesNacional,
+        observacaoNF: campos.observacaoNF,
         indicadorIe: campos.indicadorIe,
         observacoes: campos.observacoes,
         companyId,
@@ -243,24 +389,20 @@ async function criar(dados: DadosParaCriarCliente, companyId: string) {
     })
 
     const papel = await tx.pessoaPapel.create({
-      data: {
-        pessoaId: pessoa.id,
-        papel: 'cliente',
-        ativo: true,
-      },
+      data: { pessoaId: pessoa.id, papel: 'cliente', ativo: true },
     })
 
     await tx.dadosCliente.create({
       data: {
         papelId: papel.id,
-        aceitaNFe55: true,
+        aceitaNFe55: campos.aceitaNFe55,
         calculaComissao: false,
         statusAprovacao: 'ativo',
       },
     })
 
     await criarContatos(tx, pessoa.id, campos)
-    await criarEndereco(tx, pessoa.id, campos)
+    await criarEnderecos(tx, pessoa.id, campos)
 
     const pessoaCompleta = await tx.pessoa.findUniqueOrThrow({
       where: { id: pessoa.id },
@@ -285,21 +427,46 @@ async function atualizar(id: string, dados: DadosParaEditarCliente) {
         dataNascimento: campos.dataNascimento,
         cnpj: campos.cnpj,
         nomeFantasia: campos.nomeFantasia,
+        cnae: campos.cnae,
+        dataFundacao: campos.dataFundacao,
         ie: campos.ie,
         im: campos.im,
         suframa: campos.suframa,
+        simplesNacional: campos.simplesNacional,
+        observacaoNF: campos.observacaoNF,
         indicadorIe: campos.indicadorIe,
         observacoes: campos.observacoes,
       },
     })
 
-    // Recriar contatos
+    // Atualizar DadosCliente — upsert garante que exista mesmo se não foi criado antes
+    const papelCliente = await tx.pessoaPapel.findFirst({
+      where: { pessoaId: id, papel: 'cliente' },
+    })
+
+    if (papelCliente) {
+      await tx.dadosCliente.upsert({
+        where: { papelId: papelCliente.id },
+        update: { aceitaNFe55: campos.aceitaNFe55 },
+        create: {
+          papelId: papelCliente.id,
+          aceitaNFe55: campos.aceitaNFe55,
+          calculaComissao: false,
+          statusAprovacao: 'ativo',
+        },
+      })
+    }
+
     await tx.pessoaContato.deleteMany({ where: { pessoaId: id } })
     await criarContatos(tx, id, campos)
 
-    // Recriar endereço principal
-    await tx.pessoaEndereco.deleteMany({ where: { pessoaId: id, tipo: 'principal' } })
-    await criarEndereco(tx, id, campos)
+    // Se veio array de endereços, recria tudo; caso contrário, só o principal
+    if (campos.enderecosArray && campos.enderecosArray.length > 0) {
+      await tx.pessoaEndereco.deleteMany({ where: { pessoaId: id } })
+    } else {
+      await tx.pessoaEndereco.deleteMany({ where: { pessoaId: id, tipo: 'principal' } })
+    }
+    await criarEnderecos(tx, id, campos)
 
     const pessoaCompleta = await tx.pessoa.findUniqueOrThrow({
       where: { id },
@@ -324,11 +491,29 @@ async function alterarStatus(id: string, ativo: boolean) {
   return mapearParaClienteView(pessoa)
 }
 
-// ─── Helpers de criação de relações ──────────────────────────────────────────
+// ─── Helpers de relações ──────────────────────────────────────────────────────
 
 type TxCliente = Parameters<Parameters<typeof clientePrisma.$transaction>[0]>[0]
 
 async function criarContatos(tx: TxCliente, pessoaId: string, campos: CamposNormalizados) {
+  // Se há array dinâmico de contatos, usa-o diretamente
+  if (campos.contatosArray && campos.contatosArray.length > 0) {
+    for (const contato of campos.contatosArray) {
+      await tx.pessoaContato.create({
+        data: {
+          pessoaId,
+          tipo: contato.tipo,
+          valor: contato.valor,
+          descricao: contato.descricao,
+          whatsapp: contato.whatsapp ?? false,
+          principal: contato.principal ?? false,
+        },
+      })
+    }
+    return
+  }
+
+  // Fallback: campos achatados legados
   if (campos.email) {
     await tx.pessoaContato.create({
       data: { pessoaId, tipo: 'email', valor: campos.email, principal: true },
@@ -341,12 +526,41 @@ async function criarContatos(tx: TxCliente, pessoaId: string, campos: CamposNorm
   }
   if (campos.celular && campos.celular !== campos.telefone) {
     await tx.pessoaContato.create({
-      data: { pessoaId, tipo: 'telefone', valor: campos.celular, principal: false, whatsapp: false },
+      data: {
+        pessoaId,
+        tipo: 'telefone',
+        valor: campos.celular,
+        principal: false,
+        whatsapp: campos.celularWhatsapp,
+      },
     })
   }
 }
 
-async function criarEndereco(tx: TxCliente, pessoaId: string, campos: CamposNormalizados) {
+async function criarEnderecos(tx: TxCliente, pessoaId: string, campos: CamposNormalizados) {
+  // Se há array dinâmico de endereços, usa-o diretamente
+  if (campos.enderecosArray && campos.enderecosArray.length > 0) {
+    for (const end of campos.enderecosArray) {
+      await tx.pessoaEndereco.create({
+        data: {
+          pessoaId,
+          tipo: end.tipo,
+          apelido: end.apelido,
+          cep: end.cep ? end.cep.replace(/\D/g, '') : null,
+          logradouro: end.logradouro,
+          numero: end.numero,
+          complemento: end.complemento,
+          bairro: end.bairro,
+          cidade: end.cidade,
+          estado: end.estado,
+          codigoIbge: end.codigoIbge,
+        },
+      })
+    }
+    return
+  }
+
+  // Fallback: campos achatados legados
   if (campos.cep || campos.logradouro) {
     await tx.pessoaEndereco.create({
       data: {
@@ -365,13 +579,12 @@ async function criarEndereco(tx: TxCliente, pessoaId: string, campos: CamposNorm
   }
 }
 
-// ─── Exportação ───────────────────────────────────────────────────────────────
-
 export const repositorioDeClientes = {
   listarPorEmpresa,
   buscarPorId,
   buscarPorCpfNaEmpresa,
   buscarPorCnpjNaEmpresa,
+  buscarPessoaPorDocumentoNaEmpresa,
   criar,
   atualizar,
   alterarStatus,
