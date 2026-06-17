@@ -25,55 +25,108 @@ model Company {
   cidade      String?
   estado      String?
   users       UserCompany[]
-  clientes    Cliente[]
+  pessoas     Pessoa[]
   createdAt   DateTime      @default(now())
 }
 
-model Cliente {
-  id             String   @id @default(uuid())
-  tipo           String   // "PF" | "PJ"
-  ativo          Boolean  @default(true)
+// ─── Cadastro Unificado de Pessoas ───────────────────────────────────────────
 
-  // Identificação PF
-  cpf            String?
-  rg             String?
-  dataNascimento String?
+model Pessoa {
+  id              String   @id @default(uuid())
+  tipo            String   // "PF" | "PJ"
+  ativo           Boolean  @default(true)
 
-  // Identificação PJ
-  cnpj           String?
-  nomeFantasia   String?
-  ie             String?
-  im             String?
-  suframa        String?
+  // PF
+  cpf             String?
+  rg              String?
+  dataNascimento  String?
 
-  // Campo compartilhado (nome completo PF / razão social PJ)
-  nome           String
+  // PJ
+  cnpj            String?
+  nomeFantasia    String?
+  cnae            String?
+  dataFundacao    String?
+  ie              String?
+  im              String?
+  suframa         String?
+  simplesNacional Boolean  @default(false)
+  observacaoNF    String?
 
-  // Contato
-  email          String?
-  telefone       String?
-  celular        String?
-
-  // Endereço
-  cep            String?
-  logradouro     String?
-  numero         String?
-  complemento    String?
-  bairro         String?
-  cidade         String?
-  estado         String?
-  codigoIbge     String?
+  // Compartilhado (nome completo PF / razão social PJ)
+  nome            String
 
   // Fiscal NF-e: 1=contribuinte ICMS, 2=contribuinte isento, 9=não contribuinte
-  indicadorIe    String   @default("9")
+  indicadorIe     String   @default("9")
+  observacoes     String?
 
-  observacoes    String?
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
 
-  companyId      String
-  company        Company  @relation(fields: [companyId], references: [id])
+  papeis          PessoaPapel[]
+  contatos        PessoaContato[]
+  enderecos       PessoaEndereco[]
 
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([cpf, companyId])
+  @@unique([cnpj, companyId])
+}
+
+model PessoaPapel {
+  id        String   @id @default(uuid())
+  pessoaId  String
+  pessoa    Pessoa   @relation(fields: [pessoaId], references: [id], onDelete: Cascade)
+  papel     String   // "cliente" | "fornecedor" | "transportadora"
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  dadosCliente DadosCliente?
+
+  @@unique([pessoaId, papel])
+}
+
+model DadosCliente {
+  id               String      @id @default(uuid())
+  papelId          String      @unique
+  papel            PessoaPapel @relation(fields: [papelId], references: [id], onDelete: Cascade)
+
+  aceitaNFe55      Boolean  @default(true)
+  calculaComissao  Boolean  @default(false)
+  vendedorId       String?
+  statusAprovacao  String   @default("ativo")
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model PessoaContato {
+  id        String   @id @default(uuid())
+  pessoaId  String
+  pessoa    Pessoa   @relation(fields: [pessoaId], references: [id], onDelete: Cascade)
+  tipo      String   // "email" | "telefone"
+  valor     String
+  descricao String?
+  whatsapp  Boolean  @default(false)
+  principal Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model PessoaEndereco {
+  id          String   @id @default(uuid())
+  pessoaId    String
+  pessoa      Pessoa   @relation(fields: [pessoaId], references: [id], onDelete: Cascade)
+  tipo        String   // "principal" | "entrega"
+  apelido     String?
+  cep         String?
+  logradouro  String?
+  numero      String?
+  complemento String?
+  bairro      String?
+  cidade      String?
+  estado      String?
+  codigoIbge  String?
+  createdAt   DateTime @default(now())
 }
 
 model User {

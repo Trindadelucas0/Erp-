@@ -25,6 +25,7 @@ type TipoCliente = 'PF' | 'PJ'
 
 type Cliente = {
   id: string
+  papelId: string
   tipo: TipoCliente
   ativo: boolean
   nome: string
@@ -33,9 +34,13 @@ type Cliente = {
   dataNascimento?: string | null
   cnpj?: string | null
   nomeFantasia?: string | null
+  cnae?: string | null
+  dataFundacao?: string | null
   ie?: string | null
   im?: string | null
   suframa?: string | null
+  simplesNacional?: boolean
+  observacaoNF?: string | null
   email?: string | null
   telefone?: string | null
   celular?: string | null
@@ -49,6 +54,8 @@ type Cliente = {
   codigoIbge?: string | null
   indicadorIe: string
   observacoes?: string | null
+  aceitaNFe55?: boolean
+  statusAprovacao?: string
 }
 
 type FormCliente = {

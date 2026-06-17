@@ -3,45 +3,7 @@
  * Campos obrigatórios para emissão de NF-e estão comentados.
  */
 import { z } from 'zod'
-
-function validarCpf(cpf: string): boolean {
-  const nums = cpf.replace(/\D/g, '')
-  if (nums.length !== 11) return false
-  if (/^(\d)\1{10}$/.test(nums)) return false
-
-  const calc = (base: string, peso: number) => {
-    let soma = 0
-    for (let i = 0; i < base.length; i++) {
-      soma += parseInt(base[i]) * (peso - i)
-    }
-    const resto = (soma * 10) % 11
-    return resto === 10 || resto === 11 ? 0 : resto
-  }
-
-  return (
-    calc(nums.slice(0, 9), 10) === parseInt(nums[9]) &&
-    calc(nums.slice(0, 10), 11) === parseInt(nums[10])
-  )
-}
-
-function validarCnpj(cnpj: string): boolean {
-  const nums = cnpj.replace(/\D/g, '')
-  if (nums.length !== 14) return false
-  if (/^(\d)\1{13}$/.test(nums)) return false
-
-  const calc = (base: string, pesos: number[]) => {
-    const soma = base.split('').reduce((acc, d, i) => acc + parseInt(d) * pesos[i], 0)
-    const resto = soma % 11
-    return resto < 2 ? 0 : 11 - resto
-  }
-
-  const p1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
-  const p2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
-  return (
-    calc(nums.slice(0, 12), p1) === parseInt(nums[12]) &&
-    calc(nums.slice(0, 13), p2) === parseInt(nums[13])
-  )
-}
+import { validarCpf, validarCnpj } from '../../compartilhado/validacoes/documentos.js'
 
 const camposComuns = {
   nome: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres'),
@@ -108,6 +70,14 @@ export const esquemaDeCriacaoDeClientePJ = z.object({
     .min(14, 'CNPJ inválido')
     .refine(validarCnpj, 'CNPJ inválido — verifique os dígitos'),
   nomeFantasia: z.string().max(200).optional(),
+  cnae: z.string().max(10).optional(),
+  dataFundacao: z
+    .string()
+    .optional()
+    .refine(
+      (v) => !v || /^\d{4}-\d{2}-\d{2}$/.test(v),
+      'Data no formato AAAA-MM-DD'
+    ),
   ie: z.string().max(30).optional(),
   im: z.string().max(30).optional(),
   suframa: z
@@ -115,6 +85,8 @@ export const esquemaDeCriacaoDeClientePJ = z.object({
     .max(9)
     .optional()
     .refine((v) => !v || /^\d{8,9}$/.test(v), 'SUFRAMA inválido'),
+  simplesNacional: z.boolean().optional(),
+  observacaoNF: z.string().max(500).optional(),
   ...camposComuns,
 })
 
