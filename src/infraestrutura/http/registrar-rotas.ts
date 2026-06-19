@@ -10,6 +10,8 @@ import { rotasDeEmpresas } from '../../modulos/empresas/rotas-empresas.js'
 import { rotasDePaginas } from '../../modulos/paginas/rotas-paginas.js'
 import { rotasDeAuditoria } from '../../modulos/auditoria/rotas-auditoria.js'
 import { rotasDeClientes } from '../../modulos/clientes/rotas-clientes.js'
+import { rotasDeFornecedores } from '../../modulos/fornecedores/rotas-fornecedores.js'
+import { rotasDeTransportadoras } from '../../modulos/transportadoras/rotas-transportadoras.js'
 
 /**
  * Conecta cada módulo às suas rotas HTTP.
@@ -21,6 +23,8 @@ export async function registrarRotas(aplicacao: FastifyInstance): Promise<void> 
   await aplicacao.register(rotasDePermissoes, { prefix: '/permissions' })
   await aplicacao.register(rotasDeEmpresas, { prefix: '/companies' })
   await aplicacao.register(rotasDeClientes, { prefix: '/clientes' })
+  await aplicacao.register(rotasDeFornecedores, { prefix: '/fornecedores' })
+  await aplicacao.register(rotasDeTransportadoras, { prefix: '/transportadoras' })
   await aplicacao.register(rotasDePaginas, { prefix: '/paginas' })
   await aplicacao.register(rotasDeAuditoria, { prefix: '/auditoria' })
 }
