@@ -1,35 +1,35 @@
 /**
- * Acesso ao banco de dados para clientes.
- * Trabalha sobre a entidade Pessoa com papel = 'cliente'.
+ * Acesso ao banco de dados para fornecedores.
+ * Trabalha sobre a entidade Pessoa com papel = 'fornecedor'.
  */
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import type { Prisma } from '@prisma/client'
-import type { DadosParaCriarCliente, DadosParaEditarCliente } from './esquema-clientes.js'
+import type { DadosParaCriarFornecedor, DadosParaEditarFornecedor } from './esquema-fornecedores.js'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 type PessoaComRelacoes = Prisma.PessoaGetPayload<{
   include: {
-    papeis: { include: { dadosCliente: true } }
+    papeis: { include: { dadosFornecedor: true } }
     contatos: true
     enderecos: true
   }
 }>
 
-export type ClienteView = ReturnType<typeof mapearParaClienteView>
+export type FornecedorView = ReturnType<typeof mapearParaFornecedorView>
 
 export type ResultadoBuscaPorDocumento = {
   encontrado: boolean
-  temPapelCliente: boolean
+  temPapelFornecedor: boolean
   papeis: string[]
-  pessoa: ClienteView | null
+  pessoa: FornecedorView | null
 }
 
-// ─── Mapeador ────────────────────────────────────────────────────────────────
+// ─── Mapeador ─────────────────────────────────────────────────────────────────
 
-function mapearParaClienteView(pessoa: PessoaComRelacoes) {
-  const papelCliente = pessoa.papeis.find((p) => p.papel === 'cliente')!
+function mapearParaFornecedorView(pessoa: PessoaComRelacoes) {
+  const papelFornecedor = pessoa.papeis.find((p) => p.papel === 'fornecedor')!
   const emailPrincipal =
     pessoa.contatos.find((c) => c.tipo === 'email' && c.principal) ??
     pessoa.contatos.find((c) => c.tipo === 'email')
@@ -44,9 +44,9 @@ function mapearParaClienteView(pessoa: PessoaComRelacoes) {
 
   return {
     id: pessoa.id,
-    papelId: papelCliente.id,
+    papelId: papelFornecedor.id,
     tipo: pessoa.tipo,
-    ativo: papelCliente.ativo,
+    ativo: papelFornecedor.ativo,
     nome: pessoa.nome,
     cpf: pessoa.cpf,
     rg: pessoa.rg,
@@ -57,7 +57,6 @@ function mapearParaClienteView(pessoa: PessoaComRelacoes) {
     dataFundacao: pessoa.dataFundacao,
     ie: pessoa.ie,
     im: pessoa.im,
-    suframa: pessoa.suframa,
     simplesNacional: pessoa.simplesNacional,
     observacaoNF: pessoa.observacaoNF,
     indicadorIe: pessoa.indicadorIe,
@@ -75,9 +74,8 @@ function mapearParaClienteView(pessoa: PessoaComRelacoes) {
     cidade: enderecoPrincipal?.cidade ?? null,
     estado: enderecoPrincipal?.estado ?? null,
     codigoIbge: enderecoPrincipal?.codigoIbge ?? null,
-    aceitaNFe55: papelCliente.dadosCliente?.aceitaNFe55 ?? true,
-    calculaComissao: papelCliente.dadosCliente?.calculaComissao ?? false,
-    statusAprovacao: papelCliente.dadosCliente?.statusAprovacao ?? 'ativo',
+    condicaoPagamento: papelFornecedor.dadosFornecedor?.condicaoPagamento ?? null,
+    prazoEntrega: papelFornecedor.dadosFornecedor?.prazoEntrega ?? null,
     contatos: pessoa.contatos,
     enderecos: pessoa.enderecos,
     createdAt: pessoa.createdAt,
@@ -85,18 +83,18 @@ function mapearParaClienteView(pessoa: PessoaComRelacoes) {
   }
 }
 
-// ─── Include reutilizável ─────────────────────────────────────────────────────
+// ─── Include reutilizável ──────────────────────────────────────────────────────
 
 const INCLUDE_COMPLETO = {
   papeis: {
-    where: { papel: 'cliente' },
-    include: { dadosCliente: true },
+    where: { papel: 'fornecedor' },
+    include: { dadosFornecedor: true },
   },
   contatos: true,
   enderecos: true,
 } as const
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function limparNumeros(v?: string | null): string | null {
   return v ? v.replace(/\D/g, '') : null
@@ -131,17 +129,14 @@ type CamposNormalizados = {
   cpf: string | null
   rg: string | null
   dataNascimento: string | null
-  aceitaNFe55: boolean
   cnpj: string | null
   nomeFantasia: string | null
   cnae: string | null
   dataFundacao: string | null
   ie: string | null
   im: string | null
-  suframa: string | null
   simplesNacional: boolean
   observacaoNF: string | null
-  // Campos achatados para compatibilidade com tabela e CSV
   email: string | null
   telefone: string | null
   celular: string | null
@@ -154,18 +149,18 @@ type CamposNormalizados = {
   cidade: string | null
   estado: string | null
   codigoIbge: string | null
-  // Arrays dinâmicos (opcional; se ausentes, campos achatados são usados)
+  condicaoPagamento: string | null
+  prazoEntrega: number | null
   contatosArray?: ContatoItem[]
   enderecosArray?: EnderecoItem[]
 }
 
-function normalizarDocumento(dados: DadosParaCriarCliente | DadosParaEditarCliente): CamposNormalizados {
+function normalizarDocumento(dados: DadosParaCriarFornecedor | DadosParaEditarFornecedor): CamposNormalizados {
   const base = {
     tipo: dados.tipo,
     nome: dados.nome,
     indicadorIe: dados.indicadorIe ?? '9',
     observacoes: dados.observacoes || null,
-    aceitaNFe55: dados.aceitaNFe55 ?? true,
     email: dados.email || null,
     telefone: dados.telefone ? limparNumeros(dados.telefone) : null,
     celular: dados.celular ? limparNumeros(dados.celular) : null,
@@ -178,6 +173,8 @@ function normalizarDocumento(dados: DadosParaCriarCliente | DadosParaEditarClien
     cidade: dados.cidade || null,
     estado: dados.estado || null,
     codigoIbge: dados.codigoIbge || null,
+    condicaoPagamento: dados.condicaoPagamento || null,
+    prazoEntrega: dados.prazoEntrega ?? null,
     contatosArray: dados.contatos,
     enderecosArray: dados.enderecos,
   }
@@ -194,7 +191,6 @@ function normalizarDocumento(dados: DadosParaCriarCliente | DadosParaEditarClien
       dataFundacao: null,
       ie: null,
       im: null,
-      suframa: null,
       simplesNacional: false,
       observacaoNF: null,
     }
@@ -208,7 +204,6 @@ function normalizarDocumento(dados: DadosParaCriarCliente | DadosParaEditarClien
     dataFundacao: dados.dataFundacao || null,
     ie: dados.ie || null,
     im: dados.im || null,
-    suframa: dados.suframa || null,
     simplesNacional: dados.simplesNacional ?? false,
     observacaoNF: dados.observacaoNF || null,
     cpf: null,
@@ -223,12 +218,12 @@ async function listarPorEmpresa(companyId: string) {
   const pessoas = await clientePrisma.pessoa.findMany({
     where: {
       companyId,
-      papeis: { some: { papel: 'cliente' } },
+      papeis: { some: { papel: 'fornecedor' } },
     },
     include: INCLUDE_COMPLETO,
     orderBy: { nome: 'asc' },
   })
-  return pessoas.map(mapearParaClienteView)
+  return pessoas.map(mapearParaFornecedorView)
 }
 
 async function buscarPorId(id: string) {
@@ -237,7 +232,7 @@ async function buscarPorId(id: string) {
     include: INCLUDE_COMPLETO,
   })
   if (!pessoa || !pessoa.papeis.length) return null
-  return mapearParaClienteView(pessoa)
+  return mapearParaFornecedorView(pessoa)
 }
 
 async function buscarPorCpfNaEmpresa(cpf: string, companyId: string) {
@@ -246,11 +241,11 @@ async function buscarPorCpfNaEmpresa(cpf: string, companyId: string) {
     where: {
       cpf: cpfLimpo,
       companyId,
-      papeis: { some: { papel: 'cliente' } },
+      papeis: { some: { papel: 'fornecedor' } },
     },
     include: INCLUDE_COMPLETO,
   })
-  return pessoa ? mapearParaClienteView(pessoa) : null
+  return pessoa ? mapearParaFornecedorView(pessoa) : null
 }
 
 async function buscarPorCnpjNaEmpresa(cnpj: string, companyId: string) {
@@ -259,17 +254,13 @@ async function buscarPorCnpjNaEmpresa(cnpj: string, companyId: string) {
     where: {
       cnpj: cnpjLimpo,
       companyId,
-      papeis: { some: { papel: 'cliente' } },
+      papeis: { some: { papel: 'fornecedor' } },
     },
     include: INCLUDE_COMPLETO,
   })
-  return pessoa ? mapearParaClienteView(pessoa) : null
+  return pessoa ? mapearParaFornecedorView(pessoa) : null
 }
 
-/**
- * Busca Pessoa por CPF ou CNPJ na empresa, independente de papel.
- * Usada para verificação de duplicidade inteligente.
- */
 async function buscarPessoaPorDocumentoNaEmpresa(
   documento: string,
   companyId: string
@@ -279,11 +270,11 @@ async function buscarPessoaPorDocumentoNaEmpresa(
   const ehCnpj = nums.length === 14
 
   if (!ehCpf && !ehCnpj) {
-    return { encontrado: false, temPapelCliente: false, papeis: [], pessoa: null }
+    return { encontrado: false, temPapelFornecedor: false, papeis: [], pessoa: null }
   }
 
   const include = {
-    papeis: { include: { dadosCliente: true } },
+    papeis: { include: { dadosFornecedor: true } },
     contatos: true,
     enderecos: true,
   }
@@ -297,29 +288,27 @@ async function buscarPessoaPorDocumentoNaEmpresa(
   })
 
   if (!pessoa) {
-    return { encontrado: false, temPapelCliente: false, papeis: [], pessoa: null }
+    return { encontrado: false, temPapelFornecedor: false, papeis: [], pessoa: null }
   }
 
   const papeis = pessoa.papeis.map((p) => p.papel)
-  const temPapelCliente = papeis.includes('cliente')
+  const temPapelFornecedor = papeis.includes('fornecedor')
 
-  // Se tem papel cliente, montar a view completa
-  const papelClienteObj = pessoa.papeis.find((p) => p.papel === 'cliente')
-  let clienteView: ClienteView | null = null
+  let fornecedorView: FornecedorView | null = null
 
-  if (papelClienteObj) {
+  if (temPapelFornecedor) {
     const pessoaCompleta = await clientePrisma.pessoa.findUniqueOrThrow({
       where: { id: pessoa.id },
       include: INCLUDE_COMPLETO,
     })
-    clienteView = mapearParaClienteView(pessoaCompleta)
+    fornecedorView = mapearParaFornecedorView(pessoaCompleta)
   }
 
   return {
     encontrado: true,
-    temPapelCliente,
+    temPapelFornecedor,
     papeis,
-    pessoa: clienteView ?? ({
+    pessoa: fornecedorView ?? ({
       id: pessoa.id,
       papelId: '',
       tipo: pessoa.tipo,
@@ -334,7 +323,6 @@ async function buscarPessoaPorDocumentoNaEmpresa(
       dataFundacao: pessoa.dataFundacao,
       ie: pessoa.ie,
       im: pessoa.im,
-      suframa: pessoa.suframa,
       simplesNacional: pessoa.simplesNacional,
       observacaoNF: pessoa.observacaoNF,
       indicadorIe: pessoa.indicadorIe,
@@ -352,228 +340,19 @@ async function buscarPessoaPorDocumentoNaEmpresa(
       cidade: null,
       estado: null,
       codigoIbge: null,
-      aceitaNFe55: true,
-      calculaComissao: false,
-      statusAprovacao: 'ativo',
+      condicaoPagamento: null,
+      prazoEntrega: null,
       contatos: [],
       enderecos: [],
       createdAt: pessoa.createdAt,
       updatedAt: pessoa.updatedAt,
-    } as ClienteView),
+    } as FornecedorView),
   }
 }
-
-function dadosDaPessoaDeCampos(campos: CamposNormalizados) {
-  return {
-    tipo: campos.tipo,
-    nome: campos.nome,
-    cpf: campos.cpf,
-    rg: campos.rg,
-    dataNascimento: campos.dataNascimento,
-    cnpj: campos.cnpj,
-    nomeFantasia: campos.nomeFantasia,
-    cnae: campos.cnae,
-    dataFundacao: campos.dataFundacao,
-    ie: campos.ie,
-    im: campos.im,
-    suframa: campos.suframa,
-    simplesNacional: campos.simplesNacional,
-    observacaoNF: campos.observacaoNF,
-    indicadorIe: campos.indicadorIe,
-    observacoes: campos.observacoes,
-  }
-}
-
-async function criar(dados: DadosParaCriarCliente, companyId: string) {
-  const campos = normalizarDocumento(dados)
-  const documento = campos.tipo === 'PF' ? campos.cpf : campos.cnpj
-  const msgDuplicado =
-    campos.tipo === 'PF'
-      ? 'CPF já cadastrado como cliente nesta empresa'
-      : 'CNPJ já cadastrado como cliente nesta empresa'
-
-  return clientePrisma.$transaction(async (tx) => {
-    const pessoaExistente = documento
-      ? await tx.pessoa.findFirst({
-          where: {
-            companyId,
-            ...(campos.tipo === 'PF' ? { cpf: documento } : { cnpj: documento }),
-          },
-        })
-      : null
-
-    let pessoaId: string
-
-    if (pessoaExistente) {
-      pessoaId = pessoaExistente.id
-
-      const papelExistente = await tx.pessoaPapel.findFirst({
-        where: { pessoaId, papel: 'cliente' },
-      })
-
-      if (papelExistente?.ativo) {
-        throw new ErroDaAplicacao(msgDuplicado, 400)
-      }
-
-      await tx.pessoa.update({
-        where: { id: pessoaId },
-        data: dadosDaPessoaDeCampos(campos),
-      })
-
-      if (papelExistente) {
-        await tx.pessoaPapel.update({
-          where: { id: papelExistente.id },
-          data: { ativo: true },
-        })
-        await tx.dadosCliente.upsert({
-          where: { papelId: papelExistente.id },
-          update: { aceitaNFe55: campos.aceitaNFe55 },
-          create: {
-            papelId: papelExistente.id,
-            aceitaNFe55: campos.aceitaNFe55,
-            calculaComissao: false,
-            statusAprovacao: 'ativo',
-          },
-        })
-      } else {
-        const papel = await tx.pessoaPapel.create({
-          data: { pessoaId, papel: 'cliente', ativo: true },
-        })
-        await tx.dadosCliente.create({
-          data: {
-            papelId: papel.id,
-            aceitaNFe55: campos.aceitaNFe55,
-            calculaComissao: false,
-            statusAprovacao: 'ativo',
-          },
-        })
-      }
-
-      await tx.pessoaContato.deleteMany({ where: { pessoaId } })
-      await criarContatos(tx, pessoaId, campos)
-
-      if (campos.enderecosArray && campos.enderecosArray.length > 0) {
-        await tx.pessoaEndereco.deleteMany({ where: { pessoaId } })
-      } else {
-        await tx.pessoaEndereco.deleteMany({ where: { pessoaId, tipo: 'principal' } })
-      }
-      await criarEnderecos(tx, pessoaId, campos)
-    } else {
-      const pessoa = await tx.pessoa.create({
-        data: { ...dadosDaPessoaDeCampos(campos), companyId },
-      })
-      pessoaId = pessoa.id
-
-      const papel = await tx.pessoaPapel.create({
-        data: { pessoaId, papel: 'cliente', ativo: true },
-      })
-
-      await tx.dadosCliente.create({
-        data: {
-          papelId: papel.id,
-          aceitaNFe55: campos.aceitaNFe55,
-          calculaComissao: false,
-          statusAprovacao: 'ativo',
-        },
-      })
-
-      await criarContatos(tx, pessoaId, campos)
-      await criarEnderecos(tx, pessoaId, campos)
-    }
-
-    const pessoaCompleta = await tx.pessoa.findUniqueOrThrow({
-      where: { id: pessoaId },
-      include: INCLUDE_COMPLETO,
-    })
-
-    return mapearParaClienteView(pessoaCompleta)
-  })
-}
-
-async function atualizar(id: string, dados: DadosParaEditarCliente) {
-  const campos = normalizarDocumento(dados)
-
-  return clientePrisma.$transaction(async (tx) => {
-    await tx.pessoa.update({
-      where: { id },
-      data: {
-        tipo: campos.tipo,
-        nome: campos.nome,
-        cpf: campos.cpf,
-        rg: campos.rg,
-        dataNascimento: campos.dataNascimento,
-        cnpj: campos.cnpj,
-        nomeFantasia: campos.nomeFantasia,
-        cnae: campos.cnae,
-        dataFundacao: campos.dataFundacao,
-        ie: campos.ie,
-        im: campos.im,
-        suframa: campos.suframa,
-        simplesNacional: campos.simplesNacional,
-        observacaoNF: campos.observacaoNF,
-        indicadorIe: campos.indicadorIe,
-        observacoes: campos.observacoes,
-      },
-    })
-
-    // Atualizar DadosCliente — upsert garante que exista mesmo se não foi criado antes
-    const papelCliente = await tx.pessoaPapel.findFirst({
-      where: { pessoaId: id, papel: 'cliente' },
-    })
-
-    if (papelCliente) {
-      await tx.dadosCliente.upsert({
-        where: { papelId: papelCliente.id },
-        update: { aceitaNFe55: campos.aceitaNFe55 },
-        create: {
-          papelId: papelCliente.id,
-          aceitaNFe55: campos.aceitaNFe55,
-          calculaComissao: false,
-          statusAprovacao: 'ativo',
-        },
-      })
-    }
-
-    await tx.pessoaContato.deleteMany({ where: { pessoaId: id } })
-    await criarContatos(tx, id, campos)
-
-    // Se veio array de endereços, recria tudo; caso contrário, só o principal
-    if (campos.enderecosArray && campos.enderecosArray.length > 0) {
-      await tx.pessoaEndereco.deleteMany({ where: { pessoaId: id } })
-    } else {
-      await tx.pessoaEndereco.deleteMany({ where: { pessoaId: id, tipo: 'principal' } })
-    }
-    await criarEnderecos(tx, id, campos)
-
-    const pessoaCompleta = await tx.pessoa.findUniqueOrThrow({
-      where: { id },
-      include: INCLUDE_COMPLETO,
-    })
-
-    return mapearParaClienteView(pessoaCompleta)
-  })
-}
-
-async function alterarStatus(id: string, ativo: boolean) {
-  await clientePrisma.pessoaPapel.updateMany({
-    where: { pessoaId: id, papel: 'cliente' },
-    data: { ativo },
-  })
-
-  const pessoa = await clientePrisma.pessoa.findUniqueOrThrow({
-    where: { id },
-    include: INCLUDE_COMPLETO,
-  })
-
-  return mapearParaClienteView(pessoa)
-}
-
-// ─── Helpers de relações ──────────────────────────────────────────────────────
 
 type TxCliente = Parameters<Parameters<typeof clientePrisma.$transaction>[0]>[0]
 
 async function criarContatos(tx: TxCliente, pessoaId: string, campos: CamposNormalizados) {
-  // Se há array dinâmico de contatos, usa-o diretamente
   if (campos.contatosArray && campos.contatosArray.length > 0) {
     for (const contato of campos.contatosArray) {
       await tx.pessoaContato.create({
@@ -589,8 +368,6 @@ async function criarContatos(tx: TxCliente, pessoaId: string, campos: CamposNorm
     }
     return
   }
-
-  // Fallback: campos achatados legados
   if (campos.email) {
     await tx.pessoaContato.create({
       data: { pessoaId, tipo: 'email', valor: campos.email, principal: true },
@@ -615,7 +392,6 @@ async function criarContatos(tx: TxCliente, pessoaId: string, campos: CamposNorm
 }
 
 async function criarEnderecos(tx: TxCliente, pessoaId: string, campos: CamposNormalizados) {
-  // Se há array dinâmico de endereços, usa-o diretamente
   if (campos.enderecosArray && campos.enderecosArray.length > 0) {
     for (const end of campos.enderecosArray) {
       await tx.pessoaEndereco.create({
@@ -636,8 +412,6 @@ async function criarEnderecos(tx: TxCliente, pessoaId: string, campos: CamposNor
     }
     return
   }
-
-  // Fallback: campos achatados legados
   if (campos.cep || campos.logradouro) {
     await tx.pessoaEndereco.create({
       data: {
@@ -656,7 +430,218 @@ async function criarEnderecos(tx: TxCliente, pessoaId: string, campos: CamposNor
   }
 }
 
-export const repositorioDeClientes = {
+function dadosDaPessoaDeCampos(campos: CamposNormalizados) {
+  return {
+    tipo: campos.tipo,
+    nome: campos.nome,
+    cpf: campos.cpf,
+    rg: campos.rg,
+    dataNascimento: campos.dataNascimento,
+    cnpj: campos.cnpj,
+    nomeFantasia: campos.nomeFantasia,
+    cnae: campos.cnae,
+    dataFundacao: campos.dataFundacao,
+    ie: campos.ie,
+    im: campos.im,
+    simplesNacional: campos.simplesNacional,
+    observacaoNF: campos.observacaoNF,
+    indicadorIe: campos.indicadorIe,
+    observacoes: campos.observacoes,
+  }
+}
+
+async function sincronizarContatosEnderecos(
+  tx: TxCliente,
+  pessoaId: string,
+  campos: CamposNormalizados
+) {
+  await tx.pessoaContato.deleteMany({ where: { pessoaId } })
+  await criarContatos(tx, pessoaId, campos)
+
+  if (campos.enderecosArray && campos.enderecosArray.length > 0) {
+    await tx.pessoaEndereco.deleteMany({ where: { pessoaId } })
+  } else {
+    await tx.pessoaEndereco.deleteMany({ where: { pessoaId, tipo: 'principal' } })
+  }
+  await criarEnderecos(tx, pessoaId, campos)
+}
+
+async function criar(dados: DadosParaCriarFornecedor, companyId: string) {
+  const campos = normalizarDocumento(dados)
+  const documento = campos.tipo === 'PF' ? campos.cpf : campos.cnpj
+  const msgDuplicado =
+    campos.tipo === 'PF'
+      ? 'CPF já cadastrado como fornecedor nesta empresa'
+      : 'CNPJ já cadastrado como fornecedor nesta empresa'
+
+  return clientePrisma.$transaction(async (tx) => {
+    const pessoaExistente = documento
+      ? await tx.pessoa.findFirst({
+          where: {
+            companyId,
+            ...(campos.tipo === 'PF' ? { cpf: documento } : { cnpj: documento }),
+          },
+        })
+      : null
+
+    let pessoaId: string
+
+    if (pessoaExistente) {
+      pessoaId = pessoaExistente.id
+
+      const papelExistente = await tx.pessoaPapel.findFirst({
+        where: { pessoaId, papel: 'fornecedor' },
+      })
+
+      if (papelExistente?.ativo) {
+        throw new ErroDaAplicacao(msgDuplicado, 400)
+      }
+
+      await tx.pessoa.update({
+        where: { id: pessoaId },
+        data: dadosDaPessoaDeCampos(campos),
+      })
+
+      if (papelExistente) {
+        await tx.pessoaPapel.update({
+          where: { id: papelExistente.id },
+          data: { ativo: true },
+        })
+        await tx.dadosFornecedor.upsert({
+          where: { papelId: papelExistente.id },
+          update: {
+            condicaoPagamento: campos.condicaoPagamento,
+            prazoEntrega: campos.prazoEntrega,
+          },
+          create: {
+            papelId: papelExistente.id,
+            condicaoPagamento: campos.condicaoPagamento,
+            prazoEntrega: campos.prazoEntrega,
+          },
+        })
+      } else {
+        const papel = await tx.pessoaPapel.create({
+          data: { pessoaId, papel: 'fornecedor', ativo: true },
+        })
+        await tx.dadosFornecedor.create({
+          data: {
+            papelId: papel.id,
+            condicaoPagamento: campos.condicaoPagamento,
+            prazoEntrega: campos.prazoEntrega,
+          },
+        })
+      }
+
+      await sincronizarContatosEnderecos(tx, pessoaId, campos)
+    } else {
+      const pessoa = await tx.pessoa.create({
+        data: { ...dadosDaPessoaDeCampos(campos), companyId },
+      })
+      pessoaId = pessoa.id
+
+      const papel = await tx.pessoaPapel.create({
+        data: { pessoaId, papel: 'fornecedor', ativo: true },
+      })
+
+      await tx.dadosFornecedor.create({
+        data: {
+          papelId: papel.id,
+          condicaoPagamento: campos.condicaoPagamento,
+          prazoEntrega: campos.prazoEntrega,
+        },
+      })
+
+      await criarContatos(tx, pessoaId, campos)
+      await criarEnderecos(tx, pessoaId, campos)
+    }
+
+    const pessoaCompleta = await tx.pessoa.findUniqueOrThrow({
+      where: { id: pessoaId },
+      include: INCLUDE_COMPLETO,
+    })
+
+    return mapearParaFornecedorView(pessoaCompleta)
+  })
+}
+
+async function atualizar(id: string, dados: DadosParaEditarFornecedor) {
+  const campos = normalizarDocumento(dados)
+
+  return clientePrisma.$transaction(async (tx) => {
+    await tx.pessoa.update({
+      where: { id },
+      data: {
+        tipo: campos.tipo,
+        nome: campos.nome,
+        cpf: campos.cpf,
+        rg: campos.rg,
+        dataNascimento: campos.dataNascimento,
+        cnpj: campos.cnpj,
+        nomeFantasia: campos.nomeFantasia,
+        cnae: campos.cnae,
+        dataFundacao: campos.dataFundacao,
+        ie: campos.ie,
+        im: campos.im,
+        simplesNacional: campos.simplesNacional,
+        observacaoNF: campos.observacaoNF,
+        indicadorIe: campos.indicadorIe,
+        observacoes: campos.observacoes,
+      },
+    })
+
+    const papelFornecedor = await tx.pessoaPapel.findFirst({
+      where: { pessoaId: id, papel: 'fornecedor' },
+    })
+
+    if (papelFornecedor) {
+      await tx.dadosFornecedor.upsert({
+        where: { papelId: papelFornecedor.id },
+        update: {
+          condicaoPagamento: campos.condicaoPagamento,
+          prazoEntrega: campos.prazoEntrega,
+        },
+        create: {
+          papelId: papelFornecedor.id,
+          condicaoPagamento: campos.condicaoPagamento,
+          prazoEntrega: campos.prazoEntrega,
+        },
+      })
+    }
+
+    await tx.pessoaContato.deleteMany({ where: { pessoaId: id } })
+    await criarContatos(tx, id, campos)
+
+    if (campos.enderecosArray && campos.enderecosArray.length > 0) {
+      await tx.pessoaEndereco.deleteMany({ where: { pessoaId: id } })
+    } else {
+      await tx.pessoaEndereco.deleteMany({ where: { pessoaId: id, tipo: 'principal' } })
+    }
+    await criarEnderecos(tx, id, campos)
+
+    const pessoaCompleta = await tx.pessoa.findUniqueOrThrow({
+      where: { id },
+      include: INCLUDE_COMPLETO,
+    })
+
+    return mapearParaFornecedorView(pessoaCompleta)
+  })
+}
+
+async function alterarStatus(id: string, ativo: boolean) {
+  await clientePrisma.pessoaPapel.updateMany({
+    where: { pessoaId: id, papel: 'fornecedor' },
+    data: { ativo },
+  })
+
+  const pessoa = await clientePrisma.pessoa.findUniqueOrThrow({
+    where: { id },
+    include: INCLUDE_COMPLETO,
+  })
+
+  return mapearParaFornecedorView(pessoa)
+}
+
+export const repositorioDeFornecedores = {
   listarPorEmpresa,
   buscarPorId,
   buscarPorCpfNaEmpresa,

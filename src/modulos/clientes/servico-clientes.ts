@@ -22,17 +22,21 @@ async function criarCliente(
     throw new ErroDaAplicacao('Empresa ativa não informada.', 400)
   }
 
-  if (dados.tipo === 'PF' && dados.cpf) {
-    const existente = await repositorioDeClientes.buscarPorCpfNaEmpresa(dados.cpf, companyId)
-    if (existente) {
-      throw new ErroDaAplicacao('CPF já cadastrado nesta empresa', 400)
-    }
-  }
+  const documento =
+    dados.tipo === 'PF' ? dados.cpf?.replace(/\D/g, '') : dados.cnpj?.replace(/\D/g, '')
 
-  if (dados.tipo === 'PJ' && dados.cnpj) {
-    const existente = await repositorioDeClientes.buscarPorCnpjNaEmpresa(dados.cnpj, companyId)
-    if (existente) {
-      throw new ErroDaAplicacao('CNPJ já cadastrado nesta empresa', 400)
+  if (documento) {
+    const busca = await repositorioDeClientes.buscarPessoaPorDocumentoNaEmpresa(
+      documento,
+      companyId
+    )
+    if (busca.temPapelCliente && busca.pessoa?.ativo) {
+      throw new ErroDaAplicacao(
+        dados.tipo === 'PF'
+          ? 'CPF já cadastrado como cliente nesta empresa'
+          : 'CNPJ já cadastrado como cliente nesta empresa',
+        400
+      )
     }
   }
 
