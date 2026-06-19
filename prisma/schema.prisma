@@ -81,7 +81,9 @@ model PessoaPapel {
   ativo     Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  dadosCliente DadosCliente?
+  dadosCliente        DadosCliente?
+  dadosFornecedor     DadosFornecedor?
+  dadosTransportadora DadosTransportadora?
 
   @@unique([pessoaId, papel])
 }
@@ -98,6 +100,32 @@ model DadosCliente {
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+}
+
+model DadosFornecedor {
+  id                String      @id @default(uuid())
+  papelId           String      @unique
+  papel             PessoaPapel @relation(fields: [papelId], references: [id], onDelete: Cascade)
+
+  condicaoPagamento String?
+  prazoEntrega      Int?
+  observacoes       String?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model DadosTransportadora {
+  id          String      @id @default(uuid())
+  papelId     String      @unique
+  papel       PessoaPapel @relation(fields: [papelId], references: [id], onDelete: Cascade)
+
+  antt        String?
+  tipoVeiculo String?
+  observacoes String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model PessoaContato {

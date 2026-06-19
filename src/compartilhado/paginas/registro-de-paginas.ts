@@ -24,6 +24,18 @@ export const PAGINAS_VINCULAVEIS: readonly PaginaDoSistema[] = [
     rotulo: 'Clientes',
     modulo: 'clientes',
   },
+  {
+    chave: 'fornecedores',
+    caminho: '/fornecedores',
+    rotulo: 'Fornecedores',
+    modulo: 'fornecedores',
+  },
+  {
+    chave: 'transportadoras',
+    caminho: '/transportadoras',
+    rotulo: 'Transportadoras',
+    modulo: 'transportadoras',
+  },
 ]
 
 /** Páginas exclusivas do administrador (não aparecem no formulário de vínculo). */
