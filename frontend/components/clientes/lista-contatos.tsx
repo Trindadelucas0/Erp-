@@ -32,9 +32,10 @@ type Props = {
   contatos: ContatoForm[]
   aoMudar: (contatos: ContatoForm[]) => void
   disabled?: boolean
+  mensagemDeErro?: string
 }
 
-export function ListaContatos({ contatos, aoMudar, disabled }: Props) {
+export function ListaContatos({ contatos, aoMudar, disabled, mensagemDeErro }: Props) {
   function adicionar() {
     aoMudar([...contatos, { ...CONTATO_VAZIO }])
   }
@@ -71,6 +72,11 @@ export function ListaContatos({ contatos, aoMudar, disabled }: Props) {
 
   return (
     <div className="space-y-3">
+      {mensagemDeErro && (
+        <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {mensagemDeErro}
+        </p>
+      )}
       {contatos.length === 0 && (
         <p className="text-sm text-muted-foreground">
           Nenhum contato adicionado. Clique em "+ Adicionar contato" para começar.

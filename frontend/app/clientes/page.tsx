@@ -4,7 +4,8 @@
  * Tela de clientes — CRUD completo PF/PJ com campo unificado CPF/CNPJ,
  * BrasilAPI, verificação de duplicidade, flags fiscais e validação de abas.
  */
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { cn } from '@/lib/utils'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
@@ -228,29 +229,51 @@ function clienteParaForm(c: Cliente): FormCliente {
 
 // ─── Validação e pendências ───────────────────────────────────────────────────
 
-function gerarPendenciasDoForm(form: FormCliente): string[] {
-  const erros: string[] = []
+type ErrosDoForm = Partial<Record<string, string>>
 
-  // Identificação
+const PREFIXO_ERRO_POR_CAMPO: Record<string, string> = {
+  nome: 'Identificação',
+  documento: 'Identificação',
+  suframa: 'Identificação',
+  email: 'Contato',
+  telefone: 'Contato',
+  contatos: 'Contato',
+  cep: 'Endereço',
+  logradouro: 'Endereço',
+  numero: 'Endereço',
+  bairro: 'Endereço',
+  cidade: 'Endereço',
+  estado: 'Endereço',
+  codigoIbge: 'Endereço',
+  enderecos: 'Endereço',
+}
+
+function validarFormCliente(form: FormCliente): ErrosDoForm {
+  const erros: ErrosDoForm = {}
+
   if (!form.nome.trim() || form.nome.trim().length < 2)
-    erros.push('Identificação: nome obrigatório (mínimo 2 caracteres)')
+    erros.nome = 'nome obrigatório (mínimo 2 caracteres)'
 
+  const nums = form.documento.replace(/\D/g, '')
   if (form.tipo === 'PF') {
-    const nums = form.documento.replace(/\D/g, '')
-    if (!validarCpf(nums)) erros.push('Identificação: CPF inválido — verifique os dígitos')
-  } else {
-    const nums = form.documento.replace(/\D/g, '')
-    if (!validarCnpj(nums)) erros.push('Identificação: CNPJ inválido — verifique os dígitos')
+    if (!validarCpf(nums)) erros.documento = 'CPF inválido — verifique os dígitos'
+  } else if (!validarCnpj(nums)) {
+    erros.documento = 'CNPJ inválido — verifique os dígitos'
   }
 
-  // Contato — considera modo simples e modo array
-  const temEmailSimples = form.email.trim().length > 0 && form.email.includes('@')
+  const temEmailSimples = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())
   const temTelefoneSimples =
     form.telefone.replace(/\D/g, '').length >= 10 ||
     form.celular.replace(/\D/g, '').length >= 10
 
+  if (form.tipo === 'PJ' && form.suframa && !/^\d{8,9}$/.test(form.suframa.replace(/\D/g, '')))
+    erros.suframa = 'SUFRAMA inválido (8 ou 9 dígitos)'
+
+  if (form.codigoIbge && !/^\d{7}$/.test(form.codigoIbge.replace(/\D/g, '')))
+    erros.codigoIbge = 'Código IBGE deve ter 7 dígitos'
+
   const temEmailArray = form.contatos.some(
-    (c) => c.tipo === 'email' && c.valor.trim().length > 0 && c.valor.includes('@')
+    (c) => c.tipo === 'email' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.valor.trim())
   )
   const temTelefoneArray = form.contatos.some(
     (c) => c.tipo === 'telefone' && c.valor.replace(/\D/g, '').length >= 10
@@ -259,14 +282,18 @@ function gerarPendenciasDoForm(form: FormCliente): string[] {
   const modoArray = form.contatos.length > 0
 
   if (modoArray) {
-    if (!temEmailArray) erros.push('Contato: informe ao menos um e-mail válido')
-    if (!temTelefoneArray) erros.push('Contato: informe ao menos um telefone ou celular')
+    if (!temEmailArray && !temTelefoneArray) {
+      erros.contatos = 'informe ao menos um e-mail válido e um telefone ou celular'
+    } else if (!temEmailArray) {
+      erros.contatos = 'informe ao menos um e-mail válido'
+    } else if (!temTelefoneArray) {
+      erros.contatos = 'informe ao menos um telefone ou celular'
+    }
   } else {
-    if (!temEmailSimples) erros.push('Contato: e-mail obrigatório e deve ser válido')
-    if (!temTelefoneSimples) erros.push('Contato: informe telefone fixo ou celular')
+    if (!temEmailSimples) erros.email = 'e-mail obrigatório e deve ser válido'
+    if (!temTelefoneSimples) erros.telefone = 'informe telefone fixo ou celular'
   }
 
-  // Endereço — considera modo simples e modo array
   const modoArrayEnd = form.enderecos.length > 0
   const principal = modoArrayEnd
     ? form.enderecos.find((e) => e.tipo === 'principal')
@@ -279,14 +306,34 @@ function gerarPendenciasDoForm(form: FormCliente): string[] {
   const cidade = modoArrayEnd ? (principal?.cidade ?? '') : form.cidade
   const estado = modoArrayEnd ? (principal?.estado ?? '') : form.estado
 
-  if (cep.replace(/\D/g, '').length < 8) erros.push('Endereço: CEP obrigatório (8 dígitos)')
-  if (!logradouro.trim()) erros.push('Endereço: logradouro obrigatório')
-  if (!numero.trim()) erros.push('Endereço: número obrigatório')
-  if (!bairro.trim()) erros.push('Endereço: bairro obrigatório')
-  if (!cidade.trim()) erros.push('Endereço: cidade obrigatória')
-  if (!estado.trim()) erros.push('Endereço: estado (UF) obrigatório')
+  if (modoArrayEnd) {
+    const incompleto =
+      cep.replace(/\D/g, '').length < 8 ||
+      !logradouro.trim() ||
+      !numero.trim() ||
+      !bairro.trim() ||
+      !cidade.trim() ||
+      !estado.trim()
+    if (incompleto) {
+      erros.enderecos =
+        'preencha o endereço principal completo (CEP, logradouro, número, bairro, cidade e UF)'
+    }
+  } else {
+    if (cep.replace(/\D/g, '').length < 8) erros.cep = 'CEP obrigatório (8 dígitos)'
+    if (!logradouro.trim()) erros.logradouro = 'logradouro obrigatório'
+    if (!numero.trim()) erros.numero = 'número obrigatório'
+    if (!bairro.trim()) erros.bairro = 'bairro obrigatório'
+    if (!cidade.trim()) erros.cidade = 'cidade obrigatória'
+    if (!estado.trim()) erros.estado = 'estado (UF) obrigatório'
+  }
 
   return erros
+}
+
+function gerarPendenciasDoForm(form: FormCliente): string[] {
+  return Object.entries(validarFormCliente(form)).map(
+    ([campo, mensagem]) => `${PREFIXO_ERRO_POR_CAMPO[campo] ?? 'Formulário'}: ${mensagem}`
+  )
 }
 
 function calcularStatusCadastro(cliente: Cliente): { completo: boolean; pendencias: string[] } {
@@ -295,7 +342,7 @@ function calcularStatusCadastro(cliente: Cliente): { completo: boolean; pendenci
   if (!cliente.nome || cliente.nome.trim().length < 2)
     erros.push('Nome obrigatório')
 
-  if (!cliente.email || !cliente.email.includes('@'))
+  if (!cliente.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cliente.email))
     erros.push('E-mail obrigatório')
 
   if (!cliente.telefone && !cliente.celular)
@@ -336,6 +383,7 @@ function CampoInput({
   maxLength,
   obrigatorio,
   ajuda,
+  mensagemDeErro,
   onBlur,
   disabled,
 }: {
@@ -347,6 +395,7 @@ function CampoInput({
   maxLength?: number
   obrigatorio?: boolean
   ajuda?: string
+  mensagemDeErro?: string
   onBlur?: () => void
   disabled?: boolean
 }) {
@@ -357,7 +406,10 @@ function CampoInput({
         {obrigatorio && <span className="ml-0.5 text-destructive">*</span>}
       </label>
       <input
-        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+        className={cn(
+          'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
+          mensagemDeErro && 'border-destructive'
+        )}
         type={tipo}
         value={valor}
         onChange={(e) => aoMudar(e.target.value)}
@@ -366,8 +418,12 @@ function CampoInput({
         maxLength={maxLength}
         required={obrigatorio}
         disabled={disabled}
+        aria-invalid={!!mensagemDeErro}
       />
-      {ajuda && <p className="text-xs text-muted-foreground">{ajuda}</p>}
+      {mensagemDeErro && (
+        <p className="text-sm text-destructive">{mensagemDeErro}</p>
+      )}
+      {ajuda && !mensagemDeErro && <p className="text-xs text-muted-foreground">{ajuda}</p>}
     </div>
   )
 }
@@ -378,12 +434,14 @@ function CampoSelect({
   aoMudar,
   opcoes,
   obrigatorio,
+  mensagemDeErro,
 }: {
   rotulo: string
   valor: string
   aoMudar: (v: string) => void
   opcoes: { value: string; label: string }[]
   obrigatorio?: boolean
+  mensagemDeErro?: string
 }) {
   return (
     <div className="space-y-1">
@@ -392,10 +450,14 @@ function CampoSelect({
         {obrigatorio && <span className="ml-0.5 text-destructive">*</span>}
       </label>
       <select
-        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className={cn(
+          'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+          mensagemDeErro && 'border-destructive'
+        )}
         value={valor}
         onChange={(e) => aoMudar(e.target.value)}
         required={obrigatorio}
+        aria-invalid={!!mensagemDeErro}
       >
         <option value="">Selecione</option>
         {opcoes.map((o) => (
@@ -404,6 +466,9 @@ function CampoSelect({
           </option>
         ))}
       </select>
+      {mensagemDeErro && (
+        <p className="text-sm text-destructive">{mensagemDeErro}</p>
+      )}
     </div>
   )
 }
@@ -466,10 +531,13 @@ function ConteudoDaPaginaDeClientes() {
     mensagem: string
   } | null>(null)
   const [carregandoBrasilApi, setCarregandoBrasilApi] = useState(false)
+  const [camposTocados, setCamposTocados] = useState<Set<string>>(() => new Set())
+  const [erroSalvar, setErroSalvar] = useState('')
 
   // ─── Validação de abas ────────────────────────────────────────────────────
 
-  const configAbas: ConfigDeAba[] = [
+  const configAbas: ConfigDeAba[] = useMemo(
+    () => [
     {
       id: 'identificacao',
       validar: () => {
@@ -493,7 +561,7 @@ function ConteudoDaPaginaDeClientes() {
           )
           return temEmail && temTel
         }
-        const emailOk = f.email.trim().length > 0 && f.email.includes('@')
+        const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())
         const telOk =
           f.telefone.replace(/\D/g, '').length >= 10 ||
           f.celular.replace(/\D/g, '').length >= 10
@@ -529,7 +597,9 @@ function ConteudoDaPaginaDeClientes() {
         )
       },
     },
-  ]
+  ],
+    []
+  )
 
   const {
     statusDasAbas,
@@ -543,6 +613,34 @@ function ConteudoDaPaginaDeClientes() {
     { id: 'contato', rotulo: 'Contato', status: statusDasAbas['contato'] },
     { id: 'endereco', rotulo: 'Endereço', status: statusDasAbas['endereco'] },
   ]
+
+  const errosForm = useMemo(() => validarFormCliente(form), [form])
+  const documentoDuplicado = avisoDuplicidade?.tipo === 'cliente_existente'
+  const formularioValido = Object.keys(errosForm).length === 0 && !documentoDuplicado
+
+  useEffect(() => {
+    if (modalAberto) validarTodasAsAbas()
+  }, [form, modalAberto, validarTodasAsAbas])
+
+  const tocarCampo = useCallback((id: string) => {
+    setCamposTocados((anterior) => {
+      if (anterior.has(id)) return anterior
+      const proximo = new Set(anterior)
+      proximo.add(id)
+      return proximo
+    })
+  }, [])
+
+  function erroVisivel(campo: string): string | undefined {
+    if (!camposTocados.has(campo)) return undefined
+    return errosForm[campo as keyof ErrosDoForm]
+  }
+
+  function erroDocumentoVisivel(): string | undefined {
+    if (!camposTocados.has('documento')) return undefined
+    if (documentoDuplicado) return avisoDuplicidade?.mensagem
+    return errosForm.documento
+  }
 
   // ─── Dados ────────────────────────────────────────────────────────────────
 
@@ -575,6 +673,8 @@ function ConteudoDaPaginaDeClientes() {
     setIdEmEdicao('')
     setAbaAtiva('identificacao')
     setMensagemDeErro('')
+    setErroSalvar('')
+    setCamposTocados(new Set())
     setAvisoDuplicidade(null)
     resetarStatus()
     setModalAberto(true)
@@ -586,6 +686,8 @@ function ConteudoDaPaginaDeClientes() {
     setIdEmEdicao(cliente.id)
     setAbaAtiva('identificacao')
     setMensagemDeErro('')
+    setErroSalvar('')
+    setCamposTocados(new Set())
     setAvisoDuplicidade(null)
     resetarStatus()
     setModalAberto(true)
@@ -594,6 +696,8 @@ function ConteudoDaPaginaDeClientes() {
   function fecharModal() {
     setModalAberto(false)
     setMensagemDeErro('')
+    setErroSalvar('')
+    setCamposTocados(new Set())
     setAvisoDuplicidade(null)
     resetarStatus()
   }
@@ -601,6 +705,7 @@ function ConteudoDaPaginaDeClientes() {
   // ─── Campo documento unificado ────────────────────────────────────────────
 
   function aoMudarDocumento(valor: string) {
+    tocarCampo('documento')
     const comMascara = mascaraDocumento(valor)
     const nums = comMascara.replace(/\D/g, '')
     const tipo = nums.length > 11 ? 'PJ' : 'PF'
@@ -628,6 +733,7 @@ function ConteudoDaPaginaDeClientes() {
   }
 
   async function aoSairDocumento() {
+    tocarCampo('documento')
     if (modoEdicao) return
     const nums = form.documento.replace(/\D/g, '')
     const tipoDetectado = detectarTipoDocumento(form.documento)
@@ -812,16 +918,12 @@ function ConteudoDaPaginaDeClientes() {
 
   async function aoSalvar(evento: FormEvent) {
     evento.preventDefault()
-    setMensagemDeErro('')
+    setErroSalvar('')
 
-    const pendencias = gerarPendenciasDoForm(form)
-    const todasValidas = validarTodasAsAbas()
-    if (!todasValidas || pendencias.length > 0) {
+    if (!formularioValido) {
+      validarTodasAsAbas()
       const abaComErro = irParaAbaComErro()
       if (abaComErro) setAbaAtiva(abaComErro)
-      setMensagemDeErro(
-        'Corrija os campos obrigatórios:\n• ' + pendencias.join('\n• ')
-      )
       return
     }
 
@@ -838,7 +940,13 @@ function ConteudoDaPaginaDeClientes() {
       fecharModal()
       await carregarClientes()
     } catch (erro) {
-      setMensagemDeErro(extrairErro(erro, 'Erro ao salvar cliente'))
+      const msg = extrairErro(erro, 'Erro ao salvar cliente')
+      if (/documento|cpf|cnpj|duplicad/i.test(msg)) {
+        tocarCampo('documento')
+        setAvisoDuplicidade({ tipo: 'cliente_existente', mensagem: msg })
+      } else {
+        setErroSalvar(msg)
+      }
     } finally {
       setSalvando(false)
     }
@@ -909,25 +1017,34 @@ function ConteudoDaPaginaDeClientes() {
         }
         largura="2xl"
         rodape={
-          <div className="flex items-center justify-between">
-            <div className="hidden gap-1 sm:flex">
-              {abasComStatus.map((a, i) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  onClick={() => setAbaAtiva(a.id)}
-                  disabled={qualquerOperacaoAtiva}
-                  className={`rounded px-2 py-1 text-xs transition-colors disabled:opacity-50 ${
-                    abaAtiva === a.id
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {i + 1}. {a.rotulo}
-                </button>
-              ))}
+          <div className="flex items-center justify-between gap-3">
+            <div className="hidden min-w-0 flex-1 sm:block">
+              {erroSalvar ? (
+                <p className="text-sm text-destructive">{erroSalvar}</p>
+              ) : (
+                <div className="flex gap-1">
+                  {abasComStatus.map((a, i) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => setAbaAtiva(a.id)}
+                      disabled={qualquerOperacaoAtiva}
+                      className={`rounded px-2 py-1 text-xs transition-colors disabled:opacity-50 ${
+                        abaAtiva === a.id
+                          ? 'bg-primary/10 text-primary'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {i + 1}. {a.rotulo}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="flex gap-2">
+            {erroSalvar && (
+              <p className="flex-1 text-sm text-destructive sm:hidden">{erroSalvar}</p>
+            )}
+            <div className="flex shrink-0 gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -939,7 +1056,7 @@ function ConteudoDaPaginaDeClientes() {
               <BotaoPrimario
                 form="form-cliente"
                 type="submit"
-                disabled={qualquerOperacaoAtiva}
+                disabled={!formularioValido || qualquerOperacaoAtiva}
               >
                 {salvando ? (
                   <span className="flex items-center gap-2">
@@ -956,20 +1073,6 @@ function ConteudoDaPaginaDeClientes() {
           </div>
         }
       >
-        {mensagemDeErro && modalAberto && (
-          <div className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {mensagemDeErro.includes('\n') ? (
-              <ul className="list-none space-y-0.5">
-                {mensagemDeErro.split('\n').map((linha, i) => (
-                  <li key={i}>{linha}</li>
-                ))}
-              </ul>
-            ) : (
-              <p>{mensagemDeErro}</p>
-            )}
-          </div>
-        )}
-
         {/* Banner de pendências — só no modo edição, desaparece ao preencher */}
         {modoEdicao && pendenciasDoForm.length > 0 && (
           <div className="mb-4 rounded-md border border-amber-400/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-700 dark:text-amber-400">
@@ -1064,7 +1167,10 @@ function ConteudoDaPaginaDeClientes() {
                 </label>
                 <div className="relative">
                   <input
-                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+                    className={cn(
+                      'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50',
+                      erroDocumentoVisivel() && 'border-destructive'
+                    )}
                     type="text"
                     value={form.documento}
                     onChange={(e) => aoMudarDocumento(e.target.value)}
@@ -1072,6 +1178,7 @@ function ConteudoDaPaginaDeClientes() {
                     placeholder={form.tipo === 'PF' ? '000.000.000-00' : '00.000.000/0000-00'}
                     maxLength={form.tipo === 'PF' ? 14 : 18}
                     disabled={modoEdicao}
+                    aria-invalid={!!erroDocumentoVisivel()}
                   />
                   {(verificandoDocumento || carregandoBrasilApi) && (
                     <span className="absolute right-2 top-2 text-xs text-muted-foreground">
@@ -1079,7 +1186,10 @@ function ConteudoDaPaginaDeClientes() {
                     </span>
                   )}
                 </div>
-                {modoEdicao && (
+                {erroDocumentoVisivel() && (
+                  <p className="text-sm text-destructive">{erroDocumentoVisivel()}</p>
+                )}
+                {modoEdicao && !erroDocumentoVisivel() && (
                   <p className="text-xs text-muted-foreground">
                     CPF/CNPJ não pode ser alterado após o cadastro.
                   </p>
@@ -1092,9 +1202,13 @@ function ConteudoDaPaginaDeClientes() {
                   <CampoInput
                     rotulo="Nome completo"
                     valor={form.nome}
-                    aoMudar={(v) => set('nome', v)}
+                    aoMudar={(v) => {
+                      tocarCampo('nome')
+                      set('nome', v)
+                    }}
                     placeholder="Nome como no documento"
                     obrigatorio
+                    mensagemDeErro={erroVisivel('nome')}
                   />
                   <div className="grid gap-4 sm:grid-cols-2">
                     <CampoInput
@@ -1133,9 +1247,13 @@ function ConteudoDaPaginaDeClientes() {
                   <CampoInput
                     rotulo="Razão social"
                     valor={form.nome}
-                    aoMudar={(v) => set('nome', v)}
+                    aoMudar={(v) => {
+                      tocarCampo('nome')
+                      set('nome', v)
+                    }}
                     placeholder="Razão social completa"
                     obrigatorio
+                    mensagemDeErro={erroVisivel('nome')}
                   />
                   <CampoInput
                     rotulo="Nome fantasia"
@@ -1161,6 +1279,7 @@ function ConteudoDaPaginaDeClientes() {
                             ...f,
                             ieIsento: v,
                             ie: v ? 'ISENTO' : '',
+                            indicadorIe: v ? '2' : (f.indicadorIe === '2' ? '9' : f.indicadorIe),
                           }))
                         }}
                       />
@@ -1177,10 +1296,12 @@ function ConteudoDaPaginaDeClientes() {
                     <CampoInput
                       rotulo="SUFRAMA"
                       valor={form.suframa}
-                      aoMudar={(v) => set('suframa', v)}
+                      aoMudar={(v) => { tocarCampo('suframa'); set('suframa', v) }}
+                      onBlur={() => tocarCampo('suframa')}
                       placeholder="Zona Franca de Manaus"
                       maxLength={9}
-                      ajuda="Apenas para clientes na Zona Franca"
+                      ajuda={erroVisivel('suframa') ? undefined : 'Apenas para clientes na Zona Franca'}
+                      mensagemDeErro={erroVisivel('suframa')}
                     />
                     <CampoSelect
                       rotulo="Indicador IE (NF-e)"
@@ -1242,7 +1363,11 @@ function ConteudoDaPaginaDeClientes() {
               {form.contatos.length > 0 ? (
                 <ListaContatos
                   contatos={form.contatos}
-                  aoMudar={(v) => set('contatos', v)}
+                  aoMudar={(v) => {
+                    tocarCampo('contatos')
+                    set('contatos', v)
+                  }}
+                  mensagemDeErro={erroVisivel('contatos')}
                 />
               ) : (
                 <>
@@ -1250,22 +1375,36 @@ function ConteudoDaPaginaDeClientes() {
                     rotulo="Email"
                     type="email"
                     value={form.email}
-                    onChange={(e) => set('email', e.target.value)}
+                    onChange={(e) => {
+                      tocarCampo('email')
+                      set('email', e.target.value)
+                    }}
+                    onBlur={() => tocarCampo('email')}
                     placeholder="cliente@email.com.br"
+                    mensagemDeErro={erroVisivel('email')}
                   />
                   <div className="grid gap-4 sm:grid-cols-2">
                     <CampoInput
                       rotulo="Telefone fixo"
                       valor={form.telefone}
-                      aoMudar={(v) => set('telefone', mascaraTelefone(v))}
+                      aoMudar={(v) => {
+                        tocarCampo('telefone')
+                        set('telefone', mascaraTelefone(v))
+                      }}
+                      onBlur={() => tocarCampo('telefone')}
                       placeholder="(00) 0000-0000"
                       maxLength={14}
+                      mensagemDeErro={erroVisivel('telefone')}
                     />
                     <div className="space-y-2">
                       <CampoInput
                         rotulo="Celular"
                         valor={form.celular}
-                        aoMudar={(v) => set('celular', mascaraTelefone(v))}
+                        aoMudar={(v) => {
+                          tocarCampo('telefone')
+                          set('celular', mascaraTelefone(v))
+                        }}
+                        onBlur={() => tocarCampo('telefone')}
                         placeholder="(00) 00000-0000"
                         maxLength={15}
                       />
@@ -1318,7 +1457,11 @@ function ConteudoDaPaginaDeClientes() {
               {form.enderecos.length > 0 ? (
                 <ListaEnderecos
                   enderecos={form.enderecos}
-                  aoMudar={(v) => set('enderecos', v)}
+                  aoMudar={(v) => {
+                    tocarCampo('enderecos')
+                    set('enderecos', v)
+                  }}
+                  mensagemDeErro={erroVisivel('enderecos')}
                 />
               ) : (
                 <>
@@ -1333,17 +1476,29 @@ function ConteudoDaPaginaDeClientes() {
                     <CampoInput
                       rotulo="CEP"
                       valor={form.cep}
-                      aoMudar={(v) => set('cep', mascaraCep(v))}
-                      onBlur={() => buscarCep(form.cep)}
+                      aoMudar={(v) => {
+                        tocarCampo('cep')
+                        set('cep', mascaraCep(v))
+                      }}
+                      onBlur={() => {
+                        tocarCampo('cep')
+                        buscarCep(form.cep)
+                      }}
                       placeholder="00000-000"
                       maxLength={9}
+                      mensagemDeErro={erroVisivel('cep')}
                     />
                     <div className="sm:col-span-2">
                       <CampoInput
                         rotulo="Logradouro"
                         valor={form.logradouro}
-                        aoMudar={(v) => set('logradouro', v)}
+                        aoMudar={(v) => {
+                          tocarCampo('logradouro')
+                          set('logradouro', v)
+                        }}
+                        onBlur={() => tocarCampo('logradouro')}
                         placeholder="Rua, Avenida, Travessa..."
+                        mensagemDeErro={erroVisivel('logradouro')}
                       />
                     </div>
                   </div>
@@ -1352,9 +1507,14 @@ function ConteudoDaPaginaDeClientes() {
                     <CampoInput
                       rotulo="Número"
                       valor={form.numero}
-                      aoMudar={(v) => set('numero', v)}
+                      aoMudar={(v) => {
+                        tocarCampo('numero')
+                        set('numero', v)
+                      }}
+                      onBlur={() => tocarCampo('numero')}
                       placeholder="123 ou S/N"
                       maxLength={20}
+                      mensagemDeErro={erroVisivel('numero')}
                     />
                     <div className="sm:col-span-2">
                       <CampoInput
@@ -1371,16 +1531,26 @@ function ConteudoDaPaginaDeClientes() {
                     <CampoInput
                       rotulo="Bairro"
                       valor={form.bairro}
-                      aoMudar={(v) => set('bairro', v)}
+                      aoMudar={(v) => {
+                        tocarCampo('bairro')
+                        set('bairro', v)
+                      }}
+                      onBlur={() => tocarCampo('bairro')}
                       placeholder="Bairro"
                       maxLength={100}
+                      mensagemDeErro={erroVisivel('bairro')}
                     />
                     <CampoInput
                       rotulo="Cidade"
                       valor={form.cidade}
-                      aoMudar={(v) => set('cidade', v)}
+                      aoMudar={(v) => {
+                        tocarCampo('cidade')
+                        set('cidade', v)
+                      }}
+                      onBlur={() => tocarCampo('cidade')}
                       placeholder="Cidade"
                       maxLength={100}
+                      mensagemDeErro={erroVisivel('cidade')}
                     />
                   </div>
 
@@ -1388,16 +1558,22 @@ function ConteudoDaPaginaDeClientes() {
                     <CampoSelect
                       rotulo="Estado (UF)"
                       valor={form.estado}
-                      aoMudar={(v) => set('estado', v)}
+                      aoMudar={(v) => {
+                        tocarCampo('estado')
+                        set('estado', v)
+                      }}
                       opcoes={ESTADOS_BR.map((uf) => ({ value: uf, label: uf }))}
+                      mensagemDeErro={erroVisivel('estado')}
                     />
                     <CampoInput
                       rotulo="Código IBGE do município"
                       valor={form.codigoIbge}
-                      aoMudar={(v) => set('codigoIbge', v.replace(/\D/g, '').slice(0, 7))}
+                      aoMudar={(v) => { tocarCampo('codigoIbge'); set('codigoIbge', v.replace(/\D/g, '').slice(0, 7)) }}
+                      onBlur={() => tocarCampo('codigoIbge')}
                       placeholder="0000000 (7 dígitos)"
                       maxLength={7}
-                      ajuda="Preenchido automaticamente pelo CEP"
+                      ajuda={erroVisivel('codigoIbge') ? undefined : 'Preenchido automaticamente pelo CEP'}
+                      mensagemDeErro={erroVisivel('codigoIbge')}
                     />
                   </div>
                 </>

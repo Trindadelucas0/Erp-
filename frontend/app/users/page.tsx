@@ -157,6 +157,8 @@ function ConteudoDaPaginaDeUsuarios() {
 
   // Tooltip de pendências
   const [tooltipAberto, setTooltipAberto] = useState<string | null>(null)
+  const [camposTocados, setCamposTocados] = useState<Set<string>>(() => new Set())
+  const [erroSalvar, setErroSalvar] = useState('')
 
   useEffect(() => {
     if (carregandoSessao || !estaAutenticado || !perfil?.ehAdmin) return
@@ -226,6 +228,25 @@ function ConteudoDaPaginaDeUsuarios() {
     }
   }, [nome, email, idsDosPapeisSelecionados, idsDasEmpresasSelecionadas])
 
+  const errosForm = useMemo(() => {
+    const erros: Record<string, string> = {}
+    if (!nome.trim() || nome.trim().length < 2)
+      erros.nome = 'Nome obrigatório (mínimo 2 caracteres)'
+    if (!emailValido(email))
+      erros.email = 'E-mail inválido'
+    if (!modoEdicao && !senha)
+      erros.senha = 'Senha obrigatória'
+    if (senha && senha.trim().length < 6)
+      erros.senha = 'Senha deve ter mínimo 6 caracteres'
+    if (idsDosPapeisSelecionados.length === 0)
+      erros.papeis = 'Selecione pelo menos um papel'
+    if (idsDasEmpresasSelecionadas.length === 0)
+      erros.empresas = 'Selecione pelo menos uma empresa'
+    return erros
+  }, [nome, email, senha, modoEdicao, idsDosPapeisSelecionados, idsDasEmpresasSelecionadas])
+
+  const formularioValido = Object.keys(errosForm).length === 0
+
   const abasComStatus = ABAS_USUARIO.map((aba) => ({
     ...aba,
     status: statusDasAbas[aba.id as keyof typeof statusDasAbas],
@@ -239,6 +260,20 @@ function ConteudoDaPaginaDeUsuarios() {
       : [...listaAtual, idParaAlternar]
   }
 
+  function tocarCampo(id: string) {
+    setCamposTocados((anterior) => {
+      if (anterior.has(id)) return anterior
+      const proximo = new Set(anterior)
+      proximo.add(id)
+      return proximo
+    })
+  }
+
+  function erroVisivel(campo: string): string | undefined {
+    if (!camposTocados.has(campo)) return undefined
+    return errosForm[campo]
+  }
+
   function limparFormulario() {
     setNome('')
     setEmail('')
@@ -249,13 +284,14 @@ function ConteudoDaPaginaDeUsuarios() {
     setIdsDasPermissoesExtras([])
     setChavesDasPaginasSelecionadas([])
     setAbaAtiva('dados')
+    setCamposTocados(new Set())
+    setErroSalvar('')
   }
 
   function abrirModalNovo() {
     limparFormulario()
     setModoEdicao(false)
     setIdDoUsuarioEmEdicao('')
-    setMensagemDeErro('')
     setModalUsuarioAberto(true)
   }
 
@@ -276,16 +312,20 @@ function ConteudoDaPaginaDeUsuarios() {
       usuario.permissoesExtras.map((item) => item.permission.id)
     )
     setChavesDasPaginasSelecionadas(
-      usuario.paginasPermitidas.map((item) => item.pageKey)
+      usuario.paginasPermitidas
+        .map((item) => item.pageKey)
+        .filter((chave) => listaDePaginasVinculaveis.some((p) => p.chave === chave))
     )
     setAbaAtiva('dados')
-    setMensagemDeErro('')
+    setCamposTocados(new Set())
+    setErroSalvar('')
     setModalUsuarioAberto(true)
   }
 
   function fecharModalUsuario() {
     setModalUsuarioAberto(false)
-    setMensagemDeErro('')
+    setCamposTocados(new Set())
+    setErroSalvar('')
   }
 
   function atualizarUsuarioNaLista(usuarioAtualizado: Usuario) {
@@ -316,19 +356,12 @@ function ConteudoDaPaginaDeUsuarios() {
 
   async function aoSalvarUsuario(evento: FormEvent) {
     evento.preventDefault()
-    setMensagemDeErro('')
+    setErroSalvar('')
 
-    if (idsDosPapeisSelecionados.length === 0) {
-      setAbaAtiva('acesso')
-      setMensagemDeErro('Selecione pelo menos um papel')
-      return
-    }
-
-    if (idsDasEmpresasSelecionadas.length === 0) {
-      setAbaAtiva('acesso')
-      setMensagemDeErro(
-        'Selecione pelo menos uma empresa. Todo usuário precisa estar vinculado a uma empresa.'
-      )
+    if (!formularioValido) {
+      setCamposTocados(new Set(['nome', 'email', 'senha', 'papeis', 'empresas']))
+      if (errosForm.papeis || errosForm.empresas) setAbaAtiva('acesso')
+      else setAbaAtiva('dados')
       return
     }
 
@@ -350,18 +383,13 @@ function ConteudoDaPaginaDeUsuarios() {
         atualizarUsuarioNaLista(data.usuario as Usuario)
         setMensagemDeSucesso('Usuário atualizado!')
       } else {
-        if (!senha) {
-          setAbaAtiva('dados')
-          setMensagemDeErro('Senha é obrigatória ao criar usuário')
-          return
-        }
         await clienteHttp.post('/users', { ...corpo, senha })
         setMensagemDeSucesso('Usuário criado!')
         await carregarDadosDaTela()
       }
       fecharModalUsuario()
     } catch (erro: unknown) {
-      setMensagemDeErro(extrairMensagemDeErro(erro, 'Erro ao salvar usuário'))
+      setErroSalvar(extrairMensagemDeErro(erro, 'Erro ao salvar usuário'))
     } finally {
       setSalvando(false)
     }
@@ -493,39 +521,40 @@ function ConteudoDaPaginaDeUsuarios() {
         titulo={modoEdicao ? `Editar: ${nome}` : 'Novo usuário'}
         largura="2xl"
         rodape={
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={fecharModalUsuario}
-              disabled={salvando}
-            >
-              Cancelar
-            </Button>
-            <BotaoPrimario
-              form="form-usuario"
-              type="submit"
-              disabled={salvando}
-            >
-              {salvando ? (
-                <span className="flex items-center gap-2">
-                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                  </svg>
-                  Salvando...
-                </span>
-              ) : modoEdicao ? 'Salvar' : 'Criar usuário'}
-            </BotaoPrimario>
+          <div className="flex w-full items-center justify-between gap-2">
+            {erroSalvar ? (
+              <p className="text-sm text-destructive">{erroSalvar}</p>
+            ) : (
+              <span />
+            )}
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={fecharModalUsuario}
+                disabled={salvando}
+              >
+                Cancelar
+              </Button>
+              <BotaoPrimario
+                form="form-usuario"
+                type="submit"
+                disabled={salvando || !formularioValido}
+              >
+                {salvando ? (
+                  <span className="flex items-center gap-2">
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                    Salvando...
+                  </span>
+                ) : modoEdicao ? 'Salvar' : 'Criar usuário'}
+              </BotaoPrimario>
+            </div>
           </div>
         }
       >
-        {mensagemDeErro && modalUsuarioAberto && (
-          <p className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {mensagemDeErro}
-          </p>
-        )}
-
         <Abas
           abas={abasComStatus}
           abaAtiva={abaAtiva}
@@ -545,14 +574,18 @@ function ConteudoDaPaginaDeUsuarios() {
                 <InputPadrao
                   rotulo="Nome"
                   value={nome}
-                  onChange={(e) => setNome(e.target.value)}
+                  onChange={(e) => { tocarCampo('nome'); setNome(e.target.value) }}
+                  onBlur={() => tocarCampo('nome')}
+                  mensagemDeErro={erroVisivel('nome')}
                   required
                 />
                 <InputPadrao
                   rotulo="E-mail"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => { tocarCampo('email'); setEmail(e.target.value) }}
+                  onBlur={() => tocarCampo('email')}
+                  mensagemDeErro={erroVisivel('email')}
                   required
                 />
               </div>
@@ -572,7 +605,9 @@ function ConteudoDaPaginaDeUsuarios() {
                   }
                   type="password"
                   value={senha}
-                  onChange={(e) => setSenha(e.target.value)}
+                  onChange={(e) => { tocarCampo('senha'); setSenha(e.target.value) }}
+                  onBlur={() => tocarCampo('senha')}
+                  mensagemDeErro={erroVisivel('senha')}
                   required={!modoEdicao}
                   placeholder="Mínimo 6 caracteres"
                 />

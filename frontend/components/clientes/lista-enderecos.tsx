@@ -42,6 +42,7 @@ type Props = {
   enderecos: EnderecoForm[]
   aoMudar: (enderecos: EnderecoForm[]) => void
   disabled?: boolean
+  mensagemDeErro?: string
 }
 
 async function buscarCep(cep: string): Promise<Partial<EnderecoForm> | null> {
@@ -241,7 +242,7 @@ function BlocoEndereco({
   )
 }
 
-export function ListaEnderecos({ enderecos, aoMudar, disabled }: Props) {
+export function ListaEnderecos({ enderecos, aoMudar, disabled, mensagemDeErro }: Props) {
   const principal = enderecos.find((e) => e.tipo === 'principal') ?? null
   const entregas = enderecos.filter((e) => e.tipo === 'entrega')
 
@@ -282,6 +283,11 @@ export function ListaEnderecos({ enderecos, aoMudar, disabled }: Props) {
 
   return (
     <div className="space-y-5">
+      {mensagemDeErro && (
+        <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {mensagemDeErro}
+        </p>
+      )}
       {/* Endereço principal */}
       <div>
         <p className="mb-3 text-sm font-medium">Endereço principal</p>
