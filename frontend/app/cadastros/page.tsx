@@ -3,19 +3,26 @@
 /**
  * Tela de cadastros — CRUD de empresas com permissões cadastros:*.
  */
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useState } from 'react'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { usePermissao } from '@/hooks/use-permissao'
+import { useRegistrarAtalhos } from '@/hooks/use-registrar-atalhos'
+import {
+  tituloComAtalho,
+  useTeclaDaAcao,
+} from '@/components/compartilhado/provedor-de-atalhos'
 import { BadgeStatus } from '@/components/ui/badge-status'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { InputPadrao } from '@/components/ui/input-padrao'
+import { SelectPadrao } from '@/components/ui/select-padrao'
 import { Modal } from '@/components/ui/modal'
 import { Separator } from '@/components/ui/separator'
 import { exportarCsv } from '@/lib/exportar-csv'
+import { submeterFormularioPorId } from '@/lib/atalhos/submeter-formulario'
 
 const ESTADOS_BR = [
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA',
@@ -145,6 +152,11 @@ function ConteudoDaPaginaDeCadastros() {
 
   const [form, setForm] = useState<FormularioEmpresa>(formularioVazio)
 
+  const teclaNovo = useTeclaDaAcao('novo')
+  const teclaExportar = useTeclaDaAcao('exportar')
+  const teclaSalvar = useTeclaDaAcao('salvar')
+  const teclaCancelar = useTeclaDaAcao('cancelar')
+
   useEffect(() => {
     if (carregandoSessao || !estaAutenticado) return
     carregarEmpresas()
@@ -257,6 +269,38 @@ function ConteudoDaPaginaDeCadastros() {
     }
   }
 
+  const exportarListaEmpresas = useCallback(() => {
+    exportarCsv(
+      listaDeEmpresas.map((e) => ({
+        Nome: e.name,
+        CNPJ: e.cnpj,
+        Telefone: e.phone || '',
+        Email: e.email || '',
+        Cidade: e.cidade || '',
+        Estado: e.estado || '',
+        Status: e.active ? 'Ativa' : 'Inativa',
+      })),
+      'empresas'
+    )
+  }, [listaDeEmpresas])
+
+  useRegistrarAtalhos(
+    {
+      novo: abrirModalNovo,
+      atualizar: carregarEmpresas,
+      salvar: () => submeterFormularioPorId('form-empresa'),
+      cancelar: fecharModal,
+      exportar: exportarListaEmpresas,
+    },
+    {
+      novo: podeCriar && !modalAberto,
+      atualizar: !modalAberto,
+      salvar: modalAberto && !salvando,
+      cancelar: modalAberto && !salvando,
+      exportar: !modalAberto,
+    }
+  )
+
   return (
     <div className="space-y-6">
       {mensagemDeErro && !modalAberto && (
@@ -288,6 +332,7 @@ function ConteudoDaPaginaDeCadastros() {
               variant="outline"
               onClick={fecharModal}
               disabled={salvando}
+              title={tituloComAtalho('Cancelar', teclaCancelar)}
             >
               Cancelar
             </Button>
@@ -295,6 +340,10 @@ function ConteudoDaPaginaDeCadastros() {
               form="form-empresa"
               type="submit"
               disabled={salvando}
+              title={tituloComAtalho(
+                modoEdicao ? 'Salvar' : 'Criar empresa',
+                teclaSalvar
+              )}
             >
               {salvando ? 'Salvando...' : modoEdicao ? 'Salvar' : 'Criar empresa'}
             </BotaoPrimario>
@@ -430,23 +479,12 @@ function ConteudoDaPaginaDeCadastros() {
                 onChange={(e) => atualizarCampo('cidade', e.target.value)}
                 placeholder="Cidade"
               />
-              <div className="space-y-1">
-                <label className="text-sm font-medium leading-none">
-                  Estado
-                </label>
-                <select
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                  value={form.estado}
-                  onChange={(e) => atualizarCampo('estado', e.target.value)}
-                >
-                  <option value="">Selecione</option>
-                  {ESTADOS_BR.map((uf) => (
-                    <option key={uf} value={uf}>
-                      {uf}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SelectPadrao
+                rotulo="Estado"
+                valor={form.estado}
+                aoMudar={(v) => atualizarCampo('estado', v)}
+                opcoes={ESTADOS_BR.map((uf) => ({ value: uf, label: uf }))}
+              />
             </div>
           </div>
         </form>
@@ -461,25 +499,17 @@ function ConteudoDaPaginaDeCadastros() {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() =>
-                exportarCsv(
-                  listaDeEmpresas.map((e) => ({
-                    Nome: e.name,
-                    CNPJ: e.cnpj,
-                    Telefone: e.phone || '',
-                    Email: e.email || '',
-                    Cidade: e.cidade || '',
-                    Estado: e.estado || '',
-                    Status: e.active ? 'Ativa' : 'Inativa',
-                  })),
-                  'empresas'
-                )
-              }
+              onClick={exportarListaEmpresas}
+              title={tituloComAtalho('Exportar CSV', teclaExportar)}
             >
               Exportar CSV
             </Button>
             {podeCriar && (
-              <BotaoPrimario type="button" onClick={abrirModalNovo}>
+              <BotaoPrimario
+                type="button"
+                onClick={abrirModalNovo}
+                title={tituloComAtalho('Nova empresa', teclaNovo)}
+              >
                 + Nova empresa
               </BotaoPrimario>
             )}

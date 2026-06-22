@@ -138,7 +138,42 @@ export const esquemaDeAtivarCliente = z.object({
   ativo: z.boolean(),
 })
 
+export const TIPOS_DE_CLIENTE = [
+  'revenda',
+  'construtora',
+  'contribuinte_icms',
+  'nao_contribuinte_icms',
+  'substituido_substituto',
+] as const
+
+export const esquemaDeAprovacaoDeCliente = z.discriminatedUnion('acao', [
+  z.object({
+    acao: z.literal('aprovar'),
+    tipoCliente: z.enum(TIPOS_DE_CLIENTE, {
+      errorMap: () => ({ message: 'Tipo de cliente inválido' }),
+    }),
+    limiteCredito: z.number().min(0, 'Limite de crédito não pode ser negativo'),
+    condicaoPagamento: z.string().min(1, 'Condição de pagamento obrigatória').max(100),
+    vendedorId: z.string().uuid().optional().or(z.literal('')),
+    calculaComissao: z.boolean(),
+  }),
+  z.object({
+    acao: z.literal('reprovar'),
+    motivoReprovacao: z.string().min(3, 'Informe o motivo da reprovação').max(500),
+  }),
+])
+
+export const esquemaDeConfirmacaoDeAssinatura = z.object({
+  token: z.string().min(1),
+  nomeAssinante: z.string().min(2, 'Nome do assinante obrigatório').max(200),
+  aceite: z.literal(true, {
+    errorMap: () => ({ message: 'É necessário aceitar os termos' }),
+  }),
+})
+
 export type DadosParaCriarClientePF = z.infer<typeof esquemaDeCriacaoDeClientePF>
 export type DadosParaCriarClientePJ = z.infer<typeof esquemaDeCriacaoDeClientePJ>
 export type DadosParaCriarCliente = z.infer<typeof esquemaDeCriacaoDeCliente>
 export type DadosParaEditarCliente = z.infer<typeof esquemaDeEdicaoDeCliente>
+export type DadosParaAprovacaoDeCliente = z.infer<typeof esquemaDeAprovacaoDeCliente>
+export type DadosParaConfirmacaoDeAssinatura = z.infer<typeof esquemaDeConfirmacaoDeAssinatura>

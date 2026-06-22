@@ -6,6 +6,8 @@
  * Máximo de 1 contato principal por tipo.
  */
 
+import { Select, classesOption, classesSelectCompacto } from '@/components/ui/select'
+
 export type ContatoForm = {
   tipo: 'email' | 'telefone' | 'outro'
   valor: string
@@ -108,18 +110,18 @@ export function ListaContatos({ contatos, aoMudar, disabled, mensagemDeErro }: P
               <label className="text-xs font-medium leading-none text-muted-foreground">
                 Tipo
               </label>
-              <select
-                className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              <Select
+                className={classesSelectCompacto}
                 value={contato.tipo}
                 onChange={(e) => atualizar(idx, 'tipo', e.target.value)}
                 disabled={disabled}
               >
                 {TIPOS_CONTATO.map((t) => (
-                  <option key={t.value} value={t.value}>
+                  <option key={t.value} value={t.value} className={classesOption}>
                     {t.label}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             {/* Valor */}

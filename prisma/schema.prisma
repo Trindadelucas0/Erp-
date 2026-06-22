@@ -69,7 +69,7 @@ model Pessoa {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  @@unique([cpf, companyId]) // fazendo tes
+  @@unique([cpf, companyId]) // 
   @@unique([cnpj, companyId])
 }
 
@@ -89,17 +89,41 @@ model PessoaPapel {
 }
 
 model DadosCliente {
-  id               String      @id @default(uuid())
-  papelId          String      @unique
-  papel            PessoaPapel @relation(fields: [papelId], references: [id], onDelete: Cascade)
+  id                String      @id @default(uuid())
+  papelId           String      @unique
+  papel             PessoaPapel @relation(fields: [papelId], references: [id], onDelete: Cascade)
 
-  aceitaNFe55      Boolean  @default(true)
-  calculaComissao  Boolean  @default(false)
-  vendedorId       String?
-  statusAprovacao  String   @default("ativo")
+  aceitaNFe55       Boolean  @default(true)
+  calculaComissao   Boolean  @default(false)
+  vendedorId        String?
+  statusAprovacao   String   @default("ativo")
+  tipoCliente       String?
+  limiteCredito     Decimal? @db.Decimal(15, 2)
+  condicaoPagamento String?
+  motivoReprovacao  String?
+  aprovadoPorId     String?
+  aprovadoEm        DateTime?
 
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  assinaturas       ClienteAssinatura[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model ClienteAssinatura {
+  id             String       @id @default(uuid())
+  dadosClienteId String
+  dadosCliente   DadosCliente @relation(fields: [dadosClienteId], references: [id], onDelete: Cascade)
+  token          String       @unique
+  status         String       @default("pendente")
+  destinatario   String?
+  enviadoEm      DateTime?
+  visualizadoEm  DateTime?
+  assinadoEm     DateTime?
+  nomeAssinante  String?
+  ipAssinante    String?
+  expiraEm       DateTime?
+  createdAt      DateTime     @default(now())
 }
 
 model DadosFornecedor {
@@ -107,6 +131,7 @@ model DadosFornecedor {
   papelId           String      @unique
   papel             PessoaPapel @relation(fields: [papelId], references: [id], onDelete: Cascade)
 
+  aceitaNFe55       Boolean  @default(true)
   condicaoPagamento String?
   prazoEntrega      Int?
   observacoes       String?
@@ -120,6 +145,7 @@ model DadosTransportadora {
   papelId     String      @unique
   papel       PessoaPapel @relation(fields: [papelId], references: [id], onDelete: Cascade)
 
+  aceitaNFe55 Boolean  @default(true)
   antt        String?
   tipoVeiculo String?
   observacoes String?
@@ -245,4 +271,12 @@ model LogDeAuditoria {
   valoresDepois Json?
   criadoEm      DateTime @default(now())
   usuario       User     @relation(fields: [usuarioId], references: [id])
+}
+
+model AtalhoTeclado {
+  id        String   @id @default(uuid())
+  acao      String   @unique
+  tecla     String
+  ativo     Boolean  @default(true)
+  updatedAt DateTime @updatedAt
 }

@@ -47,6 +47,7 @@ const camposComuns = {
   // Campos específicos de fornecedor
   condicaoPagamento: z.string().max(100).optional(),
   prazoEntrega: z.number().int().min(0).optional(),
+  aceitaNFe55: z.boolean().optional().default(true),
 }
 
 export const esquemaDeContatoItem = z.object({

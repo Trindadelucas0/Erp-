@@ -1,6 +1,6 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { X } from 'lucide-react'
 
@@ -33,6 +33,20 @@ export function Modal({
   children,
   rodape,
 }: Props) {
+  useEffect(() => {
+    if (!aberto) return
+
+    function aoPressionarEsc(evento: KeyboardEvent) {
+      if (evento.key === 'Escape') {
+        evento.preventDefault()
+        aoFechar()
+      }
+    }
+
+    document.addEventListener('keydown', aoPressionarEsc, true)
+    return () => document.removeEventListener('keydown', aoPressionarEsc, true)
+  }, [aberto, aoFechar])
+
   if (!aberto) return null
 
   return (

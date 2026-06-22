@@ -3,9 +3,11 @@
 /**
  * Página de auditoria — histórico de ações do sistema (somente admin).
  */
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
+import { useRegistrarAtalhos } from '@/hooks/use-registrar-atalhos'
+import { tituloComAtalho, useTeclaDaAcao } from '@/components/compartilhado/provedor-de-atalhos'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Button } from '@/components/ui/button'
@@ -62,6 +64,8 @@ function ConteudoDaPaginaDeAuditoria() {
   const [filtroDataInicio, setFiltroDataInicio] = useState('')
   const [filtroDataFim, setFiltroDataFim] = useState('')
 
+  const teclaExportar = useTeclaDaAcao('exportar')
+
   useEffect(() => {
     carregarLogs()
   }, [pagina])
@@ -100,7 +104,7 @@ function ConteudoDaPaginaDeAuditoria() {
     setTimeout(() => carregarLogs(), 0)
   }
 
-  function aoExportarCsv() {
+  const aoExportarCsv = useCallback(() => {
     exportarCsv(
       logs.map((log) => ({
         'Data/Hora': formatarData(log.criadoEm),
@@ -112,7 +116,21 @@ function ConteudoDaPaginaDeAuditoria() {
       })),
       'auditoria'
     )
-  }
+  }, [logs])
+
+  useRegistrarAtalhos(
+    {
+      buscar: () =>
+        document.getElementById('filtro-entidade-auditoria')?.focus(),
+      atualizar: aplicarFiltros,
+      exportar: aoExportarCsv,
+    },
+    {
+      buscar: true,
+      atualizar: !carregando,
+      exportar: logs.length > 0,
+    }
+  )
 
   const totalPaginas = Math.max(1, Math.ceil(total / 50))
 
@@ -125,7 +143,12 @@ function ConteudoDaPaginaDeAuditoria() {
             Histórico de alterações do sistema
           </p>
         </div>
-        <Button type="button" variant="outline" onClick={aoExportarCsv}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={aoExportarCsv}
+          title={tituloComAtalho('Exportar CSV', teclaExportar)}
+        >
           Exportar CSV
         </Button>
       </div>
@@ -133,6 +156,7 @@ function ConteudoDaPaginaDeAuditoria() {
       <CardPadrao titulo="Filtros">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <InputPadrao
+            id="filtro-entidade-auditoria"
             rotulo="Entidade"
             value={filtroEntidade}
             onChange={(e) => setFiltroEntidade(e.target.value)}

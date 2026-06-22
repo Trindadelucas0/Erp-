@@ -32,7 +32,8 @@ clienteHttp.interceptors.response.use(
     if (
       typeof window !== 'undefined' &&
       erro.response?.status === 401 &&
-      !window.location.pathname.includes('/login')
+      !window.location.pathname.includes('/login') &&
+      !window.location.pathname.startsWith('/assinatura')
     ) {
       limparSessaoLocal()
       window.location.href = '/login'

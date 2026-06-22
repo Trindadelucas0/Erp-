@@ -8,9 +8,17 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 import { cn } from '@/lib/utils'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
+import { CampoSelect } from '@/components/compartilhado/campo-select'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { usePermissao } from '@/hooks/use-permissao'
+import { useRegistrarAtalhos } from '@/hooks/use-registrar-atalhos'
+import {
+  tituloComAtalho,
+  useTeclaDaAcao,
+} from '@/components/compartilhado/provedor-de-atalhos'
 import { useValidacaoDeAbas, type ConfigDeAba } from '@/hooks/use-validacao-de-abas'
+import { useConfirmarSaida } from '@/hooks/use-confirmar-saida'
+import { clonarFormulario } from '@/lib/formulario-alterado'
 import { BadgeStatus } from '@/components/ui/badge-status'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
@@ -20,6 +28,7 @@ import { Modal } from '@/components/ui/modal'
 import { Abas } from '@/components/ui/abas'
 import { Separator } from '@/components/ui/separator'
 import { exportarCsv } from '@/lib/exportar-csv'
+import { submeterFormularioPorId } from '@/lib/atalhos/submeter-formulario'
 import {
   mascaraDocumento,
   mascaraTelefone,
@@ -71,6 +80,7 @@ type Fornecedor = {
   observacoes?: string | null
   condicaoPagamento?: string | null
   prazoEntrega?: number | null
+  aceitaNFe55?: boolean
 }
 
 type FormFornecedor = {
@@ -102,6 +112,7 @@ type FormFornecedor = {
   observacoes: string
   condicaoPagamento: string
   prazoEntrega: string
+  aceitaNFe55: boolean
   contatos: ContatoForm[]
   enderecos: EnderecoForm[]
 }
@@ -149,6 +160,7 @@ const FORM_VAZIO: FormFornecedor = {
   observacoes: '',
   condicaoPagamento: '',
   prazoEntrega: '',
+  aceitaNFe55: true,
   contatos: [],
   enderecos: [],
 }
@@ -191,6 +203,7 @@ function fornecedorParaForm(f: Fornecedor): FormFornecedor {
     observacoes: f.observacoes || '',
     condicaoPagamento: f.condicaoPagamento || '',
     prazoEntrega: f.prazoEntrega != null ? String(f.prazoEntrega) : '',
+    aceitaNFe55: f.aceitaNFe55 ?? true,
     contatos: Array.isArray((f as any).contatos)
       ? (f as any).contatos.map((ct: any) => ({
           tipo: ct.tipo,
@@ -383,37 +396,6 @@ function CampoInput({
   )
 }
 
-function CampoSelect({
-  rotulo, valor, aoMudar, opcoes, obrigatorio, mensagemDeErro,
-}: {
-  rotulo: string; valor: string; aoMudar: (v: string) => void
-  opcoes: { value: string; label: string }[]; obrigatorio?: boolean; mensagemDeErro?: string
-}) {
-  return (
-    <div className="space-y-1">
-      <label className="text-sm font-medium leading-none">
-        {rotulo}
-        {obrigatorio && <span className="ml-0.5 text-destructive">*</span>}
-      </label>
-      <select
-        className={cn(
-          'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-          mensagemDeErro && 'border-destructive'
-        )}
-        value={valor}
-        onChange={(e) => aoMudar(e.target.value)}
-        required={obrigatorio}
-      >
-        <option value="">Selecione</option>
-        {opcoes.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
-      {mensagemDeErro && <p className="text-sm text-destructive">{mensagemDeErro}</p>}
-    </div>
-  )
-}
-
 function CampoCheckbox({ rotulo, valor, aoMudar, ajuda }: {
   rotulo: string; valor: boolean; aoMudar: (v: boolean) => void; ajuda?: string
 }) {
@@ -453,6 +435,7 @@ function ConteudoDaPaginaDeFornecedores() {
   const [salvando, setSalvando] = useState(false)
 
   const [form, setForm] = useState<FormFornecedor>(FORM_VAZIO)
+  const [formInicial, setFormInicial] = useState<FormFornecedor>(() => clonarFormulario(FORM_VAZIO))
   const formRef = useRef(form)
   formRef.current = form
 
@@ -466,6 +449,12 @@ function ConteudoDaPaginaDeFornecedores() {
   const [camposTocados, setCamposTocados] = useState<Set<string>>(() => new Set())
   const [erroSalvar, setErroSalvar] = useState('')
   const [tooltipAberto, setTooltipAberto] = useState<string | null>(null)
+  const refBusca = useRef<HTMLInputElement>(null)
+
+  const teclaNovo = useTeclaDaAcao('novo')
+  const teclaExportar = useTeclaDaAcao('exportar')
+  const teclaSalvar = useTeclaDaAcao('salvar')
+  const teclaCancelar = useTeclaDaAcao('cancelar')
 
   // ─── Validação de abas ───────────────────────────────────────────────────
 
@@ -589,7 +578,9 @@ function ConteudoDaPaginaDeFornecedores() {
   // ─── Modal ──────────────────────────────────────────────────────────────
 
   function abrirModalNovo() {
-    setForm({ ...FORM_VAZIO })
+    const vazio = clonarFormulario(FORM_VAZIO)
+    setForm(vazio)
+    setFormInicial(vazio)
     setModoEdicao(false)
     setIdEmEdicao('')
     setAbaAtiva('identificacao')
@@ -602,7 +593,9 @@ function ConteudoDaPaginaDeFornecedores() {
   }
 
   function abrirModalEdicao(f: Fornecedor) {
-    setForm(fornecedorParaForm(f))
+    const formEdicao = fornecedorParaForm(f)
+    setForm(formEdicao)
+    setFormInicial(clonarFormulario(formEdicao))
     setModoEdicao(true)
     setIdEmEdicao(f.id)
     setAbaAtiva('identificacao')
@@ -614,14 +607,20 @@ function ConteudoDaPaginaDeFornecedores() {
     setModalAberto(true)
   }
 
-  function fecharModal() {
+  const fecharModal = useCallback(() => {
     setModalAberto(false)
     setMensagemDeErro('')
     setErroSalvar('')
     setCamposTocados(new Set())
     setAvisoDuplicidade(null)
     resetarStatus()
-  }
+  }, [resetarStatus])
+
+  const { solicitarFechar, dialogoConfirmacao } = useConfirmarSaida(
+    form,
+    formInicial,
+    fecharModal
+  )
 
   // ─── Campo documento unificado ───────────────────────────────────────────
 
@@ -762,6 +761,7 @@ function ConteudoDaPaginaDeFornecedores() {
       observacoes: form.observacoes || undefined,
       condicaoPagamento: form.condicaoPagamento || undefined,
       prazoEntrega: form.prazoEntrega ? parseInt(form.prazoEntrega, 10) : undefined,
+      aceitaNFe55: form.aceitaNFe55,
     }
 
     const contatosPayload =
@@ -846,6 +846,41 @@ function ConteudoDaPaginaDeFornecedores() {
 
   const qualquerOperacaoAtiva = salvando || verificandoDocumento || carregandoBrasilApi
 
+  const exportarListaFornecedores = useCallback(() => {
+    exportarCsv(
+      listaFornecedores.map((f) => ({
+        Nome: f.nome,
+        Tipo: f.tipo,
+        Documento: f.tipo === 'PF' ? (f.cpf || '') : (f.cnpj || ''),
+        Email: f.email ?? '',
+        Telefone: f.telefone ?? '',
+        Cidade: f.cidade ?? '',
+        UF: f.estado ?? '',
+        Status: f.ativo ? 'Ativo' : 'Inativo',
+      })),
+      'fornecedores'
+    )
+  }, [listaFornecedores])
+
+  useRegistrarAtalhos(
+    {
+      buscar: () => refBusca.current?.focus(),
+      novo: abrirModalNovo,
+      atualizar: carregarFornecedores,
+      salvar: () => submeterFormularioPorId('form-fornecedor'),
+      cancelar: solicitarFechar,
+      exportar: exportarListaFornecedores,
+    },
+    {
+      buscar: !modalAberto,
+      novo: podeCriar && !modalAberto,
+      atualizar: !modalAberto && !carregandoLista,
+      salvar: modalAberto && formularioValido && !qualquerOperacaoAtiva,
+      cancelar: modalAberto && !qualquerOperacaoAtiva,
+      exportar: !modalAberto,
+    }
+  )
+
   const fornecedoresFiltrados = listaFornecedores.filter((f) => {
     const termo = busca.toLowerCase()
     return (
@@ -868,10 +903,12 @@ function ConteudoDaPaginaDeFornecedores() {
         <p className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">{mensagemDeSucesso}</p>
       )}
 
+      {dialogoConfirmacao}
+
       {/* Modal de criar/editar */}
       <Modal
         aberto={modalAberto}
-        aoFechar={fecharModal}
+        aoFechar={solicitarFechar}
         titulo={modoEdicao ? `Editar fornecedor: ${form.nome}` : 'Novo fornecedor'}
         largura="2xl"
         rodape={
@@ -882,10 +919,24 @@ function ConteudoDaPaginaDeFornecedores() {
               <span />
             )}
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={fecharModal} disabled={salvando}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={solicitarFechar}
+                disabled={salvando}
+                title={tituloComAtalho('Cancelar', teclaCancelar)}
+              >
                 Cancelar
               </Button>
-              <BotaoPrimario form="form-fornecedor" type="submit" disabled={salvando || !formularioValido}>
+              <BotaoPrimario
+                form="form-fornecedor"
+                type="submit"
+                disabled={salvando || !formularioValido}
+                title={tituloComAtalho(
+                  modoEdicao ? 'Salvar' : 'Cadastrar fornecedor',
+                  teclaSalvar
+                )}
+              >
                 {salvando ? (
                   <span className="flex items-center gap-2">
                     <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
@@ -982,6 +1033,7 @@ function ConteudoDaPaginaDeFornecedores() {
                       <CampoInput rotulo="Data de nascimento" valor={form.dataNascimento} aoMudar={(v) => set('dataNascimento', v)} tipo="date" />
                     </div>
                     <CampoSelect rotulo="Indicador IE (NF-e)" valor={form.indicadorIe} aoMudar={(v) => set('indicadorIe', v)} opcoes={INDICADORES_IE} obrigatorio />
+                    <CampoCheckbox rotulo="Aceita NF-e modelo 55" valor={form.aceitaNFe55} aoMudar={(v) => set('aceitaNFe55', v)} />
                   </div>
                 )}
 
@@ -1003,6 +1055,7 @@ function ConteudoDaPaginaDeFornecedores() {
                     <div className="grid gap-4 sm:grid-cols-2">
                       <CampoSelect rotulo="Indicador IE (NF-e)" valor={form.indicadorIe} aoMudar={(v) => set('indicadorIe', v)} opcoes={INDICADORES_IE} obrigatorio />
                       <CampoCheckbox rotulo="Simples Nacional" valor={form.simplesNacional} aoMudar={(v) => set('simplesNacional', v)} />
+                      <CampoCheckbox rotulo="Aceita NF-e modelo 55" valor={form.aceitaNFe55} aoMudar={(v) => set('aceitaNFe55', v)} />
                     </div>
                   </div>
                 )}
@@ -1166,23 +1219,21 @@ function ConteudoDaPaginaDeFornecedores() {
         descricao="Lista de todos os fornecedores cadastrados"
         acoes={
           <div className="flex gap-2">
-            <Button type="button" variant="outline" size="sm"
-              onClick={() => exportarCsv(
-                listaFornecedores.map((f) => ({
-                  Nome: f.nome,
-                  Tipo: f.tipo,
-                  Documento: f.tipo === 'PF' ? (f.cpf || '') : (f.cnpj || ''),
-                  Email: f.email ?? '',
-                  Telefone: f.telefone ?? '',
-                  Cidade: f.cidade ?? '',
-                  Status: f.ativo ? 'Ativo' : 'Inativo',
-                })),
-                'fornecedores'
-              )}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={exportarListaFornecedores}
+              title={tituloComAtalho('Exportar CSV', teclaExportar)}
+            >
               Exportar CSV
             </Button>
             {podeCriar && (
-              <BotaoPrimario type="button" onClick={abrirModalNovo}>
+              <BotaoPrimario
+                type="button"
+                onClick={abrirModalNovo}
+                title={tituloComAtalho('Novo fornecedor', teclaNovo)}
+              >
                 + Novo fornecedor
               </BotaoPrimario>
             )}
@@ -1191,6 +1242,7 @@ function ConteudoDaPaginaDeFornecedores() {
       >
         <div className="mb-4">
           <input
+            ref={refBusca}
             type="text"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}

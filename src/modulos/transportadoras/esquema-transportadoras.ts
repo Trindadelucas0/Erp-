@@ -47,6 +47,7 @@ const camposComuns = {
   // Campos específicos de transportadora
   antt: z.string().max(20).optional(),
   tipoVeiculo: z.string().max(100).optional(),
+  aceitaNFe55: z.boolean().optional().default(true),
 }
 
 export const esquemaDeContatoItem = z.object({

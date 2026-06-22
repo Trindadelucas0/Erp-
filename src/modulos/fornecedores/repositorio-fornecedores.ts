@@ -76,6 +76,7 @@ function mapearParaFornecedorView(pessoa: PessoaComRelacoes) {
     codigoIbge: enderecoPrincipal?.codigoIbge ?? null,
     condicaoPagamento: papelFornecedor.dadosFornecedor?.condicaoPagamento ?? null,
     prazoEntrega: papelFornecedor.dadosFornecedor?.prazoEntrega ?? null,
+    aceitaNFe55: papelFornecedor.dadosFornecedor?.aceitaNFe55 ?? true,
     contatos: pessoa.contatos,
     enderecos: pessoa.enderecos,
     createdAt: pessoa.createdAt,
@@ -151,6 +152,7 @@ type CamposNormalizados = {
   codigoIbge: string | null
   condicaoPagamento: string | null
   prazoEntrega: number | null
+  aceitaNFe55: boolean
   contatosArray?: ContatoItem[]
   enderecosArray?: EnderecoItem[]
 }
@@ -175,6 +177,7 @@ function normalizarDocumento(dados: DadosParaCriarFornecedor | DadosParaEditarFo
     codigoIbge: dados.codigoIbge || null,
     condicaoPagamento: dados.condicaoPagamento || null,
     prazoEntrega: dados.prazoEntrega ?? null,
+    aceitaNFe55: dados.aceitaNFe55 ?? true,
     contatosArray: dados.contatos,
     enderecosArray: dados.enderecos,
   }
@@ -342,6 +345,7 @@ async function buscarPessoaPorDocumentoNaEmpresa(
       codigoIbge: null,
       condicaoPagamento: null,
       prazoEntrega: null,
+      aceitaNFe55: true,
       contatos: [],
       enderecos: [],
       createdAt: pessoa.createdAt,
@@ -512,11 +516,13 @@ async function criar(dados: DadosParaCriarFornecedor, companyId: string) {
           update: {
             condicaoPagamento: campos.condicaoPagamento,
             prazoEntrega: campos.prazoEntrega,
+            aceitaNFe55: campos.aceitaNFe55,
           },
           create: {
             papelId: papelExistente.id,
             condicaoPagamento: campos.condicaoPagamento,
             prazoEntrega: campos.prazoEntrega,
+            aceitaNFe55: campos.aceitaNFe55,
           },
         })
       } else {
@@ -528,6 +534,7 @@ async function criar(dados: DadosParaCriarFornecedor, companyId: string) {
             papelId: papel.id,
             condicaoPagamento: campos.condicaoPagamento,
             prazoEntrega: campos.prazoEntrega,
+            aceitaNFe55: campos.aceitaNFe55,
           },
         })
       }
@@ -599,11 +606,13 @@ async function atualizar(id: string, dados: DadosParaEditarFornecedor) {
         update: {
           condicaoPagamento: campos.condicaoPagamento,
           prazoEntrega: campos.prazoEntrega,
+          aceitaNFe55: campos.aceitaNFe55,
         },
         create: {
           papelId: papelFornecedor.id,
           condicaoPagamento: campos.condicaoPagamento,
           prazoEntrega: campos.prazoEntrega,
+          aceitaNFe55: campos.aceitaNFe55,
         },
       })
     }

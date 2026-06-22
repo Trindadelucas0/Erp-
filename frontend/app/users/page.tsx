@@ -3,11 +3,16 @@
 /**
  * Tela de usuários — listar, criar, editar, desativar e permissões extras.
  */
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
+import { useRegistrarAtalhos } from '@/hooks/use-registrar-atalhos'
+import {
+  tituloComAtalho,
+  useTeclaDaAcao,
+} from '@/components/compartilhado/provedor-de-atalhos'
 import { ConfirmacaoComSenha } from '@/components/compartilhado/confirmacao-com-senha'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import type { PaginaDoSistema } from '@/types/sessao'
@@ -22,11 +27,13 @@ import { Button } from '@/components/ui/button'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { Checkbox } from '@/components/ui/checkbox'
 import { InputPadrao } from '@/components/ui/input-padrao'
+import { Select, classesOption } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
 import { Abas } from '@/components/ui/abas'
 import { Separator } from '@/components/ui/separator'
 import { TituloSecao } from '@/components/ui/titulo-secao'
 import { exportarCsv } from '@/lib/exportar-csv'
+import { submeterFormularioPorId } from '@/lib/atalhos/submeter-formulario'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -152,6 +159,12 @@ function ConteudoDaPaginaDeUsuarios() {
   // Modais de ação
   const [usuarioParaDesativar, setUsuarioParaDesativar] = useState<Usuario | null>(null)
   const [usuarioParaResetarSenha, setUsuarioParaResetarSenha] = useState<Usuario | null>(null)
+  const refBusca = useRef<HTMLInputElement>(null)
+
+  const teclaNovo = useTeclaDaAcao('novo')
+  const teclaExportar = useTeclaDaAcao('exportar')
+  const teclaSalvar = useTeclaDaAcao('salvar')
+  const teclaCancelar = useTeclaDaAcao('cancelar')
   const [novaSenhaReset, setNovaSenhaReset] = useState('')
   const [salvandoResetSenha, setSalvandoResetSenha] = useState(false)
 
@@ -419,6 +432,67 @@ function ConteudoDaPaginaDeUsuarios() {
 
   const operacaoEmAndamento = salvando || alterandoStatusId !== null
 
+  const exportarListaUsuarios = useCallback(() => {
+    exportarCsv(
+      listaDeUsuarios.map((u) => ({
+        Nome: u.name,
+        Email: u.email,
+        Cargo: u.cargo ?? '',
+        Status: u.active ? 'Ativo' : 'Inativo',
+        Papéis: u.roles.map((r) => r.role.name).join('; '),
+        Empresas: u.companies.map((c) => c.company.name).join('; '),
+        Cadastro: calcularStatusUsuario(u) === 'completo' ? 'Completo' : 'Incompleto',
+      })),
+      'usuarios'
+    )
+  }, [listaDeUsuarios])
+
+  const fecharDialogsAbertos = useCallback(() => {
+    if (modalUsuarioAberto) fecharModalUsuario()
+    if (usuarioParaDesativar) setUsuarioParaDesativar(null)
+    if (usuarioParaResetarSenha) setUsuarioParaResetarSenha(null)
+  }, [
+    modalUsuarioAberto,
+    usuarioParaDesativar,
+    usuarioParaResetarSenha,
+  ])
+
+  useRegistrarAtalhos(
+    {
+      buscar: () => refBusca.current?.focus(),
+      novo: abrirModalNovo,
+      atualizar: carregarDadosDaTela,
+      salvar: () => submeterFormularioPorId('form-usuario'),
+      cancelar: fecharDialogsAbertos,
+      exportar: exportarListaUsuarios,
+    },
+    {
+      buscar:
+        !modalUsuarioAberto &&
+        !usuarioParaDesativar &&
+        !usuarioParaResetarSenha,
+      novo:
+        !modalUsuarioAberto &&
+        !usuarioParaDesativar &&
+        !usuarioParaResetarSenha,
+      atualizar:
+        !modalUsuarioAberto &&
+        !usuarioParaDesativar &&
+        !usuarioParaResetarSenha &&
+        !carregandoLista,
+      salvar:
+        modalUsuarioAberto && formularioValido && !salvando,
+      cancelar:
+        modalUsuarioAberto ||
+        Boolean(usuarioParaDesativar) ||
+        Boolean(usuarioParaResetarSenha),
+      exportar:
+        !modalUsuarioAberto &&
+        !usuarioParaDesativar &&
+        !usuarioParaResetarSenha,
+    }
+  )
+
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -533,6 +607,7 @@ function ConteudoDaPaginaDeUsuarios() {
                 variant="outline"
                 onClick={fecharModalUsuario}
                 disabled={salvando}
+                title={tituloComAtalho('Cancelar', teclaCancelar)}
               >
                 Cancelar
               </Button>
@@ -540,6 +615,10 @@ function ConteudoDaPaginaDeUsuarios() {
                 form="form-usuario"
                 type="submit"
                 disabled={salvando || !formularioValido}
+                title={tituloComAtalho(
+                  modoEdicao ? 'Salvar' : 'Criar usuário',
+                  teclaSalvar
+                )}
               >
                 {salvando ? (
                   <span className="flex items-center gap-2">
@@ -760,24 +839,16 @@ function ConteudoDaPaginaDeUsuarios() {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() =>
-                exportarCsv(
-                  listaDeUsuarios.map((u) => ({
-                    Nome: u.name,
-                    Email: u.email,
-                    Cargo: u.cargo ?? '',
-                    Status: u.active ? 'Ativo' : 'Inativo',
-                    Papéis: u.roles.map((r) => r.role.name).join('; '),
-                    Empresas: u.companies.map((c) => c.company.name).join('; '),
-                    Cadastro: calcularStatusUsuario(u) === 'completo' ? 'Completo' : 'Incompleto',
-                  })),
-                  'usuarios'
-                )
-              }
+              onClick={exportarListaUsuarios}
+              title={tituloComAtalho('Exportar CSV', teclaExportar)}
             >
               Exportar CSV
             </Button>
-            <BotaoPrimario type="button" onClick={abrirModalNovo}>
+            <BotaoPrimario
+              type="button"
+              onClick={abrirModalNovo}
+              title={tituloComAtalho('Novo usuário', teclaNovo)}
+            >
               + Novo usuário
             </BotaoPrimario>
           </div>
@@ -786,33 +857,34 @@ function ConteudoDaPaginaDeUsuarios() {
         {/* Barra de busca e filtros */}
         <div className="mb-4 flex flex-wrap gap-2">
           <input
+            ref={refBusca}
             type="text"
             value={termoBusca}
             onChange={(e) => setTermoBusca(e.target.value)}
             placeholder="Buscar por nome ou e-mail..."
             className="h-9 flex-1 min-w-[200px] rounded-md border border-border bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
-          <select
+          <Select
+            className="h-9 w-auto"
             value={filtroStatus}
             onChange={(e) => setFiltroStatus(e.target.value as typeof filtroStatus)}
-            className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           >
-            <option value="todos">Todos os status</option>
-            <option value="ativo">Ativo</option>
-            <option value="inativo">Inativo</option>
-          </select>
-          <select
+            <option value="todos" className={classesOption}>Todos os status</option>
+            <option value="ativo" className={classesOption}>Ativo</option>
+            <option value="inativo" className={classesOption}>Inativo</option>
+          </Select>
+          <Select
+            className="h-9 w-auto"
             value={filtroPapel}
             onChange={(e) => setFiltroPapel(e.target.value)}
-            className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           >
-            <option value="">Todos os papéis</option>
+            <option value="" className={classesOption}>Todos os papéis</option>
             {listaDePapeis.map((p) => (
-              <option key={p.id} value={p.id}>
+              <option key={p.id} value={p.id} className={classesOption}>
                 {p.name}
               </option>
             ))}
-          </select>
+          </Select>
           {(termoBusca || filtroStatus !== 'todos' || filtroPapel) && (
             <button
               type="button"

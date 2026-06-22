@@ -5,7 +5,9 @@
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import type { Prisma } from '@prisma/client'
-import type { DadosParaCriarCliente, DadosParaEditarCliente } from './esquema-clientes.js'
+import type { DadosParaCriarCliente, DadosParaEditarCliente, DadosParaAprovacaoDeCliente } from './esquema-clientes.js'
+import { STATUS_APROVACAO } from './regras-cliente.js'
+import { randomUUID } from 'node:crypto'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -77,7 +79,16 @@ function mapearParaClienteView(pessoa: PessoaComRelacoes) {
     codigoIbge: enderecoPrincipal?.codigoIbge ?? null,
     aceitaNFe55: papelCliente.dadosCliente?.aceitaNFe55 ?? true,
     calculaComissao: papelCliente.dadosCliente?.calculaComissao ?? false,
+    vendedorId: papelCliente.dadosCliente?.vendedorId ?? null,
     statusAprovacao: papelCliente.dadosCliente?.statusAprovacao ?? 'ativo',
+    tipoCliente: papelCliente.dadosCliente?.tipoCliente ?? null,
+    limiteCredito: papelCliente.dadosCliente?.limiteCredito
+      ? Number(papelCliente.dadosCliente.limiteCredito)
+      : null,
+    condicaoPagamento: papelCliente.dadosCliente?.condicaoPagamento ?? null,
+    motivoReprovacao: papelCliente.dadosCliente?.motivoReprovacao ?? null,
+    aprovadoPorId: papelCliente.dadosCliente?.aprovadoPorId ?? null,
+    aprovadoEm: papelCliente.dadosCliente?.aprovadoEm ?? null,
     contatos: pessoa.contatos,
     enderecos: pessoa.enderecos,
     createdAt: pessoa.createdAt,
@@ -354,7 +365,14 @@ async function buscarPessoaPorDocumentoNaEmpresa(
       codigoIbge: null,
       aceitaNFe55: true,
       calculaComissao: false,
+      vendedorId: null,
       statusAprovacao: 'ativo',
+      tipoCliente: null,
+      limiteCredito: null,
+      condicaoPagamento: null,
+      motivoReprovacao: null,
+      aprovadoPorId: null,
+      aprovadoEm: null,
       contatos: [],
       enderecos: [],
       createdAt: pessoa.createdAt,
@@ -427,12 +445,12 @@ async function criar(dados: DadosParaCriarCliente, companyId: string) {
         })
         await tx.dadosCliente.upsert({
           where: { papelId: papelExistente.id },
-          update: { aceitaNFe55: campos.aceitaNFe55 },
+          update: { aceitaNFe55: campos.aceitaNFe55, statusAprovacao: STATUS_APROVACAO.PENDENTE },
           create: {
             papelId: papelExistente.id,
             aceitaNFe55: campos.aceitaNFe55,
             calculaComissao: false,
-            statusAprovacao: 'ativo',
+            statusAprovacao: STATUS_APROVACAO.PENDENTE,
           },
         })
       } else {
@@ -444,7 +462,7 @@ async function criar(dados: DadosParaCriarCliente, companyId: string) {
             papelId: papel.id,
             aceitaNFe55: campos.aceitaNFe55,
             calculaComissao: false,
-            statusAprovacao: 'ativo',
+            statusAprovacao: STATUS_APROVACAO.PENDENTE,
           },
         })
       }
@@ -473,7 +491,7 @@ async function criar(dados: DadosParaCriarCliente, companyId: string) {
           papelId: papel.id,
           aceitaNFe55: campos.aceitaNFe55,
           calculaComissao: false,
-          statusAprovacao: 'ativo',
+          statusAprovacao: STATUS_APROVACAO.PENDENTE,
         },
       })
 
@@ -522,14 +540,26 @@ async function atualizar(id: string, dados: DadosParaEditarCliente) {
     })
 
     if (papelCliente) {
+      const dadosAtuais = await tx.dadosCliente.findUnique({
+        where: { papelId: papelCliente.id },
+      })
+
       await tx.dadosCliente.upsert({
         where: { papelId: papelCliente.id },
-        update: { aceitaNFe55: campos.aceitaNFe55 },
+        update: {
+          aceitaNFe55: campos.aceitaNFe55,
+          ...(dadosAtuais?.statusAprovacao === STATUS_APROVACAO.REPROVADO
+            ? {
+                statusAprovacao: STATUS_APROVACAO.PENDENTE,
+                motivoReprovacao: null,
+              }
+            : {}),
+        },
         create: {
           papelId: papelCliente.id,
           aceitaNFe55: campos.aceitaNFe55,
           calculaComissao: false,
-          statusAprovacao: 'ativo',
+          statusAprovacao: STATUS_APROVACAO.PENDENTE,
         },
       })
     }
@@ -656,8 +686,220 @@ async function criarEnderecos(tx: TxCliente, pessoaId: string, campos: CamposNor
   }
 }
 
+async function listarPendentes(companyId: string) {
+  const pessoas = await clientePrisma.pessoa.findMany({
+    where: {
+      companyId,
+      papeis: {
+        some: {
+          papel: 'cliente',
+          dadosCliente: { statusAprovacao: STATUS_APROVACAO.PENDENTE },
+        },
+      },
+    },
+    include: INCLUDE_COMPLETO,
+    orderBy: { createdAt: 'asc' },
+  })
+  return pessoas.map(mapearParaClienteView)
+}
+
+async function aprovar(
+  id: string,
+  dados: Extract<DadosParaAprovacaoDeCliente, { acao: 'aprovar' }>,
+  aprovadoPorId: string
+) {
+  const pessoa = await clientePrisma.pessoa.findUnique({
+    where: { id },
+    include: INCLUDE_COMPLETO,
+  })
+
+  if (!pessoa || !pessoa.papeis.length) {
+    throw new ErroDaAplicacao('Cliente não encontrado', 404)
+  }
+
+  const papelCliente = pessoa.papeis[0]
+  const dadosCliente = papelCliente.dadosCliente
+
+  if (!dadosCliente || dadosCliente.statusAprovacao !== STATUS_APROVACAO.PENDENTE) {
+    throw new ErroDaAplicacao('Cliente não está pendente de aprovação', 400)
+  }
+
+  const token = randomUUID()
+  const expiraEm = new Date()
+  expiraEm.setDate(expiraEm.getDate() + 30)
+
+  const emailDestino =
+    pessoa.contatos.find((c) => c.tipo === 'email' && c.principal)?.valor ??
+    pessoa.contatos.find((c) => c.tipo === 'email')?.valor ??
+    null
+
+  await clientePrisma.$transaction(async (tx) => {
+    await tx.dadosCliente.update({
+      where: { id: dadosCliente.id },
+      data: {
+        statusAprovacao: STATUS_APROVACAO.AGUARDANDO_ASSINATURA,
+        tipoCliente: dados.tipoCliente,
+        limiteCredito: dados.limiteCredito,
+        condicaoPagamento: dados.condicaoPagamento,
+        vendedorId: dados.vendedorId || null,
+        calculaComissao: dados.calculaComissao,
+        motivoReprovacao: null,
+        aprovadoPorId,
+        aprovadoEm: new Date(),
+      },
+    })
+
+    await tx.clienteAssinatura.create({
+      data: {
+        dadosClienteId: dadosCliente.id,
+        token,
+        status: 'pendente',
+        destinatario: emailDestino,
+        enviadoEm: new Date(),
+        expiraEm,
+      },
+    })
+  })
+
+  const atualizado = await buscarPorId(id)
+  return { cliente: atualizado!, tokenAssinatura: token }
+}
+
+async function reprovar(
+  id: string,
+  motivoReprovacao: string,
+  aprovadoPorId: string
+) {
+  const pessoa = await clientePrisma.pessoa.findUnique({
+    where: { id },
+    include: INCLUDE_COMPLETO,
+  })
+
+  if (!pessoa || !pessoa.papeis.length) {
+    throw new ErroDaAplicacao('Cliente não encontrado', 404)
+  }
+
+  const dadosCliente = pessoa.papeis[0].dadosCliente
+
+  if (!dadosCliente || dadosCliente.statusAprovacao !== STATUS_APROVACAO.PENDENTE) {
+    throw new ErroDaAplicacao('Cliente não está pendente de aprovação', 400)
+  }
+
+  await clientePrisma.dadosCliente.update({
+    where: { id: dadosCliente.id },
+    data: {
+      statusAprovacao: STATUS_APROVACAO.REPROVADO,
+      motivoReprovacao,
+      aprovadoPorId,
+      aprovadoEm: new Date(),
+    },
+  })
+
+  return buscarPorId(id)
+}
+
+async function buscarAssinaturaPorToken(token: string) {
+  const assinatura = await clientePrisma.clienteAssinatura.findUnique({
+    where: { token },
+    include: {
+      dadosCliente: {
+        include: {
+          papel: {
+            include: {
+              pessoa: {
+                include: {
+                  contatos: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+
+  if (!assinatura) return null
+
+  if (assinatura.expiraEm && assinatura.expiraEm < new Date() && assinatura.status !== 'assinado') {
+    await clientePrisma.clienteAssinatura.update({
+      where: { id: assinatura.id },
+      data: { status: 'expirado' },
+    })
+    return { ...assinatura, status: 'expirado' }
+  }
+
+  if (assinatura.status === 'pendente' && !assinatura.visualizadoEm) {
+    await clientePrisma.clienteAssinatura.update({
+      where: { id: assinatura.id },
+      data: { visualizadoEm: new Date(), status: 'visualizado' },
+    })
+  }
+
+  const pessoa = assinatura.dadosCliente.papel.pessoa
+
+  return {
+    token: assinatura.token,
+    status: assinatura.status,
+    expiraEm: assinatura.expiraEm,
+    assinadoEm: assinatura.assinadoEm,
+    cliente: {
+      nome: pessoa.nome,
+      tipo: pessoa.tipo,
+      cpf: pessoa.cpf,
+      cnpj: pessoa.cnpj,
+    },
+  }
+}
+
+async function confirmarAssinatura(
+  token: string,
+  nomeAssinante: string,
+  ipAssinante?: string
+) {
+  const assinatura = await clientePrisma.clienteAssinatura.findUnique({
+    where: { token },
+    include: { dadosCliente: true },
+  })
+
+  if (!assinatura) {
+    throw new ErroDaAplicacao('Link de assinatura inválido', 404)
+  }
+
+  if (assinatura.status === 'assinado') {
+    throw new ErroDaAplicacao('Este cadastro já foi assinado', 400)
+  }
+
+  if (assinatura.expiraEm && assinatura.expiraEm < new Date()) {
+    throw new ErroDaAplicacao('Link de assinatura expirado', 400)
+  }
+
+  if (assinatura.dadosCliente.statusAprovacao !== STATUS_APROVACAO.AGUARDANDO_ASSINATURA) {
+    throw new ErroDaAplicacao('Cadastro não está aguardando assinatura', 400)
+  }
+
+  await clientePrisma.$transaction(async (tx) => {
+    await tx.clienteAssinatura.update({
+      where: { id: assinatura.id },
+      data: {
+        status: 'assinado',
+        assinadoEm: new Date(),
+        nomeAssinante,
+        ipAssinante: ipAssinante ?? null,
+      },
+    })
+
+    await tx.dadosCliente.update({
+      where: { id: assinatura.dadosClienteId },
+      data: { statusAprovacao: STATUS_APROVACAO.ATIVO },
+    })
+  })
+
+  return buscarAssinaturaPorToken(token)
+}
+
 export const repositorioDeClientes = {
   listarPorEmpresa,
+  listarPendentes,
   buscarPorId,
   buscarPorCpfNaEmpresa,
   buscarPorCnpjNaEmpresa,
@@ -665,4 +907,8 @@ export const repositorioDeClientes = {
   criar,
   atualizar,
   alterarStatus,
+  aprovar,
+  reprovar,
+  buscarAssinaturaPorToken,
+  confirmarAssinatura,
 }

@@ -8,18 +8,28 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 import { cn } from '@/lib/utils'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
+import { CampoSelect } from '@/components/compartilhado/campo-select'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { usePermissao } from '@/hooks/use-permissao'
+import { useRegistrarAtalhos } from '@/hooks/use-registrar-atalhos'
+import {
+  tituloComAtalho,
+  useTeclaDaAcao,
+} from '@/components/compartilhado/provedor-de-atalhos'
 import { useValidacaoDeAbas, type ConfigDeAba } from '@/hooks/use-validacao-de-abas'
+import { useConfirmarSaida } from '@/hooks/use-confirmar-saida'
+import { clonarFormulario } from '@/lib/formulario-alterado'
 import { BadgeStatus } from '@/components/ui/badge-status'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { InputPadrao } from '@/components/ui/input-padrao'
+import { Select, classesOption } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
 import { Abas } from '@/components/ui/abas'
 import { Separator } from '@/components/ui/separator'
 import { exportarCsv } from '@/lib/exportar-csv'
+import { submeterFormularioPorId } from '@/lib/atalhos/submeter-formulario'
 import {
   mascaraDocumento,
   mascaraTelefone,
@@ -33,6 +43,11 @@ import {
 import { buscarDadosCnpj } from '@/lib/brasil-api'
 import { ListaContatos, type ContatoForm } from '@/components/clientes/lista-contatos'
 import { ListaEnderecos, ENDERECO_VAZIO, type EnderecoForm } from '@/components/clientes/lista-enderecos'
+import Link from 'next/link'
+import {
+  rotuloStatusAprovacao,
+  varianteBadgeAprovacao,
+} from '@/lib/status-cliente'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -72,6 +87,12 @@ type Cliente = {
   observacoes?: string | null
   aceitaNFe55?: boolean
   statusAprovacao?: string
+  motivoReprovacao?: string | null
+  tipoCliente?: string | null
+  limiteCredito?: number | null
+  condicaoPagamento?: string | null
+  vendedorId?: string | null
+  calculaComissao?: boolean
 }
 
 type FormCliente = {
@@ -336,6 +357,38 @@ function gerarPendenciasDoForm(form: FormCliente): string[] {
   )
 }
 
+const ROTULO_POR_ABA: Record<string, string> = {
+  identificacao: 'Identificação',
+  contato: 'Contato',
+  endereco: 'Endereço',
+}
+
+const ORDEM_ABAS = ['identificacao', 'contato', 'endereco'] as const
+
+const CAMPOS_POR_ABA: Record<string, string[]> = {
+  identificacao: ['nome', 'documento', 'suframa'],
+  contato: ['email', 'telefone', 'contatos'],
+  endereco: ['cep', 'logradouro', 'numero', 'bairro', 'cidade', 'estado', 'codigoIbge', 'enderecos'],
+}
+
+function gerarPendenciasDaAba(abaId: string, form: FormCliente): string[] {
+  const rotulo = ROTULO_POR_ABA[abaId]
+  return Object.entries(validarFormCliente(form))
+    .filter(([campo]) => PREFIXO_ERRO_POR_CAMPO[campo] === rotulo)
+    .map(([, mensagem]) => mensagem)
+    .filter((m): m is string => !!m)
+}
+
+function proximaAba(abaAtual: string): string {
+  const i = ORDEM_ABAS.indexOf(abaAtual as (typeof ORDEM_ABAS)[number])
+  return i >= 0 && i < ORDEM_ABAS.length - 1 ? ORDEM_ABAS[i + 1] : abaAtual
+}
+
+function abaAnterior(abaAtual: string): string {
+  const i = ORDEM_ABAS.indexOf(abaAtual as (typeof ORDEM_ABAS)[number])
+  return i > 0 ? ORDEM_ABAS[i - 1] : abaAtual
+}
+
 function calcularStatusCadastro(cliente: Cliente): { completo: boolean; pendencias: string[] } {
   const erros: string[] = []
 
@@ -428,51 +481,6 @@ function CampoInput({
   )
 }
 
-function CampoSelect({
-  rotulo,
-  valor,
-  aoMudar,
-  opcoes,
-  obrigatorio,
-  mensagemDeErro,
-}: {
-  rotulo: string
-  valor: string
-  aoMudar: (v: string) => void
-  opcoes: { value: string; label: string }[]
-  obrigatorio?: boolean
-  mensagemDeErro?: string
-}) {
-  return (
-    <div className="space-y-1">
-      <label className="text-sm font-medium leading-none">
-        {rotulo}
-        {obrigatorio && <span className="ml-0.5 text-destructive">*</span>}
-      </label>
-      <select
-        className={cn(
-          'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-          mensagemDeErro && 'border-destructive'
-        )}
-        value={valor}
-        onChange={(e) => aoMudar(e.target.value)}
-        required={obrigatorio}
-        aria-invalid={!!mensagemDeErro}
-      >
-        <option value="">Selecione</option>
-        {opcoes.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-      {mensagemDeErro && (
-        <p className="text-sm text-destructive">{mensagemDeErro}</p>
-      )}
-    </div>
-  )
-}
-
 function CampoCheckbox({
   rotulo,
   valor,
@@ -505,11 +513,13 @@ function ConteudoDaPaginaDeClientes() {
   const podeCriar = usePermissao('clientes:create')
   const podeEditar = usePermissao('clientes:edit')
   const podeDesativar = usePermissao('clientes:delete')
+  const podeAprovar = usePermissao('clientes:approve')
 
   const [listaDeClientes, setListaDeClientes] = useState<Cliente[]>([])
   const [mensagemDeErro, setMensagemDeErro] = useState('')
   const [mensagemDeSucesso, setMensagemDeSucesso] = useState('')
   const [busca, setBusca] = useState('')
+  const [filtroStatus, setFiltroStatus] = useState<string>('todos')
   const [carregandoLista, setCarregandoLista] = useState(false)
   const [alterandoStatus, setAlterandoStatus] = useState<string | null>(null)
 
@@ -520,6 +530,7 @@ function ConteudoDaPaginaDeClientes() {
   const [salvando, setSalvando] = useState(false)
 
   const [form, setForm] = useState<FormCliente>(FORM_VAZIO)
+  const [formInicial, setFormInicial] = useState<FormCliente>(() => clonarFormulario(FORM_VAZIO))
   const formRef = useRef(form)
   formRef.current = form
 
@@ -533,6 +544,14 @@ function ConteudoDaPaginaDeClientes() {
   const [carregandoBrasilApi, setCarregandoBrasilApi] = useState(false)
   const [camposTocados, setCamposTocados] = useState<Set<string>>(() => new Set())
   const [erroSalvar, setErroSalvar] = useState('')
+  const [abasVisitadas, setAbasVisitadas] = useState<Set<string>>(() => new Set(['identificacao']))
+  const [errosDaAbaAtual, setErrosDaAbaAtual] = useState<string[]>([])
+  const refBusca = useRef<HTMLInputElement>(null)
+
+  const teclaNovo = useTeclaDaAcao('novo')
+  const teclaExportar = useTeclaDaAcao('exportar')
+  const teclaSalvar = useTeclaDaAcao('salvar')
+  const teclaCancelar = useTeclaDaAcao('cancelar')
 
   // ─── Validação de abas ────────────────────────────────────────────────────
 
@@ -606,6 +625,8 @@ function ConteudoDaPaginaDeClientes() {
     validarTodasAsAbas,
     irParaAbaComErro,
     resetarStatus,
+    validarAba,
+    abaLiberada,
   } = useValidacaoDeAbas(configAbas)
 
   const abasComStatus = [
@@ -617,6 +638,22 @@ function ConteudoDaPaginaDeClientes() {
   const errosForm = useMemo(() => validarFormCliente(form), [form])
   const documentoDuplicado = avisoDuplicidade?.tipo === 'cliente_existente'
   const formularioValido = Object.keys(errosForm).length === 0 && !documentoDuplicado
+
+  const etapaAtualLiberada =
+    abaLiberada(abaAtiva) && !(abaAtiva === 'identificacao' && documentoDuplicado)
+
+  function abaPermitida(id: string): boolean {
+    return abasVisitadas.has(id)
+  }
+
+  const tocarCamposDaAba = useCallback((abaId: string) => {
+    const campos = CAMPOS_POR_ABA[abaId] ?? []
+    setCamposTocados((anterior) => {
+      const proximo = new Set(anterior)
+      for (const campo of campos) proximo.add(campo)
+      return proximo
+    })
+  }, [])
 
   useEffect(() => {
     if (modalAberto) validarTodasAsAbas()
@@ -668,7 +705,9 @@ function ConteudoDaPaginaDeClientes() {
   // ─── Modal ────────────────────────────────────────────────────────────────
 
   function abrirModalNovo() {
-    setForm({ ...FORM_VAZIO })
+    const vazio = clonarFormulario(FORM_VAZIO)
+    setForm(vazio)
+    setFormInicial(vazio)
     setModoEdicao(false)
     setIdEmEdicao('')
     setAbaAtiva('identificacao')
@@ -676,12 +715,22 @@ function ConteudoDaPaginaDeClientes() {
     setErroSalvar('')
     setCamposTocados(new Set())
     setAvisoDuplicidade(null)
+    setAbasVisitadas(new Set(['identificacao']))
+    setErrosDaAbaAtual([])
     resetarStatus()
     setModalAberto(true)
   }
 
   function abrirModalEdicao(cliente: Cliente) {
-    setForm(clienteParaForm(cliente))
+    if (!podeAprovar && cliente.statusAprovacao &&
+        cliente.statusAprovacao !== 'pendente_aprovacao' &&
+        cliente.statusAprovacao !== 'reprovado') {
+      setMensagemDeErro('Cadastro não pode ser editado neste status.')
+      return
+    }
+    const f = clienteParaForm(cliente)
+    setForm(f)
+    setFormInicial(clonarFormulario(f))
     setModoEdicao(true)
     setIdEmEdicao(cliente.id)
     setAbaAtiva('identificacao')
@@ -689,17 +738,58 @@ function ConteudoDaPaginaDeClientes() {
     setErroSalvar('')
     setCamposTocados(new Set())
     setAvisoDuplicidade(null)
+    setAbasVisitadas(new Set(['identificacao']))
+    setErrosDaAbaAtual([])
     resetarStatus()
     setModalAberto(true)
   }
 
-  function fecharModal() {
+  const fecharModal = useCallback(() => {
     setModalAberto(false)
     setMensagemDeErro('')
     setErroSalvar('')
     setCamposTocados(new Set())
     setAvisoDuplicidade(null)
+    setAbasVisitadas(new Set(['identificacao']))
+    setErrosDaAbaAtual([])
     resetarStatus()
+  }, [resetarStatus])
+
+  const { solicitarFechar, dialogoConfirmacao } = useConfirmarSaida(
+    form,
+    formInicial,
+    fecharModal
+  )
+
+  function aoMudarAba(id: string) {
+    if (!abaPermitida(id)) return
+    setErrosDaAbaAtual([])
+    setAbaAtiva(id)
+  }
+
+  function aoAvancar() {
+    if (abaAtiva === 'identificacao' && documentoDuplicado) {
+      tocarCamposDaAba('identificacao')
+      setErrosDaAbaAtual([avisoDuplicidade?.mensagem ?? 'Documento já cadastrado'])
+      return
+    }
+
+    const ok = validarAba(abaAtiva)
+    if (!ok) {
+      tocarCamposDaAba(abaAtiva)
+      setErrosDaAbaAtual(gerarPendenciasDaAba(abaAtiva, form))
+      return
+    }
+
+    setErrosDaAbaAtual([])
+    const proxima = proximaAba(abaAtiva)
+    setAbasVisitadas((anterior) => new Set([...anterior, proxima]))
+    setAbaAtiva(proxima)
+  }
+
+  function aoVoltar() {
+    setErrosDaAbaAtual([])
+    setAbaAtiva(abaAnterior(abaAtiva))
   }
 
   // ─── Campo documento unificado ────────────────────────────────────────────
@@ -923,7 +1013,11 @@ function ConteudoDaPaginaDeClientes() {
     if (!formularioValido) {
       validarTodasAsAbas()
       const abaComErro = irParaAbaComErro()
-      if (abaComErro) setAbaAtiva(abaComErro)
+      if (abaComErro) {
+        setAbaAtiva(abaComErro)
+        tocarCamposDaAba(abaComErro)
+        setErrosDaAbaAtual(gerarPendenciasDaAba(abaComErro, form))
+      }
       return
     }
 
@@ -935,7 +1029,7 @@ function ConteudoDaPaginaDeClientes() {
         setMensagemDeSucesso('Cliente atualizado!')
       } else {
         await clienteHttp.post('/clientes', corpo)
-        setMensagemDeSucesso('Cliente cadastrado!')
+        setMensagemDeSucesso('Cadastro enviado para aprovação!')
       }
       fecharModal()
       await carregarClientes()
@@ -979,15 +1073,62 @@ function ConteudoDaPaginaDeClientes() {
   // Bloqueia qualquer interação durante operações assíncronas
   const qualquerOperacaoAtiva = salvando || verificandoDocumento || carregandoBrasilApi
 
+  const exportarListaClientes = useCallback(() => {
+    exportarCsv(
+      listaDeClientes.map((c) => ({
+        Tipo: c.tipo,
+        Nome: c.nome,
+        'CPF/CNPJ': formatarDocumentoTabela(c),
+        Email: c.email || '',
+        Telefone: c.telefone ? mascaraTelefone(c.telefone) : '',
+        Cidade: c.cidade || '',
+        UF: c.estado || '',
+        Status: c.ativo ? 'Ativo' : 'Inativo',
+        'Aprovação': rotuloStatusAprovacao(c.statusAprovacao),
+      })),
+      'clientes'
+    )
+  }, [listaDeClientes])
+
+  useRegistrarAtalhos(
+    {
+      buscar: () => refBusca.current?.focus(),
+      novo: abrirModalNovo,
+      atualizar: carregarClientes,
+      salvar: () => submeterFormularioPorId('form-cliente'),
+      cancelar: solicitarFechar,
+      exportar: exportarListaClientes,
+    },
+    {
+      buscar: !modalAberto,
+      novo: podeCriar && !modalAberto,
+      atualizar: !modalAberto && !carregandoLista,
+      salvar:
+        modalAberto &&
+        abaAtiva === 'endereco' &&
+        formularioValido &&
+        !qualquerOperacaoAtiva,
+      cancelar: modalAberto && !qualquerOperacaoAtiva,
+      exportar: !modalAberto,
+    }
+  )
+
   const clientesFiltrados = listaDeClientes.filter((c) => {
     const termo = busca.toLowerCase()
-    return (
+    const matchBusca =
       c.nome.toLowerCase().includes(termo) ||
       (c.cpf && c.cpf.includes(busca.replace(/\D/g, ''))) ||
       (c.cnpj && c.cnpj.includes(busca.replace(/\D/g, ''))) ||
       (c.email && c.email.toLowerCase().includes(termo)) ||
       (c.cidade && c.cidade.toLowerCase().includes(termo))
-    )
+
+    const status = c.statusAprovacao ?? 'ativo'
+    const matchStatus =
+      filtroStatus === 'todos' ||
+      (filtroStatus === 'ativo' && status === 'ativo') ||
+      status === filtroStatus
+
+    return matchBusca && matchStatus
   })
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -1005,10 +1146,12 @@ function ConteudoDaPaginaDeClientes() {
         </p>
       )}
 
+      {dialogoConfirmacao}
+
       {/* ── Modal ──────────────────────────────────────────────────────────── */}
       <Modal
         aberto={modalAberto}
-        aoFechar={fecharModal}
+        aoFechar={solicitarFechar}
         titulo={modoEdicao ? `Editar: ${form.nome || 'cliente'}` : 'Novo cliente'}
         descricao={
           modoEdicao
@@ -1017,58 +1160,104 @@ function ConteudoDaPaginaDeClientes() {
         }
         largura="2xl"
         rodape={
-          <div className="flex items-center justify-between gap-3">
-            <div className="hidden min-w-0 flex-1 sm:block">
-              {erroSalvar ? (
-                <p className="text-sm text-destructive">{erroSalvar}</p>
-              ) : (
-                <div className="flex gap-1">
-                  {abasComStatus.map((a, i) => (
-                    <button
-                      key={a.id}
-                      type="button"
-                      onClick={() => setAbaAtiva(a.id)}
-                      disabled={qualquerOperacaoAtiva}
-                      className={`rounded px-2 py-1 text-xs transition-colors disabled:opacity-50 ${
-                        abaAtiva === a.id
-                          ? 'bg-primary/10 text-primary'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      {i + 1}. {a.rotulo}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            {erroSalvar && (
-              <p className="flex-1 text-sm text-destructive sm:hidden">{erroSalvar}</p>
-            )}
-            <div className="flex shrink-0 gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={fecharModal}
-                disabled={qualquerOperacaoAtiva}
-              >
-                Cancelar
-              </Button>
-              <BotaoPrimario
-                form="form-cliente"
-                type="submit"
-                disabled={!formularioValido || qualquerOperacaoAtiva}
-              >
-                {salvando ? (
-                  <span className="flex items-center gap-2">
-                    <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
-                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="31.4" strokeDashoffset="10" />
-                    </svg>
-                    Salvando...
-                  </span>
+          <div className="space-y-3">
+            {(errosDaAbaAtual.length > 0 || erroSalvar) && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {erroSalvar ? (
+                  <p>{erroSalvar}</p>
                 ) : (
-                  modoEdicao ? 'Salvar' : 'Cadastrar cliente'
+                  <ul className="space-y-0.5">
+                    {errosDaAbaAtual.map((erro, i) => (
+                      <li key={i} className="flex items-start gap-1">
+                        <span className="mt-0.5 shrink-0">•</span>
+                        <span>{erro}</span>
+                      </li>
+                    ))}
+                  </ul>
                 )}
-              </BotaoPrimario>
+              </div>
+            )}
+            {!etapaAtualLiberada && abaAtiva !== 'endereco' && errosDaAbaAtual.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                Preencha os campos obrigatórios desta etapa para continuar
+              </p>
+            )}
+            <div className="flex items-center justify-between gap-3">
+              <div className="hidden min-w-0 flex-1 sm:block">
+                <div className="flex gap-1">
+                  {abasComStatus.map((a, i) => {
+                    const desabilitada = !abaPermitida(a.id)
+                    return (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => aoMudarAba(a.id)}
+                        disabled={qualquerOperacaoAtiva || desabilitada}
+                        className={`rounded px-2 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                          abaAtiva === a.id
+                            ? 'bg-primary/10 text-primary'
+                            : desabilitada
+                              ? 'text-muted-foreground/50'
+                              : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {i + 1}. {a.rotulo}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                {abaAtiva !== 'identificacao' && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={aoVoltar}
+                    disabled={qualquerOperacaoAtiva}
+                  >
+                    Voltar
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={solicitarFechar}
+                  disabled={qualquerOperacaoAtiva}
+                  title={tituloComAtalho('Cancelar', teclaCancelar)}
+                >
+                  Cancelar
+                </Button>
+                {abaAtiva !== 'endereco' ? (
+                  <BotaoPrimario
+                    type="button"
+                    onClick={aoAvancar}
+                    disabled={!etapaAtualLiberada || qualquerOperacaoAtiva}
+                  >
+                    {abaAtiva === 'identificacao' ? 'Próximo: Contato' : 'Próximo: Endereço'}
+                  </BotaoPrimario>
+                ) : (
+                  <BotaoPrimario
+                    form="form-cliente"
+                    type="submit"
+                    disabled={!formularioValido || qualquerOperacaoAtiva}
+                    title={tituloComAtalho(
+                      modoEdicao ? 'Salvar' : 'Enviar para aprovação',
+                      teclaSalvar
+                    )}
+                  >
+                    {salvando ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="31.4" strokeDashoffset="10" />
+                        </svg>
+                        Salvando...
+                      </span>
+                    ) : (
+                      modoEdicao ? 'Salvar' : 'Enviar para aprovação'
+                    )}
+                  </BotaoPrimario>
+                )}
+              </div>
             </div>
           </div>
         }
@@ -1117,7 +1306,13 @@ function ConteudoDaPaginaDeClientes() {
           </div>
         )}
 
-        <Abas abas={abasComStatus} abaAtiva={abaAtiva} aoMudar={setAbaAtiva} className="mb-5" />
+        <Abas
+          abas={abasComStatus}
+          abaAtiva={abaAtiva}
+          aoMudar={aoMudarAba}
+          abaDesabilitada={(id) => !abaPermitida(id)}
+          className="mb-5"
+        />
 
         <form id="form-cliente" onSubmit={aoSalvar}>
           {/* ── Aba 1: Identificação ──────────────────────────────────────── */}
@@ -1615,44 +1810,54 @@ function ConteudoDaPaginaDeClientes() {
         titulo="Clientes"
         descricao="Cadastro de clientes pessoa física e jurídica"
         acoes={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            {podeAprovar && (
+              <Link href="/clientes/aprovacao">
+                <Button type="button" variant="outline" size="sm">
+                  Aprovações pendentes
+                </Button>
+              </Link>
+            )}
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() =>
-                exportarCsv(
-                  listaDeClientes.map((c) => ({
-                    Tipo: c.tipo,
-                    Nome: c.nome,
-                    'CPF/CNPJ': formatarDocumentoTabela(c),
-                    Email: c.email || '',
-                    Telefone: c.telefone ? mascaraTelefone(c.telefone) : '',
-                    Cidade: c.cidade || '',
-                    UF: c.estado || '',
-                    Status: c.ativo ? 'Ativo' : 'Inativo',
-                  })),
-                  'clientes'
-                )
-              }
+              onClick={exportarListaClientes}
+              title={tituloComAtalho('Exportar CSV', teclaExportar)}
             >
               Exportar CSV
             </Button>
             {podeCriar && (
-              <BotaoPrimario type="button" onClick={abrirModalNovo}>
+              <BotaoPrimario
+                type="button"
+                onClick={abrirModalNovo}
+                title={tituloComAtalho('Novo cliente', teclaNovo)}
+              >
                 + Novo cliente
               </BotaoPrimario>
             )}
           </div>
         }
       >
-        <div className="mb-3">
+        <div className="mb-3 flex flex-wrap gap-3">
           <input
+            ref={refBusca}
             className="flex h-9 w-full max-w-xs rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             placeholder="Buscar por nome, CPF/CNPJ, email, cidade..."
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
           />
+          <Select
+            className="h-9 w-auto"
+            value={filtroStatus}
+            onChange={(e) => setFiltroStatus(e.target.value)}
+          >
+            <option value="todos" className={classesOption}>Todos os status</option>
+            <option value="pendente_aprovacao" className={classesOption}>Pendente de aprovação</option>
+            <option value="reprovado" className={classesOption}>Reprovado</option>
+            <option value="aguardando_assinatura" className={classesOption}>Aguardando assinatura</option>
+            <option value="ativo" className={classesOption}>Ativo</option>
+          </Select>
         </div>
 
         <div className="overflow-x-auto rounded-md border border-border">
@@ -1664,6 +1869,7 @@ function ConteudoDaPaginaDeClientes() {
                 <th className="px-4 py-3 text-left font-medium">CPF / CNPJ</th>
                 <th className="px-4 py-3 text-left font-medium">Email</th>
                 <th className="px-4 py-3 text-left font-medium">Cidade / UF</th>
+                <th className="px-4 py-3 text-left font-medium">Aprovação</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
                 <th className="px-4 py-3 text-left font-medium">Cadastro</th>
                 {(podeEditar || podeDesativar) && (
@@ -1688,7 +1894,7 @@ function ConteudoDaPaginaDeClientes() {
               {!carregandoLista && clientesFiltrados.length === 0 && (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     className="px-4 py-8 text-center text-sm text-muted-foreground"
                   >
                     {busca
@@ -1732,6 +1938,18 @@ function ConteudoDaPaginaDeClientes() {
                         : cliente.cidade || '—'}
                     </td>
                     <td className="px-4 py-3">
+                      <BadgeStatus variante={varianteBadgeAprovacao(cliente.statusAprovacao)}>
+                        <span title={cliente.motivoReprovacao ?? undefined}>
+                          {rotuloStatusAprovacao(cliente.statusAprovacao)}
+                        </span>
+                      </BadgeStatus>
+                      {cliente.statusAprovacao === 'reprovado' && cliente.motivoReprovacao && (
+                        <p className="mt-1 max-w-[200px] truncate text-xs text-muted-foreground" title={cliente.motivoReprovacao}>
+                          {cliente.motivoReprovacao}
+                        </p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
                       <BadgeStatus variante={cliente.ativo ? 'ativo' : 'inativo'}>
                         {cliente.ativo ? 'Ativo' : 'Inativo'}
                       </BadgeStatus>
@@ -1760,7 +1978,11 @@ function ConteudoDaPaginaDeClientes() {
                     {(podeEditar || podeDesativar) && (
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-2">
-                          {podeEditar && (
+                          {podeEditar &&
+                            (podeAprovar ||
+                              cliente.statusAprovacao === 'pendente_aprovacao' ||
+                              cliente.statusAprovacao === 'reprovado' ||
+                              !cliente.statusAprovacao) && (
                             <Button
                               type="button"
                               variant="outline"

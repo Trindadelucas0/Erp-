@@ -6,6 +6,8 @@
  * Cada endereço de entrega busca CEP via ViaCEP.
  */
 
+import { Select, classesOption, classesSelectCompacto } from '@/components/ui/select'
+
 export type EnderecoForm = {
   tipo: 'principal' | 'entrega'
   apelido: string
@@ -217,17 +219,17 @@ function BlocoEndereco({
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
           <label className="text-xs font-medium leading-none text-muted-foreground">Estado (UF)</label>
-          <select
-            className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          <Select
+            className={classesSelectCompacto}
             value={endereco.estado}
             onChange={(e) => aoAtualizar('estado', e.target.value)}
             disabled={disabled}
           >
-            <option value="">Selecione</option>
+            <option value="" className={classesOption}>Selecione</option>
             {ESTADOS_BR.map((uf) => (
-              <option key={uf} value={uf}>{uf}</option>
+              <option key={uf} value={uf} className={classesOption}>{uf}</option>
             ))}
-          </select>
+          </Select>
         </div>
         <CampoEnderecoInput
           rotulo="Código IBGE"

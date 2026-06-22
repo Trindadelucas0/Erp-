@@ -29,6 +29,10 @@ type RetornoDoHook = {
    * Se ainda não tiver sido validada, mantém 'idle'.
    */
   marcarAbaVisitada: (abaId: string) => void
+  /** Valida só uma aba e atualiza seu status. Retorna true se válida. */
+  validarAba: (abaId: string) => boolean
+  /** Retorna true se a aba estiver com status 'valid'. */
+  abaLiberada: (abaId: string) => boolean
   /** Reseta todos os status para 'idle'. */
   resetarStatus: () => void
 }
@@ -77,6 +81,26 @@ export function useValidacaoDeAbas(abas: ConfigDeAba[]): RetornoDoHook {
     [abas]
   )
 
+  const validarAba = useCallback(
+    (abaId: string): boolean => {
+      const aba = abas.find((a) => a.id === abaId)
+      if (!aba) return false
+
+      const valida = aba.validar()
+      setStatusDasAbas((anterior) => ({
+        ...anterior,
+        [abaId]: valida ? 'valid' : 'error',
+      }))
+      return valida
+    },
+    [abas]
+  )
+
+  const abaLiberada = useCallback(
+    (abaId: string): boolean => statusDasAbas[abaId] === 'valid',
+    [statusDasAbas]
+  )
+
   const resetarStatus = useCallback(() => {
     setStatusDasAbas(statusInicial)
   }, [statusInicial])
@@ -86,6 +110,8 @@ export function useValidacaoDeAbas(abas: ConfigDeAba[]): RetornoDoHook {
     validarTodasAsAbas,
     irParaAbaComErro,
     marcarAbaVisitada,
+    validarAba,
+    abaLiberada,
     resetarStatus,
   }
 }

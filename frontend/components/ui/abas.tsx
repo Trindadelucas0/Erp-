@@ -16,6 +16,8 @@ type Props = {
   abaAtiva: string
   aoMudar: (id: string) => void
   className?: string
+  /** Quando retorna true, a aba fica desabilitada (não clicável). */
+  abaDesabilitada?: (id: string) => boolean
 }
 
 function IndicadorDeStatus({ status }: { status: StatusDaAba }) {
@@ -42,7 +44,7 @@ function IndicadorDeStatus({ status }: { status: StatusDaAba }) {
   return null
 }
 
-export function Abas({ abas, abaAtiva, aoMudar, className }: Props) {
+export function Abas({ abas, abaAtiva, aoMudar, className, abaDesabilitada }: Props) {
   return (
     <div
       className={cn(
@@ -50,14 +52,18 @@ export function Abas({ abas, abaAtiva, aoMudar, className }: Props) {
         className
       )}
     >
-      {abas.map((aba) => (
+      {abas.map((aba) => {
+        const desabilitada = abaDesabilitada?.(aba.id) ?? false
+        return (
         <button
           key={aba.id}
           type="button"
-          onClick={() => aoMudar(aba.id)}
+          onClick={() => !desabilitada && aoMudar(aba.id)}
+          disabled={desabilitada}
           className={cn(
             'relative flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            desabilitada && 'cursor-not-allowed opacity-50 pointer-events-none',
             abaAtiva === aba.id
               ? 'border-b-2 border-primary text-primary'
               : 'text-muted-foreground hover:text-foreground'
@@ -78,7 +84,7 @@ export function Abas({ abas, abaAtiva, aoMudar, className }: Props) {
             </span>
           )}
         </button>
-      ))}
+      )})}
     </div>
   )
 }

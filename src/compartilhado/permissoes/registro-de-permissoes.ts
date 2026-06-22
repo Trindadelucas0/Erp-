@@ -24,6 +24,7 @@ export const ACOES_DO_SISTEMA = {
   create: 'Criar',
   edit: 'Editar',
   delete: 'Excluir',
+  approve: 'Aprovar',
 } as const
 
 export type ChaveDaAcao = keyof typeof ACOES_DO_SISTEMA

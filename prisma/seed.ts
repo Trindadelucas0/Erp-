@@ -79,6 +79,30 @@ async function main() {
     ],
   })
 
+  console.log('Sincronizando atalhos de teclado padrão...')
+
+  const atalhosPadrao = [
+    { acao: 'buscar', tecla: 'F3' },
+    { acao: 'novo', tecla: 'F2' },
+    { acao: 'salvar', tecla: 'F8' },
+    { acao: 'cancelar', tecla: 'Escape' },
+    { acao: 'atualizar', tecla: 'F5' },
+    { acao: 'exportar', tecla: 'Ctrl+E' },
+    { acao: 'ajuda', tecla: 'F1' },
+  ]
+
+  for (const atalho of atalhosPadrao) {
+    await prisma.atalhoTeclado.upsert({
+      where: { acao: atalho.acao },
+      update: {},
+      create: {
+        acao: atalho.acao,
+        tecla: atalho.tecla,
+        ativo: true,
+      },
+    })
+  }
+
   console.log('Seed concluído!')
   console.log(`Admin: ${admin.email} / senha: admin123`)
 }

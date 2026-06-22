@@ -5,12 +5,12 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-const ROTAS_PUBLICAS = ['/login']
+const ROTAS_PUBLICAS = ['/login', '/assinatura']
 
 export function middleware(requisicao: NextRequest) {
   const { pathname } = requisicao.nextUrl
 
-  if (ROTAS_PUBLICAS.includes(pathname)) {
+  if (ROTAS_PUBLICAS.some((rota) => pathname === rota || pathname.startsWith(`${rota}/`))) {
     return NextResponse.next()
   }
 

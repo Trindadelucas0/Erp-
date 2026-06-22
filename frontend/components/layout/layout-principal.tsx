@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { BarraLateral } from '@/components/layout/barra-lateral'
 import { Cabecalho } from '@/components/layout/cabecalho'
+import { ProvedorDeAtalhos } from '@/components/compartilhado/provedor-de-atalhos'
 import {
   Sheet,
   SheetContent,
@@ -17,6 +18,7 @@ export function LayoutPrincipal({ children }: Props) {
   const [menuMobileAberto, setMenuMobileAberto] = useState(false)
 
   return (
+    <ProvedorDeAtalhos>
     <div className="flex min-h-screen bg-background">
       <div className="hidden md:flex">
         <BarraLateral className="fixed inset-y-0 left-0 z-30" />
@@ -36,5 +38,6 @@ export function LayoutPrincipal({ children }: Props) {
         </main>
       </div>
     </div>
+    </ProvedorDeAtalhos>
   )
 }

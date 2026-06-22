@@ -12,6 +12,10 @@ const TITULOS_POR_ROTA: Record<string, string> = {
   '/users': 'Usuários',
   '/papeis': 'Gerenciar papéis',
   '/auditoria': 'Auditoria',
+  '/configuracoes': 'Configurações',
+  '/clientes': 'Clientes',
+  '/fornecedores': 'Fornecedores',
+  '/transportadoras': 'Transportadoras',
 }
 
 type Props = {

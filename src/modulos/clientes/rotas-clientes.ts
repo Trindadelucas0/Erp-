@@ -10,13 +10,22 @@ import { controladorDeClientes } from './controlador-clientes.js'
 export async function rotasDeClientes(aplicacao: FastifyInstance): Promise<void> {
   const auth = [middlewareDeAutenticacao, middlewareEmpresaAtiva]
 
+  // Rotas públicas de assinatura (sem autenticação)
+  aplicacao.get('/assinatura/:token', controladorDeClientes.consultarAssinatura)
+  aplicacao.post('/assinatura/confirmar', controladorDeClientes.confirmarAssinatura)
+
   aplicacao.get(
     '/',
     { preHandler: [...auth, middlewareDeAutorizacao('clientes:view')] },
     controladorDeClientes.listarClientes
   )
 
-  // Deve ficar antes de /:id para não ser interceptada como parâmetro
+  aplicacao.get(
+    '/pendentes',
+    { preHandler: [...auth, middlewareDeAutorizacao('clientes:approve')] },
+    controladorDeClientes.listarClientesPendentes
+  )
+
   aplicacao.get(
     '/por-documento/:documento',
     { preHandler: [...auth, middlewareDeAutorizacao('clientes:view')] },
@@ -33,6 +42,12 @@ export async function rotasDeClientes(aplicacao: FastifyInstance): Promise<void>
     '/:id',
     { preHandler: [...auth, middlewareDeAutorizacao('clientes:edit')] },
     controladorDeClientes.editarCliente
+  )
+
+  aplicacao.patch(
+    '/:id/aprovacao',
+    { preHandler: [...auth, middlewareDeAutorizacao('clientes:approve')] },
+    controladorDeClientes.processarAprovacao
   )
 
   aplicacao.patch(

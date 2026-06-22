@@ -8,9 +8,17 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 import { cn } from '@/lib/utils'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
+import { CampoSelect } from '@/components/compartilhado/campo-select'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { usePermissao } from '@/hooks/use-permissao'
+import { useRegistrarAtalhos } from '@/hooks/use-registrar-atalhos'
+import {
+  tituloComAtalho,
+  useTeclaDaAcao,
+} from '@/components/compartilhado/provedor-de-atalhos'
 import { useValidacaoDeAbas, type ConfigDeAba } from '@/hooks/use-validacao-de-abas'
+import { useConfirmarSaida } from '@/hooks/use-confirmar-saida'
+import { clonarFormulario } from '@/lib/formulario-alterado'
 import { BadgeStatus } from '@/components/ui/badge-status'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
@@ -20,6 +28,7 @@ import { Modal } from '@/components/ui/modal'
 import { Abas } from '@/components/ui/abas'
 import { Separator } from '@/components/ui/separator'
 import { exportarCsv } from '@/lib/exportar-csv'
+import { submeterFormularioPorId } from '@/lib/atalhos/submeter-formulario'
 import {
   mascaraDocumento,
   mascaraTelefone,
@@ -71,6 +80,7 @@ type Transportadora = {
   observacoes?: string | null
   antt?: string | null
   tipoVeiculo?: string | null
+  aceitaNFe55?: boolean
 }
 
 type FormTransportadora = {
@@ -102,6 +112,7 @@ type FormTransportadora = {
   observacoes: string
   antt: string
   tipoVeiculo: string
+  aceitaNFe55: boolean
   contatos: ContatoForm[]
   enderecos: EnderecoForm[]
 }
@@ -158,6 +169,7 @@ const FORM_VAZIO: FormTransportadora = {
   observacoes: '',
   antt: '',
   tipoVeiculo: '',
+  aceitaNFe55: true,
   contatos: [],
   enderecos: [],
 }
@@ -200,6 +212,7 @@ function transportadoraParaForm(t: Transportadora): FormTransportadora {
     observacoes: t.observacoes || '',
     antt: t.antt || '',
     tipoVeiculo: t.tipoVeiculo || '',
+    aceitaNFe55: t.aceitaNFe55 ?? true,
     contatos: Array.isArray((t as any).contatos)
       ? (t as any).contatos.map((ct: any) => ({
           tipo: ct.tipo, valor: ct.valor, descricao: ct.descricao || '',
@@ -330,27 +343,6 @@ function CampoInput({ rotulo, valor, aoMudar, tipo = 'text', placeholder, maxLen
   )
 }
 
-function CampoSelect({ rotulo, valor, aoMudar, opcoes, obrigatorio, mensagemDeErro }: {
-  rotulo: string; valor: string; aoMudar: (v: string) => void
-  opcoes: { value: string; label: string }[]; obrigatorio?: boolean; mensagemDeErro?: string
-}) {
-  return (
-    <div className="space-y-1">
-      <label className="text-sm font-medium leading-none">
-        {rotulo}{obrigatorio && <span className="ml-0.5 text-destructive">*</span>}
-      </label>
-      <select
-        className={cn('flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring', mensagemDeErro && 'border-destructive')}
-        value={valor} onChange={(e) => aoMudar(e.target.value)}
-      >
-        <option value="">Selecione</option>
-        {opcoes.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-      {mensagemDeErro && <p className="text-sm text-destructive">{mensagemDeErro}</p>}
-    </div>
-  )
-}
-
 function CampoCheckbox({ rotulo, valor, aoMudar, ajuda }: {
   rotulo: string; valor: boolean; aoMudar: (v: boolean) => void; ajuda?: string
 }) {
@@ -385,6 +377,9 @@ function ConteudoDaPaginaDeTransportadoras() {
   const [salvando, setSalvando] = useState(false)
 
   const [form, setForm] = useState<FormTransportadora>(FORM_VAZIO)
+  const [formInicial, setFormInicial] = useState<FormTransportadora>(() =>
+    clonarFormulario(FORM_VAZIO)
+  )
   const formRef = useRef(form)
   formRef.current = form
 
@@ -396,6 +391,12 @@ function ConteudoDaPaginaDeTransportadoras() {
   const [camposTocados, setCamposTocados] = useState<Set<string>>(() => new Set())
   const [erroSalvar, setErroSalvar] = useState('')
   const [tooltipAberto, setTooltipAberto] = useState<string | null>(null)
+  const refBusca = useRef<HTMLInputElement>(null)
+
+  const teclaNovo = useTeclaDaAcao('novo')
+  const teclaExportar = useTeclaDaAcao('exportar')
+  const teclaSalvar = useTeclaDaAcao('salvar')
+  const teclaCancelar = useTeclaDaAcao('cancelar')
 
   const configAbas: ConfigDeAba[] = useMemo(() => [
     {
@@ -490,21 +491,49 @@ function ConteudoDaPaginaDeTransportadoras() {
   }
 
   function abrirModalNovo() {
-    setForm({ ...FORM_VAZIO }); setModoEdicao(false); setIdEmEdicao('')
-    setAbaAtiva('identificacao'); setMensagemDeErro(''); setErroSalvar('')
-    setCamposTocados(new Set()); setAvisoDuplicidade(null); resetarStatus(); setModalAberto(true)
+    const vazio = clonarFormulario(FORM_VAZIO)
+    setForm(vazio)
+    setFormInicial(vazio)
+    setModoEdicao(false)
+    setIdEmEdicao('')
+    setAbaAtiva('identificacao')
+    setMensagemDeErro('')
+    setErroSalvar('')
+    setCamposTocados(new Set())
+    setAvisoDuplicidade(null)
+    resetarStatus()
+    setModalAberto(true)
   }
 
   function abrirModalEdicao(t: Transportadora) {
-    setForm(transportadoraParaForm(t)); setModoEdicao(true); setIdEmEdicao(t.id)
-    setAbaAtiva('identificacao'); setMensagemDeErro(''); setErroSalvar('')
-    setCamposTocados(new Set()); setAvisoDuplicidade(null); resetarStatus(); setModalAberto(true)
+    const formEdicao = transportadoraParaForm(t)
+    setForm(formEdicao)
+    setFormInicial(clonarFormulario(formEdicao))
+    setModoEdicao(true)
+    setIdEmEdicao(t.id)
+    setAbaAtiva('identificacao')
+    setMensagemDeErro('')
+    setErroSalvar('')
+    setCamposTocados(new Set())
+    setAvisoDuplicidade(null)
+    resetarStatus()
+    setModalAberto(true)
   }
 
-  function fecharModal() {
-    setModalAberto(false); setMensagemDeErro(''); setErroSalvar('')
-    setCamposTocados(new Set()); setAvisoDuplicidade(null); resetarStatus()
-  }
+  const fecharModal = useCallback(() => {
+    setModalAberto(false)
+    setMensagemDeErro('')
+    setErroSalvar('')
+    setCamposTocados(new Set())
+    setAvisoDuplicidade(null)
+    resetarStatus()
+  }, [resetarStatus])
+
+  const { solicitarFechar, dialogoConfirmacao } = useConfirmarSaida(
+    form,
+    formInicial,
+    fecharModal
+  )
 
   function aoMudarDocumento(valor: string) {
     tocarCampo('documento')
@@ -588,8 +617,8 @@ function ConteudoDaPaginaDeTransportadoras() {
       ? { enderecos: form.enderecos.map((e) => ({ ...e, cep: e.cep.replace(/\D/g, '') || undefined })) }
       : { cep: form.cep || undefined, logradouro: form.logradouro || undefined, numero: form.numero || undefined, complemento: form.complemento || undefined, bairro: form.bairro || undefined, cidade: form.cidade || undefined, estado: form.estado || undefined, codigoIbge: form.codigoIbge || undefined }
 
-    if (form.tipo === 'PF') return { ...base, ...contatosPayload, ...enderecosPayload, cpf: nums, rg: form.rg || undefined, dataNascimento: form.dataNascimento || undefined }
-    return { ...base, ...contatosPayload, ...enderecosPayload, cnpj: nums, nomeFantasia: form.nomeFantasia || undefined, cnae: form.cnae || undefined, dataFundacao: form.dataFundacao || undefined, ie: form.ie || undefined, im: form.im || undefined, simplesNacional: form.simplesNacional, observacaoNF: form.observacaoNF || undefined }
+    if (form.tipo === 'PF') return { ...base, ...contatosPayload, ...enderecosPayload, cpf: nums, rg: form.rg || undefined, dataNascimento: form.dataNascimento || undefined, aceitaNFe55: form.aceitaNFe55 }
+    return { ...base, ...contatosPayload, ...enderecosPayload, cnpj: nums, nomeFantasia: form.nomeFantasia || undefined, cnae: form.cnae || undefined, dataFundacao: form.dataFundacao || undefined, ie: form.ie || undefined, im: form.im || undefined, simplesNacional: form.simplesNacional, observacaoNF: form.observacaoNF || undefined, aceitaNFe55: form.aceitaNFe55 }
   }
 
   async function aoSalvar(evento: FormEvent) {
@@ -634,6 +663,40 @@ function ConteudoDaPaginaDeTransportadoras() {
 
   const qualquerOperacaoAtiva = salvando || verificandoDocumento || carregandoBrasilApi
 
+  const exportarListaTransportadoras = useCallback(() => {
+    exportarCsv(
+      listaTransportadoras.map((t) => ({
+        Nome: t.nome,
+        Tipo: t.tipo,
+        Documento: t.tipo === 'PF' ? (t.cpf || '') : (t.cnpj || ''),
+        ANTT: t.antt ?? '',
+        Email: t.email ?? '',
+        Cidade: t.cidade ?? '',
+        Status: t.ativo ? 'Ativo' : 'Inativo',
+      })),
+      'transportadoras'
+    )
+  }, [listaTransportadoras])
+
+  useRegistrarAtalhos(
+    {
+      buscar: () => refBusca.current?.focus(),
+      novo: abrirModalNovo,
+      atualizar: carregarTransportadoras,
+      salvar: () => submeterFormularioPorId('form-transportadora'),
+      cancelar: solicitarFechar,
+      exportar: exportarListaTransportadoras,
+    },
+    {
+      buscar: !modalAberto,
+      novo: podeCriar && !modalAberto,
+      atualizar: !modalAberto && !carregandoLista,
+      salvar: modalAberto && formularioValido && !qualquerOperacaoAtiva,
+      cancelar: modalAberto && !qualquerOperacaoAtiva,
+      exportar: !modalAberto,
+    }
+  )
+
   const transportadorasFiltradas = listaTransportadoras.filter((t) => {
     const termo = busca.toLowerCase()
     return t.nome.toLowerCase().includes(termo) ||
@@ -652,17 +715,35 @@ function ConteudoDaPaginaDeTransportadoras() {
         <p className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">{mensagemDeSucesso}</p>
       )}
 
+      {dialogoConfirmacao}
+
       <Modal
         aberto={modalAberto}
-        aoFechar={fecharModal}
+        aoFechar={solicitarFechar}
         titulo={modoEdicao ? `Editar transportadora: ${form.nome}` : 'Nova transportadora'}
         largura="2xl"
         rodape={
           <div className="flex w-full items-center justify-between gap-2">
             {erroSalvar ? <p className="text-sm text-destructive">{erroSalvar}</p> : <span />}
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={fecharModal} disabled={salvando}>Cancelar</Button>
-              <BotaoPrimario form="form-transportadora" type="submit" disabled={salvando || !formularioValido}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={solicitarFechar}
+                disabled={salvando}
+                title={tituloComAtalho('Cancelar', teclaCancelar)}
+              >
+                Cancelar
+              </Button>
+              <BotaoPrimario
+                form="form-transportadora"
+                type="submit"
+                disabled={salvando || !formularioValido}
+                title={tituloComAtalho(
+                  modoEdicao ? 'Salvar' : 'Cadastrar transportadora',
+                  teclaSalvar
+                )}
+              >
                 {salvando ? (
                   <span className="flex items-center gap-2">
                     <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
@@ -734,6 +815,7 @@ function ConteudoDaPaginaDeTransportadoras() {
                       <CampoInput rotulo="RG" valor={form.rg} aoMudar={(v) => set('rg', v)} placeholder="Número do RG" maxLength={20} />
                       <CampoInput rotulo="Data de nascimento" valor={form.dataNascimento} aoMudar={(v) => set('dataNascimento', v)} tipo="date" />
                     </div>
+                    <CampoCheckbox rotulo="Aceita NF-e modelo 55" valor={form.aceitaNFe55} aoMudar={(v) => set('aceitaNFe55', v)} />
                   </div>
                 )}
 
@@ -750,6 +832,7 @@ function ConteudoDaPaginaDeTransportadoras() {
                       <CampoInput rotulo="Data de fundação" valor={form.dataFundacao} aoMudar={(v) => set('dataFundacao', v)} tipo="date" />
                     </div>
                     <CampoCheckbox rotulo="Simples Nacional" valor={form.simplesNacional} aoMudar={(v) => set('simplesNacional', v)} />
+                    <CampoCheckbox rotulo="Aceita NF-e modelo 55" valor={form.aceitaNFe55} aoMudar={(v) => set('aceitaNFe55', v)} />
                   </div>
                 )}
 
@@ -850,26 +933,33 @@ function ConteudoDaPaginaDeTransportadoras() {
         descricao="Lista de todas as transportadoras cadastradas"
         acoes={
           <div className="flex gap-2">
-            <Button type="button" variant="outline" size="sm"
-              onClick={() => exportarCsv(
-                listaTransportadoras.map((t) => ({
-                  Nome: t.nome, Tipo: t.tipo,
-                  Documento: t.tipo === 'PF' ? (t.cpf || '') : (t.cnpj || ''),
-                  ANTT: t.antt ?? '', Email: t.email ?? '', Cidade: t.cidade ?? '',
-                  Status: t.ativo ? 'Ativo' : 'Inativo',
-                })),
-                'transportadoras'
-              )}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={exportarListaTransportadoras}
+              title={tituloComAtalho('Exportar CSV', teclaExportar)}
+            >
               Exportar CSV
             </Button>
             {podeCriar && (
-              <BotaoPrimario type="button" onClick={abrirModalNovo}>+ Nova transportadora</BotaoPrimario>
+              <BotaoPrimario
+                type="button"
+                onClick={abrirModalNovo}
+                title={tituloComAtalho('Nova transportadora', teclaNovo)}
+              >
+                + Nova transportadora
+              </BotaoPrimario>
             )}
           </div>
         }
       >
         <div className="mb-4">
-          <input type="text" value={busca} onChange={(e) => setBusca(e.target.value)}
+          <input
+            ref={refBusca}
+            type="text"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar por nome, documento ou cidade..."
             className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
         </div>

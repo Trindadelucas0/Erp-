@@ -76,6 +76,7 @@ function mapearParaTransportadoraView(pessoa: PessoaComRelacoes) {
     codigoIbge: enderecoPrincipal?.codigoIbge ?? null,
     antt: papelTransportadora.dadosTransportadora?.antt ?? null,
     tipoVeiculo: papelTransportadora.dadosTransportadora?.tipoVeiculo ?? null,
+    aceitaNFe55: papelTransportadora.dadosTransportadora?.aceitaNFe55 ?? true,
     contatos: pessoa.contatos,
     enderecos: pessoa.enderecos,
     createdAt: pessoa.createdAt,
@@ -151,6 +152,7 @@ type CamposNormalizados = {
   codigoIbge: string | null
   antt: string | null
   tipoVeiculo: string | null
+  aceitaNFe55: boolean
   contatosArray?: ContatoItem[]
   enderecosArray?: EnderecoItem[]
 }
@@ -175,6 +177,7 @@ function normalizarDocumento(dados: DadosParaCriarTransportadora | DadosParaEdit
     codigoIbge: dados.codigoIbge || null,
     antt: dados.antt || null,
     tipoVeiculo: dados.tipoVeiculo || null,
+    aceitaNFe55: dados.aceitaNFe55 ?? true,
     contatosArray: dados.contatos,
     enderecosArray: dados.enderecos,
   }
@@ -342,6 +345,7 @@ async function buscarPessoaPorDocumentoNaEmpresa(
       codigoIbge: null,
       antt: null,
       tipoVeiculo: null,
+      aceitaNFe55: true,
       contatos: [],
       enderecos: [],
       createdAt: pessoa.createdAt,
@@ -512,11 +516,13 @@ async function criar(dados: DadosParaCriarTransportadora, companyId: string) {
           update: {
             antt: campos.antt,
             tipoVeiculo: campos.tipoVeiculo,
+            aceitaNFe55: campos.aceitaNFe55,
           },
           create: {
             papelId: papelExistente.id,
             antt: campos.antt,
             tipoVeiculo: campos.tipoVeiculo,
+            aceitaNFe55: campos.aceitaNFe55,
           },
         })
       } else {
@@ -528,6 +534,7 @@ async function criar(dados: DadosParaCriarTransportadora, companyId: string) {
             papelId: papel.id,
             antt: campos.antt,
             tipoVeiculo: campos.tipoVeiculo,
+            aceitaNFe55: campos.aceitaNFe55,
           },
         })
       }
@@ -548,6 +555,7 @@ async function criar(dados: DadosParaCriarTransportadora, companyId: string) {
           papelId: papel.id,
           antt: campos.antt,
           tipoVeiculo: campos.tipoVeiculo,
+          aceitaNFe55: campos.aceitaNFe55,
         },
       })
 
@@ -599,11 +607,13 @@ async function atualizar(id: string, dados: DadosParaEditarTransportadora) {
         update: {
           antt: campos.antt,
           tipoVeiculo: campos.tipoVeiculo,
+          aceitaNFe55: campos.aceitaNFe55,
         },
         create: {
           papelId: papelTransportadora.id,
           antt: campos.antt,
           tipoVeiculo: campos.tipoVeiculo,
+          aceitaNFe55: campos.aceitaNFe55,
         },
       })
     }
