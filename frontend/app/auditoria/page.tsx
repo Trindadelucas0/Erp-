@@ -3,15 +3,13 @@
 /**
  * Página de auditoria — histórico de ações do sistema (somente admin).
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { useRegistrarAtalhos } from '@/hooks/use-registrar-atalhos'
-import { tituloComAtalho, useTeclaDaAcao } from '@/components/compartilhado/provedor-de-atalhos'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Button } from '@/components/ui/button'
-import { exportarCsv } from '@/lib/exportar-csv'
 
 type UsuarioDoLog = {
   id: string
@@ -64,8 +62,6 @@ function ConteudoDaPaginaDeAuditoria() {
   const [filtroDataInicio, setFiltroDataInicio] = useState('')
   const [filtroDataFim, setFiltroDataFim] = useState('')
 
-  const teclaExportar = useTeclaDaAcao('exportar')
-
   useEffect(() => {
     carregarLogs()
   }, [pagina])
@@ -104,31 +100,15 @@ function ConteudoDaPaginaDeAuditoria() {
     setTimeout(() => carregarLogs(), 0)
   }
 
-  const aoExportarCsv = useCallback(() => {
-    exportarCsv(
-      logs.map((log) => ({
-        'Data/Hora': formatarData(log.criadoEm),
-        'Usuário': log.usuario?.name ?? log.usuarioId,
-        'Email': log.usuario?.email ?? '',
-        'Ação': rotuloDaAcao(log.acao),
-        'Entidade': log.entidade,
-        'ID do registro': log.entidadeId,
-      })),
-      'auditoria'
-    )
-  }, [logs])
-
   useRegistrarAtalhos(
     {
       buscar: () =>
         document.getElementById('filtro-entidade-auditoria')?.focus(),
       atualizar: aplicarFiltros,
-      exportar: aoExportarCsv,
     },
     {
       buscar: true,
       atualizar: !carregando,
-      exportar: logs.length > 0,
     }
   )
 
@@ -143,14 +123,6 @@ function ConteudoDaPaginaDeAuditoria() {
             Histórico de alterações do sistema
           </p>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={aoExportarCsv}
-          title={tituloComAtalho('Exportar CSV', teclaExportar)}
-        >
-          Exportar CSV
-        </Button>
       </div>
 
       <CardPadrao titulo="Filtros">

@@ -4,7 +4,6 @@ export const CHAVES_DE_ACAO = [
   'salvar',
   'cancelar',
   'atualizar',
-  'exportar',
   'ajuda',
 ] as const
 

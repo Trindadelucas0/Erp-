@@ -34,11 +34,6 @@ export const REGISTRO_DE_ACOES: readonly DefinicaoDeAcao[] = [
     descricao: 'Recarrega os dados da tela atual',
   },
   {
-    chave: 'exportar',
-    rotulo: 'Exportar CSV',
-    descricao: 'Exporta a lista atual para CSV',
-  },
-  {
     chave: 'ajuda',
     rotulo: 'Mostrar atalhos',
     descricao: 'Exibe o painel de atalhos disponíveis',

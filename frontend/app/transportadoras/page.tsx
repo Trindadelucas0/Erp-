@@ -27,7 +27,6 @@ import { InputPadrao } from '@/components/ui/input-padrao'
 import { Modal } from '@/components/ui/modal'
 import { Abas } from '@/components/ui/abas'
 import { Separator } from '@/components/ui/separator'
-import { exportarCsv } from '@/lib/exportar-csv'
 import { submeterFormularioPorId } from '@/lib/atalhos/submeter-formulario'
 import {
   mascaraPorTipo,
@@ -393,7 +392,6 @@ function ConteudoDaPaginaDeTransportadoras() {
   const refBusca = useRef<HTMLInputElement>(null)
 
   const teclaNovo = useTeclaDaAcao('novo')
-  const teclaExportar = useTeclaDaAcao('exportar')
   const teclaSalvar = useTeclaDaAcao('salvar')
   const teclaCancelar = useTeclaDaAcao('cancelar')
 
@@ -689,21 +687,6 @@ function ConteudoDaPaginaDeTransportadoras() {
 
   const qualquerOperacaoAtiva = salvando || verificandoDocumento || carregandoBrasilApi
 
-  const exportarListaTransportadoras = useCallback(() => {
-    exportarCsv(
-      listaTransportadoras.map((t) => ({
-        Nome: t.nome,
-        Tipo: t.tipo,
-        Documento: t.tipo === 'PF' ? (t.cpf || '') : (t.cnpj || ''),
-        ANTT: t.antt ?? '',
-        Email: t.email ?? '',
-        Cidade: t.cidade ?? '',
-        Status: t.ativo ? 'Ativo' : 'Inativo',
-      })),
-      'transportadoras'
-    )
-  }, [listaTransportadoras])
-
   useRegistrarAtalhos(
     {
       buscar: () => refBusca.current?.focus(),
@@ -711,7 +694,6 @@ function ConteudoDaPaginaDeTransportadoras() {
       atualizar: carregarTransportadoras,
       salvar: () => submeterFormularioPorId('form-transportadora'),
       cancelar: solicitarFechar,
-      exportar: exportarListaTransportadoras,
     },
     {
       buscar: !modalAberto,
@@ -719,7 +701,6 @@ function ConteudoDaPaginaDeTransportadoras() {
       atualizar: !modalAberto && !carregandoLista,
       salvar: modalAberto && formularioValido && !qualquerOperacaoAtiva,
       cancelar: modalAberto && !qualquerOperacaoAtiva,
-      exportar: !modalAberto,
     }
   )
 
@@ -958,15 +939,6 @@ function ConteudoDaPaginaDeTransportadoras() {
         descricao="Lista de todas as transportadoras cadastradas"
         acoes={
           <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={exportarListaTransportadoras}
-              title={tituloComAtalho('Exportar CSV', teclaExportar)}
-            >
-              Exportar CSV
-            </Button>
             {podeCriar && (
               <BotaoPrimario
                 type="button"

@@ -27,7 +27,6 @@ import { InputPadrao } from '@/components/ui/input-padrao'
 import { Modal } from '@/components/ui/modal'
 import { Abas } from '@/components/ui/abas'
 import { Separator } from '@/components/ui/separator'
-import { exportarCsv } from '@/lib/exportar-csv'
 import { submeterFormularioPorId } from '@/lib/atalhos/submeter-formulario'
 import {
   mascaraPorTipo,
@@ -451,7 +450,6 @@ function ConteudoDaPaginaDeFornecedores() {
   const refBusca = useRef<HTMLInputElement>(null)
 
   const teclaNovo = useTeclaDaAcao('novo')
-  const teclaExportar = useTeclaDaAcao('exportar')
   const teclaSalvar = useTeclaDaAcao('salvar')
   const teclaCancelar = useTeclaDaAcao('cancelar')
 
@@ -868,22 +866,6 @@ function ConteudoDaPaginaDeFornecedores() {
 
   const qualquerOperacaoAtiva = salvando || verificandoDocumento || carregandoBrasilApi
 
-  const exportarListaFornecedores = useCallback(() => {
-    exportarCsv(
-      listaFornecedores.map((f) => ({
-        Nome: f.nome,
-        Tipo: f.tipo,
-        Documento: f.tipo === 'PF' ? (f.cpf || '') : (f.cnpj || ''),
-        Email: f.email ?? '',
-        Telefone: f.telefone ?? '',
-        Cidade: f.cidade ?? '',
-        UF: f.estado ?? '',
-        Status: f.ativo ? 'Ativo' : 'Inativo',
-      })),
-      'fornecedores'
-    )
-  }, [listaFornecedores])
-
   useRegistrarAtalhos(
     {
       buscar: () => refBusca.current?.focus(),
@@ -891,7 +873,6 @@ function ConteudoDaPaginaDeFornecedores() {
       atualizar: carregarFornecedores,
       salvar: () => submeterFormularioPorId('form-fornecedor'),
       cancelar: solicitarFechar,
-      exportar: exportarListaFornecedores,
     },
     {
       buscar: !modalAberto,
@@ -899,7 +880,6 @@ function ConteudoDaPaginaDeFornecedores() {
       atualizar: !modalAberto && !carregandoLista,
       salvar: modalAberto && formularioValido && !qualquerOperacaoAtiva,
       cancelar: modalAberto && !qualquerOperacaoAtiva,
-      exportar: !modalAberto,
     }
   )
 
@@ -1240,15 +1220,6 @@ function ConteudoDaPaginaDeFornecedores() {
         descricao="Lista de todos os fornecedores cadastrados"
         acoes={
           <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={exportarListaFornecedores}
-              title={tituloComAtalho('Exportar CSV', teclaExportar)}
-            >
-              Exportar CSV
-            </Button>
             {podeCriar && (
               <BotaoPrimario
                 type="button"

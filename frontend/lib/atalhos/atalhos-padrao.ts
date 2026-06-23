@@ -6,7 +6,6 @@ export const ATALHOS_PADRAO: Record<ChaveDaAcao, string> = {
   salvar: 'F8',
   cancelar: 'Escape',
   atualizar: 'F5',
-  exportar: 'Ctrl+E',
   ajuda: 'F1',
 }
 
@@ -14,7 +13,6 @@ export const TECLAS_COM_CONFLITO_NAVEGADOR = [
   'F5',
   'Ctrl+R',
   'Ctrl+S',
-  'Ctrl+E',
   'Ctrl+P',
 ] as const
 

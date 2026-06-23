@@ -7,7 +7,6 @@ export const ATALHOS_PADRAO = {
   salvar: 'F8',
   cancelar: 'Escape',
   atualizar: 'F5',
-  exportar: 'Ctrl+E',
   ajuda: 'F1',
 } as const
 

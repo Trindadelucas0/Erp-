@@ -28,7 +28,6 @@ import { Select, classesOption } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
 import { Abas } from '@/components/ui/abas'
 import { Separator } from '@/components/ui/separator'
-import { exportarCsv } from '@/lib/exportar-csv'
 import { submeterFormularioPorId } from '@/lib/atalhos/submeter-formulario'
 import {
   mascaraPorTipo,
@@ -548,7 +547,6 @@ function ConteudoDaPaginaDeClientes() {
   const refBusca = useRef<HTMLInputElement>(null)
 
   const teclaNovo = useTeclaDaAcao('novo')
-  const teclaExportar = useTeclaDaAcao('exportar')
   const teclaSalvar = useTeclaDaAcao('salvar')
   const teclaCancelar = useTeclaDaAcao('cancelar')
 
@@ -1083,23 +1081,6 @@ function ConteudoDaPaginaDeClientes() {
   // Bloqueia qualquer interação durante operações assíncronas
   const qualquerOperacaoAtiva = salvando || verificandoDocumento || carregandoBrasilApi
 
-  const exportarListaClientes = useCallback(() => {
-    exportarCsv(
-      listaDeClientes.map((c) => ({
-        Tipo: c.tipo,
-        Nome: c.nome,
-        'CPF/CNPJ': formatarDocumentoTabela(c),
-        Email: c.email || '',
-        Telefone: c.telefone ? mascaraTelefone(c.telefone) : '',
-        Cidade: c.cidade || '',
-        UF: c.estado || '',
-        Status: c.ativo ? 'Ativo' : 'Inativo',
-        'Aprovação': rotuloStatusAprovacao(c.statusAprovacao),
-      })),
-      'clientes'
-    )
-  }, [listaDeClientes])
-
   useRegistrarAtalhos(
     {
       buscar: () => refBusca.current?.focus(),
@@ -1107,7 +1088,6 @@ function ConteudoDaPaginaDeClientes() {
       atualizar: carregarClientes,
       salvar: () => submeterFormularioPorId('form-cliente'),
       cancelar: solicitarFechar,
-      exportar: exportarListaClientes,
     },
     {
       buscar: !modalAberto,
@@ -1119,7 +1099,6 @@ function ConteudoDaPaginaDeClientes() {
         formularioValido &&
         !qualquerOperacaoAtiva,
       cancelar: modalAberto && !qualquerOperacaoAtiva,
-      exportar: !modalAberto,
     }
   )
 
@@ -1821,15 +1800,6 @@ function ConteudoDaPaginaDeClientes() {
                 </Button>
               </Link>
             )}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={exportarListaClientes}
-              title={tituloComAtalho('Exportar CSV', teclaExportar)}
-            >
-              Exportar CSV
-            </Button>
             {podeCriar && (
               <BotaoPrimario
                 type="button"

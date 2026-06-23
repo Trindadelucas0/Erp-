@@ -23,7 +23,6 @@ import { InputPadrao } from '@/components/ui/input-padrao'
 import { SelectPadrao } from '@/components/ui/select-padrao'
 import { Modal } from '@/components/ui/modal'
 import { Separator } from '@/components/ui/separator'
-import { exportarCsv } from '@/lib/exportar-csv'
 import { submeterFormularioPorId } from '@/lib/atalhos/submeter-formulario'
 
 const ESTADOS_BR = [
@@ -158,7 +157,6 @@ function ConteudoDaPaginaDeCadastros() {
   )
 
   const teclaNovo = useTeclaDaAcao('novo')
-  const teclaExportar = useTeclaDaAcao('exportar')
   const teclaSalvar = useTeclaDaAcao('salvar')
   const teclaCancelar = useTeclaDaAcao('cancelar')
 
@@ -284,35 +282,18 @@ function ConteudoDaPaginaDeCadastros() {
     }
   }
 
-  const exportarListaEmpresas = useCallback(() => {
-    exportarCsv(
-      listaDeEmpresas.map((e) => ({
-        Nome: e.name,
-        CNPJ: e.cnpj,
-        Telefone: e.phone || '',
-        Email: e.email || '',
-        Cidade: e.cidade || '',
-        Estado: e.estado || '',
-        Status: e.active ? 'Ativa' : 'Inativa',
-      })),
-      'empresas'
-    )
-  }, [listaDeEmpresas])
-
   useRegistrarAtalhos(
     {
       novo: abrirModalNovo,
       atualizar: carregarEmpresas,
       salvar: () => submeterFormularioPorId('form-empresa'),
       cancelar: solicitarFechar,
-      exportar: exportarListaEmpresas,
     },
     {
       novo: podeCriar && !modalAberto,
       atualizar: !modalAberto,
       salvar: modalAberto && !salvando,
       cancelar: modalAberto && !salvando,
-      exportar: !modalAberto,
     }
   )
 
@@ -512,15 +493,6 @@ function ConteudoDaPaginaDeCadastros() {
         descricao="Cadastro de empresas do sistema"
         acoes={
           <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={exportarListaEmpresas}
-              title={tituloComAtalho('Exportar CSV', teclaExportar)}
-            >
-              Exportar CSV
-            </Button>
             {podeCriar && (
               <BotaoPrimario
                 type="button"

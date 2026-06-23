@@ -32,7 +32,6 @@ import { Modal } from '@/components/ui/modal'
 import { Abas } from '@/components/ui/abas'
 import { Separator } from '@/components/ui/separator'
 import { TituloSecao } from '@/components/ui/titulo-secao'
-import { exportarCsv } from '@/lib/exportar-csv'
 import { submeterFormularioPorId } from '@/lib/atalhos/submeter-formulario'
 import { useConfirmarSaida } from '@/hooks/use-confirmar-saida'
 import { clonarFormulario } from '@/lib/formulario-alterado'
@@ -186,7 +185,6 @@ function ConteudoDaPaginaDeUsuarios() {
   const refBusca = useRef<HTMLInputElement>(null)
 
   const teclaNovo = useTeclaDaAcao('novo')
-  const teclaExportar = useTeclaDaAcao('exportar')
   const teclaSalvar = useTeclaDaAcao('salvar')
   const teclaCancelar = useTeclaDaAcao('cancelar')
   const [novaSenhaReset, setNovaSenhaReset] = useState('')
@@ -497,21 +495,6 @@ function ConteudoDaPaginaDeUsuarios() {
 
   const operacaoEmAndamento = salvando || alterandoStatusId !== null
 
-  const exportarListaUsuarios = useCallback(() => {
-    exportarCsv(
-      listaDeUsuarios.map((u) => ({
-        Nome: u.name,
-        Email: u.email,
-        Cargo: u.cargo ?? '',
-        Status: u.active ? 'Ativo' : 'Inativo',
-        Papéis: u.roles.map((r) => r.role.name).join('; '),
-        Empresas: u.companies.map((c) => c.company.name).join('; '),
-        Cadastro: calcularStatusUsuario(u) === 'completo' ? 'Completo' : 'Incompleto',
-      })),
-      'usuarios'
-    )
-  }, [listaDeUsuarios])
-
   const fecharDialogsAbertos = useCallback(() => {
     if (modalUsuarioAberto) solicitarFechar()
     else if (usuarioParaDesativar) setUsuarioParaDesativar(null)
@@ -530,7 +513,6 @@ function ConteudoDaPaginaDeUsuarios() {
       atualizar: carregarDadosDaTela,
       salvar: () => submeterFormularioPorId('form-usuario'),
       cancelar: fecharDialogsAbertos,
-      exportar: exportarListaUsuarios,
     },
     {
       buscar:
@@ -552,10 +534,6 @@ function ConteudoDaPaginaDeUsuarios() {
         modalUsuarioAberto ||
         Boolean(usuarioParaDesativar) ||
         Boolean(usuarioParaResetarSenha),
-      exportar:
-        !modalUsuarioAberto &&
-        !usuarioParaDesativar &&
-        !usuarioParaResetarSenha,
     }
   )
 
@@ -903,15 +881,6 @@ function ConteudoDaPaginaDeUsuarios() {
         descricao="Lista de todos os usuários do sistema"
         acoes={
           <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={exportarListaUsuarios}
-              title={tituloComAtalho('Exportar CSV', teclaExportar)}
-            >
-              Exportar CSV
-            </Button>
             <BotaoPrimario
               type="button"
               onClick={abrirModalNovo}
