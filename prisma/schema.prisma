@@ -191,6 +191,7 @@ model User {
   cargo              String?            @default("")
   active             Boolean            @default(true)
   tokenVersion       Int                @default(0)
+  tema               String             @default("escuro")
   roles              UserRole[]
   companies          UserCompany[]
   permissoesExtras   UserPermission[]

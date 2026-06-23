@@ -100,8 +100,20 @@ async function verificarSenhaDoUsuario(
   return compararSenhaComHash(senha, usuario.password)
 }
 
+async function atualizarTemaDoUsuario(
+  idDoUsuario: string,
+  tema: 'claro' | 'escuro'
+) {
+  await clientePrisma.user.update({
+    where: { id: idDoUsuario },
+    data: { tema },
+  })
+  return tema
+}
+
 export const servicoDeAutenticacao = {
   realizarLogin,
   buscarPerfilDoUsuarioLogado,
   verificarSenhaDoUsuario,
+  atualizarTemaDoUsuario,
 }

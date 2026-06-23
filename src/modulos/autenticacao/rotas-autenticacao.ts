@@ -26,4 +26,10 @@ export async function rotasDeAutenticacao(
     { preHandler: [middlewareDeAutenticacao] },
     controladorDeAutenticacao.verificarSenha
   )
+
+  aplicacao.patch(
+    '/me/tema',
+    { preHandler: [middlewareDeAutenticacao] },
+    controladorDeAutenticacao.atualizarTema
+  )
 }

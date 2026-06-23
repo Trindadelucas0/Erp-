@@ -11,6 +11,7 @@ const camposPublicosDoUsuario = {
   email: true,
   cargo: true,
   active: true,
+  tema: true,
   createdAt: true,
   updatedAt: true,
   roles: {

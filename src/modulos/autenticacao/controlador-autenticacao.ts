@@ -5,7 +5,7 @@ import { FastifyReply, FastifyRequest } from 'fastify'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { gerarTokenDeAutenticacao } from '../../compartilhado/utilitarios/token-jwt.js'
 import { servicoDeAutenticacao } from './servico-autenticacao.js'
-import { esquemaDeLogin } from './esquema-autenticacao.js'
+import { esquemaDeLogin, esquemaDeTema } from './esquema-autenticacao.js'
 
 /**
  * Recebe email e senha, valida e devolve token JWT.
@@ -77,8 +77,36 @@ async function verificarSenha(requisicao: FastifyRequest, resposta: FastifyReply
   return resposta.send({ valido: true })
 }
 
+async function atualizarTema(
+  requisicao: FastifyRequest,
+  resposta: FastifyReply
+) {
+  const idDoUsuario = requisicao.idDoUsuario
+
+  if (!idDoUsuario) {
+    throw new ErroDaAplicacao('Não autenticado', 401)
+  }
+
+  const resultadoDaValidacao = esquemaDeTema.safeParse(requisicao.body)
+
+  if (!resultadoDaValidacao.success) {
+    throw new ErroDaAplicacao(
+      resultadoDaValidacao.error.errors[0].message,
+      400
+    )
+  }
+
+  const tema = await servicoDeAutenticacao.atualizarTemaDoUsuario(
+    idDoUsuario,
+    resultadoDaValidacao.data.tema
+  )
+
+  return resposta.send({ tema })
+}
+
 export const controladorDeAutenticacao = {
   fazerLogin,
   buscarMeuPerfil,
   verificarSenha,
+  atualizarTema,
 }

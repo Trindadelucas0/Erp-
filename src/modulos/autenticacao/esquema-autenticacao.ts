@@ -8,4 +8,11 @@ export const esquemaDeLogin = z.object({
   senha: z.string().min(1, 'Senha é obrigatória'),
 })
 
+export const esquemaDeTema = z.object({
+  tema: z.enum(['claro', 'escuro'], {
+    errorMap: () => ({ message: 'Tema deve ser "claro" ou "escuro"' }),
+  }),
+})
+
 export type DadosDeLogin = z.infer<typeof esquemaDeLogin>
+export type DadosDeTema = z.infer<typeof esquemaDeTema>
