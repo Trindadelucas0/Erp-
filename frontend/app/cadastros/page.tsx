@@ -9,6 +9,8 @@ import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { usePermissao } from '@/hooks/use-permissao'
 import { useRegistrarAtalhos } from '@/hooks/use-registrar-atalhos'
+import { useConfirmarSaida } from '@/hooks/use-confirmar-saida'
+import { clonarFormulario } from '@/lib/formulario-alterado'
 import {
   tituloComAtalho,
   useTeclaDaAcao,
@@ -151,6 +153,9 @@ function ConteudoDaPaginaDeCadastros() {
   const [salvando, setSalvando] = useState(false)
 
   const [form, setForm] = useState<FormularioEmpresa>(formularioVazio)
+  const [formInicial, setFormInicial] = useState<FormularioEmpresa>(() =>
+    clonarFormulario(formularioVazio)
+  )
 
   const teclaNovo = useTeclaDaAcao('novo')
   const teclaExportar = useTeclaDaAcao('exportar')
@@ -179,7 +184,9 @@ function ConteudoDaPaginaDeCadastros() {
   }
 
   function abrirModalNovo() {
-    setForm(formularioVazio)
+    const vazio = clonarFormulario(formularioVazio)
+    setForm(vazio)
+    setFormInicial(vazio)
     setModoEdicao(false)
     setIdDaEmpresaEmEdicao('')
     setMensagemDeErro('')
@@ -187,17 +194,25 @@ function ConteudoDaPaginaDeCadastros() {
   }
 
   function abrirModalEdicao(empresa: Empresa) {
-    setForm(empresaParaFormulario(empresa))
+    const f = empresaParaFormulario(empresa)
+    setForm(f)
+    setFormInicial(clonarFormulario(f))
     setModoEdicao(true)
     setIdDaEmpresaEmEdicao(empresa.id)
     setMensagemDeErro('')
     setModalAberto(true)
   }
 
-  function fecharModal() {
+  const fecharModal = useCallback(() => {
     setModalAberto(false)
     setMensagemDeErro('')
-  }
+  }, [])
+
+  const { solicitarFechar, dialogoConfirmacao } = useConfirmarSaida(
+    form,
+    formInicial,
+    fecharModal
+  )
 
   async function buscarEnderecoPorCep(cep: string) {
     const numeros = cep.replace(/\D/g, '')
@@ -289,7 +304,7 @@ function ConteudoDaPaginaDeCadastros() {
       novo: abrirModalNovo,
       atualizar: carregarEmpresas,
       salvar: () => submeterFormularioPorId('form-empresa'),
-      cancelar: fecharModal,
+      cancelar: solicitarFechar,
       exportar: exportarListaEmpresas,
     },
     {
@@ -314,10 +329,12 @@ function ConteudoDaPaginaDeCadastros() {
         </p>
       )}
 
+      {dialogoConfirmacao}
+
       {/* Modal de criar/editar empresa */}
       <Modal
         aberto={modalAberto}
-        aoFechar={fecharModal}
+        aoFechar={solicitarFechar}
         titulo={modoEdicao ? 'Editar empresa' : 'Nova empresa'}
         descricao={
           modoEdicao
@@ -330,7 +347,7 @@ function ConteudoDaPaginaDeCadastros() {
             <Button
               type="button"
               variant="outline"
-              onClick={fecharModal}
+              onClick={solicitarFechar}
               disabled={salvando}
               title={tituloComAtalho('Cancelar', teclaCancelar)}
             >

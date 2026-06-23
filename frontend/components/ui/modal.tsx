@@ -50,12 +50,7 @@ export function Modal({
   if (!aberto) return null
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) aoFechar()
-      }}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div
         className={`flex w-full flex-col ${larguras[largura]} max-h-[90vh] rounded-lg border border-border bg-card shadow-xl`}
       >

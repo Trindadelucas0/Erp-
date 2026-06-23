@@ -34,6 +34,8 @@ import { Separator } from '@/components/ui/separator'
 import { TituloSecao } from '@/components/ui/titulo-secao'
 import { exportarCsv } from '@/lib/exportar-csv'
 import { submeterFormularioPorId } from '@/lib/atalhos/submeter-formulario'
+import { useConfirmarSaida } from '@/hooks/use-confirmar-saida'
+import { clonarFormulario } from '@/lib/formulario-alterado'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -55,6 +57,28 @@ type Usuario = {
   companies: { company: Empresa }[]
   permissoesExtras: { permission: Permissao }[]
   paginasPermitidas: { pageKey: string }[]
+}
+
+type FormularioUsuario = {
+  nome: string
+  email: string
+  senha: string
+  cargo: string
+  idsDosPapeis: string[]
+  idsDasEmpresas: string[]
+  idsDasPermissoesExtras: string[]
+  chavesDasPaginas: string[]
+}
+
+const FORM_USUARIO_VAZIO: FormularioUsuario = {
+  nome: '',
+  email: '',
+  senha: '',
+  cargo: '',
+  idsDosPapeis: [],
+  idsDasEmpresas: [],
+  idsDasPermissoesExtras: [],
+  chavesDasPaginas: [],
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -172,6 +196,32 @@ function ConteudoDaPaginaDeUsuarios() {
   const [tooltipAberto, setTooltipAberto] = useState<string | null>(null)
   const [camposTocados, setCamposTocados] = useState<Set<string>>(() => new Set())
   const [erroSalvar, setErroSalvar] = useState('')
+  const [formInicial, setFormInicial] = useState<FormularioUsuario>(() =>
+    clonarFormulario(FORM_USUARIO_VAZIO)
+  )
+
+  const formAtual = useMemo<FormularioUsuario>(
+    () => ({
+      nome,
+      email,
+      senha,
+      cargo,
+      idsDosPapeis: idsDosPapeisSelecionados,
+      idsDasEmpresas: idsDasEmpresasSelecionadas,
+      idsDasPermissoesExtras,
+      chavesDasPaginas: chavesDasPaginasSelecionadas,
+    }),
+    [
+      nome,
+      email,
+      senha,
+      cargo,
+      idsDosPapeisSelecionados,
+      idsDasEmpresasSelecionadas,
+      idsDasPermissoesExtras,
+      chavesDasPaginasSelecionadas,
+    ]
+  )
 
   useEffect(() => {
     if (carregandoSessao || !estaAutenticado || !perfil?.ehAdmin) return
@@ -287,59 +337,74 @@ function ConteudoDaPaginaDeUsuarios() {
     return errosForm[campo]
   }
 
-  function limparFormulario() {
-    setNome('')
-    setEmail('')
-    setSenha('')
-    setCargo('')
-    setIdsDosPapeisSelecionados([])
-    setIdsDasEmpresasSelecionadas([])
-    setIdsDasPermissoesExtras([])
-    setChavesDasPaginasSelecionadas([])
+  function aplicarFormulario(f: FormularioUsuario) {
+    setNome(f.nome)
+    setEmail(f.email)
+    setSenha(f.senha)
+    setCargo(f.cargo)
+    setIdsDosPapeisSelecionados(f.idsDosPapeis)
+    setIdsDasEmpresasSelecionadas(f.idsDasEmpresas)
+    setIdsDasPermissoesExtras(f.idsDasPermissoesExtras)
+    setChavesDasPaginasSelecionadas(f.chavesDasPaginas)
     setAbaAtiva('dados')
     setCamposTocados(new Set())
     setErroSalvar('')
   }
 
+  function usuarioParaFormulario(usuario: Usuario): FormularioUsuario {
+    return {
+      nome: usuario.name,
+      email: usuario.email,
+      senha: '',
+      cargo: usuario.cargo ?? '',
+      idsDosPapeis: usuario.roles.map((item) => item.role.id),
+      idsDasEmpresas: usuario.companies
+        .map((item) => item.company.id)
+        .filter((id) => listaDeEmpresas.some((e) => e.id === id)),
+      idsDasPermissoesExtras: usuario.permissoesExtras.map(
+        (item) => item.permission.id
+      ),
+      chavesDasPaginas: usuario.paginasPermitidas
+        .map((item) => item.pageKey)
+        .filter((chave) =>
+          listaDePaginasVinculaveis.some((p) => p.chave === chave)
+        ),
+    }
+  }
+
+  function limparFormulario() {
+    aplicarFormulario(FORM_USUARIO_VAZIO)
+  }
+
   function abrirModalNovo() {
-    limparFormulario()
+    const vazio = clonarFormulario(FORM_USUARIO_VAZIO)
+    aplicarFormulario(vazio)
+    setFormInicial(vazio)
     setModoEdicao(false)
     setIdDoUsuarioEmEdicao('')
     setModalUsuarioAberto(true)
   }
 
   function abrirModalEdicao(usuario: Usuario) {
+    const f = usuarioParaFormulario(usuario)
+    aplicarFormulario(f)
+    setFormInicial(clonarFormulario(f))
     setModoEdicao(true)
     setIdDoUsuarioEmEdicao(usuario.id)
-    setNome(usuario.name)
-    setEmail(usuario.email)
-    setCargo(usuario.cargo ?? '')
-    setSenha('')
-    setIdsDosPapeisSelecionados(usuario.roles.map((item) => item.role.id))
-    setIdsDasEmpresasSelecionadas(
-      usuario.companies
-        .map((item) => item.company.id)
-        .filter((id) => listaDeEmpresas.some((e) => e.id === id))
-    )
-    setIdsDasPermissoesExtras(
-      usuario.permissoesExtras.map((item) => item.permission.id)
-    )
-    setChavesDasPaginasSelecionadas(
-      usuario.paginasPermitidas
-        .map((item) => item.pageKey)
-        .filter((chave) => listaDePaginasVinculaveis.some((p) => p.chave === chave))
-    )
-    setAbaAtiva('dados')
-    setCamposTocados(new Set())
-    setErroSalvar('')
     setModalUsuarioAberto(true)
   }
 
-  function fecharModalUsuario() {
+  const fecharModalUsuario = useCallback(() => {
     setModalUsuarioAberto(false)
     setCamposTocados(new Set())
     setErroSalvar('')
-  }
+  }, [])
+
+  const { solicitarFechar, dialogoConfirmacao } = useConfirmarSaida(
+    formAtual,
+    formInicial,
+    fecharModalUsuario
+  )
 
   function atualizarUsuarioNaLista(usuarioAtualizado: Usuario) {
     setListaDeUsuarios((listaAtual) =>
@@ -448,13 +513,14 @@ function ConteudoDaPaginaDeUsuarios() {
   }, [listaDeUsuarios])
 
   const fecharDialogsAbertos = useCallback(() => {
-    if (modalUsuarioAberto) fecharModalUsuario()
-    if (usuarioParaDesativar) setUsuarioParaDesativar(null)
-    if (usuarioParaResetarSenha) setUsuarioParaResetarSenha(null)
+    if (modalUsuarioAberto) solicitarFechar()
+    else if (usuarioParaDesativar) setUsuarioParaDesativar(null)
+    else if (usuarioParaResetarSenha) setUsuarioParaResetarSenha(null)
   }, [
     modalUsuarioAberto,
     usuarioParaDesativar,
     usuarioParaResetarSenha,
+    solicitarFechar,
   ])
 
   useRegistrarAtalhos(
@@ -588,10 +654,12 @@ function ConteudoDaPaginaDeUsuarios() {
         </div>
       )}
 
+      {dialogoConfirmacao}
+
       {/* Modal de criar/editar usuário */}
       <Modal
         aberto={modalUsuarioAberto}
-        aoFechar={fecharModalUsuario}
+        aoFechar={solicitarFechar}
         titulo={modoEdicao ? `Editar: ${nome}` : 'Novo usuário'}
         largura="2xl"
         rodape={
@@ -605,7 +673,7 @@ function ConteudoDaPaginaDeUsuarios() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={fecharModalUsuario}
+                onClick={solicitarFechar}
                 disabled={salvando}
                 title={tituloComAtalho('Cancelar', teclaCancelar)}
               >
