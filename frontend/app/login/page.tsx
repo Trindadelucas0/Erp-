@@ -94,7 +94,7 @@ export default function PaginaDeLogin() {
           <InputPadrao
             rotulo="Email"
             type="email"
-            placeholder="admin@erp.local"
+            placeholder="********"
             value={email}
             onChange={(evento) => setEmail(evento.target.value)}
             required
@@ -103,14 +103,13 @@ export default function PaginaDeLogin() {
           <InputPadrao
             rotulo="Senha"
             type="password"
+             placeholder="********"
             value={senha}
             onChange={(evento) => setSenha(evento.target.value)}
             required
           />
 
-          <p className="text-xs text-muted-foreground">
-            Ambiente de desenvolvimento: admin@erp.local / admin123
-          </p>
+          
 
           {mensagemDeErro && (
             <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
