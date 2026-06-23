@@ -31,12 +31,11 @@ import { Separator } from '@/components/ui/separator'
 import { exportarCsv } from '@/lib/exportar-csv'
 import { submeterFormularioPorId } from '@/lib/atalhos/submeter-formulario'
 import {
-  mascaraDocumento,
+  mascaraPorTipo,
   mascaraTelefone,
   mascaraCep,
   mascaraCpf,
   mascaraCnpj,
-  detectarTipoDocumento,
   validarCpf,
   validarCnpj,
 } from '@/lib/documentos'
@@ -159,7 +158,7 @@ const FORM_VAZIO: FormCliente = {
   suframa: '',
   simplesNacional: false,
   observacaoNF: '',
-  aceitaNFe55: true,
+  aceitaNFe55: false,
   email: '',
   telefone: '',
   celular: '',
@@ -794,30 +793,41 @@ function ConteudoDaPaginaDeClientes() {
 
   // ─── Campo documento unificado ────────────────────────────────────────────
 
+  function camposAoTrocarTipo(novoTipo: 'PF' | 'PJ') {
+    return {
+      rg: '',
+      dataNascimento: '',
+      nomeFantasia: '',
+      cnae: '',
+      dataFundacao: '',
+      ie: '',
+      im: '',
+      suframa: '',
+      simplesNacional: false,
+      observacaoNF: '',
+      aceitaNFe55: novoTipo === 'PJ',
+    }
+  }
+
+  function aoMudarTipo(novoTipo: 'PF' | 'PJ') {
+    setForm((f) => {
+      const nums = f.documento.replace(/\D/g, '')
+      const documento = nums ? mascaraPorTipo(nums, novoTipo) : ''
+      return {
+        ...f,
+        tipo: novoTipo,
+        documento,
+        ...(f.tipo !== novoTipo ? camposAoTrocarTipo(novoTipo) : {}),
+      }
+    })
+    setAvisoDuplicidade(null)
+  }
+
   function aoMudarDocumento(valor: string) {
     tocarCampo('documento')
-    const comMascara = mascaraDocumento(valor)
-    const nums = comMascara.replace(/\D/g, '')
-    const tipo = nums.length > 11 ? 'PJ' : 'PF'
     setForm((f) => ({
       ...f,
-      documento: comMascara,
-      tipo,
-      // Ao trocar tipo, limpar campos do tipo anterior
-      ...(tipo !== f.tipo
-        ? {
-            rg: '',
-            dataNascimento: '',
-            nomeFantasia: '',
-            cnae: '',
-            dataFundacao: '',
-            ie: '',
-            im: '',
-            suframa: '',
-            simplesNacional: false,
-            observacaoNF: '',
-          }
-        : {}),
+      documento: mascaraPorTipo(valor, f.tipo),
     }))
     setAvisoDuplicidade(null)
   }
@@ -826,13 +836,13 @@ function ConteudoDaPaginaDeClientes() {
     tocarCampo('documento')
     if (modoEdicao) return
     const nums = form.documento.replace(/\D/g, '')
-    const tipoDetectado = detectarTipoDocumento(form.documento)
-    if (!tipoDetectado) return
-    const valido = tipoDetectado === 'CPF' ? validarCpf(nums) : validarCnpj(nums)
-    if (!valido) return
+    if (form.tipo === 'PF') {
+      if (nums.length !== 11 || !validarCpf(nums)) return
+    } else {
+      if (nums.length !== 14 || !validarCnpj(nums)) return
+    }
 
-    // Se PJ, buscar na BrasilAPI
-    if (tipoDetectado === 'CNPJ') {
+    if (form.tipo === 'PJ') {
       setCarregandoBrasilApi(true)
       const dados = await buscarDadosCnpj(nums)
       setCarregandoBrasilApi(false)
@@ -930,7 +940,7 @@ function ConteudoDaPaginaDeClientes() {
     const base = {
       tipo: form.tipo,
       nome: form.nome,
-      aceitaNFe55: form.aceitaNFe55,
+      aceitaNFe55: form.tipo === 'PJ' ? true : form.aceitaNFe55,
       email: form.email || undefined,
       telefone: form.telefone || undefined,
       celular: form.celular || undefined,
@@ -1324,8 +1334,7 @@ function ConteudoDaPaginaDeClientes() {
                   type="button"
                   disabled={qualquerOperacaoAtiva}
                   onClick={() => {
-                    setForm((f) => ({ ...f, tipo: 'PF', documento: '' }))
-                    setAvisoDuplicidade(null)
+                    aoMudarTipo('PF')
                   }}
                   className={`flex-1 rounded-md border py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
                     form.tipo === 'PF'
@@ -1339,8 +1348,7 @@ function ConteudoDaPaginaDeClientes() {
                   type="button"
                   disabled={qualquerOperacaoAtiva}
                   onClick={() => {
-                    setForm((f) => ({ ...f, tipo: 'PJ', documento: '' }))
-                    setAvisoDuplicidade(null)
+                    aoMudarTipo('PJ')
                   }}
                   className={`flex-1 rounded-md border py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
                     form.tipo === 'PJ'
@@ -1428,7 +1436,7 @@ function ConteudoDaPaginaDeClientes() {
                     obrigatorio
                   />
                   <CampoCheckbox
-                    rotulo="Aceita NF-e modelo 55"
+                    rotulo="Exige NF-e modelo 55"
                     valor={form.aceitaNFe55}
                     aoMudar={(v) => set('aceitaNFe55', v)}
                     ajuda="Emissão de nota fiscal eletrônica para este cliente"
@@ -1527,11 +1535,6 @@ function ConteudoDaPaginaDeClientes() {
                       rotulo="Simples Nacional"
                       valor={form.simplesNacional}
                       aoMudar={(v) => set('simplesNacional', v)}
-                    />
-                    <CampoCheckbox
-                      rotulo="Aceita NF-e modelo 55"
-                      valor={form.aceitaNFe55}
-                      aoMudar={(v) => set('aceitaNFe55', v)}
                     />
                   </div>
                   <div className="space-y-1">

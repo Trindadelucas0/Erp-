@@ -317,7 +317,7 @@ function ConteudoAprovacao() {
                   : '—'}
               </p>
               <p>
-                <strong>NF-e modelo 55:</strong>{' '}
+                <strong>Exige NF-e modelo 55:</strong>{' '}
                 {clienteSelecionado.aceitaNFe55 ? 'Sim' : 'Não'}
               </p>
             </div>
