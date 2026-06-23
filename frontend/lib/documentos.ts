@@ -53,6 +53,10 @@ export function mascaraCnpj(valor: string): string {
   return `${n.slice(0, 2)}.${n.slice(2, 5)}.${n.slice(5, 8)}/${n.slice(8, 12)}-${n.slice(12)}`
 }
 
+export function mascaraPorTipo(valor: string, tipo: 'PF' | 'PJ'): string {
+  return tipo === 'PF' ? mascaraCpf(valor) : mascaraCnpj(valor)
+}
+
 /** Detecta e aplica máscara: ≤11 dígitos → CPF, >11 → CNPJ */
 export function mascaraDocumento(valor: string): string {
   const n = valor.replace(/\D/g, '')

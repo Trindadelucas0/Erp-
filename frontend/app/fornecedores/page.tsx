@@ -30,12 +30,11 @@ import { Separator } from '@/components/ui/separator'
 import { exportarCsv } from '@/lib/exportar-csv'
 import { submeterFormularioPorId } from '@/lib/atalhos/submeter-formulario'
 import {
-  mascaraDocumento,
+  mascaraPorTipo,
   mascaraTelefone,
   mascaraCep,
   mascaraCpf,
   mascaraCnpj,
-  detectarTipoDocumento,
   validarCpf,
   validarCnpj,
 } from '@/lib/documentos'
@@ -624,18 +623,40 @@ function ConteudoDaPaginaDeFornecedores() {
 
   // ─── Campo documento unificado ───────────────────────────────────────────
 
+  function camposAoTrocarTipo(novoTipo: 'PF' | 'PJ') {
+    return {
+      rg: '',
+      dataNascimento: '',
+      nomeFantasia: '',
+      cnae: '',
+      dataFundacao: '',
+      ie: '',
+      im: '',
+      simplesNacional: false,
+      observacaoNF: '',
+      aceitaNFe55: novoTipo === 'PJ',
+    }
+  }
+
+  function aoMudarTipo(novoTipo: 'PF' | 'PJ') {
+    setForm((f) => {
+      const nums = f.documento.replace(/\D/g, '')
+      const documento = nums ? mascaraPorTipo(nums, novoTipo) : ''
+      return {
+        ...f,
+        tipo: novoTipo,
+        documento,
+        ...(f.tipo !== novoTipo ? camposAoTrocarTipo(novoTipo) : {}),
+      }
+    })
+    setAvisoDuplicidade(null)
+  }
+
   function aoMudarDocumento(valor: string) {
     tocarCampo('documento')
-    const comMascara = mascaraDocumento(valor)
-    const nums = comMascara.replace(/\D/g, '')
-    const tipo = nums.length > 11 ? 'PJ' : 'PF'
     setForm((f) => ({
       ...f,
-      documento: comMascara,
-      tipo,
-      ...(tipo !== f.tipo
-        ? { rg: '', dataNascimento: '', nomeFantasia: '', cnae: '', dataFundacao: '', ie: '', im: '', simplesNacional: false, observacaoNF: '' }
-        : {}),
+      documento: mascaraPorTipo(valor, f.tipo),
     }))
     setAvisoDuplicidade(null)
   }
@@ -644,12 +665,13 @@ function ConteudoDaPaginaDeFornecedores() {
     tocarCampo('documento')
     if (modoEdicao) return
     const nums = form.documento.replace(/\D/g, '')
-    const tipoDetectado = detectarTipoDocumento(form.documento)
-    if (!tipoDetectado) return
-    const valido = tipoDetectado === 'CPF' ? validarCpf(nums) : validarCnpj(nums)
-    if (!valido) return
+    if (form.tipo === 'PF') {
+      if (nums.length !== 11 || !validarCpf(nums)) return
+    } else {
+      if (nums.length !== 14 || !validarCnpj(nums)) return
+    }
 
-    if (tipoDetectado === 'CNPJ') {
+    if (form.tipo === 'PJ') {
       setCarregandoBrasilApi(true)
       const dados = await buscarDadosCnpj(nums)
       setCarregandoBrasilApi(false)
@@ -761,7 +783,7 @@ function ConteudoDaPaginaDeFornecedores() {
       observacoes: form.observacoes || undefined,
       condicaoPagamento: form.condicaoPagamento || undefined,
       prazoEntrega: form.prazoEntrega ? parseInt(form.prazoEntrega, 10) : undefined,
-      aceitaNFe55: form.aceitaNFe55,
+      aceitaNFe55: form.tipo === 'PJ' ? true : form.aceitaNFe55,
     }
 
     const contatosPayload =
@@ -975,12 +997,12 @@ function ConteudoDaPaginaDeFornecedores() {
               <div className="space-y-5">
                 <div className="flex gap-2">
                   <button type="button" disabled={qualquerOperacaoAtiva}
-                    onClick={() => { setForm((f) => ({ ...f, tipo: 'PF', documento: '' })); setAvisoDuplicidade(null) }}
+                    onClick={() => aoMudarTipo('PF')}
                     className={`flex-1 rounded-md border py-2 text-sm font-medium transition-colors disabled:opacity-50 ${form.tipo === 'PF' ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-transparent text-muted-foreground hover:bg-muted/50'}`}>
                     Pessoa Física (CPF)
                   </button>
                   <button type="button" disabled={qualquerOperacaoAtiva}
-                    onClick={() => { setForm((f) => ({ ...f, tipo: 'PJ', documento: '' })); setAvisoDuplicidade(null) }}
+                    onClick={() => aoMudarTipo('PJ')}
                     className={`flex-1 rounded-md border py-2 text-sm font-medium transition-colors disabled:opacity-50 ${form.tipo === 'PJ' ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-transparent text-muted-foreground hover:bg-muted/50'}`}>
                     Pessoa Jurídica (CNPJ)
                   </button>
@@ -1033,7 +1055,7 @@ function ConteudoDaPaginaDeFornecedores() {
                       <CampoInput rotulo="Data de nascimento" valor={form.dataNascimento} aoMudar={(v) => set('dataNascimento', v)} tipo="date" />
                     </div>
                     <CampoSelect rotulo="Indicador IE (NF-e)" valor={form.indicadorIe} aoMudar={(v) => set('indicadorIe', v)} opcoes={INDICADORES_IE} obrigatorio />
-                    <CampoCheckbox rotulo="Aceita NF-e modelo 55" valor={form.aceitaNFe55} aoMudar={(v) => set('aceitaNFe55', v)} />
+                    <CampoCheckbox rotulo="Exige NF-e modelo 55" valor={form.aceitaNFe55} aoMudar={(v) => set('aceitaNFe55', v)} />
                   </div>
                 )}
 
@@ -1055,7 +1077,6 @@ function ConteudoDaPaginaDeFornecedores() {
                     <div className="grid gap-4 sm:grid-cols-2">
                       <CampoSelect rotulo="Indicador IE (NF-e)" valor={form.indicadorIe} aoMudar={(v) => set('indicadorIe', v)} opcoes={INDICADORES_IE} obrigatorio />
                       <CampoCheckbox rotulo="Simples Nacional" valor={form.simplesNacional} aoMudar={(v) => set('simplesNacional', v)} />
-                      <CampoCheckbox rotulo="Aceita NF-e modelo 55" valor={form.aceitaNFe55} aoMudar={(v) => set('aceitaNFe55', v)} />
                     </div>
                   </div>
                 )}

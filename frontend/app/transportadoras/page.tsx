@@ -30,12 +30,11 @@ import { Separator } from '@/components/ui/separator'
 import { exportarCsv } from '@/lib/exportar-csv'
 import { submeterFormularioPorId } from '@/lib/atalhos/submeter-formulario'
 import {
-  mascaraDocumento,
+  mascaraPorTipo,
   mascaraTelefone,
   mascaraCep,
   mascaraCpf,
   mascaraCnpj,
-  detectarTipoDocumento,
   validarCpf,
   validarCnpj,
 } from '@/lib/documentos'
@@ -535,14 +534,40 @@ function ConteudoDaPaginaDeTransportadoras() {
     fecharModal
   )
 
+  function camposAoTrocarTipo(novoTipo: 'PF' | 'PJ') {
+    return {
+      rg: '',
+      dataNascimento: '',
+      nomeFantasia: '',
+      cnae: '',
+      dataFundacao: '',
+      ie: '',
+      im: '',
+      simplesNacional: false,
+      observacaoNF: '',
+      aceitaNFe55: novoTipo === 'PJ',
+    }
+  }
+
+  function aoMudarTipo(novoTipo: 'PF' | 'PJ') {
+    setForm((f) => {
+      const nums = f.documento.replace(/\D/g, '')
+      const documento = nums ? mascaraPorTipo(nums, novoTipo) : ''
+      return {
+        ...f,
+        tipo: novoTipo,
+        documento,
+        ...(f.tipo !== novoTipo ? camposAoTrocarTipo(novoTipo) : {}),
+      }
+    })
+    setAvisoDuplicidade(null)
+  }
+
   function aoMudarDocumento(valor: string) {
     tocarCampo('documento')
-    const comMascara = mascaraDocumento(valor)
-    const nums = comMascara.replace(/\D/g, '')
-    const tipo = nums.length > 11 ? 'PJ' : 'PF'
     setForm((f) => ({
-      ...f, documento: comMascara, tipo,
-      ...(tipo !== f.tipo ? { rg: '', dataNascimento: '', nomeFantasia: '', cnae: '', dataFundacao: '', ie: '', im: '', simplesNacional: false, observacaoNF: '' } : {}),
+      ...f,
+      documento: mascaraPorTipo(valor, f.tipo),
     }))
     setAvisoDuplicidade(null)
   }
@@ -551,12 +576,13 @@ function ConteudoDaPaginaDeTransportadoras() {
     tocarCampo('documento')
     if (modoEdicao) return
     const nums = form.documento.replace(/\D/g, '')
-    const tipoDetectado = detectarTipoDocumento(form.documento)
-    if (!tipoDetectado) return
-    const valido = tipoDetectado === 'CPF' ? validarCpf(nums) : validarCnpj(nums)
-    if (!valido) return
+    if (form.tipo === 'PF') {
+      if (nums.length !== 11 || !validarCpf(nums)) return
+    } else {
+      if (nums.length !== 14 || !validarCnpj(nums)) return
+    }
 
-    if (tipoDetectado === 'CNPJ') {
+    if (form.tipo === 'PJ') {
       setCarregandoBrasilApi(true)
       const dados = await buscarDadosCnpj(nums)
       setCarregandoBrasilApi(false)
@@ -618,7 +644,7 @@ function ConteudoDaPaginaDeTransportadoras() {
       : { cep: form.cep || undefined, logradouro: form.logradouro || undefined, numero: form.numero || undefined, complemento: form.complemento || undefined, bairro: form.bairro || undefined, cidade: form.cidade || undefined, estado: form.estado || undefined, codigoIbge: form.codigoIbge || undefined }
 
     if (form.tipo === 'PF') return { ...base, ...contatosPayload, ...enderecosPayload, cpf: nums, rg: form.rg || undefined, dataNascimento: form.dataNascimento || undefined, aceitaNFe55: form.aceitaNFe55 }
-    return { ...base, ...contatosPayload, ...enderecosPayload, cnpj: nums, nomeFantasia: form.nomeFantasia || undefined, cnae: form.cnae || undefined, dataFundacao: form.dataFundacao || undefined, ie: form.ie || undefined, im: form.im || undefined, simplesNacional: form.simplesNacional, observacaoNF: form.observacaoNF || undefined, aceitaNFe55: form.aceitaNFe55 }
+    return { ...base, ...contatosPayload, ...enderecosPayload, cnpj: nums, nomeFantasia: form.nomeFantasia || undefined, cnae: form.cnae || undefined, dataFundacao: form.dataFundacao || undefined, ie: form.ie || undefined, im: form.im || undefined, simplesNacional: form.simplesNacional, observacaoNF: form.observacaoNF || undefined, aceitaNFe55: true }
   }
 
   async function aoSalvar(evento: FormEvent) {
@@ -774,12 +800,12 @@ function ConteudoDaPaginaDeTransportadoras() {
               <div className="space-y-5">
                 <div className="flex gap-2">
                   <button type="button" disabled={qualquerOperacaoAtiva}
-                    onClick={() => { setForm((f) => ({ ...f, tipo: 'PF', documento: '' })); setAvisoDuplicidade(null) }}
+                    onClick={() => aoMudarTipo('PF')}
                     className={`flex-1 rounded-md border py-2 text-sm font-medium transition-colors disabled:opacity-50 ${form.tipo === 'PF' ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-transparent text-muted-foreground hover:bg-muted/50'}`}>
                     Pessoa Física (CPF)
                   </button>
                   <button type="button" disabled={qualquerOperacaoAtiva}
-                    onClick={() => { setForm((f) => ({ ...f, tipo: 'PJ', documento: '' })); setAvisoDuplicidade(null) }}
+                    onClick={() => aoMudarTipo('PJ')}
                     className={`flex-1 rounded-md border py-2 text-sm font-medium transition-colors disabled:opacity-50 ${form.tipo === 'PJ' ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-transparent text-muted-foreground hover:bg-muted/50'}`}>
                     Pessoa Jurídica (CNPJ)
                   </button>
@@ -815,7 +841,7 @@ function ConteudoDaPaginaDeTransportadoras() {
                       <CampoInput rotulo="RG" valor={form.rg} aoMudar={(v) => set('rg', v)} placeholder="Número do RG" maxLength={20} />
                       <CampoInput rotulo="Data de nascimento" valor={form.dataNascimento} aoMudar={(v) => set('dataNascimento', v)} tipo="date" />
                     </div>
-                    <CampoCheckbox rotulo="Aceita NF-e modelo 55" valor={form.aceitaNFe55} aoMudar={(v) => set('aceitaNFe55', v)} />
+                    <CampoCheckbox rotulo="Exige NF-e modelo 55" valor={form.aceitaNFe55} aoMudar={(v) => set('aceitaNFe55', v)} />
                   </div>
                 )}
 
@@ -832,7 +858,6 @@ function ConteudoDaPaginaDeTransportadoras() {
                       <CampoInput rotulo="Data de fundação" valor={form.dataFundacao} aoMudar={(v) => set('dataFundacao', v)} tipo="date" />
                     </div>
                     <CampoCheckbox rotulo="Simples Nacional" valor={form.simplesNacional} aoMudar={(v) => set('simplesNacional', v)} />
-                    <CampoCheckbox rotulo="Aceita NF-e modelo 55" valor={form.aceitaNFe55} aoMudar={(v) => set('aceitaNFe55', v)} />
                   </div>
                 )}
 
