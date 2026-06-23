@@ -6,6 +6,7 @@ vi.mock('../../../src/modulos/clientes/repositorio-clientes.js', () => ({
     buscarPorId: vi.fn(),
     buscarPorCpfNaEmpresa: vi.fn(),
     buscarPorCnpjNaEmpresa: vi.fn(),
+    buscarPessoaPorDocumentoNaEmpresa: vi.fn(),
     criar: vi.fn(),
     atualizar: vi.fn(),
     alterarStatus: vi.fn(),
@@ -27,6 +28,7 @@ const clientePFBase = {
   cpf: '52998224725',
   companyId: 'company-001',
   ativo: true,
+  statusAprovacao: 'pendente_aprovacao',
 }
 
 const clientePJBase = {
@@ -94,9 +96,12 @@ describe('servicoDeClientes.criarCliente', () => {
   })
 
   it('lança 400 quando CPF já está cadastrado nesta empresa', async () => {
-    vi.mocked(repositorioDeClientes.buscarPorCpfNaEmpresa).mockResolvedValue(
-      clientePFBase as never
-    )
+    vi.mocked(repositorioDeClientes.buscarPessoaPorDocumentoNaEmpresa).mockResolvedValue({
+      encontrado: true,
+      temPapelCliente: true,
+      papeis: ['cliente'],
+      pessoa: clientePFBase as never,
+    })
 
     await expect(
       servicoDeClientes.criarCliente(dadosPF(), 'company-001', 'autor-001')
@@ -108,9 +113,12 @@ describe('servicoDeClientes.criarCliente', () => {
   })
 
   it('lança 400 quando CNPJ já está cadastrado nesta empresa', async () => {
-    vi.mocked(repositorioDeClientes.buscarPorCnpjNaEmpresa).mockResolvedValue(
-      clientePJBase as never
-    )
+    vi.mocked(repositorioDeClientes.buscarPessoaPorDocumentoNaEmpresa).mockResolvedValue({
+      encontrado: true,
+      temPapelCliente: true,
+      papeis: ['cliente'],
+      pessoa: clientePJBase as never,
+    })
 
     await expect(
       servicoDeClientes.criarCliente(dadosPJ(), 'company-001', 'autor-001')
@@ -122,7 +130,12 @@ describe('servicoDeClientes.criarCliente', () => {
   })
 
   it('cria cliente PF quando CPF não existe na empresa', async () => {
-    vi.mocked(repositorioDeClientes.buscarPorCpfNaEmpresa).mockResolvedValue(null)
+    vi.mocked(repositorioDeClientes.buscarPessoaPorDocumentoNaEmpresa).mockResolvedValue({
+      encontrado: false,
+      temPapelCliente: false,
+      papeis: [],
+      pessoa: null,
+    })
     vi.mocked(repositorioDeClientes.criar).mockResolvedValue(clientePFBase as never)
 
     const resultado = await servicoDeClientes.criarCliente(
@@ -136,7 +149,12 @@ describe('servicoDeClientes.criarCliente', () => {
   })
 
   it('cria cliente PJ quando CNPJ não existe na empresa', async () => {
-    vi.mocked(repositorioDeClientes.buscarPorCnpjNaEmpresa).mockResolvedValue(null)
+    vi.mocked(repositorioDeClientes.buscarPessoaPorDocumentoNaEmpresa).mockResolvedValue({
+      encontrado: false,
+      temPapelCliente: false,
+      papeis: [],
+      pessoa: null,
+    })
     vi.mocked(repositorioDeClientes.criar).mockResolvedValue(clientePJBase as never)
 
     const resultado = await servicoDeClientes.criarCliente(
@@ -149,8 +167,12 @@ describe('servicoDeClientes.criarCliente', () => {
   })
 
   it('o mesmo CPF pode existir em empresas diferentes', async () => {
-    // CPF em company-001 existe, mas estamos criando em company-002
-    vi.mocked(repositorioDeClientes.buscarPorCpfNaEmpresa).mockResolvedValue(null)
+    vi.mocked(repositorioDeClientes.buscarPessoaPorDocumentoNaEmpresa).mockResolvedValue({
+      encontrado: false,
+      temPapelCliente: false,
+      papeis: [],
+      pessoa: null,
+    })
     vi.mocked(repositorioDeClientes.criar).mockResolvedValue(clientePFBase as never)
 
     await expect(
@@ -165,7 +187,7 @@ describe('servicoDeClientes.editarCliente', () => {
     vi.mocked(repositorioDeClientes.buscarPorId).mockResolvedValue(null)
 
     await expect(
-      servicoDeClientes.editarCliente('inexistente', dadosPF(), 'company-001', 'autor-001')
+      servicoDeClientes.editarCliente('inexistente', dadosPF(), 'company-001', 'autor-001', false)
     ).rejects.toMatchObject({ codigoHttp: 404 })
   })
 
@@ -176,7 +198,7 @@ describe('servicoDeClientes.editarCliente', () => {
     } as never)
 
     await expect(
-      servicoDeClientes.editarCliente('cliente-001', dadosPF(), 'company-001', 'autor-001')
+      servicoDeClientes.editarCliente('cliente-001', dadosPF(), 'company-001', 'autor-001', false)
     ).rejects.toMatchObject({ codigoHttp: 404 })
   })
 
@@ -190,7 +212,7 @@ describe('servicoDeClientes.editarCliente', () => {
     } as never)
 
     await expect(
-      servicoDeClientes.editarCliente('cliente-001', dadosPF(), 'company-001', 'autor-001')
+      servicoDeClientes.editarCliente('cliente-001', dadosPF(), 'company-001', 'autor-001', false)
     ).rejects.toMatchObject({ codigoHttp: 400 })
   })
 
@@ -204,7 +226,7 @@ describe('servicoDeClientes.editarCliente', () => {
     vi.mocked(repositorioDeClientes.atualizar).mockResolvedValue(clientePFBase as never)
 
     await expect(
-      servicoDeClientes.editarCliente('cliente-001', dadosPF(), 'company-001', 'autor-001')
+      servicoDeClientes.editarCliente('cliente-001', dadosPF(), 'company-001', 'autor-001', false)
     ).resolves.toBeDefined()
   })
 })
