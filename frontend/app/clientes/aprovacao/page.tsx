@@ -24,6 +24,7 @@ import {
   rotuloStatusAprovacao,
   varianteBadgeAprovacao,
 } from '@/lib/status-cliente'
+import { montarLinkDeAssinatura } from '@/lib/url-publica'
 
 type ClientePendente = {
   id: string
@@ -162,8 +163,7 @@ function ConteudoAprovacao() {
         )
 
         const token = data.tokenAssinatura as string
-        const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
-        setLinkAssinatura(`${baseUrl}/assinatura/${token}`)
+        setLinkAssinatura(montarLinkDeAssinatura(token))
         setNomeClienteAprovado(clienteSelecionado.nome)
         setModalAssinaturaAberto(true)
         fecharAnalise()
