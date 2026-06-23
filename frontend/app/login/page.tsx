@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { clienteHttp } from '@/services/api'
+import { clienteHttp, URL_DA_API } from '@/services/api'
 import {
   buscarPerfilDoUsuario,
   resolverRotaAposLogin,
@@ -59,7 +59,7 @@ export default function PaginaDeLogin() {
 
       if (!resposta) {
         setMensagemDeErro(
-          'Não foi possível conectar à API. Rode "npm run dev" na pasta Erp.'
+          `Não foi possível conectar à API (${URL_DA_API}). Na VPS, confira o .env, a rota do Cloudflare para a API e rode "npm run build" de novo.`
         )
         return
       }
