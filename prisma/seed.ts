@@ -87,7 +87,6 @@ async function main() {
     { acao: 'salvar', tecla: 'F8' },
     { acao: 'cancelar', tecla: 'Escape' },
     { acao: 'atualizar', tecla: 'F5' },
-    { acao: 'exportar', tecla: 'Ctrl+E' },
     { acao: 'ajuda', tecla: 'F1' },
   ]
 

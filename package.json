@@ -13,6 +13,7 @@
     "start:web": "npm run start --prefix frontend",
     "parar": "npx kill-port 8885 3333",
     "db:migrate": "tsx scripts/executar-prisma.ts migrate dev",
+    "db:migrate:deploy": "tsx scripts/executar-prisma.ts migrate deploy",
     "db:seed": "tsx --import ./scripts/carregar-url-do-banco.ts prisma/seed.ts",
     "db:sync-permissoes": "tsx --import ./scripts/carregar-url-do-banco.ts scripts/sincronizar-permissoes.ts",
     "db:studio": "tsx scripts/executar-prisma.ts studio",
