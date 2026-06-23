@@ -5,7 +5,7 @@
 import axios from 'axios'
 import { limparSessaoLocal } from '@/lib/sessao-local'
 
-const URL_DA_API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3333'
+const URL_DA_API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8885'
 
 export const clienteHttp = axios.create({
   baseURL: URL_DA_API,

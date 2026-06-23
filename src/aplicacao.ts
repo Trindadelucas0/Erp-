@@ -9,7 +9,7 @@ import { criarServidor } from './infraestrutura/http/servidor.js'
 config()
 definirUrlDoBancoNoAmbiente()
 
-const porta = Number(process.env.PORT) || 3333
+const porta = Number(process.env.PORT) || 8885
 
 const aplicacao = await criarServidor()
 
