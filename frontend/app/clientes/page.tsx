@@ -41,6 +41,7 @@ import {
 import { buscarDadosCnpj } from '@/lib/brasil-api'
 import { ListaContatos, type ContatoForm } from '@/components/clientes/lista-contatos'
 import { ListaEnderecos, ENDERECO_VAZIO, type EnderecoForm } from '@/components/clientes/lista-enderecos'
+import { ListaCnaes, type CnaeForm } from '@/components/pessoas/lista-cnaes'
 import Link from 'next/link'
 import {
   rotuloStatusAprovacao,
@@ -63,6 +64,7 @@ type Cliente = {
   cnpj?: string | null
   nomeFantasia?: string | null
   cnae?: string | null
+  cnaes?: CnaeForm[]
   dataFundacao?: string | null
   ie?: string | null
   im?: string | null
@@ -100,7 +102,7 @@ type FormCliente = {
   rg: string
   dataNascimento: string
   nomeFantasia: string
-  cnae: string
+  cnaes: CnaeForm[]
   dataFundacao: string
   ie: string
   ieIsento: boolean
@@ -111,7 +113,6 @@ type FormCliente = {
   aceitaNFe55: boolean
   email: string
   telefone: string
-  celular: string
   celularWhatsapp: boolean
   cep: string
   logradouro: string
@@ -149,7 +150,7 @@ const FORM_VAZIO: FormCliente = {
   rg: '',
   dataNascimento: '',
   nomeFantasia: '',
-  cnae: '',
+  cnaes: [],
   dataFundacao: '',
   ie: '',
   ieIsento: false,
@@ -160,7 +161,6 @@ const FORM_VAZIO: FormCliente = {
   aceitaNFe55: false,
   email: '',
   telefone: '',
-  celular: '',
   celularWhatsapp: false,
   cep: '',
   logradouro: '',
@@ -196,7 +196,11 @@ function clienteParaForm(c: Cliente): FormCliente {
     rg: c.rg || '',
     dataNascimento: c.dataNascimento || '',
     nomeFantasia: c.nomeFantasia || '',
-    cnae: c.cnae || '',
+    cnaes: c.cnaes?.length
+      ? c.cnaes
+      : c.cnae
+        ? [{ codigo: c.cnae, descricao: '', principal: true }]
+        : [],
     dataFundacao: c.dataFundacao || '',
     ie: c.ie === 'ISENTO' ? '' : (c.ie || ''),
     ieIsento: c.ie === 'ISENTO',
@@ -206,8 +210,7 @@ function clienteParaForm(c: Cliente): FormCliente {
     observacaoNF: c.observacaoNF || '',
     aceitaNFe55: c.aceitaNFe55 ?? true,
     email: c.email || '',
-    telefone: c.telefone ? mascaraTelefone(c.telefone) : '',
-    celular: c.celular ? mascaraTelefone(c.celular) : '',
+    telefone: (c.telefone || c.celular) ? mascaraTelefone(c.telefone || c.celular || '') : '',
     celularWhatsapp: c.celularWhatsapp ?? false,
     cep: c.cep ? mascaraCep(c.cep) : '',
     logradouro: c.logradouro || '',
@@ -282,8 +285,7 @@ function validarFormCliente(form: FormCliente): ErrosDoForm {
 
   const temEmailSimples = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())
   const temTelefoneSimples =
-    form.telefone.replace(/\D/g, '').length >= 10 ||
-    form.celular.replace(/\D/g, '').length >= 10
+    form.telefone.replace(/\D/g, '').length >= 10
 
   if (form.tipo === 'PJ' && form.suframa && !/^\d{8,9}$/.test(form.suframa.replace(/\D/g, '')))
     erros.suframa = 'SUFRAMA inválido (8 ou 9 dígitos)'
@@ -579,8 +581,7 @@ function ConteudoDaPaginaDeClientes() {
         }
         const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())
         const telOk =
-          f.telefone.replace(/\D/g, '').length >= 10 ||
-          f.celular.replace(/\D/g, '').length >= 10
+          f.telefone.replace(/\D/g, '').length >= 10
         return emailOk && telOk
       },
     },
@@ -796,7 +797,7 @@ function ConteudoDaPaginaDeClientes() {
       rg: '',
       dataNascimento: '',
       nomeFantasia: '',
-      cnae: '',
+      cnaes: [],
       dataFundacao: '',
       ie: '',
       im: '',
@@ -849,7 +850,7 @@ function ConteudoDaPaginaDeClientes() {
           ...f,
           nome: f.nome || dados.nome,
           nomeFantasia: f.nomeFantasia || dados.nomeFantasia,
-          cnae: f.cnae || dados.cnae,
+          cnaes: f.cnaes.length ? f.cnaes : dados.cnaes,
           dataFundacao: f.dataFundacao || dados.dataFundacao,
           cep: f.cep || mascaraCep(dados.cep),
           logradouro: f.logradouro || dados.logradouro,
@@ -888,7 +889,6 @@ function ConteudoDaPaginaDeClientes() {
               ie: importado.ie || f.ie,
               email: importado.email || f.email,
               telefone: importado.telefone || f.telefone,
-              celular: importado.celular || f.celular,
               cep: importado.cep || f.cep,
               logradouro: importado.logradouro || f.logradouro,
               numero: importado.numero || f.numero,
@@ -941,7 +941,6 @@ function ConteudoDaPaginaDeClientes() {
       aceitaNFe55: form.tipo === 'PJ' ? true : form.aceitaNFe55,
       email: form.email || undefined,
       telefone: form.telefone || undefined,
-      celular: form.celular || undefined,
       celularWhatsapp: form.celularWhatsapp,
       cep: form.cep || undefined,
       logradouro: form.logradouro || undefined,
@@ -962,7 +961,6 @@ function ConteudoDaPaginaDeClientes() {
         : {
             email: form.email || undefined,
             telefone: form.telefone || undefined,
-            celular: form.celular || undefined,
             celularWhatsapp: form.celularWhatsapp,
           }
 
@@ -1002,7 +1000,7 @@ function ConteudoDaPaginaDeClientes() {
       ...enderecosPayload,
       cnpj: nums,
       nomeFantasia: form.nomeFantasia || undefined,
-      cnae: form.cnae || undefined,
+      cnaes: form.cnaes.length ? form.cnaes : undefined,
       dataFundacao: form.dataFundacao || undefined,
       ie: form.ieIsento ? 'ISENTO' : (form.ie || undefined),
       im: form.im || undefined,
@@ -1495,20 +1493,13 @@ function ConteudoDaPaginaDeClientes() {
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <CampoInput
-                      rotulo="CNAE"
-                      valor={form.cnae}
-                      aoMudar={(v) => set('cnae', v)}
-                      placeholder="Código CNAE (ex: 4711301)"
-                      maxLength={10}
-                      ajuda="Atividade econômica principal"
-                    />
-                    <CampoInput
                       rotulo="Data de fundação"
                       valor={form.dataFundacao}
                       aoMudar={(v) => set('dataFundacao', v)}
                       tipo="date"
                     />
                   </div>
+                  <ListaCnaes cnaes={form.cnaes} />
                   <div className="flex flex-wrap gap-4">
                     <CampoCheckbox
                       rotulo="Simples Nacional"
@@ -1560,38 +1551,23 @@ function ConteudoDaPaginaDeClientes() {
                     placeholder="cliente@email.com.br"
                     mensagemDeErro={erroVisivel('email')}
                   />
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <CampoInput
-                      rotulo="Telefone fixo"
-                      valor={form.telefone}
-                      aoMudar={(v) => {
-                        tocarCampo('telefone')
-                        set('telefone', mascaraTelefone(v))
-                      }}
-                      onBlur={() => tocarCampo('telefone')}
-                      placeholder="(00) 0000-0000"
-                      maxLength={14}
-                      mensagemDeErro={erroVisivel('telefone')}
-                    />
-                    <div className="space-y-2">
-                      <CampoInput
-                        rotulo="Celular"
-                        valor={form.celular}
-                        aoMudar={(v) => {
-                          tocarCampo('telefone')
-                          set('celular', mascaraTelefone(v))
-                        }}
-                        onBlur={() => tocarCampo('telefone')}
-                        placeholder="(00) 00000-0000"
-                        maxLength={15}
-                      />
-                      <CampoCheckbox
-                        rotulo="Este celular é WhatsApp"
-                        valor={form.celularWhatsapp}
-                        aoMudar={(v) => set('celularWhatsapp', v)}
-                      />
-                    </div>
-                  </div>
+                  <CampoInput
+                    rotulo="Telefone"
+                    valor={form.telefone}
+                    aoMudar={(v) => {
+                      tocarCampo('telefone')
+                      set('telefone', mascaraTelefone(v))
+                    }}
+                    onBlur={() => tocarCampo('telefone')}
+                    placeholder="(00) 0000-0000 ou (00) 00000-0000"
+                    maxLength={15}
+                    mensagemDeErro={erroVisivel('telefone')}
+                  />
+                  <CampoCheckbox
+                    rotulo="Telefone com WhatsApp"
+                    valor={form.celularWhatsapp}
+                    aoMudar={(v) => set('celularWhatsapp', v)}
+                  />
                 </>
               )}
 
@@ -1604,8 +1580,7 @@ function ConteudoDaPaginaDeClientes() {
                     // Migrar campos simples para array
                     const inicial: ContatoForm[] = []
                     if (form.email) inicial.push({ tipo: 'email', valor: form.email, descricao: '', whatsapp: false, principal: true })
-                    if (form.telefone) inicial.push({ tipo: 'telefone', valor: form.telefone, descricao: '', whatsapp: false, principal: true })
-                    if (form.celular) inicial.push({ tipo: 'telefone', valor: form.celular, descricao: '', whatsapp: form.celularWhatsapp, principal: false })
+                    if (form.telefone) inicial.push({ tipo: 'telefone', valor: form.telefone, descricao: '', whatsapp: form.celularWhatsapp, principal: true })
                     set('contatos', inicial.length > 0 ? inicial : [{ tipo: 'email', valor: '', descricao: '', whatsapp: false, principal: true }])
                   }
                 }}

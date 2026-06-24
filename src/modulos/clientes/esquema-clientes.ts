@@ -71,9 +71,16 @@ export const esquemaDeEnderecoItem = z.object({
     .refine((v) => !v || /^\d{7}$/.test(v), 'Código IBGE deve ter 7 dígitos'),
 })
 
+export const esquemaDeCnaeItem = z.object({
+  codigo: z.string().min(1).max(10),
+  descricao: z.string().max(500).optional(),
+  principal: z.boolean().optional(),
+})
+
 const camposArrays = {
   contatos: z.array(esquemaDeContatoItem).optional(),
   enderecos: z.array(esquemaDeEnderecoItem).optional(),
+  cnaes: z.array(esquemaDeCnaeItem).optional(),
 }
 
 export const esquemaDeCriacaoDeClientePF = z.object({

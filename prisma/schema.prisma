@@ -24,9 +24,11 @@ model Company {
   bairro      String?
   cidade      String?
   estado      String?
-  users       UserCompany[]
-  pessoas     Pessoa[]
-  createdAt   DateTime      @default(now())
+  users             UserCompany[]
+  pessoas           Pessoa[]
+  planosFinanceiros PlanoFinanceiro[]
+  cfops             Cfop[]
+  createdAt         DateTime      @default(now())
 }
 
 // ─── Cadastro Unificado de Pessoas ───────────────────────────────────────────
@@ -65,6 +67,8 @@ model Pessoa {
   papeis          PessoaPapel[]
   contatos        PessoaContato[]
   enderecos       PessoaEndereco[]
+  dadosBancarios  PessoaDadosBancario[]
+  cnaes           PessoaCnae[]
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -131,10 +135,22 @@ model DadosFornecedor {
   papelId           String      @unique
   papel             PessoaPapel @relation(fields: [papelId], references: [id], onDelete: Cascade)
 
-  aceitaNFe55       Boolean  @default(true)
-  condicaoPagamento String?
-  prazoEntrega      Int?
+  aceitaNFe55           Boolean  @default(true)
+  tipoRevenda           Boolean  @default(false)
+  tipoConsumo           Boolean  @default(false)
+  tipoPrestadorServico  Boolean  @default(false)
+  permitirVinculoManual Boolean  @default(false)
+  exigirItensEntrada    Boolean  @default(false)
+  prazoPagamento1   Int?
+  prazoPagamento2   Int?
+  prazoPagamento3   Int?
+  prazoPagamento4   Int?
+  prazoPagamento5   Int?
+  prazoPagamento6   Int?
   observacoes       String?
+
+  planosFinanceiros FornecedorPlanoFinanceiro[]
+  cfopsEntrada      FornecedorCfopEntrada[]
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -181,6 +197,79 @@ model PessoaEndereco {
   estado      String?
   codigoIbge  String?
   createdAt   DateTime @default(now())
+}
+
+model PessoaDadosBancario {
+  id                  String   @id @default(uuid())
+  pessoaId            String
+  pessoa              Pessoa   @relation(fields: [pessoaId], references: [id], onDelete: Cascade)
+  apelido             String?
+  banco               String?
+  agencia             String?
+  conta               String?
+  tipoConta           String?  // corrente | poupanca
+  pix                 String?
+  favorecido          String?
+  documentoFavorecido String?
+  principal           Boolean  @default(false)
+  createdAt           DateTime @default(now())
+}
+
+model PessoaCnae {
+  id        String   @id @default(uuid())
+  pessoaId  String
+  pessoa    Pessoa   @relation(fields: [pessoaId], references: [id], onDelete: Cascade)
+  codigo    String
+  descricao String?
+  principal Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@unique([pessoaId, codigo])
+}
+
+model PlanoFinanceiro {
+  id          String   @id @default(uuid())
+  codigo      String
+  descricao   String
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  ativo       Boolean  @default(true)
+  fornecedores FornecedorPlanoFinanceiro[]
+  createdAt   DateTime @default(now())
+
+  @@unique([codigo, companyId])
+}
+
+model Cfop {
+  id          String   @id @default(uuid())
+  codigo      String
+  descricao   String
+  tipo        String   @default("entrada")
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  ativo       Boolean  @default(true)
+  fornecedores FornecedorCfopEntrada[]
+  createdAt   DateTime @default(now())
+
+  @@unique([codigo, companyId])
+}
+
+model FornecedorPlanoFinanceiro {
+  dadosFornecedorId   String
+  planoFinanceiroId   String
+  dadosFornecedor     DadosFornecedor   @relation(fields: [dadosFornecedorId], references: [id], onDelete: Cascade)
+  planoFinanceiro     PlanoFinanceiro   @relation(fields: [planoFinanceiroId], references: [id], onDelete: Cascade)
+
+  @@id([dadosFornecedorId, planoFinanceiroId])
+}
+
+model FornecedorCfopEntrada {
+  dadosFornecedorId String
+  cfopId            String
+  dadosFornecedor   DadosFornecedor @relation(fields: [dadosFornecedorId], references: [id], onDelete: Cascade)
+  cfop              Cfop            @relation(fields: [cfopId], references: [id], onDelete: Cascade)
+
+  @@id([dadosFornecedorId, cfopId])
 }
 
 model User {

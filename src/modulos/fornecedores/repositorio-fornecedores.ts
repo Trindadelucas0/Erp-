@@ -10,11 +10,7 @@ import type { DadosParaCriarFornecedor, DadosParaEditarFornecedor } from './esqu
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 type PessoaComRelacoes = Prisma.PessoaGetPayload<{
-  include: {
-    papeis: { include: { dadosFornecedor: true } }
-    contatos: true
-    enderecos: true
-  }
+  include: typeof INCLUDE_COMPLETO
 }>
 
 export type FornecedorView = ReturnType<typeof mapearParaFornecedorView>
@@ -26,10 +22,49 @@ export type ResultadoBuscaPorDocumento = {
   pessoa: FornecedorView | null
 }
 
+// ─── Include reutilizável ──────────────────────────────────────────────────────
+
+const INCLUDE_COMPLETO = {
+  papeis: {
+    where: { papel: 'fornecedor' },
+    include: {
+      dadosFornecedor: {
+        include: {
+          planosFinanceiros: { include: { planoFinanceiro: true } },
+          cfopsEntrada: { include: { cfop: true } },
+        },
+      },
+    },
+  },
+  contatos: true,
+  enderecos: true,
+  dadosBancarios: true,
+  cnaes: { orderBy: { principal: 'desc' as const } },
+} as const
+
 // ─── Mapeador ─────────────────────────────────────────────────────────────────
+
+function mapearPrazosPagamento(df: {
+  prazoPagamento1: number | null
+  prazoPagamento2: number | null
+  prazoPagamento3: number | null
+  prazoPagamento4: number | null
+  prazoPagamento5: number | null
+  prazoPagamento6: number | null
+}) {
+  return [
+    df.prazoPagamento1,
+    df.prazoPagamento2,
+    df.prazoPagamento3,
+    df.prazoPagamento4,
+    df.prazoPagamento5,
+    df.prazoPagamento6,
+  ]
+}
 
 function mapearParaFornecedorView(pessoa: PessoaComRelacoes) {
   const papelFornecedor = pessoa.papeis.find((p) => p.papel === 'fornecedor')!
+  const df = papelFornecedor.dadosFornecedor
   const emailPrincipal =
     pessoa.contatos.find((c) => c.tipo === 'email' && c.principal) ??
     pessoa.contatos.find((c) => c.tipo === 'email')
@@ -54,18 +89,21 @@ function mapearParaFornecedorView(pessoa: PessoaComRelacoes) {
     cnpj: pessoa.cnpj,
     nomeFantasia: pessoa.nomeFantasia,
     cnae: pessoa.cnae,
+    cnaes: pessoa.cnaes.map((c) => ({
+      codigo: c.codigo,
+      descricao: c.descricao,
+      principal: c.principal,
+    })),
     dataFundacao: pessoa.dataFundacao,
     ie: pessoa.ie,
     im: pessoa.im,
     simplesNacional: pessoa.simplesNacional,
-    observacaoNF: pessoa.observacaoNF,
-    indicadorIe: pessoa.indicadorIe,
     observacoes: pessoa.observacoes,
     companyId: pessoa.companyId,
     email: emailPrincipal?.valor ?? null,
     telefone: telefonePrincipal?.valor ?? null,
     celular: celular?.valor ?? null,
-    celularWhatsapp: celular?.whatsapp ?? false,
+    celularWhatsapp: telefonePrincipal?.whatsapp ?? celular?.whatsapp ?? false,
     cep: enderecoPrincipal?.cep ?? null,
     logradouro: enderecoPrincipal?.logradouro ?? null,
     numero: enderecoPrincipal?.numero ?? null,
@@ -74,26 +112,31 @@ function mapearParaFornecedorView(pessoa: PessoaComRelacoes) {
     cidade: enderecoPrincipal?.cidade ?? null,
     estado: enderecoPrincipal?.estado ?? null,
     codigoIbge: enderecoPrincipal?.codigoIbge ?? null,
-    condicaoPagamento: papelFornecedor.dadosFornecedor?.condicaoPagamento ?? null,
-    prazoEntrega: papelFornecedor.dadosFornecedor?.prazoEntrega ?? null,
-    aceitaNFe55: papelFornecedor.dadosFornecedor?.aceitaNFe55 ?? true,
+    tipoRevenda: df?.tipoRevenda ?? false,
+    tipoConsumo: df?.tipoConsumo ?? false,
+    tipoPrestadorServico: df?.tipoPrestadorServico ?? false,
+    permitirVinculoManual: df?.permitirVinculoManual ?? false,
+    exigirItensEntrada: df?.exigirItensEntrada ?? false,
+    prazosPagamento: df ? mapearPrazosPagamento(df) : [null, null, null, null, null, null],
+    planosFinanceiros:
+      df?.planosFinanceiros.map((p) => ({
+        id: p.planoFinanceiro.id,
+        codigo: p.planoFinanceiro.codigo,
+        descricao: p.planoFinanceiro.descricao,
+      })) ?? [],
+    cfopsEntrada:
+      df?.cfopsEntrada.map((c) => ({
+        id: c.cfop.id,
+        codigo: c.cfop.codigo,
+        descricao: c.cfop.descricao,
+      })) ?? [],
+    dadosBancarios: pessoa.dadosBancarios,
     contatos: pessoa.contatos,
     enderecos: pessoa.enderecos,
     createdAt: pessoa.createdAt,
     updatedAt: pessoa.updatedAt,
   }
 }
-
-// ─── Include reutilizável ──────────────────────────────────────────────────────
-
-const INCLUDE_COMPLETO = {
-  papeis: {
-    where: { papel: 'fornecedor' },
-    include: { dadosFornecedor: true },
-  },
-  contatos: true,
-  enderecos: true,
-} as const
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -122,10 +165,27 @@ type EnderecoItem = {
   codigoIbge?: string | null
 }
 
+type DadosBancarioItem = {
+  apelido?: string | null
+  banco?: string | null
+  agencia?: string | null
+  conta?: string | null
+  tipoConta?: string | null
+  pix?: string | null
+  favorecido?: string | null
+  documentoFavorecido?: string | null
+  principal?: boolean
+}
+
+type CnaeItem = {
+  codigo: string
+  descricao?: string | null
+  principal?: boolean
+}
+
 type CamposNormalizados = {
   tipo: string
   nome: string
-  indicadorIe: string
   observacoes: string | null
   cpf: string | null
   rg: string | null
@@ -137,7 +197,6 @@ type CamposNormalizados = {
   ie: string | null
   im: string | null
   simplesNacional: boolean
-  observacaoNF: string | null
   email: string | null
   telefone: string | null
   celular: string | null
@@ -150,18 +209,49 @@ type CamposNormalizados = {
   cidade: string | null
   estado: string | null
   codigoIbge: string | null
-  condicaoPagamento: string | null
-  prazoEntrega: number | null
-  aceitaNFe55: boolean
+  tipoRevenda: boolean
+  tipoConsumo: boolean
+  tipoPrestadorServico: boolean
+  permitirVinculoManual: boolean
+  exigirItensEntrada: boolean
+  prazoPagamento1: number | null
+  prazoPagamento2: number | null
+  prazoPagamento3: number | null
+  prazoPagamento4: number | null
+  prazoPagamento5: number | null
+  prazoPagamento6: number | null
+  planosFinanceirosIds: string[]
+  cfopsEntradaIds: string[]
   contatosArray?: ContatoItem[]
   enderecosArray?: EnderecoItem[]
+  dadosBancariosArray?: DadosBancarioItem[]
+  cnaesArray?: CnaeItem[]
+}
+
+function normalizarPrazos(prazos?: (number | null)[] | null) {
+  const p = prazos ?? []
+  return {
+    prazoPagamento1: p[0] ?? null,
+    prazoPagamento2: p[1] ?? null,
+    prazoPagamento3: p[2] ?? null,
+    prazoPagamento4: p[3] ?? null,
+    prazoPagamento5: p[4] ?? null,
+    prazoPagamento6: p[5] ?? null,
+  }
 }
 
 function normalizarDocumento(dados: DadosParaCriarFornecedor | DadosParaEditarFornecedor): CamposNormalizados {
+  const prazos = normalizarPrazos(dados.prazosPagamento)
+  const cnaesArray = dados.cnaes
+  const cnaePrincipal =
+    cnaesArray?.find((c) => c.principal)?.codigo ??
+    cnaesArray?.[0]?.codigo ??
+    (dados.tipo === 'PJ' ? dados.cnae : null) ??
+    null
+
   const base = {
     tipo: dados.tipo,
     nome: dados.nome,
-    indicadorIe: dados.indicadorIe ?? '9',
     observacoes: dados.observacoes || null,
     email: dados.email || null,
     telefone: dados.telefone ? limparNumeros(dados.telefone) : null,
@@ -175,11 +265,19 @@ function normalizarDocumento(dados: DadosParaCriarFornecedor | DadosParaEditarFo
     cidade: dados.cidade || null,
     estado: dados.estado || null,
     codigoIbge: dados.codigoIbge || null,
-    condicaoPagamento: dados.condicaoPagamento || null,
-    prazoEntrega: dados.prazoEntrega ?? null,
-    aceitaNFe55: dados.aceitaNFe55 ?? true,
+    tipoRevenda: dados.tipoRevenda ?? false,
+    tipoConsumo: dados.tipoConsumo ?? false,
+    tipoPrestadorServico: dados.tipoPrestadorServico ?? false,
+    permitirVinculoManual: dados.permitirVinculoManual ?? false,
+    exigirItensEntrada: dados.exigirItensEntrada ?? false,
+    ...prazos,
+    planosFinanceirosIds: dados.planosFinanceirosIds ?? [],
+    cfopsEntradaIds: dados.cfopsEntradaIds ?? [],
     contatosArray: dados.contatos,
     enderecosArray: dados.enderecos,
+    dadosBancariosArray: dados.dadosBancarios,
+    cnaesArray,
+    cnae: cnaePrincipal,
   }
 
   if (dados.tipo === 'PF') {
@@ -190,12 +288,10 @@ function normalizarDocumento(dados: DadosParaCriarFornecedor | DadosParaEditarFo
       dataNascimento: dados.dataNascimento || null,
       cnpj: null,
       nomeFantasia: null,
-      cnae: null,
       dataFundacao: null,
       ie: null,
       im: null,
       simplesNacional: false,
-      observacaoNF: null,
     }
   }
 
@@ -203,12 +299,10 @@ function normalizarDocumento(dados: DadosParaCriarFornecedor | DadosParaEditarFo
     ...base,
     cnpj: limparNumeros(dados.cnpj),
     nomeFantasia: dados.nomeFantasia || null,
-    cnae: dados.cnae || null,
     dataFundacao: dados.dataFundacao || null,
     ie: dados.ie || null,
     im: dados.im || null,
     simplesNacional: dados.simplesNacional ?? false,
-    observacaoNF: dados.observacaoNF || null,
     cpf: null,
     rg: null,
     dataNascimento: null,
@@ -276,18 +370,18 @@ async function buscarPessoaPorDocumentoNaEmpresa(
     return { encontrado: false, temPapelFornecedor: false, papeis: [], pessoa: null }
   }
 
-  const include = {
-    papeis: { include: { dadosFornecedor: true } },
-    contatos: true,
-    enderecos: true,
-  }
-
   const pessoa = await clientePrisma.pessoa.findFirst({
     where: {
       companyId,
       ...(ehCpf ? { cpf: nums } : { cnpj: nums }),
     },
-    include,
+    include: {
+      papeis: { include: { dadosFornecedor: true } },
+      contatos: true,
+      enderecos: true,
+      cnaes: true,
+      dadosBancarios: true,
+    },
   })
 
   if (!pessoa) {
@@ -311,46 +405,7 @@ async function buscarPessoaPorDocumentoNaEmpresa(
     encontrado: true,
     temPapelFornecedor,
     papeis,
-    pessoa: fornecedorView ?? ({
-      id: pessoa.id,
-      papelId: '',
-      tipo: pessoa.tipo,
-      ativo: true,
-      nome: pessoa.nome,
-      cpf: pessoa.cpf,
-      rg: pessoa.rg,
-      dataNascimento: pessoa.dataNascimento,
-      cnpj: pessoa.cnpj,
-      nomeFantasia: pessoa.nomeFantasia,
-      cnae: pessoa.cnae,
-      dataFundacao: pessoa.dataFundacao,
-      ie: pessoa.ie,
-      im: pessoa.im,
-      simplesNacional: pessoa.simplesNacional,
-      observacaoNF: pessoa.observacaoNF,
-      indicadorIe: pessoa.indicadorIe,
-      observacoes: pessoa.observacoes,
-      companyId: pessoa.companyId,
-      email: null,
-      telefone: null,
-      celular: null,
-      celularWhatsapp: false,
-      cep: null,
-      logradouro: null,
-      numero: null,
-      complemento: null,
-      bairro: null,
-      cidade: null,
-      estado: null,
-      codigoIbge: null,
-      condicaoPagamento: null,
-      prazoEntrega: null,
-      aceitaNFe55: true,
-      contatos: [],
-      enderecos: [],
-      createdAt: pessoa.createdAt,
-      updatedAt: pessoa.updatedAt,
-    } as FornecedorView),
+    pessoa: fornecedorView,
   }
 }
 
@@ -379,8 +434,15 @@ async function criarContatos(tx: TxCliente, pessoaId: string, campos: CamposNorm
   }
   if (campos.telefone) {
     await tx.pessoaContato.create({
-      data: { pessoaId, tipo: 'telefone', valor: campos.telefone, principal: true },
+      data: {
+        pessoaId,
+        tipo: 'telefone',
+        valor: campos.telefone,
+        principal: true,
+        whatsapp: campos.celularWhatsapp,
+      },
     })
+    return
   }
   if (campos.celular && campos.celular !== campos.telefone) {
     await tx.pessoaContato.create({
@@ -434,6 +496,42 @@ async function criarEnderecos(tx: TxCliente, pessoaId: string, campos: CamposNor
   }
 }
 
+async function criarDadosBancarios(tx: TxCliente, pessoaId: string, campos: CamposNormalizados) {
+  if (!campos.dadosBancariosArray?.length) return
+  for (const db of campos.dadosBancariosArray) {
+    await tx.pessoaDadosBancario.create({
+      data: {
+        pessoaId,
+        apelido: db.apelido,
+        banco: db.banco,
+        agencia: db.agencia,
+        conta: db.conta,
+        tipoConta: db.tipoConta,
+        pix: db.pix,
+        favorecido: db.favorecido,
+        documentoFavorecido: db.documentoFavorecido
+          ? limparNumeros(db.documentoFavorecido)
+          : null,
+        principal: db.principal ?? false,
+      },
+    })
+  }
+}
+
+async function criarCnaes(tx: TxCliente, pessoaId: string, campos: CamposNormalizados) {
+  if (!campos.cnaesArray?.length) return
+  for (const cnae of campos.cnaesArray) {
+    await tx.pessoaCnae.create({
+      data: {
+        pessoaId,
+        codigo: cnae.codigo,
+        descricao: cnae.descricao,
+        principal: cnae.principal ?? false,
+      },
+    })
+  }
+}
+
 function dadosDaPessoaDeCampos(campos: CamposNormalizados) {
   return {
     tipo: campos.tipo,
@@ -448,13 +546,47 @@ function dadosDaPessoaDeCampos(campos: CamposNormalizados) {
     ie: campos.ie,
     im: campos.im,
     simplesNacional: campos.simplesNacional,
-    observacaoNF: campos.observacaoNF,
-    indicadorIe: campos.indicadorIe,
     observacoes: campos.observacoes,
   }
 }
 
-async function sincronizarContatosEnderecos(
+function dadosFornecedorDeCampos(campos: CamposNormalizados) {
+  return {
+    tipoRevenda: campos.tipoRevenda,
+    tipoConsumo: campos.tipoConsumo,
+    tipoPrestadorServico: campos.tipoPrestadorServico,
+    permitirVinculoManual: campos.permitirVinculoManual,
+    exigirItensEntrada: campos.exigirItensEntrada,
+    prazoPagamento1: campos.prazoPagamento1,
+    prazoPagamento2: campos.prazoPagamento2,
+    prazoPagamento3: campos.prazoPagamento3,
+    prazoPagamento4: campos.prazoPagamento4,
+    prazoPagamento5: campos.prazoPagamento5,
+    prazoPagamento6: campos.prazoPagamento6,
+  }
+}
+
+async function sincronizarVinculosFornecedor(
+  tx: TxCliente,
+  dadosFornecedorId: string,
+  campos: CamposNormalizados
+) {
+  await tx.fornecedorPlanoFinanceiro.deleteMany({ where: { dadosFornecedorId } })
+  await tx.fornecedorCfopEntrada.deleteMany({ where: { dadosFornecedorId } })
+
+  for (const planoId of campos.planosFinanceirosIds) {
+    await tx.fornecedorPlanoFinanceiro.create({
+      data: { dadosFornecedorId, planoFinanceiroId: planoId },
+    })
+  }
+  for (const cfopId of campos.cfopsEntradaIds) {
+    await tx.fornecedorCfopEntrada.create({
+      data: { dadosFornecedorId, cfopId },
+    })
+  }
+}
+
+async function sincronizarRelacoesPessoa(
   tx: TxCliente,
   pessoaId: string,
   campos: CamposNormalizados
@@ -468,6 +600,12 @@ async function sincronizarContatosEnderecos(
     await tx.pessoaEndereco.deleteMany({ where: { pessoaId, tipo: 'principal' } })
   }
   await criarEnderecos(tx, pessoaId, campos)
+
+  await tx.pessoaDadosBancario.deleteMany({ where: { pessoaId } })
+  await criarDadosBancarios(tx, pessoaId, campos)
+
+  await tx.pessoaCnae.deleteMany({ where: { pessoaId } })
+  await criarCnaes(tx, pessoaId, campos)
 }
 
 async function criar(dados: DadosParaCriarFornecedor, companyId: string) {
@@ -489,6 +627,7 @@ async function criar(dados: DadosParaCriarFornecedor, companyId: string) {
       : null
 
     let pessoaId: string
+    let dadosFornecedorId: string
 
     if (pessoaExistente) {
       pessoaId = pessoaExistente.id
@@ -511,35 +650,24 @@ async function criar(dados: DadosParaCriarFornecedor, companyId: string) {
           where: { id: papelExistente.id },
           data: { ativo: true },
         })
-        await tx.dadosFornecedor.upsert({
+        const df = await tx.dadosFornecedor.upsert({
           where: { papelId: papelExistente.id },
-          update: {
-            condicaoPagamento: campos.condicaoPagamento,
-            prazoEntrega: campos.prazoEntrega,
-            aceitaNFe55: campos.aceitaNFe55,
-          },
-          create: {
-            papelId: papelExistente.id,
-            condicaoPagamento: campos.condicaoPagamento,
-            prazoEntrega: campos.prazoEntrega,
-            aceitaNFe55: campos.aceitaNFe55,
-          },
+          update: dadosFornecedorDeCampos(campos),
+          create: { papelId: papelExistente.id, ...dadosFornecedorDeCampos(campos) },
         })
+        dadosFornecedorId = df.id
       } else {
         const papel = await tx.pessoaPapel.create({
           data: { pessoaId, papel: 'fornecedor', ativo: true },
         })
-        await tx.dadosFornecedor.create({
-          data: {
-            papelId: papel.id,
-            condicaoPagamento: campos.condicaoPagamento,
-            prazoEntrega: campos.prazoEntrega,
-            aceitaNFe55: campos.aceitaNFe55,
-          },
+        const df = await tx.dadosFornecedor.create({
+          data: { papelId: papel.id, ...dadosFornecedorDeCampos(campos) },
         })
+        dadosFornecedorId = df.id
       }
 
-      await sincronizarContatosEnderecos(tx, pessoaId, campos)
+      await sincronizarRelacoesPessoa(tx, pessoaId, campos)
+      await sincronizarVinculosFornecedor(tx, dadosFornecedorId, campos)
     } else {
       const pessoa = await tx.pessoa.create({
         data: { ...dadosDaPessoaDeCampos(campos), companyId },
@@ -550,16 +678,16 @@ async function criar(dados: DadosParaCriarFornecedor, companyId: string) {
         data: { pessoaId, papel: 'fornecedor', ativo: true },
       })
 
-      await tx.dadosFornecedor.create({
-        data: {
-          papelId: papel.id,
-          condicaoPagamento: campos.condicaoPagamento,
-          prazoEntrega: campos.prazoEntrega,
-        },
+      const df = await tx.dadosFornecedor.create({
+        data: { papelId: papel.id, ...dadosFornecedorDeCampos(campos) },
       })
+      dadosFornecedorId = df.id
 
       await criarContatos(tx, pessoaId, campos)
       await criarEnderecos(tx, pessoaId, campos)
+      await criarDadosBancarios(tx, pessoaId, campos)
+      await criarCnaes(tx, pessoaId, campos)
+      await sincronizarVinculosFornecedor(tx, dadosFornecedorId, campos)
     }
 
     const pessoaCompleta = await tx.pessoa.findUniqueOrThrow({
@@ -577,23 +705,7 @@ async function atualizar(id: string, dados: DadosParaEditarFornecedor) {
   return clientePrisma.$transaction(async (tx) => {
     await tx.pessoa.update({
       where: { id },
-      data: {
-        tipo: campos.tipo,
-        nome: campos.nome,
-        cpf: campos.cpf,
-        rg: campos.rg,
-        dataNascimento: campos.dataNascimento,
-        cnpj: campos.cnpj,
-        nomeFantasia: campos.nomeFantasia,
-        cnae: campos.cnae,
-        dataFundacao: campos.dataFundacao,
-        ie: campos.ie,
-        im: campos.im,
-        simplesNacional: campos.simplesNacional,
-        observacaoNF: campos.observacaoNF,
-        indicadorIe: campos.indicadorIe,
-        observacoes: campos.observacoes,
-      },
+      data: dadosDaPessoaDeCampos(campos),
     })
 
     const papelFornecedor = await tx.pessoaPapel.findFirst({
@@ -601,31 +713,15 @@ async function atualizar(id: string, dados: DadosParaEditarFornecedor) {
     })
 
     if (papelFornecedor) {
-      await tx.dadosFornecedor.upsert({
+      const df = await tx.dadosFornecedor.upsert({
         where: { papelId: papelFornecedor.id },
-        update: {
-          condicaoPagamento: campos.condicaoPagamento,
-          prazoEntrega: campos.prazoEntrega,
-          aceitaNFe55: campos.aceitaNFe55,
-        },
-        create: {
-          papelId: papelFornecedor.id,
-          condicaoPagamento: campos.condicaoPagamento,
-          prazoEntrega: campos.prazoEntrega,
-          aceitaNFe55: campos.aceitaNFe55,
-        },
+        update: dadosFornecedorDeCampos(campos),
+        create: { papelId: papelFornecedor.id, ...dadosFornecedorDeCampos(campos) },
       })
+      await sincronizarVinculosFornecedor(tx, df.id, campos)
     }
 
-    await tx.pessoaContato.deleteMany({ where: { pessoaId: id } })
-    await criarContatos(tx, id, campos)
-
-    if (campos.enderecosArray && campos.enderecosArray.length > 0) {
-      await tx.pessoaEndereco.deleteMany({ where: { pessoaId: id } })
-    } else {
-      await tx.pessoaEndereco.deleteMany({ where: { pessoaId: id, tipo: 'principal' } })
-    }
-    await criarEnderecos(tx, id, campos)
+    await sincronizarRelacoesPessoa(tx, id, campos)
 
     const pessoaCompleta = await tx.pessoa.findUniqueOrThrow({
       where: { id },

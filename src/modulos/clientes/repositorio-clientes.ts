@@ -16,6 +16,7 @@ type PessoaComRelacoes = Prisma.PessoaGetPayload<{
     papeis: { include: { dadosCliente: true } }
     contatos: true
     enderecos: true
+    cnaes: true
   }
 }>
 
@@ -56,6 +57,11 @@ function mapearParaClienteView(pessoa: PessoaComRelacoes) {
     cnpj: pessoa.cnpj,
     nomeFantasia: pessoa.nomeFantasia,
     cnae: pessoa.cnae,
+    cnaes: pessoa.cnaes.map((c) => ({
+      codigo: c.codigo,
+      descricao: c.descricao,
+      principal: c.principal,
+    })),
     dataFundacao: pessoa.dataFundacao,
     ie: pessoa.ie,
     im: pessoa.im,
@@ -105,6 +111,7 @@ const INCLUDE_COMPLETO = {
   },
   contatos: true,
   enderecos: true,
+  cnaes: { orderBy: { principal: 'desc' as const } },
 } as const
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -168,6 +175,7 @@ type CamposNormalizados = {
   // Arrays dinâmicos (opcional; se ausentes, campos achatados são usados)
   contatosArray?: ContatoItem[]
   enderecosArray?: EnderecoItem[]
+  cnaesArray?: { codigo: string; descricao?: string | null; principal?: boolean }[]
 }
 
 function normalizarDocumento(dados: DadosParaCriarCliente | DadosParaEditarCliente): CamposNormalizados {
@@ -191,7 +199,14 @@ function normalizarDocumento(dados: DadosParaCriarCliente | DadosParaEditarClien
     codigoIbge: dados.codigoIbge || null,
     contatosArray: dados.contatos,
     enderecosArray: dados.enderecos,
+    cnaesArray: dados.cnaes,
   }
+
+  const cnaePrincipal =
+    dados.cnaes?.find((c) => c.principal)?.codigo ??
+    dados.cnaes?.[0]?.codigo ??
+    (dados.tipo === 'PJ' ? dados.cnae : null) ??
+    null
 
   if (dados.tipo === 'PF') {
     return {
@@ -215,7 +230,7 @@ function normalizarDocumento(dados: DadosParaCriarCliente | DadosParaEditarClien
     ...base,
     cnpj: limparNumeros(dados.cnpj),
     nomeFantasia: dados.nomeFantasia || null,
-    cnae: dados.cnae || null,
+    cnae: cnaePrincipal,
     dataFundacao: dados.dataFundacao || null,
     ie: dados.ie || null,
     im: dados.im || null,
@@ -342,6 +357,7 @@ async function buscarPessoaPorDocumentoNaEmpresa(
       cnpj: pessoa.cnpj,
       nomeFantasia: pessoa.nomeFantasia,
       cnae: pessoa.cnae,
+      cnaes: [],
       dataFundacao: pessoa.dataFundacao,
       ie: pessoa.ie,
       im: pessoa.im,
@@ -476,6 +492,7 @@ async function criar(dados: DadosParaCriarCliente, companyId: string) {
         await tx.pessoaEndereco.deleteMany({ where: { pessoaId, tipo: 'principal' } })
       }
       await criarEnderecos(tx, pessoaId, campos)
+      await sincronizarCnaes(tx, pessoaId, campos)
     } else {
       const pessoa = await tx.pessoa.create({
         data: { ...dadosDaPessoaDeCampos(campos), companyId },
@@ -497,6 +514,7 @@ async function criar(dados: DadosParaCriarCliente, companyId: string) {
 
       await criarContatos(tx, pessoaId, campos)
       await criarEnderecos(tx, pessoaId, campos)
+      await criarCnaes(tx, pessoaId, campos)
     }
 
     const pessoaCompleta = await tx.pessoa.findUniqueOrThrow({
@@ -574,6 +592,7 @@ async function atualizar(id: string, dados: DadosParaEditarCliente) {
       await tx.pessoaEndereco.deleteMany({ where: { pessoaId: id, tipo: 'principal' } })
     }
     await criarEnderecos(tx, id, campos)
+    await sincronizarCnaes(tx, id, campos)
 
     const pessoaCompleta = await tx.pessoa.findUniqueOrThrow({
       where: { id },
@@ -601,6 +620,25 @@ async function alterarStatus(id: string, ativo: boolean) {
 // ─── Helpers de relações ──────────────────────────────────────────────────────
 
 type TxCliente = Parameters<Parameters<typeof clientePrisma.$transaction>[0]>[0]
+
+async function criarCnaes(tx: TxCliente, pessoaId: string, campos: CamposNormalizados) {
+  if (!campos.cnaesArray?.length) return
+  for (const cnae of campos.cnaesArray) {
+    await tx.pessoaCnae.create({
+      data: {
+        pessoaId,
+        codigo: cnae.codigo,
+        descricao: cnae.descricao,
+        principal: cnae.principal ?? false,
+      },
+    })
+  }
+}
+
+async function sincronizarCnaes(tx: TxCliente, pessoaId: string, campos: CamposNormalizados) {
+  await tx.pessoaCnae.deleteMany({ where: { pessoaId } })
+  await criarCnaes(tx, pessoaId, campos)
+}
 
 async function criarContatos(tx: TxCliente, pessoaId: string, campos: CamposNormalizados) {
   // Se há array dinâmico de contatos, usa-o diretamente

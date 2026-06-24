@@ -42,12 +42,18 @@ const camposComuns = {
     .max(7)
     .optional()
     .refine((v) => !v || /^\d{7}$/.test(v), 'Código IBGE deve ter 7 dígitos'),
-  indicadorIe: z.enum(['1', '2', '9']).default('9'),
   observacoes: z.string().max(500).optional(),
-  // Campos específicos de fornecedor
-  condicaoPagamento: z.string().max(100).optional(),
-  prazoEntrega: z.number().int().min(0).optional(),
-  aceitaNFe55: z.boolean().optional().default(true),
+  tipoRevenda: z.boolean().optional().default(false),
+  tipoConsumo: z.boolean().optional().default(false),
+  tipoPrestadorServico: z.boolean().optional().default(false),
+  permitirVinculoManual: z.boolean().optional().default(false),
+  exigirItensEntrada: z.boolean().optional().default(false),
+  prazosPagamento: z
+    .array(z.number().int().min(0).nullable())
+    .max(6)
+    .optional(),
+  planosFinanceirosIds: z.array(z.string().uuid()).optional(),
+  cfopsEntradaIds: z.array(z.string().uuid()).optional(),
 }
 
 export const esquemaDeContatoItem = z.object({
@@ -75,9 +81,29 @@ export const esquemaDeEnderecoItem = z.object({
     .refine((v) => !v || /^\d{7}$/.test(v), 'Código IBGE deve ter 7 dígitos'),
 })
 
+export const esquemaDeDadosBancarioItem = z.object({
+  apelido: z.string().max(100).optional(),
+  banco: z.string().max(100).optional(),
+  agencia: z.string().max(20).optional(),
+  conta: z.string().max(30).optional(),
+  tipoConta: z.enum(['corrente', 'poupanca']).optional(),
+  pix: z.string().max(200).optional(),
+  favorecido: z.string().max(200).optional(),
+  documentoFavorecido: z.string().max(18).optional(),
+  principal: z.boolean().optional(),
+})
+
+export const esquemaDeCnaeItem = z.object({
+  codigo: z.string().min(1).max(10),
+  descricao: z.string().max(500).optional(),
+  principal: z.boolean().optional(),
+})
+
 const camposArrays = {
   contatos: z.array(esquemaDeContatoItem).optional(),
   enderecos: z.array(esquemaDeEnderecoItem).optional(),
+  dadosBancarios: z.array(esquemaDeDadosBancarioItem).optional(),
+  cnaes: z.array(esquemaDeCnaeItem).optional(),
 }
 
 export const esquemaDeCriacaoDeFornecedorPF = z.object({
@@ -116,7 +142,6 @@ export const esquemaDeCriacaoDeFornecedorPJ = z.object({
   ie: z.string().max(30).optional(),
   im: z.string().max(30).optional(),
   simplesNacional: z.boolean().optional(),
-  observacaoNF: z.string().max(500).optional(),
   ...camposComuns,
   ...camposArrays,
 })

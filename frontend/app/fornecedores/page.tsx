@@ -40,6 +40,16 @@ import {
 import { buscarDadosCnpj } from '@/lib/brasil-api'
 import { ListaContatos, type ContatoForm } from '@/components/clientes/lista-contatos'
 import { ListaEnderecos, ENDERECO_VAZIO, type EnderecoForm } from '@/components/clientes/lista-enderecos'
+import {
+  ListaDadosBancarios,
+  DADOS_BANCARIO_VAZIO,
+  type DadosBancarioForm,
+} from '@/components/clientes/lista-dados-bancarios'
+import { ListaCnaes, type CnaeForm } from '@/components/pessoas/lista-cnaes'
+import {
+  SelecaoMultiplaCatalogo,
+  type ItemCatalogo,
+} from '@/components/fornecedores/selecao-multipla-catalogo'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -56,12 +66,11 @@ type Fornecedor = {
   dataNascimento?: string | null
   cnpj?: string | null
   nomeFantasia?: string | null
-  cnae?: string | null
+  cnaes?: { codigo: string; descricao?: string | null; principal: boolean }[]
   dataFundacao?: string | null
   ie?: string | null
   im?: string | null
   simplesNacional?: boolean
-  observacaoNF?: string | null
   email?: string | null
   telefone?: string | null
   celular?: string | null
@@ -74,11 +83,16 @@ type Fornecedor = {
   cidade?: string | null
   estado?: string | null
   codigoIbge?: string | null
-  indicadorIe: string
   observacoes?: string | null
-  condicaoPagamento?: string | null
-  prazoEntrega?: number | null
-  aceitaNFe55?: boolean
+  tipoRevenda?: boolean
+  tipoConsumo?: boolean
+  tipoPrestadorServico?: boolean
+  permitirVinculoManual?: boolean
+  exigirItensEntrada?: boolean
+  prazosPagamento?: (number | null)[]
+  planosFinanceiros?: ItemCatalogo[]
+  cfopsEntrada?: ItemCatalogo[]
+  dadosBancarios?: DadosBancarioForm[]
 }
 
 type FormFornecedor = {
@@ -88,15 +102,13 @@ type FormFornecedor = {
   rg: string
   dataNascimento: string
   nomeFantasia: string
-  cnae: string
+  cnaes: CnaeForm[]
   dataFundacao: string
   ie: string
   im: string
   simplesNacional: boolean
-  observacaoNF: string
   email: string
   telefone: string
-  celular: string
   celularWhatsapp: boolean
   cep: string
   logradouro: string
@@ -106,11 +118,16 @@ type FormFornecedor = {
   cidade: string
   estado: string
   codigoIbge: string
-  indicadorIe: string
   observacoes: string
-  condicaoPagamento: string
-  prazoEntrega: string
-  aceitaNFe55: boolean
+  tipoRevenda: boolean
+  tipoConsumo: boolean
+  tipoPrestadorServico: boolean
+  permitirVinculoManual: boolean
+  exigirItensEntrada: boolean
+  prazosPagamento: string[]
+  planosFinanceiros: ItemCatalogo[]
+  cfopsEntrada: ItemCatalogo[]
+  dadosBancarios: DadosBancarioForm[]
   contatos: ContatoForm[]
   enderecos: EnderecoForm[]
 }
@@ -123,11 +140,6 @@ const ESTADOS_BR = [
   'RS','RO','RR','SC','SP','SE','TO',
 ]
 
-const INDICADORES_IE = [
-  { value: '1', label: '1 — Contribuinte ICMS' },
-  { value: '2', label: '2 — Contribuinte isento de IE' },
-  { value: '9', label: '9 — Não contribuinte' },
-]
 
 const FORM_VAZIO: FormFornecedor = {
   tipo: 'PJ',
@@ -136,15 +148,13 @@ const FORM_VAZIO: FormFornecedor = {
   rg: '',
   dataNascimento: '',
   nomeFantasia: '',
-  cnae: '',
+  cnaes: [],
   dataFundacao: '',
   ie: '',
   im: '',
   simplesNacional: false,
-  observacaoNF: '',
   email: '',
   telefone: '',
-  celular: '',
   celularWhatsapp: false,
   cep: '',
   logradouro: '',
@@ -154,11 +164,16 @@ const FORM_VAZIO: FormFornecedor = {
   cidade: '',
   estado: '',
   codigoIbge: '',
-  indicadorIe: '9',
   observacoes: '',
-  condicaoPagamento: '',
-  prazoEntrega: '',
-  aceitaNFe55: true,
+  tipoRevenda: false,
+  tipoConsumo: false,
+  tipoPrestadorServico: false,
+  permitirVinculoManual: false,
+  exigirItensEntrada: false,
+  prazosPagamento: ['', '', '', '', '', ''],
+  planosFinanceiros: [],
+  cfopsEntrada: [],
+  dadosBancarios: [],
   contatos: [],
   enderecos: [],
 }
@@ -172,6 +187,10 @@ function documentoParaMascara(f: Fornecedor): string {
 }
 
 function fornecedorParaForm(f: Fornecedor): FormFornecedor {
+  const telefoneRaw = f.telefone || f.celular || ''
+  const prazos = [...(f.prazosPagamento ?? [])]
+  while (prazos.length < 6) prazos.push(null)
+
   return {
     tipo: f.tipo,
     documento: documentoParaMascara(f),
@@ -179,15 +198,19 @@ function fornecedorParaForm(f: Fornecedor): FormFornecedor {
     rg: f.rg || '',
     dataNascimento: f.dataNascimento || '',
     nomeFantasia: f.nomeFantasia || '',
-    cnae: f.cnae || '',
+    cnaes: Array.isArray(f.cnaes)
+      ? f.cnaes.map((c) => ({
+          codigo: c.codigo,
+          descricao: c.descricao || '',
+          principal: c.principal ?? false,
+        }))
+      : [],
     dataFundacao: f.dataFundacao || '',
     ie: f.ie || '',
     im: f.im || '',
     simplesNacional: f.simplesNacional ?? false,
-    observacaoNF: f.observacaoNF || '',
     email: f.email || '',
-    telefone: f.telefone ? mascaraTelefone(f.telefone) : '',
-    celular: f.celular ? mascaraTelefone(f.celular) : '',
+    telefone: telefoneRaw ? mascaraTelefone(telefoneRaw) : '',
     celularWhatsapp: f.celularWhatsapp ?? false,
     cep: f.cep ? mascaraCep(f.cep) : '',
     logradouro: f.logradouro || '',
@@ -197,13 +220,30 @@ function fornecedorParaForm(f: Fornecedor): FormFornecedor {
     cidade: f.cidade || '',
     estado: f.estado || '',
     codigoIbge: f.codigoIbge || '',
-    indicadorIe: f.indicadorIe || '9',
     observacoes: f.observacoes || '',
-    condicaoPagamento: f.condicaoPagamento || '',
-    prazoEntrega: f.prazoEntrega != null ? String(f.prazoEntrega) : '',
-    aceitaNFe55: f.aceitaNFe55 ?? true,
-    contatos: Array.isArray((f as any).contatos)
-      ? (f as any).contatos.map((ct: any) => ({
+    tipoRevenda: f.tipoRevenda ?? false,
+    tipoConsumo: f.tipoConsumo ?? false,
+    tipoPrestadorServico: f.tipoPrestadorServico ?? false,
+    permitirVinculoManual: f.permitirVinculoManual ?? false,
+    exigirItensEntrada: f.exigirItensEntrada ?? false,
+    prazosPagamento: prazos.slice(0, 6).map((p) => (p != null ? String(p) : '')),
+    planosFinanceiros: f.planosFinanceiros ?? [],
+    cfopsEntrada: f.cfopsEntrada ?? [],
+    dadosBancarios: Array.isArray(f.dadosBancarios)
+      ? f.dadosBancarios.map((db) => ({
+          apelido: db.apelido || '',
+          banco: db.banco || '',
+          agencia: db.agencia || '',
+          conta: db.conta || '',
+          tipoConta: (db.tipoConta as DadosBancarioForm['tipoConta']) || '',
+          pix: db.pix || '',
+          favorecido: db.favorecido || '',
+          documentoFavorecido: db.documentoFavorecido || '',
+          principal: db.principal ?? false,
+        }))
+      : [],
+    contatos: Array.isArray((f as Fornecedor & { contatos?: ContatoForm[] }).contatos)
+      ? (f as Fornecedor & { contatos: ContatoForm[] }).contatos.map((ct) => ({
           tipo: ct.tipo,
           valor: ct.valor,
           descricao: ct.descricao || '',
@@ -211,8 +251,8 @@ function fornecedorParaForm(f: Fornecedor): FormFornecedor {
           principal: ct.principal ?? false,
         }))
       : [],
-    enderecos: Array.isArray((f as any).enderecos)
-      ? (f as any).enderecos.map((e: any) => ({
+    enderecos: Array.isArray((f as Fornecedor & { enderecos?: EnderecoForm[] }).enderecos)
+      ? (f as Fornecedor & { enderecos: EnderecoForm[] }).enderecos.map((e) => ({
           tipo: e.tipo,
           apelido: e.apelido || '',
           cep: e.cep ? mascaraCep(e.cep) : '',
@@ -235,6 +275,7 @@ type ErrosDoForm = Partial<Record<string, string>>
 const PREFIXO_ERRO_POR_CAMPO: Record<string, string> = {
   nome: 'Identificação',
   documento: 'Identificação',
+  cnaes: 'Identificação',
   email: 'Contato',
   telefone: 'Contato',
   contatos: 'Contato',
@@ -246,6 +287,55 @@ const PREFIXO_ERRO_POR_CAMPO: Record<string, string> = {
   estado: 'Endereço',
   codigoIbge: 'Endereço',
   enderecos: 'Endereço',
+  dadosBancarios: 'Dados Bancários',
+}
+
+function contaBancariaTemAlgumCampo(db: DadosBancarioForm): boolean {
+  return [
+    db.apelido,
+    db.banco,
+    db.agencia,
+    db.conta,
+    db.pix,
+    db.favorecido,
+    db.documentoFavorecido,
+  ].some((v) => v.trim().length > 0)
+}
+
+function validarDadosBancarios(dados: DadosBancarioForm[]): string | undefined {
+  for (const db of dados) {
+    if (!contaBancariaTemAlgumCampo(db)) continue
+    if (!db.banco.trim() || !db.agencia.trim() || !db.conta.trim()) {
+      return 'contas parcialmente preenchidas devem ter banco, agência e conta'
+    }
+  }
+  return undefined
+}
+
+const RE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function emailContatoValido(email: string): boolean {
+  const t = email.trim()
+  return !t || RE_EMAIL.test(t)
+}
+
+function telefoneContatoValido(telefone: string): boolean {
+  const digitos = telefone.replace(/\D/g, '')
+  return digitos.length === 0 || digitos.length >= 10
+}
+
+function validarContatosArray(contatos: ContatoForm[]): string | undefined {
+  for (const c of contatos) {
+    const valor = c.valor.trim()
+    if (!valor) continue
+    if (c.tipo === 'email' && !RE_EMAIL.test(valor)) return 'e-mail inválido'
+    if (c.tipo === 'telefone' && valor.replace(/\D/g, '').length < 10) return 'telefone ou celular inválido'
+  }
+  return undefined
+}
+
+function contatoSimplesValido(email: string, telefone: string): boolean {
+  return emailContatoValido(email) && telefoneContatoValido(telefone)
 }
 
 function validarFormFornecedor(form: FormFornecedor): ErrosDoForm {
@@ -264,31 +354,16 @@ function validarFormFornecedor(form: FormFornecedor): ErrosDoForm {
   if (form.codigoIbge && !/^\d{7}$/.test(form.codigoIbge.replace(/\D/g, '')))
     erros.codigoIbge = 'Código IBGE deve ter 7 dígitos'
 
-  const temEmailSimples = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())
-  const temTelefoneSimples =
-    form.telefone.replace(/\D/g, '').length >= 10 ||
-    form.celular.replace(/\D/g, '').length >= 10
-
-  const temEmailArray = form.contatos.some(
-    (c) => c.tipo === 'email' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.valor.trim())
-  )
-  const temTelefoneArray = form.contatos.some(
-    (c) => c.tipo === 'telefone' && c.valor.replace(/\D/g, '').length >= 10
-  )
-
   const modoArray = form.contatos.length > 0
 
   if (modoArray) {
-    if (!temEmailArray && !temTelefoneArray) {
-      erros.contatos = 'informe ao menos um e-mail válido e um telefone ou celular'
-    } else if (!temEmailArray) {
-      erros.contatos = 'informe ao menos um e-mail válido'
-    } else if (!temTelefoneArray) {
-      erros.contatos = 'informe ao menos um telefone ou celular'
-    }
+    const erroContatos = validarContatosArray(form.contatos)
+    if (erroContatos) erros.contatos = erroContatos
   } else {
-    if (!temEmailSimples) erros.email = 'e-mail obrigatório e deve ser válido'
-    if (!temTelefoneSimples) erros.telefone = 'informe telefone fixo ou celular'
+    const emailTrim = form.email.trim()
+    if (emailTrim && !RE_EMAIL.test(emailTrim)) erros.email = 'e-mail inválido'
+    const telDigitos = form.telefone.replace(/\D/g, '')
+    if (telDigitos.length > 0 && telDigitos.length < 10) erros.telefone = 'telefone ou celular inválido'
   }
 
   const modoArrayEnd = form.enderecos.length > 0
@@ -323,6 +398,9 @@ function validarFormFornecedor(form: FormFornecedor): ErrosDoForm {
     if (!estado.trim()) erros.estado = 'estado (UF) obrigatório'
   }
 
+  const erroDadosBancarios = validarDadosBancarios(form.dadosBancarios)
+  if (erroDadosBancarios) erros.dadosBancarios = erroDadosBancarios
+
   return erros
 }
 
@@ -336,7 +414,7 @@ function calcularStatusCadastro(f: Fornecedor): { completo: boolean; pendencias:
   const erros: string[] = []
   if (!f.nome || f.nome.trim().length < 2) erros.push('Nome obrigatório')
   if (!f.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) erros.push('E-mail obrigatório')
-  if (!f.telefone && !f.celular) erros.push('Telefone ou celular obrigatório')
+  if (!f.telefone) erros.push('Telefone obrigatório')
   if (!f.cep || f.cep.replace(/\D/g, '').length < 8) erros.push('CEP obrigatório')
   if (!f.logradouro) erros.push('Logradouro obrigatório')
   if (!f.numero) erros.push('Número obrigatório')
@@ -430,6 +508,19 @@ function ConteudoDaPaginaDeFornecedores() {
   const [modoEdicao, setModoEdicao] = useState(false)
   const [idEmEdicao, setIdEmEdicao] = useState('')
   const [abaAtiva, setAbaAtiva] = useState('identificacao')
+
+  const idsAbas = ['identificacao', 'contato', 'endereco', 'dados-bancarios', 'outros']
+  const indiceAbaAtiva = idsAbas.indexOf(abaAtiva)
+  const ehPrimeiraAba = indiceAbaAtiva === 0
+  const ehUltimaAba = indiceAbaAtiva === idsAbas.length - 1
+
+  function irParaProximaAba() {
+    if (!ehUltimaAba) setAbaAtiva(idsAbas[indiceAbaAtiva + 1])
+  }
+
+  function irParaAbaAnterior() {
+    if (!ehPrimeiraAba) setAbaAtiva(idsAbas[indiceAbaAtiva - 1])
+  }
   const [salvando, setSalvando] = useState(false)
 
   const [form, setForm] = useState<FormFornecedor>(FORM_VAZIO)
@@ -471,20 +562,8 @@ function ConteudoDaPaginaDeFornecedores() {
         id: 'contato',
         validar: () => {
           const f = formRef.current
-          if (f.contatos.length > 0) {
-            const temEmail = f.contatos.some(
-              (c) => c.tipo === 'email' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.valor.trim())
-            )
-            const temTel = f.contatos.some(
-              (c) => c.tipo === 'telefone' && c.valor.replace(/\D/g, '').length >= 10
-            )
-            return temEmail && temTel
-          }
-          const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())
-          const telOk =
-            f.telefone.replace(/\D/g, '').length >= 10 ||
-            f.celular.replace(/\D/g, '').length >= 10
-          return emailOk && telOk
+          if (f.contatos.length > 0) return !validarContatosArray(f.contatos)
+          return contatoSimplesValido(f.email, f.telefone)
         },
       },
       {
@@ -508,6 +587,14 @@ function ConteudoDaPaginaDeFornecedores() {
           )
         },
       },
+      {
+        id: 'dados-bancarios',
+        validar: () => !validarDadosBancarios(formRef.current.dadosBancarios),
+      },
+      {
+        id: 'outros',
+        validar: () => true,
+      },
     ],
     []
   )
@@ -519,6 +606,8 @@ function ConteudoDaPaginaDeFornecedores() {
     { id: 'identificacao', rotulo: 'Identificação', status: statusDasAbas['identificacao'] },
     { id: 'contato', rotulo: 'Contato', status: statusDasAbas['contato'] },
     { id: 'endereco', rotulo: 'Endereço', status: statusDasAbas['endereco'] },
+    { id: 'dados-bancarios', rotulo: 'Dados Bancários', status: statusDasAbas['dados-bancarios'] },
+    { id: 'outros', rotulo: 'Outros', status: statusDasAbas['outros'] },
   ]
 
   const errosForm = useMemo(() => validarFormFornecedor(form), [form])
@@ -626,13 +715,11 @@ function ConteudoDaPaginaDeFornecedores() {
       rg: '',
       dataNascimento: '',
       nomeFantasia: '',
-      cnae: '',
+      cnaes: [] as CnaeForm[],
       dataFundacao: '',
       ie: '',
       im: '',
       simplesNacional: false,
-      observacaoNF: '',
-      aceitaNFe55: novoTipo === 'PJ',
     }
   }
 
@@ -678,7 +765,7 @@ function ConteudoDaPaginaDeFornecedores() {
           ...f,
           nome: f.nome || dados.nome,
           nomeFantasia: f.nomeFantasia || dados.nomeFantasia,
-          cnae: f.cnae || dados.cnae,
+          cnaes: dados.cnaes.length > 0 ? dados.cnaes : f.cnaes,
           dataFundacao: f.dataFundacao || dados.dataFundacao,
           cep: f.cep || mascaraCep(dados.cep),
           logradouro: f.logradouro || dados.logradouro,
@@ -713,9 +800,10 @@ function ConteudoDaPaginaDeFornecedores() {
               nome: importado.nome || f.nome,
               nomeFantasia: importado.nomeFantasia || f.nomeFantasia,
               ie: importado.ie || f.ie,
+              cnaes: importado.cnaes.length > 0 ? importado.cnaes : f.cnaes,
               email: importado.email || f.email,
               telefone: importado.telefone || f.telefone,
-              celular: importado.celular || f.celular,
+              celularWhatsapp: importado.celularWhatsapp || f.celularWhatsapp,
               cep: importado.cep || f.cep,
               logradouro: importado.logradouro || f.logradouro,
               numero: importado.numero || f.numero,
@@ -724,6 +812,15 @@ function ConteudoDaPaginaDeFornecedores() {
               cidade: importado.cidade || f.cidade,
               estado: importado.estado || f.estado,
               codigoIbge: importado.codigoIbge || f.codigoIbge,
+              dadosBancarios: importado.dadosBancarios.length > 0 ? importado.dadosBancarios : f.dadosBancarios,
+              tipoRevenda: importado.tipoRevenda ?? f.tipoRevenda,
+              tipoConsumo: importado.tipoConsumo ?? f.tipoConsumo,
+              tipoPrestadorServico: importado.tipoPrestadorServico ?? f.tipoPrestadorServico,
+              permitirVinculoManual: importado.permitirVinculoManual ?? f.permitirVinculoManual,
+              exigirItensEntrada: importado.exigirItensEntrada ?? f.exigirItensEntrada,
+              prazosPagamento: importado.prazosPagamento.some((p) => p) ? importado.prazosPagamento : f.prazosPagamento,
+              planosFinanceiros: importado.planosFinanceiros.length > 0 ? importado.planosFinanceiros : f.planosFinanceiros,
+              cfopsEntrada: importado.cfopsEntrada.length > 0 ? importado.cfopsEntrada : f.cfopsEntrada,
             }))
           }
         }
@@ -762,12 +859,30 @@ function ConteudoDaPaginaDeFornecedores() {
 
   function montarCorpo() {
     const nums = form.documento.replace(/\D/g, '')
+    const prazosPagamento = form.prazosPagamento.map((p) => {
+      const trimmed = p.trim()
+      return trimmed ? parseInt(trimmed, 10) : null
+    })
+
+    const dadosBancariosPayload = form.dadosBancarios
+      .filter(contaBancariaTemAlgumCampo)
+      .map((db) => ({
+        apelido: db.apelido || undefined,
+        banco: db.banco || undefined,
+        agencia: db.agencia || undefined,
+        conta: db.conta || undefined,
+        tipoConta: db.tipoConta || undefined,
+        pix: db.pix || undefined,
+        favorecido: db.favorecido || undefined,
+        documentoFavorecido: db.documentoFavorecido.replace(/\D/g, '') || undefined,
+        principal: db.principal,
+      }))
+
     const base = {
       tipo: form.tipo,
       nome: form.nome,
       email: form.email || undefined,
       telefone: form.telefone || undefined,
-      celular: form.celular || undefined,
       celularWhatsapp: form.celularWhatsapp,
       cep: form.cep || undefined,
       logradouro: form.logradouro || undefined,
@@ -777,17 +892,26 @@ function ConteudoDaPaginaDeFornecedores() {
       cidade: form.cidade || undefined,
       estado: form.estado || undefined,
       codigoIbge: form.codigoIbge || undefined,
-      indicadorIe: form.indicadorIe || '9',
       observacoes: form.observacoes || undefined,
-      condicaoPagamento: form.condicaoPagamento || undefined,
-      prazoEntrega: form.prazoEntrega ? parseInt(form.prazoEntrega, 10) : undefined,
-      aceitaNFe55: form.tipo === 'PJ' ? true : form.aceitaNFe55,
+      tipoRevenda: form.tipoRevenda,
+      tipoConsumo: form.tipoConsumo,
+      tipoPrestadorServico: form.tipoPrestadorServico,
+      permitirVinculoManual: form.permitirVinculoManual,
+      exigirItensEntrada: form.exigirItensEntrada,
+      prazosPagamento,
+      planosFinanceirosIds: form.planosFinanceiros.map((p) => p.id),
+      cfopsEntradaIds: form.cfopsEntrada.map((c) => c.id),
+      dadosBancarios: dadosBancariosPayload.length > 0 ? dadosBancariosPayload : undefined,
     }
 
     const contatosPayload =
       form.contatos.length > 0
         ? { contatos: form.contatos.filter((c) => c.valor.trim()) }
-        : { email: form.email || undefined, telefone: form.telefone || undefined, celular: form.celular || undefined, celularWhatsapp: form.celularWhatsapp }
+        : {
+            email: form.email || undefined,
+            telefone: form.telefone || undefined,
+            celularWhatsapp: form.celularWhatsapp,
+          }
 
     const enderecosPayload =
       form.enderecos.length > 0
@@ -799,15 +923,16 @@ function ConteudoDaPaginaDeFornecedores() {
     }
 
     return {
-      ...base, ...contatosPayload, ...enderecosPayload,
+      ...base,
+      ...contatosPayload,
+      ...enderecosPayload,
       cnpj: nums,
       nomeFantasia: form.nomeFantasia || undefined,
-      cnae: form.cnae || undefined,
+      cnaes: form.cnaes.length > 0 ? form.cnaes : undefined,
       dataFundacao: form.dataFundacao || undefined,
       ie: form.ie || undefined,
       im: form.im || undefined,
       simplesNacional: form.simplesNacional,
-      observacaoNF: form.observacaoNF || undefined,
     }
   }
 
@@ -887,6 +1012,7 @@ function ConteudoDaPaginaDeFornecedores() {
     const termo = busca.toLowerCase()
     return (
       f.nome.toLowerCase().includes(termo) ||
+      (f.nomeFantasia && f.nomeFantasia.toLowerCase().includes(termo)) ||
       (f.cpf && f.cpf.includes(busca.replace(/\D/g, ''))) ||
       (f.cnpj && f.cnpj.includes(busca.replace(/\D/g, ''))) ||
       (f.email && f.email.toLowerCase().includes(termo)) ||
@@ -930,25 +1056,45 @@ function ConteudoDaPaginaDeFornecedores() {
               >
                 Cancelar
               </Button>
-              <BotaoPrimario
-                form="form-fornecedor"
-                type="submit"
-                disabled={salvando || !formularioValido}
-                title={tituloComAtalho(
-                  modoEdicao ? 'Salvar' : 'Cadastrar fornecedor',
-                  teclaSalvar
-                )}
-              >
-                {salvando ? (
-                  <span className="flex items-center gap-2">
-                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                    </svg>
-                    Salvando...
-                  </span>
-                ) : modoEdicao ? 'Salvar' : 'Cadastrar fornecedor'}
-              </BotaoPrimario>
+              {!ehPrimeiraAba && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={irParaAbaAnterior}
+                  disabled={salvando}
+                >
+                  ← Anterior
+                </Button>
+              )}
+              {!ehUltimaAba ? (
+                <BotaoPrimario
+                  type="button"
+                  onClick={irParaProximaAba}
+                  disabled={salvando}
+                >
+                  Próximo →
+                </BotaoPrimario>
+              ) : (
+                <BotaoPrimario
+                  form="form-fornecedor"
+                  type="submit"
+                  disabled={salvando || !formularioValido}
+                  title={tituloComAtalho(
+                    modoEdicao ? 'Salvar' : 'Cadastrar fornecedor',
+                    teclaSalvar
+                  )}
+                >
+                  {salvando ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                      </svg>
+                      Salvando...
+                    </span>
+                  ) : modoEdicao ? 'Salvar' : 'Cadastrar fornecedor'}
+                </BotaoPrimario>
+              )}
             </div>
           </div>
         }
@@ -990,38 +1136,90 @@ function ConteudoDaPaginaDeFornecedores() {
 
                 <Separator />
 
-                <div className="space-y-1">
-                  <label className="text-sm font-medium leading-none">
-                    {form.tipo === 'PF' ? 'CPF' : 'CNPJ'}
-                    <span className="ml-0.5 text-destructive">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      className={cn(
-                        'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50',
-                        erroDocumentoVisivel() && 'border-destructive'
+                {form.tipo === 'PJ' ? (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium leading-none">
+                        CNPJ
+                        <span className="ml-0.5 text-destructive">*</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          className={cn(
+                            'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50',
+                            erroDocumentoVisivel() && 'border-destructive'
+                          )}
+                          type="text"
+                          value={form.documento}
+                          onChange={(e) => aoMudarDocumento(e.target.value)}
+                          onBlur={aoSairDocumento}
+                          placeholder="00.000.000/0000-00"
+                          maxLength={18}
+                          disabled={modoEdicao}
+                          aria-invalid={!!erroDocumentoVisivel()}
+                        />
+                        {(verificandoDocumento || carregandoBrasilApi) && (
+                          <span className="absolute right-2 top-2 text-xs text-muted-foreground">
+                            {carregandoBrasilApi ? 'Buscando na Receita...' : 'Verificando...'}
+                          </span>
+                        )}
+                      </div>
+                      {erroDocumentoVisivel() && (
+                        <p className="text-sm text-destructive">{erroDocumentoVisivel()}</p>
                       )}
-                      type="text"
-                      value={form.documento}
-                      onChange={(e) => aoMudarDocumento(e.target.value)}
-                      onBlur={aoSairDocumento}
-                      placeholder={form.tipo === 'PF' ? '000.000.000-00' : '00.000.000/0000-00'}
-                      maxLength={form.tipo === 'PF' ? 14 : 18}
-                      disabled={modoEdicao}
-                      aria-invalid={!!erroDocumentoVisivel()}
-                    />
-                    {(verificandoDocumento || carregandoBrasilApi) && (
-                      <span className="absolute right-2 top-2 text-xs text-muted-foreground">
-                        {carregandoBrasilApi ? 'Buscando na Receita...' : 'Verificando...'}
-                      </span>
+                      {modoEdicao && !erroDocumentoVisivel() && (
+                        <p className="text-xs text-muted-foreground">CPF/CNPJ não pode ser alterado após o cadastro.</p>
+                      )}
+                    </div>
+                    <div className="flex items-end pb-1">
+                      <CampoCheckbox
+                        rotulo="Simples Nacional"
+                        valor={form.simplesNacional}
+                        aoMudar={(v) => set('simplesNacional', v)}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium leading-none">
+                      CPF
+                      <span className="ml-0.5 text-destructive">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        className={cn(
+                          'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50',
+                          erroDocumentoVisivel() && 'border-destructive'
+                        )}
+                        type="text"
+                        value={form.documento}
+                        onChange={(e) => aoMudarDocumento(e.target.value)}
+                        onBlur={aoSairDocumento}
+                        placeholder="000.000.000-00"
+                        maxLength={14}
+                        disabled={modoEdicao}
+                        aria-invalid={!!erroDocumentoVisivel()}
+                      />
+                      {verificandoDocumento && (
+                        <span className="absolute right-2 top-2 text-xs text-muted-foreground">Verificando...</span>
+                      )}
+                    </div>
+                    {erroDocumentoVisivel() && (
+                      <p className="text-sm text-destructive">{erroDocumentoVisivel()}</p>
+                    )}
+                    {modoEdicao && !erroDocumentoVisivel() && (
+                      <p className="text-xs text-muted-foreground">CPF/CNPJ não pode ser alterado após o cadastro.</p>
                     )}
                   </div>
-                  {erroDocumentoVisivel() && (
-                    <p className="text-sm text-destructive">{erroDocumentoVisivel()}</p>
-                  )}
-                  {modoEdicao && !erroDocumentoVisivel() && (
-                    <p className="text-xs text-muted-foreground">CPF/CNPJ não pode ser alterado após o cadastro.</p>
-                  )}
+                )}
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium leading-none">Tipo de fornecedor</label>
+                  <div className="space-y-1">
+                    <CampoCheckbox rotulo="01 — Fornecedor de mercadoria para revenda" valor={form.tipoRevenda} aoMudar={(v) => set('tipoRevenda', v)} />
+                    <CampoCheckbox rotulo="02 — Fornecedor de mercadoria para consumo" valor={form.tipoConsumo} aoMudar={(v) => set('tipoConsumo', v)} />
+                    <CampoCheckbox rotulo="03 — Prestador de serviço" valor={form.tipoPrestadorServico} aoMudar={(v) => set('tipoPrestadorServico', v)} />
+                  </div>
                 </div>
 
                 {form.tipo === 'PF' && (
@@ -1034,8 +1232,6 @@ function ConteudoDaPaginaDeFornecedores() {
                       <CampoInput rotulo="RG" valor={form.rg} aoMudar={(v) => set('rg', v)} placeholder="Número do RG" maxLength={20} />
                       <CampoInput rotulo="Data de nascimento" valor={form.dataNascimento} aoMudar={(v) => set('dataNascimento', v)} tipo="date" />
                     </div>
-                    <CampoSelect rotulo="Indicador IE (NF-e)" valor={form.indicadorIe} aoMudar={(v) => set('indicadorIe', v)} opcoes={INDICADORES_IE} obrigatorio />
-                    <CampoCheckbox rotulo="Exige NF-e modelo 55" valor={form.aceitaNFe55} aoMudar={(v) => set('aceitaNFe55', v)} />
                   </div>
                 )}
 
@@ -1050,26 +1246,12 @@ function ConteudoDaPaginaDeFornecedores() {
                       <CampoInput rotulo="IE" valor={form.ie} aoMudar={(v) => set('ie', v)} placeholder="Inscrição Estadual" maxLength={30} />
                       <CampoInput rotulo="IM" valor={form.im} aoMudar={(v) => set('im', v)} placeholder="Inscrição Municipal" maxLength={30} />
                     </div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <CampoInput rotulo="CNAE" valor={form.cnae} aoMudar={(v) => set('cnae', v)} placeholder="Código CNAE" maxLength={10} />
-                      <CampoInput rotulo="Data de fundação" valor={form.dataFundacao} aoMudar={(v) => set('dataFundacao', v)} tipo="date" />
-                    </div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <CampoSelect rotulo="Indicador IE (NF-e)" valor={form.indicadorIe} aoMudar={(v) => set('indicadorIe', v)} opcoes={INDICADORES_IE} obrigatorio />
-                      <CampoCheckbox rotulo="Simples Nacional" valor={form.simplesNacional} aoMudar={(v) => set('simplesNacional', v)} />
-                    </div>
+                    <CampoInput rotulo="Data de fundação" valor={form.dataFundacao} aoMudar={(v) => set('dataFundacao', v)} tipo="date" />
+                    <ListaCnaes cnaes={form.cnaes} />
                   </div>
                 )}
 
                 <Separator />
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <CampoInput rotulo="Condição de pagamento" valor={form.condicaoPagamento}
-                    aoMudar={(v) => set('condicaoPagamento', v)} placeholder="Ex: 30/60/90 dias" maxLength={100} />
-                  <CampoInput rotulo="Prazo de entrega (dias)" valor={form.prazoEntrega}
-                    aoMudar={(v) => set('prazoEntrega', v.replace(/\D/g, ''))} placeholder="Ex: 7" maxLength={4}
-                    ajuda="Prazo médio em dias úteis" />
-                </div>
 
                 <div className="space-y-1">
                   <label className="text-sm font-medium leading-none">Observações</label>
@@ -1105,18 +1287,12 @@ function ConteudoDaPaginaDeFornecedores() {
                       placeholder="fornecedor@email.com.br"
                       mensagemDeErro={erroVisivel('email')}
                     />
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <CampoInput rotulo="Telefone" valor={form.telefone}
-                        aoMudar={(v) => { tocarCampo('telefone'); set('telefone', mascaraTelefone(v)) }}
-                        onBlur={() => tocarCampo('telefone')}
-                        placeholder="(00) 0000-0000" maxLength={14}
-                        mensagemDeErro={erroVisivel('telefone')} />
-                      <CampoInput rotulo="Celular" valor={form.celular}
-                        aoMudar={(v) => { tocarCampo('telefone'); set('celular', mascaraTelefone(v)) }}
-                        onBlur={() => tocarCampo('telefone')}
-                        placeholder="(00) 00000-0000" maxLength={15} />
-                    </div>
-                    <CampoCheckbox rotulo="Celular com WhatsApp" valor={form.celularWhatsapp} aoMudar={(v) => set('celularWhatsapp', v)} />
+                    <CampoInput rotulo="Telefone" valor={form.telefone}
+                      aoMudar={(v) => { tocarCampo('telefone'); set('telefone', mascaraTelefone(v)) }}
+                      onBlur={() => tocarCampo('telefone')}
+                      placeholder="(00) 0000-0000 ou (00) 00000-0000" maxLength={15}
+                      mensagemDeErro={erroVisivel('telefone')} />
+                    <CampoCheckbox rotulo="Telefone com WhatsApp" valor={form.celularWhatsapp} aoMudar={(v) => set('celularWhatsapp', v)} />
                   </>
                 )}
                 <button type="button"
@@ -1126,8 +1302,7 @@ function ConteudoDaPaginaDeFornecedores() {
                     } else {
                       const inicial: ContatoForm[] = []
                       if (form.email) inicial.push({ tipo: 'email', valor: form.email, descricao: '', whatsapp: false, principal: true })
-                      if (form.telefone) inicial.push({ tipo: 'telefone', valor: form.telefone, descricao: '', whatsapp: false, principal: true })
-                      if (form.celular) inicial.push({ tipo: 'telefone', valor: form.celular, descricao: '', whatsapp: form.celularWhatsapp, principal: false })
+                      if (form.telefone) inicial.push({ tipo: 'telefone', valor: form.telefone, descricao: '', whatsapp: form.celularWhatsapp, principal: true })
                       set('contatos', inicial.length > 0 ? inicial : [{ tipo: 'email', valor: '', descricao: '', whatsapp: false, principal: true }])
                     }
                   }}
@@ -1210,6 +1385,68 @@ function ConteudoDaPaginaDeFornecedores() {
                 </button>
               </div>
             )}
+
+            {/* ── Aba 4: Dados Bancários ─────────────────────────────── */}
+            {abaAtiva === 'dados-bancarios' && (
+              <ListaDadosBancarios
+                dadosBancarios={form.dadosBancarios}
+                aoMudar={(v) => { tocarCampo('dadosBancarios'); set('dadosBancarios', v) }}
+                mensagemDeErro={erroVisivel('dadosBancarios')}
+              />
+            )}
+
+            {/* ── Aba 5: Outros ──────────────────────────────────────── */}
+            {abaAtiva === 'outros' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="mb-3 text-sm font-medium">Prazos</h3>
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+                    {form.prazosPagamento.map((prazo, idx) => (
+                      <CampoInput
+                        key={idx}
+                        rotulo={`Prazo ${idx + 1}`}
+                        valor={prazo}
+                        aoMudar={(v) => {
+                          const novos = [...form.prazosPagamento]
+                          novos[idx] = v.replace(/\D/g, '')
+                          set('prazosPagamento', novos)
+                        }}
+                        placeholder="Dias"
+                        maxLength={4}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium leading-none">Flags</label>
+                  <div className="space-y-1">
+                    <CampoCheckbox rotulo="06 — Permitir vínculo manual dos produtos na entrada" valor={form.permitirVinculoManual} aoMudar={(v) => set('permitirVinculoManual', v)} />
+                    <CampoCheckbox rotulo="01 — Exigir itens na entrada p/ uso e consumo" valor={form.exigirItensEntrada} aoMudar={(v) => set('exigirItensEntrada', v)} />
+                  </div>
+                </div>
+
+                {(form.tipoConsumo || form.tipoPrestadorServico) && (
+                  <div className="space-y-6">
+                    <SelecaoMultiplaCatalogo
+                      rotulo="Planos financeiros liberados"
+                      endpoint="/planos-financeiros"
+                      selecionados={form.planosFinanceiros}
+                      aoMudar={(v) => set('planosFinanceiros', v)}
+                      ajuda="Caso não preenchido, o ADM não vai gerar trava de planos financeiros na tela de entrada e contas a pagar manual"
+                    />
+                    <SelecaoMultiplaCatalogo
+                      rotulo="CFOPs liberados para entrada"
+                      endpoint="/cfops"
+                      tipoCfop="entrada"
+                      selecionados={form.cfopsEntrada}
+                      aoMudar={(v) => set('cfopsEntrada', v)}
+                      ajuda="Caso não preenchido, o ADM não irá travar CFOPs nas entradas"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </form>
         </div>
       </Modal>
@@ -1238,7 +1475,7 @@ function ConteudoDaPaginaDeFornecedores() {
             type="text"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por nome, documento ou cidade..."
+            placeholder="Buscar por razão social, nome fantasia ou CPF/CNPJ..."
             className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
@@ -1284,7 +1521,12 @@ function ConteudoDaPaginaDeFornecedores() {
 
                 return (
                   <tr key={f.id} className="border-b border-border last:border-0 hover:bg-muted/30">
-                    <td className="px-4 py-3 font-medium">{f.nome}</td>
+                    <td className="px-4 py-3 font-medium">
+                      {f.nome}
+                      {f.nomeFantasia && (
+                        <div className="text-xs text-muted-foreground">{f.nomeFantasia}</div>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{documento}</td>
                     <td className="px-4 py-3 text-muted-foreground">{f.email || '—'}</td>
                     <td className="px-4 py-3 text-muted-foreground">{f.cidade || '—'}</td>

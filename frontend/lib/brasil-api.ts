@@ -1,12 +1,17 @@
 /**
  * Integração com BrasilAPI para busca de dados de CNPJ via Receita Federal.
- * Endpoint público, sem autenticação, suporta CORS.
  */
+export type CnaeItem = {
+  codigo: string
+  descricao: string
+  principal: boolean
+}
 
 export type DadosCnpj = {
   nome: string
   nomeFantasia: string
   cnae: string
+  cnaes: CnaeItem[]
   dataFundacao: string
   ie: string
   cep: string
@@ -18,12 +23,18 @@ export type DadosCnpj = {
   codigoIbge: string
 }
 
+type CnaeSecundarioBrasilApi = {
+  codigo?: number
+  descricao?: string
+}
+
 type RespostaBrasilApi = {
   razao_social: string
   nome_fantasia?: string
   cnae_fiscal?: number
+  cnae_fiscal_descricao?: string
+  cnaes_secundarios?: CnaeSecundarioBrasilApi[]
   data_inicio_atividade?: string
-  ddd_telefone_1?: string
   cep?: string
   logradouro?: string
   numero?: string
@@ -31,17 +42,44 @@ type RespostaBrasilApi = {
   municipio?: string
   uf?: string
   codigo_municipio_ibge?: number
-  qsa?: Array<{ nome_socio: string }>
 }
 
 function formatarData(data?: string): string {
   if (!data) return ''
-  // BrasilAPI retorna YYYY-MM-DD
   return data.slice(0, 10)
 }
 
 function limparCep(cep?: string): string {
   return (cep ?? '').replace(/\D/g, '')
+}
+
+function montarCnaes(dados: RespostaBrasilApi): CnaeItem[] {
+  const lista: CnaeItem[] = []
+  const codigos = new Set<string>()
+
+  if (dados.cnae_fiscal) {
+    const codigo = String(dados.cnae_fiscal)
+    codigos.add(codigo)
+    lista.push({
+      codigo,
+      descricao: dados.cnae_fiscal_descricao ?? '',
+      principal: true,
+    })
+  }
+
+  for (const sec of dados.cnaes_secundarios ?? []) {
+    if (!sec.codigo) continue
+    const codigo = String(sec.codigo)
+    if (codigos.has(codigo)) continue
+    codigos.add(codigo)
+    lista.push({
+      codigo,
+      descricao: sec.descricao ?? '',
+      principal: false,
+    })
+  }
+
+  return lista
 }
 
 export async function buscarDadosCnpj(cnpj: string): Promise<DadosCnpj | null> {
@@ -56,11 +94,14 @@ export async function buscarDadosCnpj(cnpj: string): Promise<DadosCnpj | null> {
     if (!resposta.ok) return null
 
     const dados: RespostaBrasilApi = await resposta.json()
+    const cnaes = montarCnaes(dados)
+    const cnaePrincipal = cnaes.find((c) => c.principal)?.codigo ?? ''
 
     return {
       nome: dados.razao_social ?? '',
       nomeFantasia: dados.nome_fantasia ?? '',
-      cnae: dados.cnae_fiscal ? String(dados.cnae_fiscal) : '',
+      cnae: cnaePrincipal,
+      cnaes,
       dataFundacao: formatarData(dados.data_inicio_atividade),
       ie: '',
       cep: limparCep(dados.cep),
