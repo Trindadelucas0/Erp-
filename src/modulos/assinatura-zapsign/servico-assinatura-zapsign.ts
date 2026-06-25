@@ -14,6 +14,15 @@ import type {
 
 // ─── Helpers internos ─────────────────────────────────────────────────────────
 
+/**
+ * Mapeia os status vindos da API ZapSign para os valores canônicos do banco.
+ * A API retorna "pending" (inglês); o banco usa "pendente" (português).
+ */
+function normalizarStatusZapsign(status: string): string {
+  if (status === 'pending') return 'pendente'
+  return status
+}
+
 async function obterCredenciais(companyId: string) {
   const config = await repositorioDeAssinaturaZapsign.buscarConfigPorEmpresa(companyId)
 
@@ -220,6 +229,8 @@ async function sincronizarPendentes(companyId: string) {
 
           const docRemoto = resultado.dados
           const novoStatus = docRemoto.status
+            ? normalizarStatusZapsign(docRemoto.status)
+            : undefined
 
           if (novoStatus && novoStatus !== 'pendente') {
             const primeiroSignatario = docRemoto.signers?.[0]
@@ -260,8 +271,10 @@ async function detalharDocumento(companyId: string, tokenZapsign: string) {
       if (resultado.sucesso) {
         const docRemoto = resultado.dados
         const novoStatus = docRemoto.status
+          ? normalizarStatusZapsign(docRemoto.status)
+          : undefined
 
-        if (novoStatus !== doc.status) {
+        if (novoStatus && novoStatus !== doc.status) {
           const primeiroSignatario = docRemoto.signers?.[0]
           await repositorioDeAssinaturaZapsign.atualizarStatusDocumento(tokenZapsign, novoStatus, {
             assinadoEm: primeiroSignatario?.signed_at ? new Date(primeiroSignatario.signed_at) : null,

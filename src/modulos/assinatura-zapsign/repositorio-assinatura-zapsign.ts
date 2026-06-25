@@ -35,7 +35,7 @@ async function listarDocumentos(companyId: string) {
 
 async function listarPendentes(companyId: string) {
   return clientePrisma.zapsignDocumento.findMany({
-    where: { companyId, status: 'pendente' },
+    where: { companyId, status: { in: ['pendente', 'pending'] } },
     select: { tokenZapsign: true },
   })
 }

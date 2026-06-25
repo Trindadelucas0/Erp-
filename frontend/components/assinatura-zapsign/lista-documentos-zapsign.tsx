@@ -104,7 +104,7 @@ export function ListaDocumentosZapsign() {
 
   // Auto-sincroniza a cada 30s enquanto houver documentos pendentes
   useEffect(() => {
-    const temPendente = documentos.some((d) => d.status === 'pendente')
+    const temPendente = documentos.some((d) => d.status === 'pendente' || d.status === 'pending')
     if (!temPendente) return
 
     const id = setInterval(async () => {
@@ -122,6 +122,22 @@ export function ListaDocumentosZapsign() {
 
     return () => clearInterval(id)
   }, [documentos, carregar])
+
+  async function sincronizarECarregar() {
+    if (sincronizandoRef.current) return
+    sincronizandoRef.current = true
+    setCarregando(true)
+    setErro('')
+    try {
+      await clienteHttp.post('/zapsign/documentos/sincronizar')
+      await carregar()
+    } catch (err) {
+      setErro(extrairMensagemApi(err, 'Não foi possível sincronizar os documentos.'))
+    } finally {
+      sincronizandoRef.current = false
+      setCarregando(false)
+    }
+  }
 
   async function copiarLink(link: string, id: string) {
     try {
@@ -224,7 +240,7 @@ export function ListaDocumentosZapsign() {
               type="button"
               variant="outline"
               size="sm"
-              onClick={carregar}
+              onClick={sincronizarECarregar}
               disabled={carregando}
             >
               {carregando ? 'Atualizando...' : 'Atualizar'}
