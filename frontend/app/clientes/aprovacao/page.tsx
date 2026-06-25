@@ -8,7 +8,10 @@ import Link from 'next/link'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
+import { ConfirmacaoComSenha } from '@/components/compartilhado/confirmacao-com-senha'
 import { usePermissao } from '@/hooks/use-permissao'
+import { useDesbloqueioAssinatura } from '@/hooks/use-desbloqueio-assinatura'
+import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { BadgeStatus } from '@/components/ui/badge-status'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
@@ -90,6 +93,16 @@ function formatarDocumento(c: ClientePendente | ClienteAguardando) {
 
 function ConteudoAprovacao() {
   const podeAprovar = usePermissao('clientes:approve')
+  const { perfil } = useSessaoDoUsuario()
+  const ehAdmin = perfil?.ehAdmin ?? false
+  const {
+    desbloqueado,
+    pedindoSenha,
+    solicitarDesbloqueio,
+    aoDesbloquear,
+    cancelarDesbloqueio,
+  } = useDesbloqueioAssinatura()
+
   const [pendentes, setPendentes] = useState<ClientePendente[]>([])
   const [aguardando, setAguardando] = useState<ClienteAguardando[]>([])
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
@@ -101,6 +114,9 @@ function ConteudoAprovacao() {
   const [form, setForm] = useState<FormAprovacao>(FORM_APROVACAO_VAZIO)
   const [modoReprovar, setModoReprovar] = useState(false)
   const [processando, setProcessando] = useState(false)
+
+  // Pendente de abertura ZapSign após aprovação (quando admin precisou desbloquear antes)
+  const [clienteZapsignPendente, setClienteZapsignPendente] = useState<ClienteParaAssinatura | null>(null)
 
   // Modal ZapSign
   const [clienteZapsign, setClienteZapsign] = useState<ClienteParaAssinatura | null>(null)
@@ -181,15 +197,27 @@ function ConteudoAprovacao() {
           }
         )
 
-        // Abre modal ZapSign com dados do cliente aprovado
-        setClienteZapsign({
+        const dadosCliente: ClienteParaAssinatura = {
           id: clienteSelecionado.id,
           nome: clienteSelecionado.nome,
           email: clienteSelecionado.email ?? null,
-        })
-        setModalZapsignAberto(true)
+        }
+
         fecharAnalise()
         await carregar()
+
+        if (ehAdmin && desbloqueado) {
+          // Admin desbloqueado — abre ZapSign imediatamente
+          setClienteZapsign(dadosCliente)
+          setModalZapsignAberto(true)
+        } else if (ehAdmin) {
+          // Admin sem desbloqueio — guarda pendente e solicita senha
+          setClienteZapsignPendente(dadosCliente)
+          setSucesso(`Cadastro de ${data.cliente?.nome ?? dadosCliente.nome} aprovado. Confirme sua senha para enviar o contrato.`)
+          solicitarDesbloqueio()
+        } else {
+          setSucesso(`Cadastro de ${data.cliente?.nome ?? dadosCliente.nome} aprovado. Um administrador poderá enviar o contrato de assinatura.`)
+        }
       }
     } catch (e) {
       setErro(extrairMensagemApi(e, 'Erro ao processar aprovação'))
@@ -199,8 +227,14 @@ function ConteudoAprovacao() {
   }
 
   function abrirZapsignParaCliente(cliente: ClienteAguardando) {
-    setClienteZapsign({ id: cliente.id, nome: cliente.nome, email: cliente.email })
-    setModalZapsignAberto(true)
+    const dadosCliente: ClienteParaAssinatura = { id: cliente.id, nome: cliente.nome, email: cliente.email }
+    if (desbloqueado) {
+      setClienteZapsign(dadosCliente)
+      setModalZapsignAberto(true)
+    } else {
+      setClienteZapsignPendente(dadosCliente)
+      solicitarDesbloqueio()
+    }
   }
 
   function aoEnviarZapsign(link: string | null) {
@@ -208,6 +242,15 @@ function ConteudoAprovacao() {
     setLinkZapsignRetornado(link)
     setModalSucessoZapsignAberto(true)
     carregar()
+  }
+
+  function aoDesbloquearEAbrirPendente() {
+    aoDesbloquear()
+    if (clienteZapsignPendente) {
+      setClienteZapsign(clienteZapsignPendente)
+      setClienteZapsignPendente(null)
+      setModalZapsignAberto(true)
+    }
   }
 
   if (!podeAprovar) {
@@ -338,13 +381,17 @@ function ConteudoAprovacao() {
                       </BadgeStatus>
                     </td>
                     <td className="px-4 py-3">
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => abrirZapsignParaCliente(c)}
-                      >
-                        Enviar contrato
-                      </Button>
+                      {ehAdmin ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => abrirZapsignParaCliente(c)}
+                        >
+                          Enviar contrato
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Somente admin</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -572,6 +619,24 @@ function ConteudoAprovacao() {
           </p>
         </div>
       </Modal>
+
+      {/* Modal: confirmar senha para envio de contrato (admin) */}
+      {pedindoSenha && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl">
+            <h3 className="mb-4 text-lg font-semibold">Confirmar identidade</h3>
+            <ConfirmacaoComSenha
+              escopo="assinatura-documentos"
+              mensagem="Para enviar contratos de assinatura, confirme sua senha de administrador. O acesso ficará ativo por 15 minutos."
+              onConfirmar={aoDesbloquearEAbrirPendente}
+              onCancelar={() => {
+                setClienteZapsignPendente(null)
+                cancelarDesbloqueio()
+              }}
+            />
+          </div>
+        </div>
+      )}
 
     </div>
   )

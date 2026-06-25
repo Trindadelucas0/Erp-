@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
+import { PortaoAssinaturaComSenha } from '@/components/compartilhado/portao-assinatura-com-senha'
 import { Abas } from '@/components/ui/abas'
 import { PainelConfiguracaoZapsign } from '@/components/assinatura-zapsign/painel-configuracao-zapsign'
 import { ListaDocumentosZapsign } from '@/components/assinatura-zapsign/lista-documentos-zapsign'
@@ -27,7 +28,11 @@ function ConteudoPaginaAssinaturaDigital() {
 
       <div>
         {abaAtiva === 'configuracao' && <PainelConfiguracaoZapsign />}
-        {abaAtiva === 'documentos' && <ListaDocumentosZapsign />}
+        {abaAtiva === 'documentos' && (
+          <PortaoAssinaturaComSenha descricao="Para visualizar o status e enviar documentos de assinatura, confirme sua senha de administrador.">
+            <ListaDocumentosZapsign />
+          </PortaoAssinaturaComSenha>
+        )}
       </div>
     </div>
   )

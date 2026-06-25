@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Lock } from 'lucide-react'
 import { clienteHttp } from '@/services/api'
+import { salvarTokenReauth } from '@/lib/reauth-assinatura'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
@@ -12,6 +13,8 @@ type Props = {
   onConfirmar: () => void | Promise<void>
   onCancelar: () => void
   carregandoExterno?: boolean
+  /** Quando informado, a verificação emite token de reautenticação para o escopo especificado. */
+  escopo?: 'assinatura-documentos'
 }
 
 export function ConfirmacaoComSenha({
@@ -19,6 +22,7 @@ export function ConfirmacaoComSenha({
   onConfirmar,
   onCancelar,
   carregandoExterno = false,
+  escopo,
 }: Props) {
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState('')
@@ -34,7 +38,13 @@ export function ConfirmacaoComSenha({
     setErro('')
 
     try {
-      await clienteHttp.post('/auth/verificar-senha', { senha })
+      const { data } = await clienteHttp.post('/auth/verificar-senha', {
+        senha,
+        ...(escopo ? { escopo } : {}),
+      })
+      if (escopo === 'assinatura-documentos' && data.tokenReauth) {
+        salvarTokenReauth(data.tokenReauth, data.expiraEm)
+      }
       await onConfirmar()
     } catch (e: unknown) {
       const mensagemErro =

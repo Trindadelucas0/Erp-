@@ -3,9 +3,15 @@
  */
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
-import { gerarTokenDeAutenticacao } from '../../compartilhado/utilitarios/token-jwt.js'
+import {
+  gerarTokenDeAutenticacao,
+  gerarTokenDeReautenticacao,
+  ESCOPO_REAUTH_ASSINATURA,
+} from '../../compartilhado/utilitarios/token-jwt.js'
 import { servicoDeAutenticacao } from './servico-autenticacao.js'
 import { esquemaDeLogin, esquemaDeTema } from './esquema-autenticacao.js'
+import { usuarioEhAdmin } from '../../compartilhado/paginas/registro-de-paginas.js'
+import { repositorioDeUsuarios } from '../usuarios/repositorio-usuarios.js'
 
 /**
  * Recebe email e senha, valida e devolve token JWT.
@@ -56,13 +62,28 @@ async function buscarMeuPerfil(
 
 /**
  * Verifica a senha do usuário logado para confirmar ações críticas.
+ * Quando escopo === 'assinatura-documentos', exige admin e devolve um token
+ * de reautenticação de curta duração (15 min) para o cabeçalho X-Reauth-Token.
  */
 async function verificarSenha(requisicao: FastifyRequest, resposta: FastifyReply) {
   const idDoUsuario = requisicao.idDoUsuario!
-  const { senha } = requisicao.body as { senha?: string }
+  const { senha, escopo } = requisicao.body as {
+    senha?: string
+    escopo?: string
+  }
 
   if (!senha) {
     throw new ErroDaAplicacao('Senha é obrigatória', 400)
+  }
+
+  if (escopo === ESCOPO_REAUTH_ASSINATURA) {
+    const usuario = await repositorioDeUsuarios.buscarPorId(idDoUsuario)
+    if (!usuario || !usuarioEhAdmin(usuario.roles)) {
+      throw new ErroDaAplicacao(
+        'Acesso restrito ao administrador para esta ação',
+        403
+      )
+    }
   }
 
   const senhaCorreta = await servicoDeAutenticacao.verificarSenhaDoUsuario(
@@ -72,6 +93,12 @@ async function verificarSenha(requisicao: FastifyRequest, resposta: FastifyReply
 
   if (!senhaCorreta) {
     throw new ErroDaAplicacao('Senha incorreta', 401)
+  }
+
+  if (escopo === ESCOPO_REAUTH_ASSINATURA) {
+    const tokenReauth = await gerarTokenDeReautenticacao(resposta, idDoUsuario)
+    const expiraEm = new Date(Date.now() + 15 * 60 * 1000).toISOString()
+    return resposta.send({ valido: true, tokenReauth, expiraEm })
   }
 
   return resposta.send({ valido: true })

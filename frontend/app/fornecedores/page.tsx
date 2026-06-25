@@ -165,7 +165,7 @@ const FORM_VAZIO: FormFornecedor = {
   estado: '',
   codigoIbge: '',
   observacoes: '',
-  tipoRevenda: false,
+  tipoRevenda: true,
   tipoConsumo: false,
   tipoPrestadorServico: false,
   permitirVinculoManual: false,
@@ -276,6 +276,7 @@ const PREFIXO_ERRO_POR_CAMPO: Record<string, string> = {
   nome: 'Identificação',
   documento: 'Identificação',
   cnaes: 'Identificação',
+  tipoFornecedor: 'Identificação',
   email: 'Contato',
   telefone: 'Contato',
   contatos: 'Contato',
@@ -398,6 +399,9 @@ function validarFormFornecedor(form: FormFornecedor): ErrosDoForm {
     if (!estado.trim()) erros.estado = 'estado (UF) obrigatório'
   }
 
+  if (!form.tipoRevenda && !form.tipoConsumo && !form.tipoPrestadorServico)
+    erros.tipoFornecedor = 'selecione ao menos um tipo de fornecedor'
+
   const erroDadosBancarios = validarDadosBancarios(form.dadosBancarios)
   if (erroDadosBancarios) erros.dadosBancarios = erroDadosBancarios
 
@@ -408,6 +412,30 @@ function gerarPendenciasDoForm(form: FormFornecedor): string[] {
   return Object.entries(validarFormFornecedor(form)).map(
     ([campo, mensagem]) => `${PREFIXO_ERRO_POR_CAMPO[campo] ?? 'Formulário'}: ${mensagem}`
   )
+}
+
+const ROTULO_POR_ABA: Record<string, string> = {
+  identificacao: 'Identificação',
+  contato: 'Contato',
+  endereco: 'Endereço',
+  'dados-bancarios': 'Dados Bancários',
+  outros: 'Outros',
+}
+
+const CAMPOS_POR_ABA: Record<string, string[]> = {
+  identificacao: ['nome', 'documento', 'tipoFornecedor', 'cnaes'],
+  contato: ['email', 'telefone', 'contatos'],
+  endereco: ['cep', 'logradouro', 'numero', 'bairro', 'cidade', 'estado', 'codigoIbge', 'enderecos'],
+  'dados-bancarios': ['dadosBancarios'],
+  outros: [],
+}
+
+function gerarPendenciasDaAba(abaId: string, form: FormFornecedor): string[] {
+  const rotulo = ROTULO_POR_ABA[abaId]
+  return Object.entries(validarFormFornecedor(form))
+    .filter(([campo]) => PREFIXO_ERRO_POR_CAMPO[campo] === rotulo)
+    .map(([, mensagem]) => mensagem)
+    .filter((m): m is string => !!m)
 }
 
 function calcularStatusCadastro(f: Fornecedor): { completo: boolean; pendencias: string[] } {
@@ -508,19 +536,13 @@ function ConteudoDaPaginaDeFornecedores() {
   const [modoEdicao, setModoEdicao] = useState(false)
   const [idEmEdicao, setIdEmEdicao] = useState('')
   const [abaAtiva, setAbaAtiva] = useState('identificacao')
+  const [errosDaAbaAtual, setErrosDaAbaAtual] = useState<string[]>([])
 
   const idsAbas = ['identificacao', 'contato', 'endereco', 'dados-bancarios', 'outros']
   const indiceAbaAtiva = idsAbas.indexOf(abaAtiva)
   const ehPrimeiraAba = indiceAbaAtiva === 0
   const ehUltimaAba = indiceAbaAtiva === idsAbas.length - 1
 
-  function irParaProximaAba() {
-    if (!ehUltimaAba) setAbaAtiva(idsAbas[indiceAbaAtiva + 1])
-  }
-
-  function irParaAbaAnterior() {
-    if (!ehPrimeiraAba) setAbaAtiva(idsAbas[indiceAbaAtiva - 1])
-  }
   const [salvando, setSalvando] = useState(false)
 
   const [form, setForm] = useState<FormFornecedor>(FORM_VAZIO)
@@ -554,8 +576,10 @@ function ConteudoDaPaginaDeFornecedores() {
           const f = formRef.current
           if (!f.nome.trim() || f.nome.trim().length < 2) return false
           const nums = f.documento.replace(/\D/g, '')
-          if (f.tipo === 'PF') return validarCpf(nums)
-          return validarCnpj(nums)
+          if (f.tipo === 'PF') { if (!validarCpf(nums)) return false }
+          else { if (!validarCnpj(nums)) return false }
+          if (!f.tipoRevenda && !f.tipoConsumo && !f.tipoPrestadorServico) return false
+          return true
         },
       },
       {
@@ -577,14 +601,16 @@ function ConteudoDaPaginaDeFornecedores() {
             cep = p?.cep ?? ''; logradouro = p?.logradouro ?? ''; numero = p?.numero ?? ''
             bairro = p?.bairro ?? ''; cidade = p?.cidade ?? ''; estado = p?.estado ?? ''
           }
-          return (
-            cep.replace(/\D/g, '').length >= 8 &&
-            logradouro.trim().length > 0 &&
-            numero.trim().length > 0 &&
-            bairro.trim().length > 0 &&
-            cidade.trim().length > 0 &&
-            estado.trim().length > 0
-          )
+          if (
+            cep.replace(/\D/g, '').length < 8 ||
+            !logradouro.trim() ||
+            !numero.trim() ||
+            !bairro.trim() ||
+            !cidade.trim() ||
+            !estado.trim()
+          ) return false
+          if (f.codigoIbge && !/^\d{7}$/.test(f.codigoIbge.replace(/\D/g, ''))) return false
+          return true
         },
       },
       {
@@ -599,7 +625,7 @@ function ConteudoDaPaginaDeFornecedores() {
     []
   )
 
-  const { statusDasAbas, validarTodasAsAbas, irParaAbaComErro, resetarStatus } =
+  const { statusDasAbas, validarTodasAsAbas, irParaAbaComErro, resetarStatus, validarAba, abaLiberada } =
     useValidacaoDeAbas(configAbas)
 
   const abasComStatus = [
@@ -614,6 +640,9 @@ function ConteudoDaPaginaDeFornecedores() {
   const documentoDuplicado = avisoDuplicidade?.tipo === 'fornecedor_existente'
   const formularioValido = Object.keys(errosForm).length === 0 && !documentoDuplicado
 
+  const etapaAtualLiberada =
+    abaLiberada(abaAtiva) && !(abaAtiva === 'identificacao' && documentoDuplicado)
+
   useEffect(() => {
     if (modalAberto) validarTodasAsAbas()
   }, [form, modalAberto, validarTodasAsAbas])
@@ -627,6 +656,15 @@ function ConteudoDaPaginaDeFornecedores() {
     })
   }, [])
 
+  const tocarCamposDaAba = useCallback((abaId: string) => {
+    const campos = CAMPOS_POR_ABA[abaId] ?? []
+    setCamposTocados((anterior) => {
+      const proximo = new Set(anterior)
+      for (const campo of campos) proximo.add(campo)
+      return proximo
+    })
+  }, [])
+
   function erroVisivel(campo: string): string | undefined {
     if (!camposTocados.has(campo)) return undefined
     return errosForm[campo as keyof ErrosDoForm]
@@ -636,6 +674,35 @@ function ConteudoDaPaginaDeFornecedores() {
     if (!camposTocados.has('documento')) return undefined
     if (documentoDuplicado) return avisoDuplicidade?.mensagem
     return errosForm.documento
+  }
+
+  function aoAvancar() {
+    if (abaAtiva === 'identificacao' && documentoDuplicado) {
+      tocarCamposDaAba('identificacao')
+      setErrosDaAbaAtual([avisoDuplicidade?.mensagem ?? 'Documento já cadastrado'])
+      return
+    }
+
+    const ok = validarAba(abaAtiva)
+    if (!ok) {
+      tocarCamposDaAba(abaAtiva)
+      setErrosDaAbaAtual(gerarPendenciasDaAba(abaAtiva, form))
+      return
+    }
+
+    setErrosDaAbaAtual([])
+    setAbaAtiva((atual) => {
+      const i = idsAbas.indexOf(atual)
+      return i >= 0 && i < idsAbas.length - 1 ? idsAbas[i + 1] : atual
+    })
+  }
+
+  function irParaAbaAnterior() {
+    setErrosDaAbaAtual([])
+    setAbaAtiva((atual) => {
+      const i = idsAbas.indexOf(atual)
+      return i > 0 ? idsAbas[i - 1] : atual
+    })
   }
 
   // ─── Dados ──────────────────────────────────────────────────────────────
@@ -674,6 +741,7 @@ function ConteudoDaPaginaDeFornecedores() {
     setErroSalvar('')
     setCamposTocados(new Set())
     setAvisoDuplicidade(null)
+    setErrosDaAbaAtual([])
     resetarStatus()
     setModalAberto(true)
   }
@@ -689,6 +757,7 @@ function ConteudoDaPaginaDeFornecedores() {
     setErroSalvar('')
     setCamposTocados(new Set())
     setAvisoDuplicidade(null)
+    setErrosDaAbaAtual([])
     resetarStatus()
     setModalAberto(true)
   }
@@ -699,6 +768,7 @@ function ConteudoDaPaginaDeFornecedores() {
     setErroSalvar('')
     setCamposTocados(new Set())
     setAvisoDuplicidade(null)
+    setErrosDaAbaAtual([])
     resetarStatus()
   }, [resetarStatus])
 
@@ -1040,61 +1110,75 @@ function ConteudoDaPaginaDeFornecedores() {
         titulo={modoEdicao ? `Editar fornecedor: ${form.nome}` : 'Novo fornecedor'}
         largura="2xl"
         rodape={
-          <div className="flex w-full items-center justify-between gap-2">
-            {erroSalvar ? (
-              <p className="text-sm text-destructive">{erroSalvar}</p>
-            ) : (
-              <span />
+          <div className="flex w-full flex-col gap-2">
+            {errosDaAbaAtual.length > 0 && (
+              <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <ul className="space-y-0.5">
+                  {errosDaAbaAtual.map((erro, i) => (
+                    <li key={i} className="flex items-start gap-1">
+                      <span className="mt-0.5 shrink-0">•</span>
+                      <span>{erro}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={solicitarFechar}
-                disabled={salvando}
-                title={tituloComAtalho('Cancelar', teclaCancelar)}
-              >
-                Cancelar
-              </Button>
-              {!ehPrimeiraAba && (
+            {!etapaAtualLiberada && !ehUltimaAba && errosDaAbaAtual.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                Preencha os campos obrigatórios desta etapa para continuar
+              </p>
+            )}
+            <div className="flex items-center justify-between gap-2">
+              {erroSalvar ? (
+                <p className="text-sm text-destructive">{erroSalvar}</p>
+              ) : (
+                <span />
+              )}
+              <div className="flex gap-2">
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={irParaAbaAnterior}
+                  onClick={solicitarFechar}
                   disabled={salvando}
+                  title={tituloComAtalho('Cancelar', teclaCancelar)}
                 >
-                  ← Anterior
+                  Cancelar
                 </Button>
-              )}
-              {!ehUltimaAba ? (
+                {!ehPrimeiraAba && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={irParaAbaAnterior}
+                    disabled={salvando}
+                  >
+                    ← Anterior
+                  </Button>
+                )}
                 <BotaoPrimario
                   type="button"
-                  onClick={irParaProximaAba}
-                  disabled={salvando}
+                  onClick={() => {
+                    if (ehUltimaAba) {
+                      submeterFormularioPorId('form-fornecedor')
+                    } else {
+                      aoAvancar()
+                    }
+                  }}
+                  disabled={salvando || (ehUltimaAba && !formularioValido)}
+                  title={ehUltimaAba ? tituloComAtalho(modoEdicao ? 'Salvar' : 'Cadastrar fornecedor', teclaSalvar) : undefined}
                 >
-                  Próximo →
+                  {ehUltimaAba ? (
+                    salvando ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                        </svg>
+                        Salvando...
+                      </span>
+                    ) : modoEdicao ? 'Salvar' : 'Cadastrar fornecedor'
+                  ) : 'Próximo →'}
                 </BotaoPrimario>
-              ) : (
-                <BotaoPrimario
-                  form="form-fornecedor"
-                  type="submit"
-                  disabled={salvando || !formularioValido}
-                  title={tituloComAtalho(
-                    modoEdicao ? 'Salvar' : 'Cadastrar fornecedor',
-                    teclaSalvar
-                  )}
-                >
-                  {salvando ? (
-                    <span className="flex items-center gap-2">
-                      <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                      </svg>
-                      Salvando...
-                    </span>
-                  ) : modoEdicao ? 'Salvar' : 'Cadastrar fornecedor'}
-                </BotaoPrimario>
-              )}
+              </div>
             </div>
           </div>
         }
@@ -1216,10 +1300,13 @@ function ConteudoDaPaginaDeFornecedores() {
                 <div className="space-y-2">
                   <label className="text-sm font-medium leading-none">Tipo de fornecedor</label>
                   <div className="space-y-1">
-                    <CampoCheckbox rotulo="01 — Fornecedor de mercadoria para revenda" valor={form.tipoRevenda} aoMudar={(v) => set('tipoRevenda', v)} />
-                    <CampoCheckbox rotulo="02 — Fornecedor de mercadoria para consumo" valor={form.tipoConsumo} aoMudar={(v) => set('tipoConsumo', v)} />
-                    <CampoCheckbox rotulo="03 — Prestador de serviço" valor={form.tipoPrestadorServico} aoMudar={(v) => set('tipoPrestadorServico', v)} />
+                    <CampoCheckbox rotulo="Fornecedor de mercadoria para revenda" valor={form.tipoRevenda} aoMudar={(v) => { tocarCampo('tipoFornecedor'); set('tipoRevenda', v) }} />
+                    <CampoCheckbox rotulo="Fornecedor de mercadoria para consumo" valor={form.tipoConsumo} aoMudar={(v) => { tocarCampo('tipoFornecedor'); set('tipoConsumo', v) }} />
+                    <CampoCheckbox rotulo="Prestador de serviço" valor={form.tipoPrestadorServico} aoMudar={(v) => { tocarCampo('tipoFornecedor'); set('tipoPrestadorServico', v) }} />
                   </div>
+                  {erroVisivel('tipoFornecedor') && (
+                    <p className="text-sm text-destructive">{erroVisivel('tipoFornecedor')}</p>
+                  )}
                 </div>
 
                 {form.tipo === 'PF' && (
@@ -1421,8 +1508,8 @@ function ConteudoDaPaginaDeFornecedores() {
                 <div className="space-y-2">
                   <label className="text-sm font-medium leading-none">Flags</label>
                   <div className="space-y-1">
-                    <CampoCheckbox rotulo="06 — Permitir vínculo manual dos produtos na entrada" valor={form.permitirVinculoManual} aoMudar={(v) => set('permitirVinculoManual', v)} />
-                    <CampoCheckbox rotulo="01 — Exigir itens na entrada p/ uso e consumo" valor={form.exigirItensEntrada} aoMudar={(v) => set('exigirItensEntrada', v)} />
+                    <CampoCheckbox rotulo="Permitir vínculo manual dos produtos na entrada" valor={form.permitirVinculoManual} aoMudar={(v) => set('permitirVinculoManual', v)} />
+                    <CampoCheckbox rotulo="Exigir itens na entrada p/ uso e consumo" valor={form.exigirItensEntrada} aoMudar={(v) => set('exigirItensEntrada', v)} />
                   </div>
                 </div>
 

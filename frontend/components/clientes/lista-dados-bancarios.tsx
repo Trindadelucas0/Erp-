@@ -2,6 +2,7 @@
 
 import { Select, classesOption, classesSelectCompacto } from '@/components/ui/select'
 import { mascaraCpf, mascaraCnpj } from '@/lib/documentos'
+import { ComboboxBanco } from '@/components/ui/combobox-banco'
 
 export type DadosBancarioForm = {
   apelido: string
@@ -85,7 +86,7 @@ export function ListaDadosBancarios({ dadosBancarios, aoMudar, disabled, mensage
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <Campo rotulo="Apelido" valor={db.apelido} aoMudar={(v) => atualizar(idx, 'apelido', v)} disabled={disabled} placeholder="Ex: Conta principal" />
-            <Campo rotulo="Banco" valor={db.banco} aoMudar={(v) => atualizar(idx, 'banco', v)} disabled={disabled} placeholder="Código ou nome" />
+            <ComboboxBanco valor={db.banco} aoMudar={(v) => atualizar(idx, 'banco', v)} disabled={disabled} />
             <Campo rotulo="Agência" valor={db.agencia} aoMudar={(v) => atualizar(idx, 'agencia', v)} disabled={disabled} />
             <Campo rotulo="Conta" valor={db.conta} aoMudar={(v) => atualizar(idx, 'conta', v)} disabled={disabled} />
             <div className="space-y-1">
