@@ -423,11 +423,11 @@ const ROTULO_POR_ABA: Record<string, string> = {
 }
 
 const CAMPOS_POR_ABA: Record<string, string[]> = {
-  identificacao: ['nome', 'documento', 'tipoFornecedor', 'cnaes'],
+  identificacao: ['nome', 'documento', 'cnaes'],
   contato: ['email', 'telefone', 'contatos'],
   endereco: ['cep', 'logradouro', 'numero', 'bairro', 'cidade', 'estado', 'codigoIbge', 'enderecos'],
   'dados-bancarios': ['dadosBancarios'],
-  outros: [],
+  outros: ['tipoFornecedor'],
 }
 
 function gerarPendenciasDaAba(abaId: string, form: FormFornecedor): string[] {
@@ -1297,18 +1297,6 @@ function ConteudoDaPaginaDeFornecedores() {
                   </div>
                 )}
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium leading-none">Tipo de fornecedor</label>
-                  <div className="space-y-1">
-                    <CampoCheckbox rotulo="Fornecedor de mercadoria para revenda" valor={form.tipoRevenda} aoMudar={(v) => { tocarCampo('tipoFornecedor'); set('tipoRevenda', v) }} />
-                    <CampoCheckbox rotulo="Fornecedor de mercadoria para consumo" valor={form.tipoConsumo} aoMudar={(v) => { tocarCampo('tipoFornecedor'); set('tipoConsumo', v) }} />
-                    <CampoCheckbox rotulo="Prestador de serviço" valor={form.tipoPrestadorServico} aoMudar={(v) => { tocarCampo('tipoFornecedor'); set('tipoPrestadorServico', v) }} />
-                  </div>
-                  {erroVisivel('tipoFornecedor') && (
-                    <p className="text-sm text-destructive">{erroVisivel('tipoFornecedor')}</p>
-                  )}
-                </div>
-
                 {form.tipo === 'PF' && (
                   <div className="space-y-4">
                     <CampoInput rotulo="Nome completo" valor={form.nome}
@@ -1485,6 +1473,18 @@ function ConteudoDaPaginaDeFornecedores() {
             {/* ── Aba 5: Outros ──────────────────────────────────────── */}
             {abaAtiva === 'outros' && (
               <div className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium leading-none">Tipo de fornecedor</label>
+                  <div className="space-y-1">
+                    <CampoCheckbox rotulo="Fornecedor de mercadoria para revenda" valor={form.tipoRevenda} aoMudar={(v) => { tocarCampo('tipoFornecedor'); set('tipoRevenda', v) }} />
+                    <CampoCheckbox rotulo="Fornecedor de mercadoria para consumo" valor={form.tipoConsumo} aoMudar={(v) => { tocarCampo('tipoFornecedor'); set('tipoConsumo', v) }} />
+                    <CampoCheckbox rotulo="Prestador de serviço" valor={form.tipoPrestadorServico} aoMudar={(v) => { tocarCampo('tipoFornecedor'); set('tipoPrestadorServico', v) }} />
+                  </div>
+                  {erroVisivel('tipoFornecedor') && (
+                    <p className="text-sm text-destructive">{erroVisivel('tipoFornecedor')}</p>
+                  )}
+                </div>
+
                 <div>
                   <h3 className="mb-3 text-sm font-medium">Prazos</h3>
                   <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
