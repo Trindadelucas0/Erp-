@@ -26,6 +26,13 @@ async function listarClientesPendentes(companyId: string) {
   return repositorioDeClientes.listarPendentes(companyId)
 }
 
+async function listarAguardandoAssinatura(companyId: string) {
+  if (!companyId) {
+    throw new ErroDaAplicacao('Empresa ativa não informada. Selecione uma empresa.', 400)
+  }
+  return repositorioDeClientes.listarAguardandoAssinatura(companyId)
+}
+
 async function criarCliente(
   dados: DadosParaCriarCliente,
   companyId: string,
@@ -222,6 +229,7 @@ async function confirmarAssinatura(dados: DadosParaConfirmacaoDeAssinatura, ipAs
 export const servicoDeClientes = {
   listarClientes,
   listarClientesPendentes,
+  listarAguardandoAssinatura,
   criarCliente,
   editarCliente,
   alterarStatusDoCliente,

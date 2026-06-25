@@ -27,6 +27,12 @@ export async function rotasDeClientes(aplicacao: FastifyInstance): Promise<void>
   )
 
   aplicacao.get(
+    '/aguardando-assinatura',
+    { preHandler: [...auth, middlewareDeAutorizacao('clientes:approve')] },
+    controladorDeClientes.listarAguardandoAssinatura
+  )
+
+  aplicacao.get(
     '/por-documento/:documento',
     { preHandler: [...auth, middlewareDeAutorizacao('clientes:view')] },
     controladorDeClientes.buscarClientePorDocumento

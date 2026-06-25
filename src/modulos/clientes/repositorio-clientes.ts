@@ -741,6 +741,51 @@ async function listarPendentes(companyId: string) {
   return pessoas.map(mapearParaClienteView)
 }
 
+async function listarAguardandoAssinatura(companyId: string) {
+  const pessoas = await clientePrisma.pessoa.findMany({
+    where: {
+      companyId,
+      papeis: {
+        some: {
+          papel: 'cliente',
+          dadosCliente: { statusAprovacao: STATUS_APROVACAO.AGUARDANDO_ASSINATURA },
+        },
+      },
+    },
+    include: {
+      ...INCLUDE_COMPLETO,
+      papeis: {
+        where: { papel: 'cliente' },
+        include: {
+          dadosCliente: {
+            include: { assinaturas: { orderBy: { createdAt: 'desc' }, take: 1 } },
+          },
+        },
+      },
+    },
+    orderBy: { createdAt: 'asc' },
+  })
+
+  return pessoas.map((p) => {
+    const papelCliente = p.papeis[0]
+    const assinatura = papelCliente?.dadosCliente?.assinaturas?.[0] ?? null
+    const emailPrincipal =
+      p.contatos.find((c) => c.tipo === 'email' && c.principal) ??
+      p.contatos.find((c) => c.tipo === 'email')
+
+    return {
+      id: p.id,
+      nome: p.nome,
+      tipo: p.tipo as 'PF' | 'PJ',
+      cpf: p.cpf,
+      cnpj: p.cnpj,
+      email: emailPrincipal?.valor ?? null,
+      statusAprovacao: papelCliente?.dadosCliente?.statusAprovacao ?? 'aguardando_assinatura',
+      tokenAssinaturaInterno: assinatura?.token ?? null,
+    }
+  })
+}
+
 async function aprovar(
   id: string,
   dados: Extract<DadosParaAprovacaoDeCliente, { acao: 'aprovar' }>,
@@ -938,6 +983,7 @@ async function confirmarAssinatura(
 export const repositorioDeClientes = {
   listarPorEmpresa,
   listarPendentes,
+  listarAguardandoAssinatura,
   buscarPorId,
   buscarPorCpfNaEmpresa,
   buscarPorCnpjNaEmpresa,

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { useAtalhos } from '@/components/compartilhado/provedor-de-atalhos'
@@ -147,6 +148,22 @@ function ConteudoDaPaginaDeConfiguracoes() {
           Defina os atalhos de teclado usados em todo o sistema
         </p>
       </div>
+
+      <CardPadrao
+        titulo="Assinatura Digital"
+        descricao="Configure a integração ZapSign para envio de documentos para assinatura eletrônica."
+        acoes={
+          <Link href="/configuracoes/assinatura">
+            <Button variant="outline" size="sm">
+              Acessar
+            </Button>
+          </Link>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          Gerencie API key, ambiente sandbox/produção e acompanhe documentos enviados.
+        </p>
+      </CardPadrao>
 
       {mensagem && (
         <p className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">

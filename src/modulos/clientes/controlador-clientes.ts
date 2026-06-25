@@ -31,6 +31,15 @@ async function listarClientesPendentes(
   return resposta.send({ clientes })
 }
 
+async function listarAguardandoAssinatura(
+  requisicao: FastifyRequest,
+  resposta: FastifyReply
+) {
+  const companyId = requisicao.empresaAtivaId || ''
+  const clientes = await servicoDeClientes.listarAguardandoAssinatura(companyId)
+  return resposta.send({ clientes })
+}
+
 async function criarCliente(
   requisicao: FastifyRequest,
   resposta: FastifyReply
@@ -163,6 +172,7 @@ async function confirmarAssinatura(
 export const controladorDeClientes = {
   listarClientes,
   listarClientesPendentes,
+  listarAguardandoAssinatura,
   criarCliente,
   editarCliente,
   processarAprovacao,

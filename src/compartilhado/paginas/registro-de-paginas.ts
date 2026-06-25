@@ -45,6 +45,7 @@ export const PAGINAS_SOMENTE_ADMIN: readonly PaginaDoSistema[] = [
   { chave: 'auditoria', caminho: '/auditoria', rotulo: 'Auditoria' },
   { chave: 'clientes-aprovacao', caminho: '/clientes/aprovacao', rotulo: 'Aprovação de clientes' },
   { chave: 'configuracoes', caminho: '/configuracoes', rotulo: 'Configurações' },
+  { chave: 'assinatura-digital', caminho: '/configuracoes/assinatura', rotulo: 'Assinatura Digital' },
 ]
 
 /** Rota de fallback para usuários sem páginas liberadas. */

@@ -6,6 +6,7 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { clienteHttp } from '@/services/api'
+import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { usePermissao } from '@/hooks/use-permissao'
 import { BadgeStatus } from '@/components/ui/badge-status'
@@ -14,6 +15,10 @@ import { Button } from '@/components/ui/button'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { Modal } from '@/components/ui/modal'
 import { SelectPadrao } from '@/components/ui/select-padrao'
+import {
+  ModalEnviarDocumentoCliente,
+  type ClienteParaAssinatura,
+} from '@/components/assinatura-zapsign/modal-enviar-documento-cliente'
 import {
   mascaraCnpj,
   mascaraCpf,
@@ -24,7 +29,6 @@ import {
   rotuloStatusAprovacao,
   varianteBadgeAprovacao,
 } from '@/lib/status-cliente'
-import { montarLinkDeAssinatura } from '@/lib/url-publica'
 
 type ClientePendente = {
   id: string
@@ -40,6 +44,17 @@ type ClientePendente = {
   statusAprovacao?: string
   aceitaNFe55?: boolean
   createdAt?: string
+}
+
+type ClienteAguardando = {
+  id: string
+  tipo: 'PF' | 'PJ'
+  nome: string
+  cpf?: string | null
+  cnpj?: string | null
+  email: string | null
+  statusAprovacao: string
+  tokenAssinaturaInterno: string | null
 }
 
 type Usuario = {
@@ -67,15 +82,7 @@ const FORM_APROVACAO_VAZIO: FormAprovacao = {
   motivoReprovacao: '',
 }
 
-function extrairErro(erro: unknown, padrao: string): string {
-  if (erro && typeof erro === 'object' && 'response' in erro) {
-    const res = (erro as { response?: { data?: { message?: string } } }).response
-    if (res?.data?.message) return res.data.message
-  }
-  return padrao
-}
-
-function formatarDocumento(c: ClientePendente) {
+function formatarDocumento(c: ClientePendente | ClienteAguardando) {
   if (c.tipo === 'PF' && c.cpf) return mascaraCpf(c.cpf)
   if (c.tipo === 'PJ' && c.cnpj) return mascaraCnpj(c.cnpj)
   return '—'
@@ -84,6 +91,7 @@ function formatarDocumento(c: ClientePendente) {
 function ConteudoAprovacao() {
   const podeAprovar = usePermissao('clientes:approve')
   const [pendentes, setPendentes] = useState<ClientePendente[]>([])
+  const [aguardando, setAguardando] = useState<ClienteAguardando[]>([])
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
@@ -94,9 +102,11 @@ function ConteudoAprovacao() {
   const [modoReprovar, setModoReprovar] = useState(false)
   const [processando, setProcessando] = useState(false)
 
-  const [modalAssinaturaAberto, setModalAssinaturaAberto] = useState(false)
-  const [linkAssinatura, setLinkAssinatura] = useState('')
-  const [nomeClienteAprovado, setNomeClienteAprovado] = useState('')
+  // Modal ZapSign
+  const [clienteZapsign, setClienteZapsign] = useState<ClienteParaAssinatura | null>(null)
+  const [modalZapsignAberto, setModalZapsignAberto] = useState(false)
+  const [linkZapsignRetornado, setLinkZapsignRetornado] = useState<string | null>(null)
+  const [modalSucessoZapsignAberto, setModalSucessoZapsignAberto] = useState(false)
 
   const carregar = useCallback(async () => {
     setCarregando(true)
@@ -109,9 +119,18 @@ function ConteudoAprovacao() {
       setPendentes(resPendentes.data.clientes ?? [])
       setUsuarios((resUsuarios.data.usuarios ?? []).filter((u: Usuario) => u.active))
     } catch (e) {
-      setErro(extrairErro(e, 'Erro ao carregar pendentes'))
+      setErro(extrairMensagemApi(e, 'Erro ao carregar dados'))
     } finally {
       setCarregando(false)
+    }
+
+    // Carrega aguardando assinatura separadamente — não quebra a tela se o endpoint
+    // ainda não estiver disponível no backend.
+    try {
+      const res = await clienteHttp.get('/clientes/aguardando-assinatura')
+      setAguardando(res.data.clientes ?? [])
+    } catch {
+      setAguardando([])
     }
   }, [])
 
@@ -162,25 +181,33 @@ function ConteudoAprovacao() {
           }
         )
 
-        const token = data.tokenAssinatura as string
-        setLinkAssinatura(montarLinkDeAssinatura(token))
-        setNomeClienteAprovado(clienteSelecionado.nome)
-        setModalAssinaturaAberto(true)
+        // Abre modal ZapSign com dados do cliente aprovado
+        setClienteZapsign({
+          id: clienteSelecionado.id,
+          nome: clienteSelecionado.nome,
+          email: clienteSelecionado.email ?? null,
+        })
+        setModalZapsignAberto(true)
         fecharAnalise()
         await carregar()
       }
     } catch (e) {
-      setErro(extrairErro(e, 'Erro ao processar aprovação'))
+      setErro(extrairMensagemApi(e, 'Erro ao processar aprovação'))
     } finally {
       setProcessando(false)
     }
   }
 
-  function copiarLink() {
-    if (linkAssinatura) {
-      navigator.clipboard.writeText(linkAssinatura)
-      setSucesso('Link copiado para a área de transferência.')
-    }
+  function abrirZapsignParaCliente(cliente: ClienteAguardando) {
+    setClienteZapsign({ id: cliente.id, nome: cliente.nome, email: cliente.email })
+    setModalZapsignAberto(true)
+  }
+
+  function aoEnviarZapsign(link: string | null) {
+    setModalZapsignAberto(false)
+    setLinkZapsignRetornado(link)
+    setModalSucessoZapsignAberto(true)
+    carregar()
   }
 
   if (!podeAprovar) {
@@ -219,6 +246,7 @@ function ConteudoAprovacao() {
         <p className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">{sucesso}</p>
       )}
 
+      {/* Seção: cadastros pendentes */}
       <CardPadrao
         titulo="Cadastros pendentes"
         descricao={`${pendentes.length} aguardando análise`}
@@ -269,6 +297,64 @@ function ConteudoAprovacao() {
         )}
       </CardPadrao>
 
+      {/* Seção: aguardando assinatura */}
+      <CardPadrao
+        titulo="Aguardando assinatura"
+        descricao={`${aguardando.length} cliente(s) aprovados pendentes de envio de contrato`}
+      >
+        {carregando ? (
+          <p className="text-sm text-muted-foreground">Carregando...</p>
+        ) : aguardando.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Nenhum cliente aguardando assinatura no momento.
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded-md border border-border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/50">
+                  <th className="px-4 py-3 text-left font-medium">Nome</th>
+                  <th className="px-4 py-3 text-left font-medium">Documento</th>
+                  <th className="px-4 py-3 text-left font-medium">E-mail</th>
+                  <th className="px-4 py-3 text-left font-medium">Status</th>
+                  <th className="px-4 py-3 text-left font-medium">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {aguardando.map((c) => (
+                  <tr key={c.id} className="border-b border-border last:border-0 hover:bg-muted/30">
+                    <td className="px-4 py-3 font-medium">{c.nome}</td>
+                    <td className="px-4 py-3 font-mono text-muted-foreground">
+                      {formatarDocumento(c)}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {c.email ?? (
+                        <span className="text-destructive text-xs">Sem e-mail</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <BadgeStatus variante={varianteBadgeAprovacao(c.statusAprovacao)}>
+                        {rotuloStatusAprovacao(c.statusAprovacao)}
+                      </BadgeStatus>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => abrirZapsignParaCliente(c)}
+                      >
+                        Enviar contrato
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardPadrao>
+
+      {/* Modal: análise de aprovação */}
       <Modal
         aberto={!!clienteSelecionado}
         aoFechar={fecharAnalise}
@@ -397,8 +483,8 @@ function ConteudoAprovacao() {
                     placeholder="Nenhum vendedor vinculado"
                   />
                   <p className="text-xs text-muted-foreground -mt-1">
-                      Se definido, somente este vendedor poderá vender ou calcular comissão (módulo Vendas).
-                    </p>
+                    Se definido, somente este vendedor poderá vender ou calcular comissão (módulo Vendas).
+                  </p>
 
                   <label className="flex cursor-pointer items-center gap-2">
                     <input
@@ -418,39 +504,75 @@ function ConteudoAprovacao() {
         )}
       </Modal>
 
+      {/* Modal ZapSign: envio de contrato */}
+      {clienteZapsign && (
+        <ModalEnviarDocumentoCliente
+          cliente={clienteZapsign}
+          aberto={modalZapsignAberto}
+          aoFechar={() => setModalZapsignAberto(false)}
+          aoEnviar={aoEnviarZapsign}
+        />
+      )}
+
+      {/* Modal: sucesso envio ZapSign */}
       <Modal
-        aberto={modalAssinaturaAberto}
-        aoFechar={() => setModalAssinaturaAberto(false)}
-        titulo="Próximo passo: assinatura"
-        descricao={`Cadastro de ${nomeClienteAprovado} aprovado`}
+        aberto={modalSucessoZapsignAberto}
+        aoFechar={() => {
+          setModalSucessoZapsignAberto(false)
+          setLinkZapsignRetornado(null)
+        }}
+        titulo="Contrato enviado com sucesso"
+        descricao="O signatário receberá o link por e-mail via ZapSign."
         rodape={
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={copiarLink}>
-              Copiar link
-            </Button>
-            <BotaoPrimario type="button" onClick={() => setModalAssinaturaAberto(false)}>
-              Entendi
+          <div className="flex justify-end">
+            <BotaoPrimario
+              type="button"
+              onClick={() => {
+                setModalSucessoZapsignAberto(false)
+                setLinkZapsignRetornado(null)
+              }}
+            >
+              Fechar
             </BotaoPrimario>
           </div>
         }
       >
         <div className="space-y-3 text-sm">
-          <p>
-            O cadastro foi aprovado e está com status <strong>Aguardando assinatura</strong>.
-          </p>
-          <p>
-            O próximo passo é a assinatura do titular/sócio. O canal de envio definitivo
-            (e-mail, WhatsApp, etc.) será definido com o cliente. Por enquanto, utilize o link
-            abaixo para envio manual:
-          </p>
-          <div className="rounded-md border border-border bg-muted/30 p-3 break-all font-mono text-xs">
-            {linkAssinatura}
-          </div>
-          <p className="text-muted-foreground">
-            Após a assinatura, o cadastro será ativado automaticamente para uso comercial.
+          <p>O contrato foi enviado para assinatura. A ZapSign enviou o link por e-mail ao cliente.</p>
+
+          {linkZapsignRetornado && (
+            <div className="space-y-1">
+              <p className="text-muted-foreground">
+                Link direto de assinatura (caso precise enviar manualmente):
+              </p>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 rounded-md border border-border bg-muted/30 p-2 break-all font-mono text-xs">
+                  {linkZapsignRetornado}
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    navigator.clipboard.writeText(linkZapsignRetornado!)
+                    setSucesso('Link copiado.')
+                  }}
+                >
+                  Copiar
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <p className="rounded-md bg-muted/40 px-3 py-2 text-muted-foreground">
+            Acompanhe o status em{' '}
+            <strong className="text-foreground">Configurações → Assinatura Digital → Documentos</strong>.
+            Após o cliente assinar, clique em <strong className="text-foreground">Atualizar</strong> para
+            sincronizar o status.
           </p>
         </div>
       </Modal>
+
     </div>
   )
 }

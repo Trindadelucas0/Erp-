@@ -24,11 +24,46 @@ model Company {
   bairro      String?
   cidade      String?
   estado      String?
-  users             UserCompany[]
-  pessoas           Pessoa[]
-  planosFinanceiros PlanoFinanceiro[]
-  cfops             Cfop[]
-  createdAt         DateTime      @default(now())
+  users                UserCompany[]
+  pessoas              Pessoa[]
+  planosFinanceiros    PlanoFinanceiro[]
+  cfops                Cfop[]
+  configuracaoZapsign  ConfiguracaoZapsign?
+  documentosZapsign    ZapsignDocumento[]
+  createdAt            DateTime      @default(now())
+}
+
+// ─── ZapSign — Assinatura Digital ────────────────────────────────────────────
+
+model ConfiguracaoZapsign {
+  id            String   @id @default(uuid())
+  companyId     String   @unique
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  apiToken      String
+  sandbox       Boolean  @default(true)
+  webhookSecret String?
+  ativo         Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model ZapsignDocumento {
+  id              String   @id @default(uuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  tokenZapsign    String   @unique
+  nomeDocumento   String
+  status          String   @default("pendente")
+  signatarioNome  String?
+  signatarioEmail String?
+  linkAssinatura  String?
+  assinadoEm      DateTime?
+  recusadoEm      DateTime?
+  motivoRecusa    String?
+  clientePessoaId String?
+  clientePessoa   Pessoa?  @relation(fields: [clientePessoaId], references: [id])
+  criadoEm        DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 // ─── Cadastro Unificado de Pessoas ───────────────────────────────────────────
@@ -64,11 +99,12 @@ model Pessoa {
   companyId       String
   company         Company  @relation(fields: [companyId], references: [id])
 
-  papeis          PessoaPapel[]
-  contatos        PessoaContato[]
-  enderecos       PessoaEndereco[]
-  dadosBancarios  PessoaDadosBancario[]
-  cnaes           PessoaCnae[]
+  papeis            PessoaPapel[]
+  contatos          PessoaContato[]
+  enderecos         PessoaEndereco[]
+  dadosBancarios    PessoaDadosBancario[]
+  cnaes             PessoaCnae[]
+  documentosZapsign ZapsignDocumento[]
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
