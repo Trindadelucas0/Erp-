@@ -40,6 +40,8 @@ import {
 import { buscarDadosCnpj } from '@/lib/brasil-api'
 import { ListaContatos, type ContatoForm } from '@/components/clientes/lista-contatos'
 import { ListaEnderecos, type EnderecoForm } from '@/components/clientes/lista-enderecos'
+import { ListaDadosBancarios, DADOS_BANCARIO_VAZIO, type DadosBancarioForm } from '@/components/clientes/lista-dados-bancarios'
+import { mesclarTexto, mesclarArray, mesclarBoolean } from '@/lib/mesclar-pre-preenchimento'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -77,8 +79,8 @@ type Transportadora = {
   indicadorIe: string
   observacoes?: string | null
   antt?: string | null
-  tipoVeiculo?: string | null
   aceitaNFe55?: boolean
+  dadosBancarios?: DadosBancarioForm[]
 }
 
 type FormTransportadora = {
@@ -109,10 +111,10 @@ type FormTransportadora = {
   indicadorIe: string
   observacoes: string
   antt: string
-  tipoVeiculo: string
   aceitaNFe55: boolean
   contatos: ContatoForm[]
   enderecos: EnderecoForm[]
+  dadosBancarios: DadosBancarioForm[]
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -127,15 +129,6 @@ const INDICADORES_IE = [
   { value: '1', label: '1 — Contribuinte ICMS' },
   { value: '2', label: '2 — Contribuinte isento de IE' },
   { value: '9', label: '9 — Não contribuinte' },
-]
-
-const TIPOS_VEICULO = [
-  { value: 'caminhao', label: 'Caminhão' },
-  { value: 'van', label: 'Van / Utilitário' },
-  { value: 'moto', label: 'Moto' },
-  { value: 'carreta', label: 'Carreta' },
-  { value: 'bitrem', label: 'Bitrem' },
-  { value: 'outro', label: 'Outro' },
 ]
 
 const FORM_VAZIO: FormTransportadora = {
@@ -166,10 +159,10 @@ const FORM_VAZIO: FormTransportadora = {
   indicadorIe: '9',
   observacoes: '',
   antt: '',
-  tipoVeiculo: '',
   aceitaNFe55: true,
   contatos: [],
   enderecos: [],
+  dadosBancarios: [],
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -209,7 +202,6 @@ function transportadoraParaForm(t: Transportadora): FormTransportadora {
     indicadorIe: t.indicadorIe || '9',
     observacoes: t.observacoes || '',
     antt: t.antt || '',
-    tipoVeiculo: t.tipoVeiculo || '',
     aceitaNFe55: t.aceitaNFe55 ?? true,
     contatos: Array.isArray((t as any).contatos)
       ? (t as any).contatos.map((ct: any) => ({
@@ -222,6 +214,14 @@ function transportadoraParaForm(t: Transportadora): FormTransportadora {
           tipo: e.tipo, apelido: e.apelido || '', cep: e.cep ? mascaraCep(e.cep) : '',
           logradouro: e.logradouro || '', numero: e.numero || '', complemento: e.complemento || '',
           bairro: e.bairro || '', cidade: e.cidade || '', estado: e.estado || '', codigoIbge: e.codigoIbge || '',
+        }))
+      : [],
+    dadosBancarios: Array.isArray((t as any).dadosBancarios)
+      ? (t as any).dadosBancarios.map((db: any) => ({
+          apelido: db.apelido || '', banco: db.banco || '', agencia: db.agencia || '',
+          conta: db.conta || '', tipoConta: (db.tipoConta as DadosBancarioForm['tipoConta']) || '',
+          pix: db.pix || '', favorecido: db.favorecido || '',
+          documentoFavorecido: db.documentoFavorecido || '', principal: db.principal ?? false,
         }))
       : [],
   }
@@ -395,6 +395,14 @@ function ConteudoDaPaginaDeTransportadoras() {
   const teclaSalvar = useTeclaDaAcao('salvar')
   const teclaCancelar = useTeclaDaAcao('cancelar')
 
+  function validarDadosBancariosTransp(dados: DadosBancarioForm[]): boolean {
+    for (const db of dados) {
+      const temAlgum = [db.apelido, db.banco, db.agencia, db.conta, db.pix, db.favorecido, db.documentoFavorecido].some((v) => v.trim().length > 0)
+      if (temAlgum && (!db.banco.trim() || !db.agencia.trim() || !db.conta.trim())) return false
+    }
+    return true
+  }
+
   const configAbas: ConfigDeAba[] = useMemo(() => [
     {
       id: 'identificacao',
@@ -432,6 +440,10 @@ function ConteudoDaPaginaDeTransportadoras() {
         return cep.replace(/\D/g, '').length >= 8 && logradouro.trim().length > 0 && numero.trim().length > 0 && bairro.trim().length > 0 && cidade.trim().length > 0 && estado.trim().length > 0
       },
     },
+    {
+      id: 'dados-bancarios',
+      validar: () => validarDadosBancariosTransp(formRef.current.dadosBancarios),
+    },
   ], [])
 
   const { statusDasAbas, validarTodasAsAbas, irParaAbaComErro, resetarStatus } = useValidacaoDeAbas(configAbas)
@@ -440,6 +452,7 @@ function ConteudoDaPaginaDeTransportadoras() {
     { id: 'identificacao', rotulo: 'Identificação', status: statusDasAbas['identificacao'] },
     { id: 'contato', rotulo: 'Contato', status: statusDasAbas['contato'] },
     { id: 'endereco', rotulo: 'Endereço', status: statusDasAbas['endereco'] },
+    { id: 'dados-bancarios', rotulo: 'Dados Bancários', status: statusDasAbas['dados-bancarios'] },
   ]
 
   const errosForm = useMemo(() => validarFormTransportadora(form), [form])
@@ -586,11 +599,23 @@ function ConteudoDaPaginaDeTransportadoras() {
       setCarregandoBrasilApi(false)
       if (dados) {
         setForm((f) => ({
-          ...f, nome: f.nome || dados.nome, nomeFantasia: f.nomeFantasia || dados.nomeFantasia,
-          cnae: f.cnae || dados.cnae, dataFundacao: f.dataFundacao || dados.dataFundacao,
-          cep: f.cep || mascaraCep(dados.cep), logradouro: f.logradouro || dados.logradouro,
-          numero: f.numero || dados.numero, bairro: f.bairro || dados.bairro,
-          cidade: f.cidade || dados.cidade, estado: f.estado || dados.estado, codigoIbge: f.codigoIbge || dados.codigoIbge,
+          ...f,
+          nome: mesclarTexto(f.nome, dados.nome),
+          nomeFantasia: mesclarTexto(f.nomeFantasia, dados.nomeFantasia),
+          cnae: mesclarTexto(f.cnae, dados.cnae),
+          dataFundacao: mesclarTexto(f.dataFundacao, dados.dataFundacao),
+          email: mesclarTexto(f.email, dados.email),
+          telefone: mesclarTexto(f.telefone, dados.telefone),
+          celular: mesclarTexto(f.celular, dados.celular),
+          simplesNacional: mesclarBoolean(f.simplesNacional, dados.simplesNacional),
+          cep: mesclarTexto(f.cep, mascaraCep(dados.cep)),
+          logradouro: mesclarTexto(f.logradouro, dados.logradouro),
+          numero: mesclarTexto(f.numero, dados.numero),
+          complemento: mesclarTexto(f.complemento, dados.complemento),
+          bairro: mesclarTexto(f.bairro, dados.bairro),
+          cidade: mesclarTexto(f.cidade, dados.cidade),
+          estado: mesclarTexto(f.estado, dados.estado),
+          codigoIbge: mesclarTexto(f.codigoIbge, dados.codigoIbge),
         }))
       }
     }
@@ -605,7 +630,31 @@ function ConteudoDaPaginaDeTransportadoras() {
           setAvisoDuplicidade({ tipo: 'pessoa_sem_papel', mensagem: `Pessoa encontrada no sistema (${data.papeis.join(', ')}): ${data.pessoa?.nome}. Dados pré-preenchidos.` })
           if (data.pessoa) {
             const importado = transportadoraParaForm({ ...data.pessoa, tipo: form.tipo } as Transportadora)
-            setForm((f) => ({ ...f, nome: importado.nome || f.nome, email: importado.email || f.email, telefone: importado.telefone || f.telefone, cep: importado.cep || f.cep, logradouro: importado.logradouro || f.logradouro, numero: importado.numero || f.numero, bairro: importado.bairro || f.bairro, cidade: importado.cidade || f.cidade, estado: importado.estado || f.estado }))
+            setForm((f) => ({
+              ...f,
+              nome: mesclarTexto(f.nome, importado.nome),
+              nomeFantasia: mesclarTexto(f.nomeFantasia, importado.nomeFantasia),
+              cnae: mesclarTexto(f.cnae, importado.cnae),
+              dataFundacao: mesclarTexto(f.dataFundacao, importado.dataFundacao),
+              ie: mesclarTexto(f.ie, importado.ie),
+              im: mesclarTexto(f.im, importado.im),
+              simplesNacional: mesclarBoolean(f.simplesNacional, importado.simplesNacional),
+              email: mesclarTexto(f.email, importado.email),
+              telefone: mesclarTexto(f.telefone, importado.telefone),
+              celular: mesclarTexto(f.celular, importado.celular),
+              celularWhatsapp: mesclarBoolean(f.celularWhatsapp, importado.celularWhatsapp),
+              cep: mesclarTexto(f.cep, importado.cep),
+              logradouro: mesclarTexto(f.logradouro, importado.logradouro),
+              numero: mesclarTexto(f.numero, importado.numero),
+              complemento: mesclarTexto(f.complemento, importado.complemento),
+              bairro: mesclarTexto(f.bairro, importado.bairro),
+              cidade: mesclarTexto(f.cidade, importado.cidade),
+              estado: mesclarTexto(f.estado, importado.estado),
+              codigoIbge: mesclarTexto(f.codigoIbge, importado.codigoIbge),
+              contatos: mesclarArray(f.contatos, importado.contatos),
+              enderecos: mesclarArray(f.enderecos, importado.enderecos),
+              dadosBancarios: mesclarArray(f.dadosBancarios, importado.dadosBancarios),
+            }))
           }
         }
       }
@@ -632,7 +681,7 @@ function ConteudoDaPaginaDeTransportadoras() {
       complemento: form.complemento || undefined, bairro: form.bairro || undefined, cidade: form.cidade || undefined,
       estado: form.estado || undefined, codigoIbge: form.codigoIbge || undefined,
       indicadorIe: form.indicadorIe || '9', observacoes: form.observacoes || undefined,
-      antt: form.antt || undefined, tipoVeiculo: form.tipoVeiculo || undefined,
+      antt: form.antt || undefined,
     }
     const contatosPayload = form.contatos.length > 0
       ? { contatos: form.contatos.filter((c) => c.valor.trim()) }
@@ -640,9 +689,17 @@ function ConteudoDaPaginaDeTransportadoras() {
     const enderecosPayload = form.enderecos.length > 0
       ? { enderecos: form.enderecos.map((e) => ({ ...e, cep: e.cep.replace(/\D/g, '') || undefined })) }
       : { cep: form.cep || undefined, logradouro: form.logradouro || undefined, numero: form.numero || undefined, complemento: form.complemento || undefined, bairro: form.bairro || undefined, cidade: form.cidade || undefined, estado: form.estado || undefined, codigoIbge: form.codigoIbge || undefined }
+    const dadosBancariosPayload = form.dadosBancarios.filter((db) =>
+      [db.apelido, db.banco, db.agencia, db.conta, db.pix, db.favorecido, db.documentoFavorecido].some((v) => v.trim())
+    ).map((db) => ({
+      apelido: db.apelido || undefined, banco: db.banco || undefined, agencia: db.agencia || undefined,
+      conta: db.conta || undefined, tipoConta: db.tipoConta || undefined, pix: db.pix || undefined,
+      favorecido: db.favorecido || undefined, documentoFavorecido: db.documentoFavorecido.replace(/\D/g, '') || undefined,
+      principal: db.principal,
+    }))
 
-    if (form.tipo === 'PF') return { ...base, ...contatosPayload, ...enderecosPayload, cpf: nums, rg: form.rg || undefined, dataNascimento: form.dataNascimento || undefined, aceitaNFe55: form.aceitaNFe55 }
-    return { ...base, ...contatosPayload, ...enderecosPayload, cnpj: nums, nomeFantasia: form.nomeFantasia || undefined, cnae: form.cnae || undefined, dataFundacao: form.dataFundacao || undefined, ie: form.ie || undefined, im: form.im || undefined, simplesNacional: form.simplesNacional, observacaoNF: form.observacaoNF || undefined, aceitaNFe55: true }
+    if (form.tipo === 'PF') return { ...base, ...contatosPayload, ...enderecosPayload, cpf: nums, rg: form.rg || undefined, dataNascimento: form.dataNascimento || undefined, aceitaNFe55: form.aceitaNFe55, dadosBancarios: dadosBancariosPayload.length > 0 ? dadosBancariosPayload : undefined }
+    return { ...base, ...contatosPayload, ...enderecosPayload, cnpj: nums, nomeFantasia: form.nomeFantasia || undefined, cnae: form.cnae || undefined, dataFundacao: form.dataFundacao || undefined, ie: form.ie || undefined, im: form.im || undefined, simplesNacional: form.simplesNacional, observacaoNF: form.observacaoNF || undefined, aceitaNFe55: true, dadosBancarios: dadosBancariosPayload.length > 0 ? dadosBancariosPayload : undefined }
   }
 
   async function aoSalvar(evento: FormEvent) {
@@ -794,26 +851,46 @@ function ConteudoDaPaginaDeTransportadoras() {
 
                 <Separator />
 
-                <div className="space-y-1">
-                  <label className="text-sm font-medium leading-none">
-                    {form.tipo === 'PF' ? 'CPF' : 'CNPJ'}<span className="ml-0.5 text-destructive">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      className={cn('flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50', erroDocumentoVisivel() && 'border-destructive')}
-                      type="text" value={form.documento} onChange={(e) => aoMudarDocumento(e.target.value)} onBlur={aoSairDocumento}
-                      placeholder={form.tipo === 'PF' ? '000.000.000-00' : '00.000.000/0000-00'}
-                      maxLength={form.tipo === 'PF' ? 14 : 18} disabled={modoEdicao}
-                    />
-                    {(verificandoDocumento || carregandoBrasilApi) && (
-                      <span className="absolute right-2 top-2 text-xs text-muted-foreground">
-                        {carregandoBrasilApi ? 'Buscando na Receita...' : 'Verificando...'}
-                      </span>
-                    )}
+                {form.tipo === 'PJ' ? (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium leading-none">CNPJ<span className="ml-0.5 text-destructive">*</span></label>
+                      <div className="relative">
+                        <input
+                          className={cn('flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50', erroDocumentoVisivel() && 'border-destructive')}
+                          type="text" value={form.documento} onChange={(e) => aoMudarDocumento(e.target.value)} onBlur={aoSairDocumento}
+                          placeholder="00.000.000/0000-00" maxLength={18} disabled={modoEdicao}
+                        />
+                        {(verificandoDocumento || carregandoBrasilApi) && (
+                          <span className="absolute right-2 top-2 text-xs text-muted-foreground">
+                            {carregandoBrasilApi ? 'Buscando na Receita...' : 'Verificando...'}
+                          </span>
+                        )}
+                      </div>
+                      {erroDocumentoVisivel() && <p className="text-sm text-destructive">{erroDocumentoVisivel()}</p>}
+                      {modoEdicao && !erroDocumentoVisivel() && <p className="text-xs text-muted-foreground">CNPJ não pode ser alterado após o cadastro.</p>}
+                    </div>
+                    <div className="flex items-end pb-1">
+                      <CampoCheckbox rotulo="Simples Nacional" valor={form.simplesNacional} aoMudar={(v) => set('simplesNacional', v)} />
+                    </div>
                   </div>
-                  {erroDocumentoVisivel() && <p className="text-sm text-destructive">{erroDocumentoVisivel()}</p>}
-                  {modoEdicao && !erroDocumentoVisivel() && <p className="text-xs text-muted-foreground">CPF/CNPJ não pode ser alterado após o cadastro.</p>}
-                </div>
+                ) : (
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium leading-none">CPF<span className="ml-0.5 text-destructive">*</span></label>
+                    <div className="relative">
+                      <input
+                        className={cn('flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50', erroDocumentoVisivel() && 'border-destructive')}
+                        type="text" value={form.documento} onChange={(e) => aoMudarDocumento(e.target.value)} onBlur={aoSairDocumento}
+                        placeholder="000.000.000-00" maxLength={14} disabled={modoEdicao}
+                      />
+                      {verificandoDocumento && (
+                        <span className="absolute right-2 top-2 text-xs text-muted-foreground">Verificando...</span>
+                      )}
+                    </div>
+                    {erroDocumentoVisivel() && <p className="text-sm text-destructive">{erroDocumentoVisivel()}</p>}
+                    {modoEdicao && !erroDocumentoVisivel() && <p className="text-xs text-muted-foreground">CPF não pode ser alterado após o cadastro.</p>}
+                  </div>
+                )}
 
                 {form.tipo === 'PF' && (
                   <div className="space-y-4">
@@ -838,15 +915,13 @@ function ConteudoDaPaginaDeTransportadoras() {
                       <CampoInput rotulo="CNAE" valor={form.cnae} aoMudar={(v) => set('cnae', v)} placeholder="Código CNAE" maxLength={10} />
                       <CampoInput rotulo="Data de fundação" valor={form.dataFundacao} aoMudar={(v) => set('dataFundacao', v)} tipo="date" />
                     </div>
-                    <CampoCheckbox rotulo="Simples Nacional" valor={form.simplesNacional} aoMudar={(v) => set('simplesNacional', v)} />
                   </div>
                 )}
 
                 <Separator />
 
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div>
                   <CampoInput rotulo="ANTT (RNTRC)" valor={form.antt} aoMudar={(v) => set('antt', v)} placeholder="Registro ANTT" maxLength={20} ajuda="Registro Nacional de Transportadores" />
-                  <CampoSelect rotulo="Tipo de veículo" valor={form.tipoVeiculo} aoMudar={(v) => set('tipoVeiculo', v)} opcoes={TIPOS_VEICULO} />
                 </div>
 
                 <div className="space-y-1">
@@ -889,6 +964,13 @@ function ConteudoDaPaginaDeTransportadoras() {
                   {form.contatos.length > 0 ? '← Modo simples' : '+ Múltiplos contatos'}
                 </button>
               </div>
+            )}
+
+            {abaAtiva === 'dados-bancarios' && (
+              <ListaDadosBancarios
+                dadosBancarios={form.dadosBancarios}
+                aoMudar={(v) => set('dadosBancarios', v)}
+              />
             )}
 
             {abaAtiva === 'endereco' && (

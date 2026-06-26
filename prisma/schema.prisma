@@ -30,6 +30,7 @@ model Company {
   cfops                Cfop[]
   configuracaoZapsign  ConfiguracaoZapsign?
   documentosZapsign    ZapsignDocumento[]
+  gruposEconomicos     GrupoEconomico[]
   createdAt            DateTime      @default(now())
 }
 
@@ -185,11 +186,39 @@ model DadosFornecedor {
   prazoPagamento6   Int?
   observacoes       String?
 
-  planosFinanceiros FornecedorPlanoFinanceiro[]
-  cfopsEntrada      FornecedorCfopEntrada[]
+  grupoEconomicoId  String?
+  grupoEconomico    GrupoEconomico? @relation(fields: [grupoEconomicoId], references: [id])
+
+  planosFinanceiros     FornecedorPlanoFinanceiro[]
+  cfopsEntrada          FornecedorCfopEntrada[]
+  paresPlanoCfopPadrao  FornecedorParPlanoCfopPadrao[]
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+}
+
+model GrupoEconomico {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  nome      String
+  fornecedores DadosFornecedor[]
+  createdAt DateTime @default(now())
+
+  @@unique([companyId, nome])
+}
+
+model FornecedorParPlanoCfopPadrao {
+  id                String          @id @default(uuid())
+  dadosFornecedorId String
+  dadosFornecedor   DadosFornecedor @relation(fields: [dadosFornecedorId], references: [id], onDelete: Cascade)
+  planoFinanceiroId String
+  planoFinanceiro   PlanoFinanceiro @relation(fields: [planoFinanceiroId], references: [id], onDelete: Cascade)
+  cfopId            String
+  cfop              Cfop            @relation(fields: [cfopId], references: [id], onDelete: Cascade)
+  ordem             Int             @default(0)
+
+  @@unique([dadosFornecedorId, planoFinanceiroId, cfopId])
 }
 
 model DadosTransportadora {
@@ -270,7 +299,8 @@ model PlanoFinanceiro {
   companyId   String
   company     Company  @relation(fields: [companyId], references: [id])
   ativo       Boolean  @default(true)
-  fornecedores FornecedorPlanoFinanceiro[]
+  fornecedores    FornecedorPlanoFinanceiro[]
+  paresPlanoCfop  FornecedorParPlanoCfopPadrao[]
   createdAt   DateTime @default(now())
 
   @@unique([codigo, companyId])
@@ -284,7 +314,8 @@ model Cfop {
   companyId   String
   company     Company  @relation(fields: [companyId], references: [id])
   ativo       Boolean  @default(true)
-  fornecedores FornecedorCfopEntrada[]
+  fornecedores    FornecedorCfopEntrada[]
+  paresPlanoCfop  FornecedorParPlanoCfopPadrao[]
   createdAt   DateTime @default(now())
 
   @@unique([codigo, companyId])

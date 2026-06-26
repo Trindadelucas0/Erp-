@@ -46,7 +46,6 @@ const camposComuns = {
   observacoes: z.string().max(500).optional(),
   // Campos específicos de transportadora
   antt: z.string().max(20).optional(),
-  tipoVeiculo: z.string().max(100).optional(),
   aceitaNFe55: z.boolean().optional().default(true),
 }
 
@@ -75,9 +74,22 @@ export const esquemaDeEnderecoItem = z.object({
     .refine((v) => !v || /^\d{7}$/.test(v), 'Código IBGE deve ter 7 dígitos'),
 })
 
+export const esquemaDeDadosBancarioItem = z.object({
+  apelido: z.string().max(100).optional(),
+  banco: z.string().max(100).optional(),
+  agencia: z.string().max(20).optional(),
+  conta: z.string().max(30).optional(),
+  tipoConta: z.enum(['corrente', 'poupanca']).optional(),
+  pix: z.string().max(200).optional(),
+  favorecido: z.string().max(200).optional(),
+  documentoFavorecido: z.string().max(18).optional(),
+  principal: z.boolean().optional(),
+})
+
 const camposArrays = {
   contatos: z.array(esquemaDeContatoItem).optional(),
   enderecos: z.array(esquemaDeEnderecoItem).optional(),
+  dadosBancarios: z.array(esquemaDeDadosBancarioItem).optional(),
 }
 
 export const esquemaDeCriacaoDeTransportadoraPF = z.object({

@@ -6,6 +6,7 @@ import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import type { Prisma } from '@prisma/client'
 import type { DadosParaCriarTransportadora, DadosParaEditarTransportadora } from './esquema-transportadoras.js'
+import { extrairContatosEEnderecos } from '../../compartilhado/pessoas/extrair-contatos-enderecos.js'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -14,6 +15,7 @@ type PessoaComRelacoes = Prisma.PessoaGetPayload<{
     papeis: { include: { dadosTransportadora: true } }
     contatos: true
     enderecos: true
+    dadosBancarios: true
   }
 }>
 
@@ -75,10 +77,10 @@ function mapearParaTransportadoraView(pessoa: PessoaComRelacoes) {
     estado: enderecoPrincipal?.estado ?? null,
     codigoIbge: enderecoPrincipal?.codigoIbge ?? null,
     antt: papelTransportadora.dadosTransportadora?.antt ?? null,
-    tipoVeiculo: papelTransportadora.dadosTransportadora?.tipoVeiculo ?? null,
     aceitaNFe55: papelTransportadora.dadosTransportadora?.aceitaNFe55 ?? true,
     contatos: pessoa.contatos,
     enderecos: pessoa.enderecos,
+    dadosBancarios: pessoa.dadosBancarios,
     createdAt: pessoa.createdAt,
     updatedAt: pessoa.updatedAt,
   }
@@ -93,6 +95,7 @@ const INCLUDE_COMPLETO = {
   },
   contatos: true,
   enderecos: true,
+  dadosBancarios: true,
 } as const
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -120,6 +123,18 @@ type EnderecoItem = {
   cidade?: string | null
   estado?: string | null
   codigoIbge?: string | null
+}
+
+type DadosBancarioItem = {
+  apelido?: string | null
+  banco?: string | null
+  agencia?: string | null
+  conta?: string | null
+  tipoConta?: string | null
+  pix?: string | null
+  favorecido?: string | null
+  documentoFavorecido?: string | null
+  principal?: boolean
 }
 
 type CamposNormalizados = {
@@ -151,10 +166,10 @@ type CamposNormalizados = {
   estado: string | null
   codigoIbge: string | null
   antt: string | null
-  tipoVeiculo: string | null
   aceitaNFe55: boolean
   contatosArray?: ContatoItem[]
   enderecosArray?: EnderecoItem[]
+  dadosBancariosArray?: DadosBancarioItem[]
 }
 
 function normalizarDocumento(dados: DadosParaCriarTransportadora | DadosParaEditarTransportadora): CamposNormalizados {
@@ -176,10 +191,10 @@ function normalizarDocumento(dados: DadosParaCriarTransportadora | DadosParaEdit
     estado: dados.estado || null,
     codigoIbge: dados.codigoIbge || null,
     antt: dados.antt || null,
-    tipoVeiculo: dados.tipoVeiculo || null,
     aceitaNFe55: dados.aceitaNFe55 ?? true,
     contatosArray: dados.contatos,
     enderecosArray: dados.enderecos,
+    dadosBancariosArray: dados.dadosBancarios,
   }
 
   if (dados.tipo === 'PF') {
@@ -280,6 +295,7 @@ async function buscarPessoaPorDocumentoNaEmpresa(
     papeis: { include: { dadosTransportadora: true } },
     contatos: true,
     enderecos: true,
+    dadosBancarios: true,
   }
 
   const pessoa = await clientePrisma.pessoa.findFirst({
@@ -307,11 +323,9 @@ async function buscarPessoaPorDocumentoNaEmpresa(
     transportadoraView = mapearParaTransportadoraView(pessoaCompleta)
   }
 
-  return {
-    encontrado: true,
-    temPapelTransportadora,
-    papeis,
-    pessoa: transportadoraView ?? ({
+  if (!transportadoraView) {
+    const contatosEnderecos = extrairContatosEEnderecos(pessoa)
+    transportadoraView = {
       id: pessoa.id,
       papelId: '',
       tipo: pessoa.tipo,
@@ -331,26 +345,19 @@ async function buscarPessoaPorDocumentoNaEmpresa(
       indicadorIe: pessoa.indicadorIe,
       observacoes: pessoa.observacoes,
       companyId: pessoa.companyId,
-      email: null,
-      telefone: null,
-      celular: null,
-      celularWhatsapp: false,
-      cep: null,
-      logradouro: null,
-      numero: null,
-      complemento: null,
-      bairro: null,
-      cidade: null,
-      estado: null,
-      codigoIbge: null,
+      ...contatosEnderecos,
       antt: null,
-      tipoVeiculo: null,
       aceitaNFe55: true,
-      contatos: [],
-      enderecos: [],
       createdAt: pessoa.createdAt,
       updatedAt: pessoa.updatedAt,
-    } as TransportadoraView),
+    } as TransportadoraView
+  }
+
+  return {
+    encontrado: true,
+    temPapelTransportadora,
+    papeis,
+    pessoa: transportadoraView,
   }
 }
 
@@ -454,6 +461,26 @@ function dadosDaPessoaDeCampos(campos: CamposNormalizados) {
   }
 }
 
+async function criarDadosBancarios(tx: TxCliente, pessoaId: string, campos: CamposNormalizados) {
+  if (!campos.dadosBancariosArray?.length) return
+  for (const db of campos.dadosBancariosArray) {
+    await tx.pessoaDadosBancario.create({
+      data: {
+        pessoaId,
+        apelido: db.apelido,
+        banco: db.banco,
+        agencia: db.agencia,
+        conta: db.conta,
+        tipoConta: db.tipoConta,
+        pix: db.pix,
+        favorecido: db.favorecido,
+        documentoFavorecido: db.documentoFavorecido ? limparNumeros(db.documentoFavorecido) : null,
+        principal: db.principal ?? false,
+      },
+    })
+  }
+}
+
 async function sincronizarContatosEnderecos(
   tx: TxCliente,
   pessoaId: string,
@@ -468,6 +495,9 @@ async function sincronizarContatosEnderecos(
     await tx.pessoaEndereco.deleteMany({ where: { pessoaId, tipo: 'principal' } })
   }
   await criarEnderecos(tx, pessoaId, campos)
+
+  await tx.pessoaDadosBancario.deleteMany({ where: { pessoaId } })
+  await criarDadosBancarios(tx, pessoaId, campos)
 }
 
 async function criar(dados: DadosParaCriarTransportadora, companyId: string) {
@@ -515,13 +545,11 @@ async function criar(dados: DadosParaCriarTransportadora, companyId: string) {
           where: { papelId: papelExistente.id },
           update: {
             antt: campos.antt,
-            tipoVeiculo: campos.tipoVeiculo,
             aceitaNFe55: campos.aceitaNFe55,
           },
           create: {
             papelId: papelExistente.id,
             antt: campos.antt,
-            tipoVeiculo: campos.tipoVeiculo,
             aceitaNFe55: campos.aceitaNFe55,
           },
         })
@@ -533,7 +561,6 @@ async function criar(dados: DadosParaCriarTransportadora, companyId: string) {
           data: {
             papelId: papel.id,
             antt: campos.antt,
-            tipoVeiculo: campos.tipoVeiculo,
             aceitaNFe55: campos.aceitaNFe55,
           },
         })
@@ -554,13 +581,13 @@ async function criar(dados: DadosParaCriarTransportadora, companyId: string) {
         data: {
           papelId: papel.id,
           antt: campos.antt,
-          tipoVeiculo: campos.tipoVeiculo,
           aceitaNFe55: campos.aceitaNFe55,
         },
       })
 
       await criarContatos(tx, pessoaId, campos)
       await criarEnderecos(tx, pessoaId, campos)
+      await criarDadosBancarios(tx, pessoaId, campos)
     }
 
     const pessoaCompleta = await tx.pessoa.findUniqueOrThrow({
@@ -606,13 +633,11 @@ async function atualizar(id: string, dados: DadosParaEditarTransportadora) {
         where: { papelId: papelTransportadora.id },
         update: {
           antt: campos.antt,
-          tipoVeiculo: campos.tipoVeiculo,
           aceitaNFe55: campos.aceitaNFe55,
         },
         create: {
           papelId: papelTransportadora.id,
           antt: campos.antt,
-          tipoVeiculo: campos.tipoVeiculo,
           aceitaNFe55: campos.aceitaNFe55,
         },
       })
@@ -627,6 +652,9 @@ async function atualizar(id: string, dados: DadosParaEditarTransportadora) {
       await tx.pessoaEndereco.deleteMany({ where: { pessoaId: id, tipo: 'principal' } })
     }
     await criarEnderecos(tx, id, campos)
+
+    await tx.pessoaDadosBancario.deleteMany({ where: { pessoaId: id } })
+    await criarDadosBancarios(tx, id, campos)
 
     const pessoaCompleta = await tx.pessoa.findUniqueOrThrow({
       where: { id },

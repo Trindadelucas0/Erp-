@@ -6,6 +6,7 @@ import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import type { Prisma } from '@prisma/client'
 import type { DadosParaCriarFornecedor, DadosParaEditarFornecedor } from './esquema-fornecedores.js'
+import { extrairContatosEEnderecos } from '../../compartilhado/pessoas/extrair-contatos-enderecos.js'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -32,6 +33,11 @@ const INCLUDE_COMPLETO = {
         include: {
           planosFinanceiros: { include: { planoFinanceiro: true } },
           cfopsEntrada: { include: { cfop: true } },
+          paresPlanoCfopPadrao: {
+            include: { planoFinanceiro: true, cfop: true },
+            orderBy: { ordem: 'asc' as const },
+          },
+          grupoEconomico: true,
         },
       },
     },
@@ -130,6 +136,18 @@ function mapearParaFornecedorView(pessoa: PessoaComRelacoes) {
         codigo: c.cfop.codigo,
         descricao: c.cfop.descricao,
       })) ?? [],
+    paresPlanoCfopPadrao:
+      df?.paresPlanoCfopPadrao.map((par) => ({
+        id: par.id,
+        planoFinanceiroId: par.planoFinanceiro.id,
+        planoCodigo: par.planoFinanceiro.codigo,
+        planoDescricao: par.planoFinanceiro.descricao,
+        cfopId: par.cfop.id,
+        cfopCodigo: par.cfop.codigo,
+        cfopDescricao: par.cfop.descricao,
+      })) ?? [],
+    grupoEconomicoId: df?.grupoEconomicoId ?? null,
+    grupoEconomicoNome: df?.grupoEconomico?.nome ?? null,
     dadosBancarios: pessoa.dadosBancarios,
     contatos: pessoa.contatos,
     enderecos: pessoa.enderecos,
@@ -222,6 +240,8 @@ type CamposNormalizados = {
   prazoPagamento6: number | null
   planosFinanceirosIds: string[]
   cfopsEntradaIds: string[]
+  grupoEconomicoId: string | null
+  paresPlanoCfopPadrao: { planoFinanceiroId: string; cfopId: string }[]
   contatosArray?: ContatoItem[]
   enderecosArray?: EnderecoItem[]
   dadosBancariosArray?: DadosBancarioItem[]
@@ -273,6 +293,8 @@ function normalizarDocumento(dados: DadosParaCriarFornecedor | DadosParaEditarFo
     ...prazos,
     planosFinanceirosIds: dados.planosFinanceirosIds ?? [],
     cfopsEntradaIds: dados.cfopsEntradaIds ?? [],
+    grupoEconomicoId: dados.grupoEconomicoId ?? null,
+    paresPlanoCfopPadrao: dados.paresPlanoCfopPadrao ?? [],
     contatosArray: dados.contatos,
     enderecosArray: dados.enderecos,
     dadosBancariosArray: dados.dadosBancarios,
@@ -399,6 +421,44 @@ async function buscarPessoaPorDocumentoNaEmpresa(
       include: INCLUDE_COMPLETO,
     })
     fornecedorView = mapearParaFornecedorView(pessoaCompleta)
+  }
+
+  if (!fornecedorView) {
+    const contatosEnderecos = extrairContatosEEnderecos(pessoa)
+    fornecedorView = {
+      id: pessoa.id,
+      papelId: '',
+      tipo: pessoa.tipo,
+      ativo: true,
+      nome: pessoa.nome,
+      cpf: pessoa.cpf,
+      rg: pessoa.rg,
+      dataNascimento: pessoa.dataNascimento,
+      cnpj: pessoa.cnpj,
+      nomeFantasia: pessoa.nomeFantasia,
+      cnae: pessoa.cnae,
+      cnaes: [],
+      dataFundacao: pessoa.dataFundacao,
+      ie: pessoa.ie,
+      im: pessoa.im,
+      simplesNacional: pessoa.simplesNacional,
+      observacoes: pessoa.observacoes,
+      companyId: pessoa.companyId,
+      ...contatosEnderecos,
+      tipoRevenda: false,
+      tipoConsumo: false,
+      tipoPrestadorServico: false,
+      permitirVinculoManual: false,
+      exigirItensEntrada: false,
+      prazosPagamento: [null, null, null, null, null, null],
+      planosFinanceiros: [],
+      cfopsEntrada: [],
+      paresPlanoCfopPadrao: [],
+      grupoEconomicoId: null,
+      grupoEconomicoNome: null,
+      createdAt: pessoa.createdAt,
+      updatedAt: pessoa.updatedAt,
+    } as unknown as FornecedorView
   }
 
   return {
@@ -563,6 +623,7 @@ function dadosFornecedorDeCampos(campos: CamposNormalizados) {
     prazoPagamento4: campos.prazoPagamento4,
     prazoPagamento5: campos.prazoPagamento5,
     prazoPagamento6: campos.prazoPagamento6,
+    grupoEconomicoId: campos.grupoEconomicoId,
   }
 }
 
@@ -573,6 +634,7 @@ async function sincronizarVinculosFornecedor(
 ) {
   await tx.fornecedorPlanoFinanceiro.deleteMany({ where: { dadosFornecedorId } })
   await tx.fornecedorCfopEntrada.deleteMany({ where: { dadosFornecedorId } })
+  await tx.fornecedorParPlanoCfopPadrao.deleteMany({ where: { dadosFornecedorId } })
 
   for (const planoId of campos.planosFinanceirosIds) {
     await tx.fornecedorPlanoFinanceiro.create({
@@ -582,6 +644,17 @@ async function sincronizarVinculosFornecedor(
   for (const cfopId of campos.cfopsEntradaIds) {
     await tx.fornecedorCfopEntrada.create({
       data: { dadosFornecedorId, cfopId },
+    })
+  }
+  for (let i = 0; i < campos.paresPlanoCfopPadrao.length; i++) {
+    const par = campos.paresPlanoCfopPadrao[i]
+    await tx.fornecedorParPlanoCfopPadrao.create({
+      data: {
+        dadosFornecedorId,
+        planoFinanceiroId: par.planoFinanceiroId,
+        cfopId: par.cfopId,
+        ordem: i,
+      },
     })
   }
 }

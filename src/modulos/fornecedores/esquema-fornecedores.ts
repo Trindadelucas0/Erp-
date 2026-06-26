@@ -54,6 +54,7 @@ const camposComuns = {
     .optional(),
   planosFinanceirosIds: z.array(z.string().uuid()).optional(),
   cfopsEntradaIds: z.array(z.string().uuid()).optional(),
+  grupoEconomicoId: z.string().uuid().optional().nullable(),
 }
 
 export const esquemaDeContatoItem = z.object({
@@ -99,11 +100,17 @@ export const esquemaDeCnaeItem = z.object({
   principal: z.boolean().optional(),
 })
 
+const esquemaDePlanoCfopPar = z.object({
+  planoFinanceiroId: z.string().uuid(),
+  cfopId: z.string().uuid(),
+})
+
 const camposArrays = {
   contatos: z.array(esquemaDeContatoItem).optional(),
   enderecos: z.array(esquemaDeEnderecoItem).optional(),
   dadosBancarios: z.array(esquemaDeDadosBancarioItem).optional(),
   cnaes: z.array(esquemaDeCnaeItem).optional(),
+  paresPlanoCfopPadrao: z.array(esquemaDePlanoCfopPar).optional(),
 }
 
 export const esquemaDeCriacaoDeFornecedorPF = z.object({

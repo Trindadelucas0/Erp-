@@ -50,6 +50,9 @@ import {
   SelecaoMultiplaCatalogo,
   type ItemCatalogo,
 } from '@/components/fornecedores/selecao-multipla-catalogo'
+import { ListaParesPlanoCfop, type PlanoCfopPar } from '@/components/fornecedores/lista-pares-plano-cfop'
+import { mesclarTexto, mesclarArray, mesclarBoolean } from '@/lib/mesclar-pre-preenchimento'
+import { GrupoEconomicoField } from '@/components/fornecedores/grupo-economico-field'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -92,6 +95,9 @@ type Fornecedor = {
   prazosPagamento?: (number | null)[]
   planosFinanceiros?: ItemCatalogo[]
   cfopsEntrada?: ItemCatalogo[]
+  paresPlanoCfopPadrao?: PlanoCfopPar[]
+  grupoEconomicoId?: string | null
+  grupoEconomicoNome?: string | null
   dadosBancarios?: DadosBancarioForm[]
 }
 
@@ -127,6 +133,9 @@ type FormFornecedor = {
   prazosPagamento: string[]
   planosFinanceiros: ItemCatalogo[]
   cfopsEntrada: ItemCatalogo[]
+  paresPlanoCfopPadrao: PlanoCfopPar[]
+  grupoEconomicoId: string
+  grupoEconomicoNome: string
   dadosBancarios: DadosBancarioForm[]
   contatos: ContatoForm[]
   enderecos: EnderecoForm[]
@@ -173,6 +182,9 @@ const FORM_VAZIO: FormFornecedor = {
   prazosPagamento: ['', '', '', '', '', ''],
   planosFinanceiros: [],
   cfopsEntrada: [],
+  paresPlanoCfopPadrao: [],
+  grupoEconomicoId: '',
+  grupoEconomicoNome: '',
   dadosBancarios: [],
   contatos: [],
   enderecos: [],
@@ -229,6 +241,16 @@ function fornecedorParaForm(f: Fornecedor): FormFornecedor {
     prazosPagamento: prazos.slice(0, 6).map((p) => (p != null ? String(p) : '')),
     planosFinanceiros: f.planosFinanceiros ?? [],
     cfopsEntrada: f.cfopsEntrada ?? [],
+    paresPlanoCfopPadrao: (f.paresPlanoCfopPadrao ?? []).map((par: any) => ({
+      planoFinanceiroId: par.planoFinanceiroId || '',
+      planoCodigo: par.planoCodigo || '',
+      planoDescricao: par.planoDescricao || '',
+      cfopId: par.cfopId || '',
+      cfopCodigo: par.cfopCodigo || '',
+      cfopDescricao: par.cfopDescricao || '',
+    })),
+    grupoEconomicoId: f.grupoEconomicoId || '',
+    grupoEconomicoNome: f.grupoEconomicoNome || '',
     dadosBancarios: Array.isArray(f.dadosBancarios)
       ? f.dadosBancarios.map((db) => ({
           apelido: db.apelido || '',
@@ -833,17 +855,21 @@ function ConteudoDaPaginaDeFornecedores() {
       if (dados) {
         setForm((f) => ({
           ...f,
-          nome: f.nome || dados.nome,
-          nomeFantasia: f.nomeFantasia || dados.nomeFantasia,
+          nome: mesclarTexto(f.nome, dados.nome),
+          nomeFantasia: mesclarTexto(f.nomeFantasia, dados.nomeFantasia),
           cnaes: dados.cnaes.length > 0 ? dados.cnaes : f.cnaes,
-          dataFundacao: f.dataFundacao || dados.dataFundacao,
-          cep: f.cep || mascaraCep(dados.cep),
-          logradouro: f.logradouro || dados.logradouro,
-          numero: f.numero || dados.numero,
-          bairro: f.bairro || dados.bairro,
-          cidade: f.cidade || dados.cidade,
-          estado: f.estado || dados.estado,
-          codigoIbge: f.codigoIbge || dados.codigoIbge,
+          dataFundacao: mesclarTexto(f.dataFundacao, dados.dataFundacao),
+          email: mesclarTexto(f.email, dados.email),
+          telefone: mesclarTexto(f.telefone, dados.telefone),
+          simplesNacional: mesclarBoolean(f.simplesNacional, dados.simplesNacional),
+          cep: mesclarTexto(f.cep, mascaraCep(dados.cep)),
+          logradouro: mesclarTexto(f.logradouro, dados.logradouro),
+          numero: mesclarTexto(f.numero, dados.numero),
+          complemento: mesclarTexto(f.complemento, dados.complemento),
+          bairro: mesclarTexto(f.bairro, dados.bairro),
+          cidade: mesclarTexto(f.cidade, dados.cidade),
+          estado: mesclarTexto(f.estado, dados.estado),
+          codigoIbge: mesclarTexto(f.codigoIbge, dados.codigoIbge),
         }))
       }
     }
@@ -867,30 +893,36 @@ function ConteudoDaPaginaDeFornecedores() {
             const importado = fornecedorParaForm({ ...data.pessoa, tipo: form.tipo } as Fornecedor)
             setForm((f) => ({
               ...f,
-              nome: importado.nome || f.nome,
-              nomeFantasia: importado.nomeFantasia || f.nomeFantasia,
-              ie: importado.ie || f.ie,
+              nome: mesclarTexto(f.nome, importado.nome),
+              nomeFantasia: mesclarTexto(f.nomeFantasia, importado.nomeFantasia),
+              ie: mesclarTexto(f.ie, importado.ie),
+              im: mesclarTexto(f.im, importado.im),
               cnaes: importado.cnaes.length > 0 ? importado.cnaes : f.cnaes,
-              email: importado.email || f.email,
-              telefone: importado.telefone || f.telefone,
-              celularWhatsapp: importado.celularWhatsapp || f.celularWhatsapp,
-              cep: importado.cep || f.cep,
-              logradouro: importado.logradouro || f.logradouro,
-              numero: importado.numero || f.numero,
-              complemento: importado.complemento || f.complemento,
-              bairro: importado.bairro || f.bairro,
-              cidade: importado.cidade || f.cidade,
-              estado: importado.estado || f.estado,
-              codigoIbge: importado.codigoIbge || f.codigoIbge,
-              dadosBancarios: importado.dadosBancarios.length > 0 ? importado.dadosBancarios : f.dadosBancarios,
-              tipoRevenda: importado.tipoRevenda ?? f.tipoRevenda,
-              tipoConsumo: importado.tipoConsumo ?? f.tipoConsumo,
-              tipoPrestadorServico: importado.tipoPrestadorServico ?? f.tipoPrestadorServico,
-              permitirVinculoManual: importado.permitirVinculoManual ?? f.permitirVinculoManual,
-              exigirItensEntrada: importado.exigirItensEntrada ?? f.exigirItensEntrada,
+              dataFundacao: mesclarTexto(f.dataFundacao, importado.dataFundacao),
+              simplesNacional: mesclarBoolean(f.simplesNacional, importado.simplesNacional),
+              email: mesclarTexto(f.email, importado.email),
+              telefone: mesclarTexto(f.telefone, importado.telefone),
+              celularWhatsapp: mesclarBoolean(f.celularWhatsapp, importado.celularWhatsapp),
+              cep: mesclarTexto(f.cep, importado.cep),
+              logradouro: mesclarTexto(f.logradouro, importado.logradouro),
+              numero: mesclarTexto(f.numero, importado.numero),
+              complemento: mesclarTexto(f.complemento, importado.complemento),
+              bairro: mesclarTexto(f.bairro, importado.bairro),
+              cidade: mesclarTexto(f.cidade, importado.cidade),
+              estado: mesclarTexto(f.estado, importado.estado),
+              codigoIbge: mesclarTexto(f.codigoIbge, importado.codigoIbge),
+              contatos: mesclarArray(f.contatos, importado.contatos),
+              enderecos: mesclarArray(f.enderecos, importado.enderecos),
+              dadosBancarios: mesclarArray(f.dadosBancarios, importado.dadosBancarios),
+              tipoRevenda: mesclarBoolean(f.tipoRevenda, importado.tipoRevenda),
+              tipoConsumo: mesclarBoolean(f.tipoConsumo, importado.tipoConsumo),
+              tipoPrestadorServico: mesclarBoolean(f.tipoPrestadorServico, importado.tipoPrestadorServico),
+              permitirVinculoManual: mesclarBoolean(f.permitirVinculoManual, importado.permitirVinculoManual),
+              exigirItensEntrada: mesclarBoolean(f.exigirItensEntrada, importado.exigirItensEntrada),
               prazosPagamento: importado.prazosPagamento.some((p) => p) ? importado.prazosPagamento : f.prazosPagamento,
-              planosFinanceiros: importado.planosFinanceiros.length > 0 ? importado.planosFinanceiros : f.planosFinanceiros,
-              cfopsEntrada: importado.cfopsEntrada.length > 0 ? importado.cfopsEntrada : f.cfopsEntrada,
+              paresPlanoCfopPadrao: mesclarArray(f.paresPlanoCfopPadrao, importado.paresPlanoCfopPadrao),
+              grupoEconomicoId: mesclarTexto(f.grupoEconomicoId, importado.grupoEconomicoId),
+              grupoEconomicoNome: mesclarTexto(f.grupoEconomicoNome, importado.grupoEconomicoNome),
             }))
           }
         }
@@ -971,6 +1003,10 @@ function ConteudoDaPaginaDeFornecedores() {
       prazosPagamento,
       planosFinanceirosIds: form.planosFinanceiros.map((p) => p.id),
       cfopsEntradaIds: form.cfopsEntrada.map((c) => c.id),
+      paresPlanoCfopPadrao: form.paresPlanoCfopPadrao
+        .filter((par) => par.planoFinanceiroId && par.cfopId)
+        .map((par) => ({ planoFinanceiroId: par.planoFinanceiroId, cfopId: par.cfopId })),
+      grupoEconomicoId: form.grupoEconomicoId || null,
       dadosBancarios: dadosBancariosPayload.length > 0 ? dadosBancariosPayload : undefined,
     }
 
@@ -1475,9 +1511,9 @@ function ConteudoDaPaginaDeFornecedores() {
               <div className="space-y-6">
                 <div className="space-y-2">
                   <label className="text-sm font-medium leading-none">Tipo de fornecedor</label>
-                  <div className="space-y-1">
-                    <CampoCheckbox rotulo="Fornecedor de mercadoria para revenda" valor={form.tipoRevenda} aoMudar={(v) => { tocarCampo('tipoFornecedor'); set('tipoRevenda', v) }} />
-                    <CampoCheckbox rotulo="Fornecedor de mercadoria para consumo" valor={form.tipoConsumo} aoMudar={(v) => { tocarCampo('tipoFornecedor'); set('tipoConsumo', v) }} />
+                  <div className="flex flex-wrap gap-4">
+                    <CampoCheckbox rotulo="Revenda" valor={form.tipoRevenda} aoMudar={(v) => { tocarCampo('tipoFornecedor'); set('tipoRevenda', v) }} />
+                    <CampoCheckbox rotulo="Consumo" valor={form.tipoConsumo} aoMudar={(v) => { tocarCampo('tipoFornecedor'); set('tipoConsumo', v) }} />
                     <CampoCheckbox rotulo="Prestador de serviço" valor={form.tipoPrestadorServico} aoMudar={(v) => { tocarCampo('tipoFornecedor'); set('tipoPrestadorServico', v) }} />
                   </div>
                   {erroVisivel('tipoFornecedor') && (
@@ -1507,31 +1543,27 @@ function ConteudoDaPaginaDeFornecedores() {
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium leading-none">Flags</label>
-                  <div className="space-y-1">
+                  <div className="flex flex-wrap gap-4">
                     <CampoCheckbox rotulo="Permitir vínculo manual dos produtos na entrada" valor={form.permitirVinculoManual} aoMudar={(v) => set('permitirVinculoManual', v)} />
                     <CampoCheckbox rotulo="Exigir itens na entrada p/ uso e consumo" valor={form.exigirItensEntrada} aoMudar={(v) => set('exigirItensEntrada', v)} />
                   </div>
                 </div>
 
                 {(form.tipoConsumo || form.tipoPrestadorServico) && (
-                  <div className="space-y-6">
-                    <SelecaoMultiplaCatalogo
-                      rotulo="Planos financeiros liberados"
-                      endpoint="/planos-financeiros"
-                      selecionados={form.planosFinanceiros}
-                      aoMudar={(v) => set('planosFinanceiros', v)}
-                      ajuda="Caso não preenchido, o ADM não vai gerar trava de planos financeiros na tela de entrada e contas a pagar manual"
-                    />
-                    <SelecaoMultiplaCatalogo
-                      rotulo="CFOPs liberados para entrada"
-                      endpoint="/cfops"
-                      tipoCfop="entrada"
-                      selecionados={form.cfopsEntrada}
-                      aoMudar={(v) => set('cfopsEntrada', v)}
-                      ajuda="Caso não preenchido, o ADM não irá travar CFOPs nas entradas"
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium leading-none">Pares Plano Financeiro + CFOP Padrão</label>
+                    <p className="text-xs text-muted-foreground">Cada par define um plano financeiro padrão e o CFOP de entrada correspondente.</p>
+                    <ListaParesPlanoCfop
+                      pares={form.paresPlanoCfopPadrao}
+                      aoMudar={(v) => set('paresPlanoCfopPadrao', v)}
                     />
                   </div>
                 )}
+
+                <GrupoEconomicoField
+                  value={{ id: form.grupoEconomicoId, nome: form.grupoEconomicoNome }}
+                  aoMudar={(id, nome) => { set('grupoEconomicoId', id); set('grupoEconomicoNome', nome) }}
+                />
               </div>
             )}
           </form>

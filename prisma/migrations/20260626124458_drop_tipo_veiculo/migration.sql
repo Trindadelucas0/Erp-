@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "FornecedorParPlanoCfopPadrao_dadosFornecedorId_planoFinanceiroI" RENAME TO "FornecedorParPlanoCfopPadrao_dadosFornecedorId_planoFinance_key";

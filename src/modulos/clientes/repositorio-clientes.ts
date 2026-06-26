@@ -8,6 +8,7 @@ import type { Prisma } from '@prisma/client'
 import type { DadosParaCriarCliente, DadosParaEditarCliente, DadosParaAprovacaoDeCliente } from './esquema-clientes.js'
 import { STATUS_APROVACAO } from './regras-cliente.js'
 import { randomUUID } from 'node:crypto'
+import { extrairContatosEEnderecos } from '../../compartilhado/pessoas/extrair-contatos-enderecos.js'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -312,6 +313,7 @@ async function buscarPessoaPorDocumentoNaEmpresa(
     papeis: { include: { dadosCliente: true } },
     contatos: true,
     enderecos: true,
+    dadosBancarios: true,
   }
 
   const pessoa = await clientePrisma.pessoa.findFirst({
@@ -341,11 +343,9 @@ async function buscarPessoaPorDocumentoNaEmpresa(
     clienteView = mapearParaClienteView(pessoaCompleta)
   }
 
-  return {
-    encontrado: true,
-    temPapelCliente,
-    papeis,
-    pessoa: clienteView ?? ({
+  if (!clienteView) {
+    const contatosEnderecos = extrairContatosEEnderecos(pessoa)
+    clienteView = {
       id: pessoa.id,
       papelId: '',
       tipo: pessoa.tipo,
@@ -367,18 +367,7 @@ async function buscarPessoaPorDocumentoNaEmpresa(
       indicadorIe: pessoa.indicadorIe,
       observacoes: pessoa.observacoes,
       companyId: pessoa.companyId,
-      email: null,
-      telefone: null,
-      celular: null,
-      celularWhatsapp: false,
-      cep: null,
-      logradouro: null,
-      numero: null,
-      complemento: null,
-      bairro: null,
-      cidade: null,
-      estado: null,
-      codigoIbge: null,
+      ...contatosEnderecos,
       aceitaNFe55: true,
       calculaComissao: false,
       vendedorId: null,
@@ -389,11 +378,16 @@ async function buscarPessoaPorDocumentoNaEmpresa(
       motivoReprovacao: null,
       aprovadoPorId: null,
       aprovadoEm: null,
-      contatos: [],
-      enderecos: [],
       createdAt: pessoa.createdAt,
       updatedAt: pessoa.updatedAt,
-    } as ClienteView),
+    } as unknown as ClienteView
+  }
+
+  return {
+    encontrado: true,
+    temPapelCliente,
+    papeis,
+    pessoa: clienteView,
   }
 }
 

@@ -39,6 +39,7 @@ import {
   validarCnpj,
 } from '@/lib/documentos'
 import { buscarDadosCnpj } from '@/lib/brasil-api'
+import { mesclarTexto, mesclarArray, mesclarBoolean } from '@/lib/mesclar-pre-preenchimento'
 import { ListaContatos, type ContatoForm } from '@/components/clientes/lista-contatos'
 import { ListaEnderecos, ENDERECO_VAZIO, type EnderecoForm } from '@/components/clientes/lista-enderecos'
 import { ListaCnaes, type CnaeForm } from '@/components/pessoas/lista-cnaes'
@@ -848,17 +849,21 @@ function ConteudoDaPaginaDeClientes() {
       if (dados) {
         setForm((f) => ({
           ...f,
-          nome: f.nome || dados.nome,
-          nomeFantasia: f.nomeFantasia || dados.nomeFantasia,
-          cnaes: f.cnaes.length ? f.cnaes : dados.cnaes,
-          dataFundacao: f.dataFundacao || dados.dataFundacao,
-          cep: f.cep || mascaraCep(dados.cep),
-          logradouro: f.logradouro || dados.logradouro,
-          numero: f.numero || dados.numero,
-          bairro: f.bairro || dados.bairro,
-          cidade: f.cidade || dados.cidade,
-          estado: f.estado || dados.estado,
-          codigoIbge: f.codigoIbge || dados.codigoIbge,
+          nome: mesclarTexto(f.nome, dados.nome),
+          nomeFantasia: mesclarTexto(f.nomeFantasia, dados.nomeFantasia),
+          cnaes: dados.cnaes.length > 0 ? dados.cnaes : f.cnaes,
+          dataFundacao: mesclarTexto(f.dataFundacao, dados.dataFundacao),
+          email: mesclarTexto(f.email, dados.email),
+          telefone: mesclarTexto(f.telefone, dados.telefone),
+          simplesNacional: mesclarBoolean(f.simplesNacional, dados.simplesNacional),
+          cep: mesclarTexto(f.cep, mascaraCep(dados.cep)),
+          logradouro: mesclarTexto(f.logradouro, dados.logradouro),
+          numero: mesclarTexto(f.numero, dados.numero),
+          complemento: mesclarTexto(f.complemento, dados.complemento),
+          bairro: mesclarTexto(f.bairro, dados.bairro),
+          cidade: mesclarTexto(f.cidade, dados.cidade),
+          estado: mesclarTexto(f.estado, dados.estado),
+          codigoIbge: mesclarTexto(f.codigoIbge, dados.codigoIbge),
         }))
       }
     }
@@ -884,19 +889,26 @@ function ConteudoDaPaginaDeClientes() {
             const importado = clienteParaForm({ ...data.pessoa, tipo: form.tipo } as Cliente)
             setForm((f) => ({
               ...f,
-              nome: importado.nome || f.nome,
-              nomeFantasia: importado.nomeFantasia || f.nomeFantasia,
-              ie: importado.ie || f.ie,
-              email: importado.email || f.email,
-              telefone: importado.telefone || f.telefone,
-              cep: importado.cep || f.cep,
-              logradouro: importado.logradouro || f.logradouro,
-              numero: importado.numero || f.numero,
-              complemento: importado.complemento || f.complemento,
-              bairro: importado.bairro || f.bairro,
-              cidade: importado.cidade || f.cidade,
-              estado: importado.estado || f.estado,
-              codigoIbge: importado.codigoIbge || f.codigoIbge,
+              nome: mesclarTexto(f.nome, importado.nome),
+              nomeFantasia: mesclarTexto(f.nomeFantasia, importado.nomeFantasia),
+              ie: mesclarTexto(f.ie, importado.ie),
+              im: mesclarTexto(f.im, importado.im),
+              cnaes: importado.cnaes?.length ? importado.cnaes : f.cnaes,
+              dataFundacao: mesclarTexto(f.dataFundacao, importado.dataFundacao),
+              simplesNacional: mesclarBoolean(f.simplesNacional, importado.simplesNacional),
+              email: mesclarTexto(f.email, importado.email),
+              telefone: mesclarTexto(f.telefone, importado.telefone),
+              celularWhatsapp: mesclarBoolean(f.celularWhatsapp, importado.celularWhatsapp),
+              cep: mesclarTexto(f.cep, importado.cep),
+              logradouro: mesclarTexto(f.logradouro, importado.logradouro),
+              numero: mesclarTexto(f.numero, importado.numero),
+              complemento: mesclarTexto(f.complemento, importado.complemento),
+              bairro: mesclarTexto(f.bairro, importado.bairro),
+              cidade: mesclarTexto(f.cidade, importado.cidade),
+              estado: mesclarTexto(f.estado, importado.estado),
+              codigoIbge: mesclarTexto(f.codigoIbge, importado.codigoIbge),
+              contatos: mesclarArray(f.contatos, importado.contatos),
+              enderecos: mesclarArray(f.enderecos, importado.enderecos),
             }))
           }
         }

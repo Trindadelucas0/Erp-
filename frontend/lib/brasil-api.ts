@@ -14,6 +14,11 @@ export type DadosCnpj = {
   cnaes: CnaeItem[]
   dataFundacao: string
   ie: string
+  email: string
+  telefone: string
+  celular: string
+  complemento: string
+  simplesNacional: boolean
   cep: string
   logradouro: string
   numero: string
@@ -35,13 +40,18 @@ type RespostaBrasilApi = {
   cnae_fiscal_descricao?: string
   cnaes_secundarios?: CnaeSecundarioBrasilApi[]
   data_inicio_atividade?: string
+  email?: string
+  ddd_telefone_1?: string
+  ddd_telefone_2?: string
   cep?: string
   logradouro?: string
   numero?: string
+  complemento?: string
   bairro?: string
   municipio?: string
   uf?: string
   codigo_municipio_ibge?: number
+  opcao_pelo_simples?: string
 }
 
 function formatarData(data?: string): string {
@@ -51,6 +61,15 @@ function formatarData(data?: string): string {
 
 function limparCep(cep?: string): string {
   return (cep ?? '').replace(/\D/g, '')
+}
+
+function formatarTelefone(ddd?: string): string {
+  if (!ddd) return ''
+  const nums = ddd.replace(/\D/g, '')
+  if (!nums) return ''
+  // BrasilAPI retorna no formato "DD NNNNNNNN" ou "DDNNNNNNNN"
+  if (nums.length >= 10) return nums
+  return nums
 }
 
 function montarCnaes(dados: RespostaBrasilApi): CnaeItem[] {
@@ -104,6 +123,11 @@ export async function buscarDadosCnpj(cnpj: string): Promise<DadosCnpj | null> {
       cnaes,
       dataFundacao: formatarData(dados.data_inicio_atividade),
       ie: '',
+      email: dados.email ?? '',
+      telefone: formatarTelefone(dados.ddd_telefone_1),
+      celular: formatarTelefone(dados.ddd_telefone_2),
+      complemento: dados.complemento ?? '',
+      simplesNacional: dados.opcao_pelo_simples?.toLowerCase() === 'sim',
       cep: limparCep(dados.cep),
       logradouro: dados.logradouro ?? '',
       numero: dados.numero ?? '',
