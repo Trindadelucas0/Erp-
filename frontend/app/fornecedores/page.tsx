@@ -834,6 +834,21 @@ function ConteudoDaPaginaDeFornecedores() {
     setForm((f) => ({ ...f, [campo]: valor }))
   }
 
+  function aoMudarTipoFornecedor(
+    campo: 'tipoRevenda' | 'tipoConsumo' | 'tipoPrestadorServico',
+    valor: boolean
+  ) {
+    tocarCampo('tipoFornecedor')
+    setForm((f) => {
+      const proximo = { ...f, [campo]: valor }
+      if (!proximo.tipoConsumo && !proximo.tipoPrestadorServico) {
+        proximo.permitirVinculoManual = false
+        proximo.exigirItensEntrada = false
+      }
+      return proximo
+    })
+  }
+
   // ─── Modal ──────────────────────────────────────────────────────────────
 
   function abrirModalNovo() {
@@ -1503,9 +1518,9 @@ function ConteudoDaPaginaDeFornecedores() {
                 <div className="space-y-2">
                   <label className="text-sm font-medium leading-none">Tipo de fornecedor</label>
                   <div className="flex flex-wrap gap-4">
-                    <CampoCheckbox rotulo="Revenda" valor={form.tipoRevenda} aoMudar={(v) => { tocarCampo('tipoFornecedor'); set('tipoRevenda', v) }} />
-                    <CampoCheckbox rotulo="Consumo" valor={form.tipoConsumo} aoMudar={(v) => { tocarCampo('tipoFornecedor'); set('tipoConsumo', v) }} />
-                    <CampoCheckbox rotulo="Prestador de serviço" valor={form.tipoPrestadorServico} aoMudar={(v) => { tocarCampo('tipoFornecedor'); set('tipoPrestadorServico', v) }} />
+                    <CampoCheckbox rotulo="Revenda" valor={form.tipoRevenda} aoMudar={(v) => aoMudarTipoFornecedor('tipoRevenda', v)} />
+                    <CampoCheckbox rotulo="Consumo" valor={form.tipoConsumo} aoMudar={(v) => aoMudarTipoFornecedor('tipoConsumo', v)} />
+                    <CampoCheckbox rotulo="Prestador de serviço" valor={form.tipoPrestadorServico} aoMudar={(v) => aoMudarTipoFornecedor('tipoPrestadorServico', v)} />
                   </div>
                   {erroVisivel('tipoFornecedor') && (
                     <p className="text-sm text-destructive">{erroVisivel('tipoFornecedor')}</p>
@@ -1532,13 +1547,14 @@ function ConteudoDaPaginaDeFornecedores() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium leading-none">Flags</label>
-                  <div className="flex flex-wrap gap-4">
-                    <CampoCheckbox rotulo="Permitir vínculo manual dos produtos na entrada" valor={form.permitirVinculoManual} aoMudar={(v) => set('permitirVinculoManual', v)} />
-                    <CampoCheckbox rotulo="Exigir itens na entrada p/ uso e consumo" valor={form.exigirItensEntrada} aoMudar={(v) => set('exigirItensEntrada', v)} />
+                {(form.tipoConsumo || form.tipoPrestadorServico) && (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap gap-4">
+                      <CampoCheckbox rotulo="Permitir vínculo manual dos produtos na entrada" valor={form.permitirVinculoManual} aoMudar={(v) => set('permitirVinculoManual', v)} />
+                      <CampoCheckbox rotulo="Exigir itens na entrada p/ uso e consumo" valor={form.exigirItensEntrada} aoMudar={(v) => set('exigirItensEntrada', v)} />
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {(form.tipoConsumo || form.tipoPrestadorServico) && (
                   <div className="space-y-2">
