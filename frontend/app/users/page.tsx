@@ -133,6 +133,37 @@ const ABAS_USUARIO = [
   { id: 'permissoes', rotulo: 'Permissões' },
 ]
 
+const PREFIXO_ERRO_POR_CAMPO: Record<string, string> = {
+  nome: 'Dados básicos',
+  email: 'Dados básicos',
+  senha: 'Dados básicos',
+  papeis: 'Acesso',
+  empresas: 'Acesso',
+}
+
+const ROTULO_POR_ABA: Record<string, string> = {
+  dados: 'Dados básicos',
+  acesso: 'Acesso',
+  permissoes: 'Permissões',
+}
+
+const CAMPOS_POR_ABA: Record<string, string[]> = {
+  dados: ['nome', 'email', 'senha'],
+  acesso: ['papeis', 'empresas'],
+  permissoes: [],
+}
+
+function gerarPendenciasDaAba(abaId: string, erros: Record<string, string>): string[] {
+  const rotulo = ROTULO_POR_ABA[abaId]
+  return Object.entries(erros)
+    .filter(([campo]) => PREFIXO_ERRO_POR_CAMPO[campo] === rotulo)
+    .map(([, msg]) => msg)
+}
+
+function abaEstaValida(abaId: string, erros: Record<string, string>): boolean {
+  return gerarPendenciasDaAba(abaId, erros).length === 0
+}
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 function ConteudoDaPaginaDeUsuarios() {
@@ -194,9 +225,15 @@ function ConteudoDaPaginaDeUsuarios() {
   const [tooltipAberto, setTooltipAberto] = useState<string | null>(null)
   const [camposTocados, setCamposTocados] = useState<Set<string>>(() => new Set())
   const [erroSalvar, setErroSalvar] = useState('')
+  const [errosDaAbaAtual, setErrosDaAbaAtual] = useState<string[]>([])
   const [formInicial, setFormInicial] = useState<FormularioUsuario>(() =>
     clonarFormulario(FORM_USUARIO_VAZIO)
   )
+
+  const idsAbas = ['dados', 'acesso', 'permissoes']
+  const indiceAbaAtiva = idsAbas.indexOf(abaAtiva)
+  const ehPrimeiraAba = indiceAbaAtiva === 0
+  const ehUltimaAba = indiceAbaAtiva === idsAbas.length - 1
 
   const formAtual = useMemo<FormularioUsuario>(
     () => ({
@@ -308,6 +345,8 @@ function ConteudoDaPaginaDeUsuarios() {
 
   const formularioValido = Object.keys(errosForm).length === 0
 
+  const etapaAtualLiberada = abaEstaValida(abaAtiva, errosForm)
+
   const abasComStatus = ABAS_USUARIO.map((aba) => ({
     ...aba,
     status: statusDasAbas[aba.id as keyof typeof statusDasAbas],
@@ -335,6 +374,37 @@ function ConteudoDaPaginaDeUsuarios() {
     return errosForm[campo]
   }
 
+  function tocarCamposDaAba(abaId: string) {
+    const campos = CAMPOS_POR_ABA[abaId] ?? []
+    setCamposTocados((anterior) => {
+      const proximo = new Set(anterior)
+      for (const campo of campos) proximo.add(campo)
+      return proximo
+    })
+  }
+
+  function aoAvancar() {
+    if (!abaEstaValida(abaAtiva, errosForm)) {
+      tocarCamposDaAba(abaAtiva)
+      setErrosDaAbaAtual(gerarPendenciasDaAba(abaAtiva, errosForm))
+      return
+    }
+
+    setErrosDaAbaAtual([])
+    setAbaAtiva((atual) => {
+      const i = idsAbas.indexOf(atual)
+      return i >= 0 && i < idsAbas.length - 1 ? idsAbas[i + 1] : atual
+    })
+  }
+
+  function irParaAbaAnterior() {
+    setErrosDaAbaAtual([])
+    setAbaAtiva((atual) => {
+      const i = idsAbas.indexOf(atual)
+      return i > 0 ? idsAbas[i - 1] : atual
+    })
+  }
+
   function aplicarFormulario(f: FormularioUsuario) {
     setNome(f.nome)
     setEmail(f.email)
@@ -347,6 +417,7 @@ function ConteudoDaPaginaDeUsuarios() {
     setAbaAtiva('dados')
     setCamposTocados(new Set())
     setErroSalvar('')
+    setErrosDaAbaAtual([])
   }
 
   function usuarioParaFormulario(usuario: Usuario): FormularioUsuario {
@@ -396,6 +467,7 @@ function ConteudoDaPaginaDeUsuarios() {
     setModalUsuarioAberto(false)
     setCamposTocados(new Set())
     setErroSalvar('')
+    setErrosDaAbaAtual([])
   }, [])
 
   const { solicitarFechar, dialogoConfirmacao } = useConfirmarSaida(
@@ -641,41 +713,75 @@ function ConteudoDaPaginaDeUsuarios() {
         titulo={modoEdicao ? `Editar: ${nome}` : 'Novo usuário'}
         largura="2xl"
         rodape={
-          <div className="flex w-full items-center justify-between gap-2">
-            {erroSalvar ? (
-              <p className="text-sm text-destructive">{erroSalvar}</p>
-            ) : (
-              <span />
+          <div className="flex w-full flex-col gap-2">
+            {errosDaAbaAtual.length > 0 && (
+              <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <ul className="space-y-0.5">
+                  {errosDaAbaAtual.map((erro, i) => (
+                    <li key={i} className="flex items-start gap-1">
+                      <span className="mt-0.5 shrink-0">•</span>
+                      <span>{erro}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={solicitarFechar}
-                disabled={salvando}
-                title={tituloComAtalho('Cancelar', teclaCancelar)}
-              >
-                Cancelar
-              </Button>
-              <BotaoPrimario
-                form="form-usuario"
-                type="submit"
-                disabled={salvando || !formularioValido}
-                title={tituloComAtalho(
-                  modoEdicao ? 'Salvar' : 'Criar usuário',
-                  teclaSalvar
+            {!etapaAtualLiberada && !ehUltimaAba && errosDaAbaAtual.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                Preencha os campos obrigatórios desta etapa para continuar
+              </p>
+            )}
+            <div className="flex items-center justify-between gap-2">
+              {erroSalvar ? (
+                <p className="text-sm text-destructive">{erroSalvar}</p>
+              ) : (
+                <span />
+              )}
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={solicitarFechar}
+                  disabled={salvando}
+                  title={tituloComAtalho('Cancelar', teclaCancelar)}
+                >
+                  Cancelar
+                </Button>
+                {!ehPrimeiraAba && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={irParaAbaAnterior}
+                    disabled={salvando}
+                  >
+                    ← Anterior
+                  </Button>
                 )}
-              >
-                {salvando ? (
-                  <span className="flex items-center gap-2">
-                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                    </svg>
-                    Salvando...
-                  </span>
-                ) : modoEdicao ? 'Salvar' : 'Criar usuário'}
-              </BotaoPrimario>
+                <BotaoPrimario
+                  type="button"
+                  onClick={() => {
+                    if (ehUltimaAba) {
+                      submeterFormularioPorId('form-usuario')
+                    } else {
+                      aoAvancar()
+                    }
+                  }}
+                  disabled={salvando || (ehUltimaAba && !formularioValido)}
+                  title={ehUltimaAba ? tituloComAtalho(modoEdicao ? 'Salvar' : 'Criar usuário', teclaSalvar) : undefined}
+                >
+                  {ehUltimaAba ? (
+                    salvando ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                        </svg>
+                        Salvando...
+                      </span>
+                    ) : modoEdicao ? 'Salvar' : 'Criar usuário'
+                  ) : 'Próximo →'}
+                </BotaoPrimario>
+              </div>
             </div>
           </div>
         }

@@ -237,6 +237,39 @@ const PREFIXO_ERRO_POR_CAMPO: Record<string, string> = {
   cep: 'Endereço', logradouro: 'Endereço', numero: 'Endereço',
   bairro: 'Endereço', cidade: 'Endereço', estado: 'Endereço',
   codigoIbge: 'Endereço', enderecos: 'Endereço',
+  dadosBancarios: 'Dados Bancários',
+}
+
+const ROTULO_POR_ABA: Record<string, string> = {
+  identificacao: 'Identificação',
+  contato: 'Contato',
+  endereco: 'Endereço',
+  'dados-bancarios': 'Dados Bancários',
+}
+
+const CAMPOS_POR_ABA: Record<string, string[]> = {
+  identificacao: ['nome', 'documento'],
+  contato: ['email', 'telefone', 'contatos'],
+  endereco: ['cep', 'logradouro', 'numero', 'bairro', 'cidade', 'estado', 'codigoIbge', 'enderecos'],
+  'dados-bancarios': ['dadosBancarios'],
+}
+
+function gerarPendenciasDaAba(abaId: string, form: FormTransportadora): string[] {
+  const rotulo = ROTULO_POR_ABA[abaId]
+  return Object.entries(validarFormTransportadora(form))
+    .filter(([campo]) => PREFIXO_ERRO_POR_CAMPO[campo] === rotulo)
+    .map(([, mensagem]) => mensagem)
+    .filter((m): m is string => !!m)
+}
+
+function erroDadosBancariosTransp(dados: DadosBancarioForm[]): string | undefined {
+  for (const db of dados) {
+    const temAlgum = [db.apelido, db.banco, db.agencia, db.conta, db.pix, db.favorecido, db.documentoFavorecido].some((v) => v.trim().length > 0)
+    if (temAlgum && (!db.banco.trim() || !db.agencia.trim() || !db.conta.trim())) {
+      return 'contas parcialmente preenchidas devem ter banco, agência e conta'
+    }
+  }
+  return undefined
 }
 
 function validarFormTransportadora(form: FormTransportadora): ErrosDoForm {
@@ -298,6 +331,9 @@ function validarFormTransportadora(form: FormTransportadora): ErrosDoForm {
     if (!cidade.trim()) erros.cidade = 'cidade obrigatória'
     if (!estado.trim()) erros.estado = 'estado (UF) obrigatório'
   }
+
+  const erroDadosBancarios = erroDadosBancariosTransp(form.dadosBancarios)
+  if (erroDadosBancarios) erros.dadosBancarios = erroDadosBancarios
 
   return erros
 }
@@ -388,19 +424,21 @@ function ConteudoDaPaginaDeTransportadoras() {
   } | null>(null)
   const [camposTocados, setCamposTocados] = useState<Set<string>>(() => new Set())
   const [erroSalvar, setErroSalvar] = useState('')
+  const [errosDaAbaAtual, setErrosDaAbaAtual] = useState<string[]>([])
   const [tooltipAberto, setTooltipAberto] = useState<string | null>(null)
   const refBusca = useRef<HTMLInputElement>(null)
+
+  const idsAbas = ['identificacao', 'contato', 'endereco', 'dados-bancarios']
+  const indiceAbaAtiva = idsAbas.indexOf(abaAtiva)
+  const ehPrimeiraAba = indiceAbaAtiva === 0
+  const ehUltimaAba = indiceAbaAtiva === idsAbas.length - 1
 
   const teclaNovo = useTeclaDaAcao('novo')
   const teclaSalvar = useTeclaDaAcao('salvar')
   const teclaCancelar = useTeclaDaAcao('cancelar')
 
   function validarDadosBancariosTransp(dados: DadosBancarioForm[]): boolean {
-    for (const db of dados) {
-      const temAlgum = [db.apelido, db.banco, db.agencia, db.conta, db.pix, db.favorecido, db.documentoFavorecido].some((v) => v.trim().length > 0)
-      if (temAlgum && (!db.banco.trim() || !db.agencia.trim() || !db.conta.trim())) return false
-    }
-    return true
+    return !erroDadosBancariosTransp(dados)
   }
 
   const configAbas: ConfigDeAba[] = useMemo(() => [
@@ -446,7 +484,8 @@ function ConteudoDaPaginaDeTransportadoras() {
     },
   ], [])
 
-  const { statusDasAbas, validarTodasAsAbas, irParaAbaComErro, resetarStatus } = useValidacaoDeAbas(configAbas)
+  const { statusDasAbas, validarTodasAsAbas, irParaAbaComErro, resetarStatus, validarAba, abaLiberada } =
+    useValidacaoDeAbas(configAbas)
 
   const abasComStatus = [
     { id: 'identificacao', rotulo: 'Identificação', status: statusDasAbas['identificacao'] },
@@ -458,6 +497,9 @@ function ConteudoDaPaginaDeTransportadoras() {
   const errosForm = useMemo(() => validarFormTransportadora(form), [form])
   const documentoDuplicado = avisoDuplicidade?.tipo === 'transportadora_existente'
   const formularioValido = Object.keys(errosForm).length === 0 && !documentoDuplicado
+
+  const etapaAtualLiberada =
+    abaLiberada(abaAtiva) && !(abaAtiva === 'identificacao' && documentoDuplicado)
 
   useEffect(() => { if (modalAberto) validarTodasAsAbas() }, [form, modalAberto, validarTodasAsAbas])
 
@@ -549,6 +591,44 @@ function ConteudoDaPaginaDeTransportadoras() {
     return errosForm.documento
   }
 
+  const tocarCamposDaAba = useCallback((abaId: string) => {
+    const campos = CAMPOS_POR_ABA[abaId] ?? []
+    setCamposTocados((anterior) => {
+      const proximo = new Set(anterior)
+      for (const campo of campos) proximo.add(campo)
+      return proximo
+    })
+  }, [])
+
+  function aoAvancar() {
+    if (abaAtiva === 'identificacao' && documentoDuplicado) {
+      tocarCamposDaAba('identificacao')
+      setErrosDaAbaAtual([avisoDuplicidade?.mensagem ?? 'Documento já cadastrado'])
+      return
+    }
+
+    const ok = validarAba(abaAtiva)
+    if (!ok) {
+      tocarCamposDaAba(abaAtiva)
+      setErrosDaAbaAtual(gerarPendenciasDaAba(abaAtiva, form))
+      return
+    }
+
+    setErrosDaAbaAtual([])
+    setAbaAtiva((atual) => {
+      const i = idsAbas.indexOf(atual)
+      return i >= 0 && i < idsAbas.length - 1 ? idsAbas[i + 1] : atual
+    })
+  }
+
+  function irParaAbaAnterior() {
+    setErrosDaAbaAtual([])
+    setAbaAtiva((atual) => {
+      const i = idsAbas.indexOf(atual)
+      return i > 0 ? idsAbas[i - 1] : atual
+    })
+  }
+
   useEffect(() => {
     if (carregandoSessao || !estaAutenticado) return
     carregarTransportadoras()
@@ -579,6 +659,7 @@ function ConteudoDaPaginaDeTransportadoras() {
     setAbaAtiva('identificacao')
     setMensagemDeErro('')
     setErroSalvar('')
+    setErrosDaAbaAtual([])
     setCamposTocados(new Set())
     setAvisoDuplicidade(null)
     resetarStatus()
@@ -595,6 +676,7 @@ function ConteudoDaPaginaDeTransportadoras() {
     setAbaAtiva('identificacao')
     setMensagemDeErro('')
     setErroSalvar('')
+    setErrosDaAbaAtual([])
     setCamposTocados(new Set())
     setAvisoDuplicidade(null)
     resetarStatus()
@@ -606,6 +688,7 @@ function ConteudoDaPaginaDeTransportadoras() {
     setModalAberto(false)
     setMensagemDeErro('')
     setErroSalvar('')
+    setErrosDaAbaAtual([])
     setCamposTocados(new Set())
     setAvisoDuplicidade(null)
     resetarStatus()
@@ -782,37 +865,75 @@ function ConteudoDaPaginaDeTransportadoras() {
         titulo={modoEdicao ? `Editar transportadora: ${form.nome}` : 'Nova transportadora'}
         largura="2xl"
         rodape={
-          <div className="flex w-full items-center justify-between gap-2">
-            {erroSalvar ? <p className="text-sm text-destructive">{erroSalvar}</p> : <span />}
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={solicitarFechar}
-                disabled={salvando}
-                title={tituloComAtalho('Cancelar', teclaCancelar)}
-              >
-                Cancelar
-              </Button>
-              <BotaoPrimario
-                form="form-transportadora"
-                type="submit"
-                disabled={salvando || !formularioValido}
-                title={tituloComAtalho(
-                  modoEdicao ? 'Salvar' : 'Cadastrar transportadora',
-                  teclaSalvar
+          <div className="flex w-full flex-col gap-2">
+            {errosDaAbaAtual.length > 0 && (
+              <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <ul className="space-y-0.5">
+                  {errosDaAbaAtual.map((erro, i) => (
+                    <li key={i} className="flex items-start gap-1">
+                      <span className="mt-0.5 shrink-0">•</span>
+                      <span>{erro}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {!etapaAtualLiberada && !ehUltimaAba && errosDaAbaAtual.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                Preencha os campos obrigatórios desta etapa para continuar
+              </p>
+            )}
+            <div className="flex items-center justify-between gap-2">
+              {erroSalvar ? (
+                <p className="text-sm text-destructive">{erroSalvar}</p>
+              ) : (
+                <span />
+              )}
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={solicitarFechar}
+                  disabled={salvando}
+                  title={tituloComAtalho('Cancelar', teclaCancelar)}
+                >
+                  Cancelar
+                </Button>
+                {!ehPrimeiraAba && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={irParaAbaAnterior}
+                    disabled={salvando}
+                  >
+                    ← Anterior
+                  </Button>
                 )}
-              >
-                {salvando ? (
-                  <span className="flex items-center gap-2">
-                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                    </svg>
-                    Salvando...
-                  </span>
-                ) : modoEdicao ? 'Salvar' : 'Cadastrar transportadora'}
-              </BotaoPrimario>
+                <BotaoPrimario
+                  type="button"
+                  onClick={() => {
+                    if (ehUltimaAba) {
+                      submeterFormularioPorId('form-transportadora')
+                    } else {
+                      aoAvancar()
+                    }
+                  }}
+                  disabled={salvando || (ehUltimaAba && !formularioValido)}
+                  title={ehUltimaAba ? tituloComAtalho(modoEdicao ? 'Salvar' : 'Cadastrar transportadora', teclaSalvar) : undefined}
+                >
+                  {ehUltimaAba ? (
+                    salvando ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                        </svg>
+                        Salvando...
+                      </span>
+                    ) : modoEdicao ? 'Salvar' : 'Cadastrar transportadora'
+                  ) : 'Próximo →'}
+                </BotaoPrimario>
+              </div>
             </div>
           </div>
         }
