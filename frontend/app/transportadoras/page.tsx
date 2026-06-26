@@ -37,7 +37,7 @@ import {
   validarCpf,
   validarCnpj,
 } from '@/lib/documentos'
-import { buscarDadosCnpj } from '@/lib/brasil-api'
+import { useConsultaDocumento } from '@/hooks/use-consulta-documento'
 import { ListaContatos, type ContatoForm } from '@/components/clientes/lista-contatos'
 import { ListaEnderecos, type EnderecoForm } from '@/components/clientes/lista-enderecos'
 import { ListaDadosBancarios, DADOS_BANCARIO_VAZIO, type DadosBancarioForm } from '@/components/clientes/lista-dados-bancarios'
@@ -380,12 +380,12 @@ function ConteudoDaPaginaDeTransportadoras() {
   )
   const formRef = useRef(form)
   formRef.current = form
+  const modoEdicaoRef = useRef(modoEdicao)
+  modoEdicaoRef.current = modoEdicao
 
-  const [verificandoDocumento, setVerificandoDocumento] = useState(false)
   const [avisoDuplicidade, setAvisoDuplicidade] = useState<{
     tipo: 'transportadora_existente' | 'pessoa_sem_papel'; transportadoraId?: string; mensagem: string
   } | null>(null)
-  const [carregandoBrasilApi, setCarregandoBrasilApi] = useState(false)
   const [camposTocados, setCamposTocados] = useState<Set<string>>(() => new Set())
   const [erroSalvar, setErroSalvar] = useState('')
   const [tooltipAberto, setTooltipAberto] = useState<string | null>(null)
@@ -468,6 +468,76 @@ function ConteudoDaPaginaDeTransportadoras() {
     })
   }, [])
 
+  const {
+    aoSairDocumento,
+    carregandoBrasilApi,
+    verificandoDocumento,
+    resetarConsulta,
+  } = useConsultaDocumento({
+    getForm: () => ({ documento: formRef.current.documento, tipo: formRef.current.tipo }),
+    getModoEdicao: () => modoEdicaoRef.current,
+    endpointPorDocumento: '/transportadoras/por-documento',
+    tocarCampo,
+    aoAplicarDadosCnpj: (dados) => {
+      setForm((f) => ({
+        ...f,
+        nome: mesclarTexto(f.nome, dados.nome),
+        nomeFantasia: mesclarTexto(f.nomeFantasia, dados.nomeFantasia),
+        cnae: mesclarTexto(f.cnae, dados.cnae),
+        dataFundacao: mesclarTexto(f.dataFundacao, dados.dataFundacao),
+        email: mesclarTexto(f.email, dados.email),
+        telefone: mesclarTexto(f.telefone, dados.telefone),
+        celular: mesclarTexto(f.celular, dados.celular),
+        simplesNacional: mesclarBoolean(f.simplesNacional, dados.simplesNacional),
+        cep: mesclarTexto(f.cep, mascaraCep(dados.cep)),
+        logradouro: mesclarTexto(f.logradouro, dados.logradouro),
+        numero: mesclarTexto(f.numero, dados.numero),
+        complemento: mesclarTexto(f.complemento, dados.complemento),
+        bairro: mesclarTexto(f.bairro, dados.bairro),
+        cidade: mesclarTexto(f.cidade, dados.cidade),
+        estado: mesclarTexto(f.estado, dados.estado),
+        codigoIbge: mesclarTexto(f.codigoIbge, dados.codigoIbge),
+      }))
+    },
+    aoProcessarResposta: (data) => {
+      if (!data.encontrado) return
+      const tipo = formRef.current.tipo
+      if (data.temPapelTransportadora) {
+        setAvisoDuplicidade({ tipo: 'transportadora_existente', transportadoraId: data.pessoa?.id, mensagem: `Documento já cadastrado como transportadora: ${data.pessoa?.nome}` })
+      } else {
+        setAvisoDuplicidade({ tipo: 'pessoa_sem_papel', mensagem: `Pessoa encontrada no sistema (${(data.papeis as string[])?.join(', ')}): ${data.pessoa?.nome}. Dados pré-preenchidos.` })
+        if (data.pessoa) {
+          const importado = transportadoraParaForm({ ...(data.pessoa as Transportadora), tipo } as Transportadora)
+          setForm((f) => ({
+            ...f,
+            nome: mesclarTexto(f.nome, importado.nome),
+            nomeFantasia: mesclarTexto(f.nomeFantasia, importado.nomeFantasia),
+            cnae: mesclarTexto(f.cnae, importado.cnae),
+            dataFundacao: mesclarTexto(f.dataFundacao, importado.dataFundacao),
+            ie: mesclarTexto(f.ie, importado.ie),
+            im: mesclarTexto(f.im, importado.im),
+            simplesNacional: mesclarBoolean(f.simplesNacional, importado.simplesNacional),
+            email: mesclarTexto(f.email, importado.email),
+            telefone: mesclarTexto(f.telefone, importado.telefone),
+            celular: mesclarTexto(f.celular, importado.celular),
+            celularWhatsapp: mesclarBoolean(f.celularWhatsapp, importado.celularWhatsapp),
+            cep: mesclarTexto(f.cep, importado.cep),
+            logradouro: mesclarTexto(f.logradouro, importado.logradouro),
+            numero: mesclarTexto(f.numero, importado.numero),
+            complemento: mesclarTexto(f.complemento, importado.complemento),
+            bairro: mesclarTexto(f.bairro, importado.bairro),
+            cidade: mesclarTexto(f.cidade, importado.cidade),
+            estado: mesclarTexto(f.estado, importado.estado),
+            codigoIbge: mesclarTexto(f.codigoIbge, importado.codigoIbge),
+            contatos: mesclarArray(f.contatos, importado.contatos),
+            enderecos: mesclarArray(f.enderecos, importado.enderecos),
+            dadosBancarios: mesclarArray(f.dadosBancarios, importado.dadosBancarios),
+          }))
+        }
+      }
+    },
+  })
+
   function erroVisivel(campo: string): string | undefined {
     if (!camposTocados.has(campo)) return undefined
     return errosForm[campo as keyof ErrosDoForm]
@@ -512,6 +582,7 @@ function ConteudoDaPaginaDeTransportadoras() {
     setCamposTocados(new Set())
     setAvisoDuplicidade(null)
     resetarStatus()
+    resetarConsulta()
     setModalAberto(true)
   }
 
@@ -527,6 +598,7 @@ function ConteudoDaPaginaDeTransportadoras() {
     setCamposTocados(new Set())
     setAvisoDuplicidade(null)
     resetarStatus()
+    resetarConsulta()
     setModalAberto(true)
   }
 
@@ -537,7 +609,8 @@ function ConteudoDaPaginaDeTransportadoras() {
     setCamposTocados(new Set())
     setAvisoDuplicidade(null)
     resetarStatus()
-  }, [resetarStatus])
+    resetarConsulta()
+  }, [resetarStatus, resetarConsulta])
 
   const { solicitarFechar, dialogoConfirmacao } = useConfirmarSaida(
     form,
@@ -581,84 +654,6 @@ function ConteudoDaPaginaDeTransportadoras() {
       documento: mascaraPorTipo(valor, f.tipo),
     }))
     setAvisoDuplicidade(null)
-  }
-
-  async function aoSairDocumento() {
-    tocarCampo('documento')
-    if (modoEdicao) return
-    const nums = form.documento.replace(/\D/g, '')
-    if (form.tipo === 'PF') {
-      if (nums.length !== 11 || !validarCpf(nums)) return
-    } else {
-      if (nums.length !== 14 || !validarCnpj(nums)) return
-    }
-
-    if (form.tipo === 'PJ') {
-      setCarregandoBrasilApi(true)
-      const dados = await buscarDadosCnpj(nums)
-      setCarregandoBrasilApi(false)
-      if (dados) {
-        setForm((f) => ({
-          ...f,
-          nome: mesclarTexto(f.nome, dados.nome),
-          nomeFantasia: mesclarTexto(f.nomeFantasia, dados.nomeFantasia),
-          cnae: mesclarTexto(f.cnae, dados.cnae),
-          dataFundacao: mesclarTexto(f.dataFundacao, dados.dataFundacao),
-          email: mesclarTexto(f.email, dados.email),
-          telefone: mesclarTexto(f.telefone, dados.telefone),
-          celular: mesclarTexto(f.celular, dados.celular),
-          simplesNacional: mesclarBoolean(f.simplesNacional, dados.simplesNacional),
-          cep: mesclarTexto(f.cep, mascaraCep(dados.cep)),
-          logradouro: mesclarTexto(f.logradouro, dados.logradouro),
-          numero: mesclarTexto(f.numero, dados.numero),
-          complemento: mesclarTexto(f.complemento, dados.complemento),
-          bairro: mesclarTexto(f.bairro, dados.bairro),
-          cidade: mesclarTexto(f.cidade, dados.cidade),
-          estado: mesclarTexto(f.estado, dados.estado),
-          codigoIbge: mesclarTexto(f.codigoIbge, dados.codigoIbge),
-        }))
-      }
-    }
-
-    setVerificandoDocumento(true)
-    try {
-      const { data } = await clienteHttp.get(`/transportadoras/por-documento/${nums}`)
-      if (data.encontrado) {
-        if (data.temPapelTransportadora) {
-          setAvisoDuplicidade({ tipo: 'transportadora_existente', transportadoraId: data.pessoa?.id, mensagem: `Documento já cadastrado como transportadora: ${data.pessoa?.nome}` })
-        } else {
-          setAvisoDuplicidade({ tipo: 'pessoa_sem_papel', mensagem: `Pessoa encontrada no sistema (${data.papeis.join(', ')}): ${data.pessoa?.nome}. Dados pré-preenchidos.` })
-          if (data.pessoa) {
-            const importado = transportadoraParaForm({ ...data.pessoa, tipo: form.tipo } as Transportadora)
-            setForm((f) => ({
-              ...f,
-              nome: mesclarTexto(f.nome, importado.nome),
-              nomeFantasia: mesclarTexto(f.nomeFantasia, importado.nomeFantasia),
-              cnae: mesclarTexto(f.cnae, importado.cnae),
-              dataFundacao: mesclarTexto(f.dataFundacao, importado.dataFundacao),
-              ie: mesclarTexto(f.ie, importado.ie),
-              im: mesclarTexto(f.im, importado.im),
-              simplesNacional: mesclarBoolean(f.simplesNacional, importado.simplesNacional),
-              email: mesclarTexto(f.email, importado.email),
-              telefone: mesclarTexto(f.telefone, importado.telefone),
-              celular: mesclarTexto(f.celular, importado.celular),
-              celularWhatsapp: mesclarBoolean(f.celularWhatsapp, importado.celularWhatsapp),
-              cep: mesclarTexto(f.cep, importado.cep),
-              logradouro: mesclarTexto(f.logradouro, importado.logradouro),
-              numero: mesclarTexto(f.numero, importado.numero),
-              complemento: mesclarTexto(f.complemento, importado.complemento),
-              bairro: mesclarTexto(f.bairro, importado.bairro),
-              cidade: mesclarTexto(f.cidade, importado.cidade),
-              estado: mesclarTexto(f.estado, importado.estado),
-              codigoIbge: mesclarTexto(f.codigoIbge, importado.codigoIbge),
-              contatos: mesclarArray(f.contatos, importado.contatos),
-              enderecos: mesclarArray(f.enderecos, importado.enderecos),
-              dadosBancarios: mesclarArray(f.dadosBancarios, importado.dadosBancarios),
-            }))
-          }
-        }
-      }
-    } catch { /* ignora */ } finally { setVerificandoDocumento(false) }
   }
 
   async function buscarCep(cep: string) {

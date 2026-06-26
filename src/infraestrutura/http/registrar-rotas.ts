@@ -16,6 +16,7 @@ import { rotasDeConfiguracoes } from '../../modulos/configuracoes/rotas-configur
 import { rotasDeCatalogos } from '../../modulos/catalogos/rotas-catalogos.js'
 import { rotasDeAssinaturaZapsign } from '../../modulos/assinatura-zapsign/rotas-assinatura-zapsign.js'
 import { rotasDeGruposEconomicos } from '../../modulos/grupos-economicos/rotas-grupos-economicos.js'
+import { rotasDeIntegracoes } from '../../modulos/integracoes/rotas-integracoes.js'
 
 /**
  * Conecta cada módulo às suas rotas HTTP.
@@ -35,4 +36,5 @@ export async function registrarRotas(aplicacao: FastifyInstance): Promise<void> 
   await aplicacao.register(rotasDeCatalogos, { prefix: '' })
   await aplicacao.register(rotasDeAssinaturaZapsign, { prefix: '/zapsign' })
   await aplicacao.register(rotasDeGruposEconomicos, { prefix: '/grupos-economicos' })
+  await aplicacao.register(rotasDeIntegracoes, { prefix: '/integracoes' })
 }
