@@ -526,6 +526,7 @@ function ConteudoDaPaginaDeClientes() {
 
   const [modalAberto, setModalAberto] = useState(false)
   const [modoEdicao, setModoEdicao] = useState(false)
+  const [modoVisualizacao, setModoVisualizacao] = useState(false)
   const [idEmEdicao, setIdEmEdicao] = useState('')
   const [abaAtiva, setAbaAtiva] = useState('identificacao')
   const [salvando, setSalvando] = useState(false)
@@ -537,6 +538,10 @@ function ConteudoDaPaginaDeClientes() {
   formRef.current = form
   const modoEdicaoRef = useRef(modoEdicao)
   modoEdicaoRef.current = modoEdicao
+  const modoVisualizacaoRef = useRef(modoVisualizacao)
+  modoVisualizacaoRef.current = modoVisualizacao
+
+  const somenteLeitura = modoVisualizacao
 
   // Estado da busca por documento
   const [avisoDuplicidade, setAvisoDuplicidade] = useState<{
@@ -643,7 +648,17 @@ function ConteudoDaPaginaDeClientes() {
     abaLiberada(abaAtiva) && !(abaAtiva === 'identificacao' && documentoDuplicado)
 
   function abaPermitida(id: string): boolean {
+    if (modoVisualizacao) return true
     return abasVisitadas.has(id)
+  }
+
+  function clientePermiteEdicao(cliente: Cliente): boolean {
+    return (
+      podeAprovar ||
+      cliente.statusAprovacao === 'pendente_aprovacao' ||
+      cliente.statusAprovacao === 'reprovado' ||
+      !cliente.statusAprovacao
+    )
   }
 
   const tocarCamposDaAba = useCallback((abaId: string) => {
@@ -676,6 +691,7 @@ function ConteudoDaPaginaDeClientes() {
   } = useConsultaDocumento({
     getForm: () => ({ documento: formRef.current.documento, tipo: formRef.current.tipo }),
     getModoEdicao: () => modoEdicaoRef.current,
+    getSomenteLeitura: () => modoVisualizacaoRef.current,
     endpointPorDocumento: '/clientes/por-documento',
     tocarCampo,
     aoAplicarDadosCnpj: (dados) => {
@@ -783,6 +799,7 @@ function ConteudoDaPaginaDeClientes() {
     setForm(vazio)
     setFormInicial(vazio)
     setModoEdicao(false)
+    setModoVisualizacao(false)
     setIdEmEdicao('')
     setAbaAtiva('identificacao')
     setMensagemDeErro('')
@@ -807,6 +824,7 @@ function ConteudoDaPaginaDeClientes() {
     setForm(f)
     setFormInicial(clonarFormulario(f))
     setModoEdicao(true)
+    setModoVisualizacao(false)
     setIdEmEdicao(cliente.id)
     setAbaAtiva('identificacao')
     setMensagemDeErro('')
@@ -820,8 +838,42 @@ function ConteudoDaPaginaDeClientes() {
     setModalAberto(true)
   }
 
+  function abrirModalVisualizacao(cliente: Cliente) {
+    const f = clienteParaForm(cliente)
+    setForm(f)
+    setFormInicial(clonarFormulario(f))
+    setModoEdicao(false)
+    setModoVisualizacao(true)
+    setIdEmEdicao(cliente.id)
+    setAbaAtiva('identificacao')
+    setMensagemDeErro('')
+    setErroSalvar('')
+    setCamposTocados(new Set())
+    setAvisoDuplicidade(null)
+    setAbasVisitadas(new Set(['identificacao', 'contato', 'endereco']))
+    setErrosDaAbaAtual([])
+    resetarStatus()
+    resetarConsulta()
+    setModalAberto(true)
+  }
+
+  function alternarParaEdicao() {
+    if (!podeEditar) return
+    const cliente = listaDeClientes.find((c) => c.id === idEmEdicao)
+    if (cliente && !clientePermiteEdicao(cliente)) {
+      setMensagemDeErro('Cadastro não pode ser editado neste status.')
+      return
+    }
+    setModoVisualizacao(false)
+    setModoEdicao(true)
+    setFormInicial(clonarFormulario(form))
+    setErrosDaAbaAtual([])
+    resetarConsulta()
+  }
+
   const fecharModal = useCallback(() => {
     setModalAberto(false)
+    setModoVisualizacao(false)
     setMensagemDeErro('')
     setErroSalvar('')
     setCamposTocados(new Set())
@@ -845,6 +897,13 @@ function ConteudoDaPaginaDeClientes() {
   }
 
   function aoAvancar() {
+    if (modoVisualizacao) {
+      setErrosDaAbaAtual([])
+      const proxima = proximaAba(abaAtiva)
+      setAbaAtiva(proxima)
+      return
+    }
+
     if (abaAtiva === 'identificacao' && documentoDuplicado) {
       tocarCamposDaAba('identificacao')
       setErrosDaAbaAtual([avisoDuplicidade?.mensagem ?? 'Documento já cadastrado'])
@@ -1101,7 +1160,8 @@ function ConteudoDaPaginaDeClientes() {
         modalAberto &&
         abaAtiva === 'endereco' &&
         formularioValido &&
-        !qualquerOperacaoAtiva,
+        !qualquerOperacaoAtiva &&
+        !modoVisualizacao,
       cancelar: modalAberto && !qualquerOperacaoAtiva,
     }
   )
@@ -1145,14 +1205,47 @@ function ConteudoDaPaginaDeClientes() {
       <Modal
         aberto={modalAberto}
         aoFechar={solicitarFechar}
-        titulo={modoEdicao ? `Editar: ${form.nome || 'cliente'}` : 'Novo cliente'}
+        titulo={
+          modoVisualizacao
+            ? `Visualizar cliente: ${form.nome || 'cliente'}`
+            : modoEdicao
+              ? `Editar: ${form.nome || 'cliente'}`
+              : 'Novo cliente'
+        }
         descricao={
-          modoEdicao
-            ? 'Edite os dados e clique em Salvar'
-            : 'Preencha os dados para cadastrar um cliente'
+          modoVisualizacao
+            ? 'Consulta dos dados cadastrados (somente leitura)'
+            : modoEdicao
+              ? 'Edite os dados e clique em Salvar'
+              : 'Preencha os dados para cadastrar um cliente'
         }
         largura="2xl"
         rodape={
+          modoVisualizacao ? (
+            <div className="flex items-center justify-end gap-2">
+              <Button type="button" variant="outline" onClick={fecharModal}>
+                Fechar
+              </Button>
+              {abaAtiva !== 'identificacao' && (
+                <Button type="button" variant="outline" onClick={aoVoltar}>
+                  ← Anterior
+                </Button>
+              )}
+              {abaAtiva !== 'endereco' && (
+                <Button type="button" variant="outline" onClick={aoAvancar}>
+                  Próximo →
+                </Button>
+              )}
+              {podeEditar && (() => {
+                const cliente = listaDeClientes.find((c) => c.id === idEmEdicao)
+                return !cliente || clientePermiteEdicao(cliente)
+              })() && (
+                <BotaoPrimario type="button" onClick={alternarParaEdicao}>
+                  Editar
+                </BotaoPrimario>
+              )}
+            </div>
+          ) : (
           <div className="space-y-3">
             {(errosDaAbaAtual.length > 0 || erroSalvar) && (
               <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -1253,10 +1346,11 @@ function ConteudoDaPaginaDeClientes() {
               </div>
             </div>
           </div>
+          )
         }
       >
         {/* Banner de pendências — só no modo edição, desaparece ao preencher */}
-        {modoEdicao && pendenciasDoForm.length > 0 && (
+        {modoEdicao && !modoVisualizacao && pendenciasDoForm.length > 0 && (
           <div className="mb-4 rounded-md border border-amber-400/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-700 dark:text-amber-400">
             <p className="mb-1.5 font-medium">
               ⚠ Cadastro incompleto — este cliente não pode ser usado em vendas ou NF-e:
@@ -1272,7 +1366,7 @@ function ConteudoDaPaginaDeClientes() {
           </div>
         )}
 
-        {avisoDuplicidade && (
+        {!modoVisualizacao && avisoDuplicidade && (
           <div
             className={`mb-4 flex items-start justify-between gap-3 rounded-md px-3 py-2 text-sm ${
               avisoDuplicidade.tipo === 'cliente_existente'
@@ -1316,6 +1410,7 @@ function ConteudoDaPaginaDeClientes() {
             }
           }}
         >
+          <fieldset disabled={somenteLeitura} className="m-0 min-w-0 border-0 p-0">
           {/* ── Aba 1: Identificação ──────────────────────────────────────── */}
           {abaAtiva === 'identificacao' && (
             <div className="space-y-5">
@@ -1371,7 +1466,7 @@ function ConteudoDaPaginaDeClientes() {
                     onBlur={aoSairDocumento}
                     placeholder={form.tipo === 'PF' ? '000.000.000-00' : '00.000.000/0000-00'}
                     maxLength={form.tipo === 'PF' ? 14 : 18}
-                    disabled={modoEdicao}
+                    disabled={modoEdicao || somenteLeitura}
                     aria-invalid={!!erroDocumentoVisivel()}
                   />
                   {(verificandoDocumento || carregandoBrasilApi) && (
@@ -1550,6 +1645,7 @@ function ConteudoDaPaginaDeClientes() {
                     set('contatos', v)
                   }}
                   mensagemDeErro={erroVisivel('contatos')}
+                  disabled={somenteLeitura}
                 />
               ) : (
                 <>
@@ -1585,23 +1681,25 @@ function ConteudoDaPaginaDeClientes() {
                 </>
               )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  if (form.contatos.length > 0) {
-                    set('contatos', [])
-                  } else {
-                    // Migrar campos simples para array
-                    const inicial: ContatoForm[] = []
-                    if (form.email) inicial.push({ tipo: 'email', valor: form.email, descricao: '', whatsapp: false, principal: true })
-                    if (form.telefone) inicial.push({ tipo: 'telefone', valor: form.telefone, descricao: '', whatsapp: form.celularWhatsapp, principal: true })
-                    set('contatos', inicial.length > 0 ? inicial : [{ tipo: 'email', valor: '', descricao: '', whatsapp: false, principal: true }])
-                  }
-                }}
-                className="text-xs text-primary underline"
-              >
-                {form.contatos.length > 0 ? '← Modo simples' : '+ Múltiplos contatos'}
-              </button>
+              {!somenteLeitura && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (form.contatos.length > 0) {
+                      set('contatos', [])
+                    } else {
+                      // Migrar campos simples para array
+                      const inicial: ContatoForm[] = []
+                      if (form.email) inicial.push({ tipo: 'email', valor: form.email, descricao: '', whatsapp: false, principal: true })
+                      if (form.telefone) inicial.push({ tipo: 'telefone', valor: form.telefone, descricao: '', whatsapp: form.celularWhatsapp, principal: true })
+                      set('contatos', inicial.length > 0 ? inicial : [{ tipo: 'email', valor: '', descricao: '', whatsapp: false, principal: true }])
+                    }
+                  }}
+                  className="text-xs text-primary underline"
+                >
+                  {form.contatos.length > 0 ? '← Modo simples' : '+ Múltiplos contatos'}
+                </button>
+              )}
 
               <div className="space-y-1">
                 <label className="text-sm font-medium leading-none">Observações</label>
@@ -1628,6 +1726,7 @@ function ConteudoDaPaginaDeClientes() {
                     set('enderecos', v)
                   }}
                   mensagemDeErro={erroVisivel('enderecos')}
+                  disabled={somenteLeitura}
                 />
               ) : (
                 <>
@@ -1745,34 +1844,37 @@ function ConteudoDaPaginaDeClientes() {
                 </>
               )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  if (form.enderecos.length > 0) {
-                    set('enderecos', [])
-                  } else {
-                    // Migrar campos simples para array
-                    const principal: EnderecoForm = {
-                      tipo: 'principal',
-                      apelido: '',
-                      cep: form.cep,
-                      logradouro: form.logradouro,
-                      numero: form.numero,
-                      complemento: form.complemento,
-                      bairro: form.bairro,
-                      cidade: form.cidade,
-                      estado: form.estado,
-                      codigoIbge: form.codigoIbge,
+              {!somenteLeitura && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (form.enderecos.length > 0) {
+                      set('enderecos', [])
+                    } else {
+                      // Migrar campos simples para array
+                      const principal: EnderecoForm = {
+                        tipo: 'principal',
+                        apelido: '',
+                        cep: form.cep,
+                        logradouro: form.logradouro,
+                        numero: form.numero,
+                        complemento: form.complemento,
+                        bairro: form.bairro,
+                        cidade: form.cidade,
+                        estado: form.estado,
+                        codigoIbge: form.codigoIbge,
+                      }
+                      set('enderecos', [principal])
                     }
-                    set('enderecos', [principal])
-                  }
-                }}
-                className="text-xs text-primary underline"
-              >
-                {form.enderecos.length > 0 ? '← Modo simples' : '+ Múltiplos endereços'}
-              </button>
+                  }}
+                  className="text-xs text-primary underline"
+                >
+                  {form.enderecos.length > 0 ? '← Modo simples' : '+ Múltiplos endereços'}
+                </button>
+              )}
             </div>
           )}
+          </fieldset>
         </form>
       </Modal>
 
@@ -1834,9 +1936,7 @@ function ConteudoDaPaginaDeClientes() {
                 <th className="px-4 py-3 text-left font-medium">Aprovação</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
                 <th className="px-4 py-3 text-left font-medium">Cadastro</th>
-                {(podeEditar || podeDesativar) && (
-                  <th className="px-4 py-3 text-left font-medium">Ações</th>
-                )}
+                <th className="px-4 py-3 text-left font-medium">Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -1844,7 +1944,7 @@ function ConteudoDaPaginaDeClientes() {
                 <>
                   {[1, 2, 3].map((i) => (
                     <tr key={i} className="border-b border-border">
-                      {[1, 2, 3, 4, 5, 6, 7].map((j) => (
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((j) => (
                         <td key={j} className="px-4 py-3">
                           <div className="h-4 animate-pulse rounded bg-muted" />
                         </td>
@@ -1937,14 +2037,18 @@ function ConteudoDaPaginaDeClientes() {
                         </span>
                       )}
                     </td>
-                    {(podeEditar || podeDesativar) && (
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
-                          {podeEditar &&
-                            (podeAprovar ||
-                              cliente.statusAprovacao === 'pendente_aprovacao' ||
-                              cliente.statusAprovacao === 'reprovado' ||
-                              !cliente.statusAprovacao) && (
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={estaAlterandoEsseLine}
+                          onClick={() => abrirModalVisualizacao(cliente)}
+                        >
+                          Visualizar
+                        </Button>
+                        {podeEditar && clientePermiteEdicao(cliente) && (
                             <Button
                               type="button"
                               variant="outline"
@@ -1975,9 +2079,8 @@ function ConteudoDaPaginaDeClientes() {
                               )}
                             </Button>
                           )}
-                        </div>
-                      </td>
-                    )}
+                      </div>
+                    </td>
                   </tr>
                 )
               })}

@@ -27,6 +27,8 @@ type Params = {
   /** Lê o documento e tipo atuais do formulário sem causar stale closure. */
   getForm: () => { documento: string; tipo: 'PF' | 'PJ' }
   getModoEdicao: () => boolean
+  /** Quando true, não dispara BrasilAPI nem verificação de duplicidade (modo visualização). */
+  getSomenteLeitura?: () => boolean
   /** Ex.: '/clientes/por-documento' */
   endpointPorDocumento: string
   tocarCampo: (campo: string) => void
@@ -62,7 +64,7 @@ export function useConsultaDocumento(params: Params): Retorno {
     const p = paramsRef.current
 
     p.tocarCampo('documento')
-    if (p.getModoEdicao()) return
+    if (p.getModoEdicao() || p.getSomenteLeitura?.()) return
     // Mutex: se já está consultando, ignora o 2º blur
     if (consultandoRef.current) return
 

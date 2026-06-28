@@ -560,6 +560,7 @@ function ConteudoDaPaginaDeFornecedores() {
 
   const [modalAberto, setModalAberto] = useState(false)
   const [modoEdicao, setModoEdicao] = useState(false)
+  const [modoVisualizacao, setModoVisualizacao] = useState(false)
   const [idEmEdicao, setIdEmEdicao] = useState('')
   const [abaAtiva, setAbaAtiva] = useState('identificacao')
   const [errosDaAbaAtual, setErrosDaAbaAtual] = useState<string[]>([])
@@ -577,6 +578,10 @@ function ConteudoDaPaginaDeFornecedores() {
   formRef.current = form
   const modoEdicaoRef = useRef(modoEdicao)
   modoEdicaoRef.current = modoEdicao
+  const modoVisualizacaoRef = useRef(modoVisualizacao)
+  modoVisualizacaoRef.current = modoVisualizacao
+
+  const somenteLeitura = modoVisualizacao
 
   const [avisoDuplicidade, setAvisoDuplicidade] = useState<{
     tipo: 'fornecedor_existente' | 'pessoa_sem_papel'
@@ -690,6 +695,7 @@ function ConteudoDaPaginaDeFornecedores() {
   } = useConsultaDocumento({
     getForm: () => ({ documento: formRef.current.documento, tipo: formRef.current.tipo }),
     getModoEdicao: () => modoEdicaoRef.current,
+    getSomenteLeitura: () => modoVisualizacaoRef.current,
     endpointPorDocumento: '/fornecedores/por-documento',
     tocarCampo,
     aoAplicarDadosCnpj: (dados) => {
@@ -785,6 +791,15 @@ function ConteudoDaPaginaDeFornecedores() {
   }
 
   function aoAvancar() {
+    if (modoVisualizacao) {
+      setErrosDaAbaAtual([])
+      setAbaAtiva((atual) => {
+        const i = idsAbas.indexOf(atual)
+        return i >= 0 && i < idsAbas.length - 1 ? idsAbas[i + 1] : atual
+      })
+      return
+    }
+
     if (abaAtiva === 'identificacao' && documentoDuplicado) {
       tocarCamposDaAba('identificacao')
       setErrosDaAbaAtual([avisoDuplicidade?.mensagem ?? 'Documento já cadastrado'])
@@ -858,6 +873,7 @@ function ConteudoDaPaginaDeFornecedores() {
     setForm(vazio)
     setFormInicial(vazio)
     setModoEdicao(false)
+    setModoVisualizacao(false)
     setIdEmEdicao('')
     setAbaAtiva('identificacao')
     setMensagemDeErro('')
@@ -875,6 +891,7 @@ function ConteudoDaPaginaDeFornecedores() {
     setForm(formEdicao)
     setFormInicial(clonarFormulario(formEdicao))
     setModoEdicao(true)
+    setModoVisualizacao(false)
     setIdEmEdicao(f.id)
     setAbaAtiva('identificacao')
     setMensagemDeErro('')
@@ -887,8 +904,36 @@ function ConteudoDaPaginaDeFornecedores() {
     setModalAberto(true)
   }
 
+  function abrirModalVisualizacao(f: Fornecedor) {
+    const formView = fornecedorParaForm(f)
+    setForm(formView)
+    setFormInicial(clonarFormulario(formView))
+    setModoEdicao(false)
+    setModoVisualizacao(true)
+    setIdEmEdicao(f.id)
+    setAbaAtiva('identificacao')
+    setMensagemDeErro('')
+    setErroSalvar('')
+    setCamposTocados(new Set())
+    setAvisoDuplicidade(null)
+    setErrosDaAbaAtual([])
+    resetarStatus()
+    resetarConsulta()
+    setModalAberto(true)
+  }
+
+  function alternarParaEdicao() {
+    if (!podeEditar) return
+    setModoVisualizacao(false)
+    setModoEdicao(true)
+    setFormInicial(clonarFormulario(form))
+    setErrosDaAbaAtual([])
+    resetarConsulta()
+  }
+
   const fecharModal = useCallback(() => {
     setModalAberto(false)
+    setModoVisualizacao(false)
     setMensagemDeErro('')
     setErroSalvar('')
     setCamposTocados(new Set())
@@ -1117,7 +1162,7 @@ function ConteudoDaPaginaDeFornecedores() {
       buscar: !modalAberto,
       novo: podeCriar && !modalAberto,
       atualizar: !modalAberto && !carregandoLista,
-      salvar: modalAberto && formularioValido && !qualquerOperacaoAtiva,
+      salvar: modalAberto && formularioValido && !qualquerOperacaoAtiva && !modoVisualizacao,
       cancelar: modalAberto && !qualquerOperacaoAtiva,
     }
   )
@@ -1151,9 +1196,38 @@ function ConteudoDaPaginaDeFornecedores() {
       <Modal
         aberto={modalAberto}
         aoFechar={solicitarFechar}
-        titulo={modoEdicao ? `Editar fornecedor: ${form.nome}` : 'Novo fornecedor'}
+        titulo={
+          modoVisualizacao
+            ? `Visualizar fornecedor: ${form.nome}`
+            : modoEdicao
+              ? `Editar fornecedor: ${form.nome}`
+              : 'Novo fornecedor'
+        }
+        descricao={modoVisualizacao ? 'Consulta dos dados cadastrados (somente leitura)' : undefined}
         largura="2xl"
         rodape={
+          modoVisualizacao ? (
+            <div className="flex items-center justify-end gap-2">
+              <Button type="button" variant="outline" onClick={fecharModal}>
+                Fechar
+              </Button>
+              {!ehPrimeiraAba && (
+                <Button type="button" variant="outline" onClick={irParaAbaAnterior}>
+                  ← Anterior
+                </Button>
+              )}
+              {!ehUltimaAba && (
+                <Button type="button" variant="outline" onClick={aoAvancar}>
+                  Próximo →
+                </Button>
+              )}
+              {podeEditar && (
+                <BotaoPrimario type="button" onClick={alternarParaEdicao}>
+                  Editar
+                </BotaoPrimario>
+              )}
+            </div>
+          ) : (
           <div className="flex w-full flex-col gap-2">
             {errosDaAbaAtual.length > 0 && (
               <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -1225,10 +1299,10 @@ function ConteudoDaPaginaDeFornecedores() {
               </div>
             </div>
           </div>
+          )
         }
       >
-        {/* Aviso de duplicidade */}
-        {avisoDuplicidade && (
+        {!modoVisualizacao && avisoDuplicidade && (
           <div className={`mb-4 rounded-md px-3 py-2 text-sm ${
             avisoDuplicidade.tipo === 'fornecedor_existente'
               ? 'bg-destructive/10 text-destructive'
@@ -1245,7 +1319,7 @@ function ConteudoDaPaginaDeFornecedores() {
             <div className="absolute inset-0 z-10 rounded-md bg-background/60 backdrop-blur-[1px]" />
           )}
           <form id="form-fornecedor" onSubmit={aoSalvar}>
-
+            <fieldset disabled={somenteLeitura} className="m-0 min-w-0 border-0 p-0">
             {/* ── Aba 1: Identificação ─────────────────────────────────── */}
             {abaAtiva === 'identificacao' && (
               <div className="space-y-5">
@@ -1283,7 +1357,7 @@ function ConteudoDaPaginaDeFornecedores() {
                           onBlur={aoSairDocumento}
                           placeholder="00.000.000/0000-00"
                           maxLength={18}
-                          disabled={modoEdicao}
+                          disabled={modoEdicao || somenteLeitura}
                           aria-invalid={!!erroDocumentoVisivel()}
                         />
                         {(verificandoDocumento || carregandoBrasilApi) && (
@@ -1325,7 +1399,7 @@ function ConteudoDaPaginaDeFornecedores() {
                         onBlur={aoSairDocumento}
                         placeholder="000.000.000-00"
                         maxLength={14}
-                        disabled={modoEdicao}
+                        disabled={modoEdicao || somenteLeitura}
                         aria-invalid={!!erroDocumentoVisivel()}
                       />
                       {verificandoDocumento && (
@@ -1394,6 +1468,7 @@ function ConteudoDaPaginaDeFornecedores() {
                     contatos={form.contatos}
                     aoMudar={(v) => { tocarCampo('contatos'); set('contatos', v) }}
                     mensagemDeErro={erroVisivel('contatos')}
+                    disabled={somenteLeitura}
                   />
                 ) : (
                   <>
@@ -1414,20 +1489,22 @@ function ConteudoDaPaginaDeFornecedores() {
                     <CampoCheckbox rotulo="Telefone com WhatsApp" valor={form.celularWhatsapp} aoMudar={(v) => set('celularWhatsapp', v)} />
                   </>
                 )}
-                <button type="button"
-                  onClick={() => {
-                    if (form.contatos.length > 0) {
-                      set('contatos', [])
-                    } else {
-                      const inicial: ContatoForm[] = []
-                      if (form.email) inicial.push({ tipo: 'email', valor: form.email, descricao: '', whatsapp: false, principal: true })
-                      if (form.telefone) inicial.push({ tipo: 'telefone', valor: form.telefone, descricao: '', whatsapp: form.celularWhatsapp, principal: true })
-                      set('contatos', inicial.length > 0 ? inicial : [{ tipo: 'email', valor: '', descricao: '', whatsapp: false, principal: true }])
-                    }
-                  }}
-                  className="text-xs text-primary underline">
-                  {form.contatos.length > 0 ? '← Modo simples' : '+ Múltiplos contatos'}
-                </button>
+                {!somenteLeitura && (
+                  <button type="button"
+                    onClick={() => {
+                      if (form.contatos.length > 0) {
+                        set('contatos', [])
+                      } else {
+                        const inicial: ContatoForm[] = []
+                        if (form.email) inicial.push({ tipo: 'email', valor: form.email, descricao: '', whatsapp: false, principal: true })
+                        if (form.telefone) inicial.push({ tipo: 'telefone', valor: form.telefone, descricao: '', whatsapp: form.celularWhatsapp, principal: true })
+                        set('contatos', inicial.length > 0 ? inicial : [{ tipo: 'email', valor: '', descricao: '', whatsapp: false, principal: true }])
+                      }
+                    }}
+                    className="text-xs text-primary underline">
+                    {form.contatos.length > 0 ? '← Modo simples' : '+ Múltiplos contatos'}
+                  </button>
+                )}
               </div>
             )}
 
@@ -1439,6 +1516,7 @@ function ConteudoDaPaginaDeFornecedores() {
                     enderecos={form.enderecos}
                     aoMudar={(v) => { tocarCampo('enderecos'); set('enderecos', v) }}
                     mensagemDeErro={erroVisivel('enderecos')}
+                    disabled={somenteLeitura}
                   />
                 ) : (
                   <>
@@ -1487,21 +1565,23 @@ function ConteudoDaPaginaDeFornecedores() {
                     </div>
                   </>
                 )}
-                <button type="button"
-                  onClick={() => {
-                    if (form.enderecos.length > 0) {
-                      set('enderecos', [])
-                    } else {
-                      set('enderecos', [{
-                        tipo: 'principal', apelido: '', cep: form.cep, logradouro: form.logradouro,
-                        numero: form.numero, complemento: form.complemento, bairro: form.bairro,
-                        cidade: form.cidade, estado: form.estado, codigoIbge: form.codigoIbge,
-                      }])
-                    }
-                  }}
-                  className="text-xs text-primary underline">
-                  {form.enderecos.length > 0 ? '← Modo simples' : '+ Múltiplos endereços'}
-                </button>
+                {!somenteLeitura && (
+                  <button type="button"
+                    onClick={() => {
+                      if (form.enderecos.length > 0) {
+                        set('enderecos', [])
+                      } else {
+                        set('enderecos', [{
+                          tipo: 'principal', apelido: '', cep: form.cep, logradouro: form.logradouro,
+                          numero: form.numero, complemento: form.complemento, bairro: form.bairro,
+                          cidade: form.cidade, estado: form.estado, codigoIbge: form.codigoIbge,
+                        }])
+                      }
+                    }}
+                    className="text-xs text-primary underline">
+                    {form.enderecos.length > 0 ? '← Modo simples' : '+ Múltiplos endereços'}
+                  </button>
+                )}
               </div>
             )}
 
@@ -1511,6 +1591,7 @@ function ConteudoDaPaginaDeFornecedores() {
                 dadosBancarios={form.dadosBancarios}
                 aoMudar={(v) => { tocarCampo('dadosBancarios'); set('dadosBancarios', v) }}
                 mensagemDeErro={erroVisivel('dadosBancarios')}
+                disabled={somenteLeitura}
               />
             )}
 
@@ -1565,12 +1646,13 @@ function ConteudoDaPaginaDeFornecedores() {
                     <ListaParesPlanoCfop
                       pares={form.paresPlanoCfopPadrao}
                       aoMudar={(v) => set('paresPlanoCfopPadrao', v)}
+                      disabled={somenteLeitura}
                     />
                   </div>
                 )}
 
                 <FornecedoresRelacionadosField
-                  pessoaIdAtual={modoEdicao ? idEmEdicao : undefined}
+                  pessoaIdAtual={(modoEdicao || modoVisualizacao) ? idEmEdicao : undefined}
                   relacionados={form.fornecedoresRelacionados}
                   vinculadosDiretosIds={form.fornecedoresVinculadosIds}
                   aoMudarVinculosDiretos={(ids, relacionados) => {
@@ -1580,9 +1662,11 @@ function ConteudoDaPaginaDeFornecedores() {
                       fornecedoresRelacionados: relacionados,
                     }))
                   }}
+                  disabled={somenteLeitura}
                 />
               </div>
             )}
+            </fieldset>
           </form>
         </div>
       </Modal>
@@ -1698,6 +1782,9 @@ function ConteudoDaPaginaDeFornecedores() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => abrirModalVisualizacao(f)}>
+                          Visualizar
+                        </Button>
                         {podeEditar && (
                           <Button type="button" variant="outline" size="sm" onClick={() => abrirModalEdicao(f)}>
                             Editar

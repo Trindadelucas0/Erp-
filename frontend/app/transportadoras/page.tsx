@@ -406,6 +406,7 @@ function ConteudoDaPaginaDeTransportadoras() {
 
   const [modalAberto, setModalAberto] = useState(false)
   const [modoEdicao, setModoEdicao] = useState(false)
+  const [modoVisualizacao, setModoVisualizacao] = useState(false)
   const [idEmEdicao, setIdEmEdicao] = useState('')
   const [abaAtiva, setAbaAtiva] = useState('identificacao')
   const [salvando, setSalvando] = useState(false)
@@ -418,6 +419,10 @@ function ConteudoDaPaginaDeTransportadoras() {
   formRef.current = form
   const modoEdicaoRef = useRef(modoEdicao)
   modoEdicaoRef.current = modoEdicao
+  const modoVisualizacaoRef = useRef(modoVisualizacao)
+  modoVisualizacaoRef.current = modoVisualizacao
+
+  const somenteLeitura = modoVisualizacao
 
   const [avisoDuplicidade, setAvisoDuplicidade] = useState<{
     tipo: 'transportadora_existente' | 'pessoa_sem_papel'; transportadoraId?: string; mensagem: string
@@ -518,6 +523,7 @@ function ConteudoDaPaginaDeTransportadoras() {
   } = useConsultaDocumento({
     getForm: () => ({ documento: formRef.current.documento, tipo: formRef.current.tipo }),
     getModoEdicao: () => modoEdicaoRef.current,
+    getSomenteLeitura: () => modoVisualizacaoRef.current,
     endpointPorDocumento: '/transportadoras/por-documento',
     tocarCampo,
     aoAplicarDadosCnpj: (dados) => {
@@ -601,6 +607,15 @@ function ConteudoDaPaginaDeTransportadoras() {
   }, [])
 
   function aoAvancar() {
+    if (modoVisualizacao) {
+      setErrosDaAbaAtual([])
+      setAbaAtiva((atual) => {
+        const i = idsAbas.indexOf(atual)
+        return i >= 0 && i < idsAbas.length - 1 ? idsAbas[i + 1] : atual
+      })
+      return
+    }
+
     if (abaAtiva === 'identificacao' && documentoDuplicado) {
       tocarCamposDaAba('identificacao')
       setErrosDaAbaAtual([avisoDuplicidade?.mensagem ?? 'Documento já cadastrado'])
@@ -655,6 +670,7 @@ function ConteudoDaPaginaDeTransportadoras() {
     setForm(vazio)
     setFormInicial(vazio)
     setModoEdicao(false)
+    setModoVisualizacao(false)
     setIdEmEdicao('')
     setAbaAtiva('identificacao')
     setMensagemDeErro('')
@@ -672,6 +688,7 @@ function ConteudoDaPaginaDeTransportadoras() {
     setForm(formEdicao)
     setFormInicial(clonarFormulario(formEdicao))
     setModoEdicao(true)
+    setModoVisualizacao(false)
     setIdEmEdicao(t.id)
     setAbaAtiva('identificacao')
     setMensagemDeErro('')
@@ -684,8 +701,36 @@ function ConteudoDaPaginaDeTransportadoras() {
     setModalAberto(true)
   }
 
+  function abrirModalVisualizacao(t: Transportadora) {
+    const formView = transportadoraParaForm(t)
+    setForm(formView)
+    setFormInicial(clonarFormulario(formView))
+    setModoEdicao(false)
+    setModoVisualizacao(true)
+    setIdEmEdicao(t.id)
+    setAbaAtiva('identificacao')
+    setMensagemDeErro('')
+    setErroSalvar('')
+    setErrosDaAbaAtual([])
+    setCamposTocados(new Set())
+    setAvisoDuplicidade(null)
+    resetarStatus()
+    resetarConsulta()
+    setModalAberto(true)
+  }
+
+  function alternarParaEdicao() {
+    if (!podeEditar) return
+    setModoVisualizacao(false)
+    setModoEdicao(true)
+    setFormInicial(clonarFormulario(form))
+    setErrosDaAbaAtual([])
+    resetarConsulta()
+  }
+
   const fecharModal = useCallback(() => {
     setModalAberto(false)
+    setModoVisualizacao(false)
     setMensagemDeErro('')
     setErroSalvar('')
     setErrosDaAbaAtual([])
@@ -834,7 +879,7 @@ function ConteudoDaPaginaDeTransportadoras() {
       buscar: !modalAberto,
       novo: podeCriar && !modalAberto,
       atualizar: !modalAberto && !carregandoLista,
-      salvar: modalAberto && formularioValido && !qualquerOperacaoAtiva,
+      salvar: modalAberto && formularioValido && !qualquerOperacaoAtiva && !modoVisualizacao,
       cancelar: modalAberto && !qualquerOperacaoAtiva,
     }
   )
@@ -862,9 +907,38 @@ function ConteudoDaPaginaDeTransportadoras() {
       <Modal
         aberto={modalAberto}
         aoFechar={solicitarFechar}
-        titulo={modoEdicao ? `Editar transportadora: ${form.nome}` : 'Nova transportadora'}
+        titulo={
+          modoVisualizacao
+            ? `Visualizar transportadora: ${form.nome}`
+            : modoEdicao
+              ? `Editar transportadora: ${form.nome}`
+              : 'Nova transportadora'
+        }
+        descricao={modoVisualizacao ? 'Consulta dos dados cadastrados (somente leitura)' : undefined}
         largura="2xl"
         rodape={
+          modoVisualizacao ? (
+            <div className="flex items-center justify-end gap-2">
+              <Button type="button" variant="outline" onClick={fecharModal}>
+                Fechar
+              </Button>
+              {!ehPrimeiraAba && (
+                <Button type="button" variant="outline" onClick={irParaAbaAnterior}>
+                  ← Anterior
+                </Button>
+              )}
+              {!ehUltimaAba && (
+                <Button type="button" variant="outline" onClick={aoAvancar}>
+                  Próximo →
+                </Button>
+              )}
+              {podeEditar && (
+                <BotaoPrimario type="button" onClick={alternarParaEdicao}>
+                  Editar
+                </BotaoPrimario>
+              )}
+            </div>
+          ) : (
           <div className="flex w-full flex-col gap-2">
             {errosDaAbaAtual.length > 0 && (
               <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -936,9 +1010,10 @@ function ConteudoDaPaginaDeTransportadoras() {
               </div>
             </div>
           </div>
+          )
         }
       >
-        {avisoDuplicidade && (
+        {!modoVisualizacao && avisoDuplicidade && (
           <div className={`mb-4 rounded-md px-3 py-2 text-sm ${avisoDuplicidade.tipo === 'transportadora_existente' ? 'bg-destructive/10 text-destructive' : 'bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-400'}`}>
             {avisoDuplicidade.mensagem}
           </div>
@@ -949,6 +1024,7 @@ function ConteudoDaPaginaDeTransportadoras() {
         <div className="relative">
           {salvando && <div className="absolute inset-0 z-10 rounded-md bg-background/60 backdrop-blur-[1px]" />}
           <form id="form-transportadora" onSubmit={aoSalvar}>
+            <fieldset disabled={somenteLeitura} className="m-0 min-w-0 border-0 p-0">
 
             {abaAtiva === 'identificacao' && (
               <div className="space-y-5">
@@ -975,7 +1051,7 @@ function ConteudoDaPaginaDeTransportadoras() {
                         <input
                           className={cn('flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50', erroDocumentoVisivel() && 'border-destructive')}
                           type="text" value={form.documento} onChange={(e) => aoMudarDocumento(e.target.value)} onBlur={aoSairDocumento}
-                          placeholder="00.000.000/0000-00" maxLength={18} disabled={modoEdicao}
+                          placeholder="00.000.000/0000-00" maxLength={18} disabled={modoEdicao || somenteLeitura}
                         />
                         {(verificandoDocumento || carregandoBrasilApi) && (
                           <span className="absolute right-2 top-2 text-xs text-muted-foreground">
@@ -997,7 +1073,7 @@ function ConteudoDaPaginaDeTransportadoras() {
                       <input
                         className={cn('flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50', erroDocumentoVisivel() && 'border-destructive')}
                         type="text" value={form.documento} onChange={(e) => aoMudarDocumento(e.target.value)} onBlur={aoSairDocumento}
-                        placeholder="000.000.000-00" maxLength={14} disabled={modoEdicao}
+                        placeholder="000.000.000-00" maxLength={14} disabled={modoEdicao || somenteLeitura}
                       />
                       {verificandoDocumento && (
                         <span className="absolute right-2 top-2 text-xs text-muted-foreground">Verificando...</span>
@@ -1054,7 +1130,7 @@ function ConteudoDaPaginaDeTransportadoras() {
             {abaAtiva === 'contato' && (
               <div className="space-y-4">
                 {form.contatos.length > 0 ? (
-                  <ListaContatos contatos={form.contatos} aoMudar={(v) => { tocarCampo('contatos'); set('contatos', v) }} mensagemDeErro={erroVisivel('contatos')} />
+                  <ListaContatos contatos={form.contatos} aoMudar={(v) => { tocarCampo('contatos'); set('contatos', v) }} mensagemDeErro={erroVisivel('contatos')} disabled={somenteLeitura} />
                 ) : (
                   <>
                     <InputPadrao rotulo="Email" type="email" value={form.email} onChange={(e) => { tocarCampo('email'); set('email', e.target.value) }} onBlur={() => tocarCampo('email')} placeholder="transportadora@email.com.br" mensagemDeErro={erroVisivel('email')} />
@@ -1065,20 +1141,22 @@ function ConteudoDaPaginaDeTransportadoras() {
                     <CampoCheckbox rotulo="Celular com WhatsApp" valor={form.celularWhatsapp} aoMudar={(v) => set('celularWhatsapp', v)} />
                   </>
                 )}
-                <button type="button"
-                  onClick={() => {
-                    if (form.contatos.length > 0) { set('contatos', []) }
-                    else {
-                      const inicial: ContatoForm[] = []
-                      if (form.email) inicial.push({ tipo: 'email', valor: form.email, descricao: '', whatsapp: false, principal: true })
-                      if (form.telefone) inicial.push({ tipo: 'telefone', valor: form.telefone, descricao: '', whatsapp: false, principal: true })
-                      if (form.celular) inicial.push({ tipo: 'telefone', valor: form.celular, descricao: '', whatsapp: form.celularWhatsapp, principal: false })
-                      set('contatos', inicial.length > 0 ? inicial : [{ tipo: 'email', valor: '', descricao: '', whatsapp: false, principal: true }])
-                    }
-                  }}
-                  className="text-xs text-primary underline">
-                  {form.contatos.length > 0 ? '← Modo simples' : '+ Múltiplos contatos'}
-                </button>
+                {!somenteLeitura && (
+                  <button type="button"
+                    onClick={() => {
+                      if (form.contatos.length > 0) { set('contatos', []) }
+                      else {
+                        const inicial: ContatoForm[] = []
+                        if (form.email) inicial.push({ tipo: 'email', valor: form.email, descricao: '', whatsapp: false, principal: true })
+                        if (form.telefone) inicial.push({ tipo: 'telefone', valor: form.telefone, descricao: '', whatsapp: false, principal: true })
+                        if (form.celular) inicial.push({ tipo: 'telefone', valor: form.celular, descricao: '', whatsapp: form.celularWhatsapp, principal: false })
+                        set('contatos', inicial.length > 0 ? inicial : [{ tipo: 'email', valor: '', descricao: '', whatsapp: false, principal: true }])
+                      }
+                    }}
+                    className="text-xs text-primary underline">
+                    {form.contatos.length > 0 ? '← Modo simples' : '+ Múltiplos contatos'}
+                  </button>
+                )}
               </div>
             )}
 
@@ -1086,13 +1164,14 @@ function ConteudoDaPaginaDeTransportadoras() {
               <ListaDadosBancarios
                 dadosBancarios={form.dadosBancarios}
                 aoMudar={(v) => set('dadosBancarios', v)}
+                disabled={somenteLeitura}
               />
             )}
 
             {abaAtiva === 'endereco' && (
               <div className="space-y-4">
                 {form.enderecos.length > 0 ? (
-                  <ListaEnderecos enderecos={form.enderecos} aoMudar={(v) => { tocarCampo('enderecos'); set('enderecos', v) }} mensagemDeErro={erroVisivel('enderecos')} />
+                  <ListaEnderecos enderecos={form.enderecos} aoMudar={(v) => { tocarCampo('enderecos'); set('enderecos', v) }} mensagemDeErro={erroVisivel('enderecos')} disabled={somenteLeitura} />
                 ) : (
                   <>
                     <div className="grid gap-4 sm:grid-cols-3">
@@ -1118,16 +1197,19 @@ function ConteudoDaPaginaDeTransportadoras() {
                     </div>
                   </>
                 )}
-                <button type="button"
-                  onClick={() => {
-                    if (form.enderecos.length > 0) { set('enderecos', []) }
-                    else { set('enderecos', [{ tipo: 'principal', apelido: '', cep: form.cep, logradouro: form.logradouro, numero: form.numero, complemento: form.complemento, bairro: form.bairro, cidade: form.cidade, estado: form.estado, codigoIbge: form.codigoIbge }]) }
-                  }}
-                  className="text-xs text-primary underline">
-                  {form.enderecos.length > 0 ? '← Modo simples' : '+ Múltiplos endereços'}
-                </button>
+                {!somenteLeitura && (
+                  <button type="button"
+                    onClick={() => {
+                      if (form.enderecos.length > 0) { set('enderecos', []) }
+                      else { set('enderecos', [{ tipo: 'principal', apelido: '', cep: form.cep, logradouro: form.logradouro, numero: form.numero, complemento: form.complemento, bairro: form.bairro, cidade: form.cidade, estado: form.estado, codigoIbge: form.codigoIbge }]) }
+                    }}
+                    className="text-xs text-primary underline">
+                    {form.enderecos.length > 0 ? '← Modo simples' : '+ Múltiplos endereços'}
+                  </button>
+                )}
               </div>
             )}
+            </fieldset>
           </form>
         </div>
       </Modal>
@@ -1203,6 +1285,9 @@ function ConteudoDaPaginaDeTransportadoras() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => abrirModalVisualizacao(t)}>
+                          Visualizar
+                        </Button>
                         {podeEditar && <Button type="button" variant="outline" size="sm" onClick={() => abrirModalEdicao(t)}>Editar</Button>}
                         {podeDesativar && (
                           <Button type="button" variant={t.ativo ? 'destructive' : 'outline'} size="sm"
