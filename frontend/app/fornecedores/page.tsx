@@ -52,7 +52,10 @@ import {
 } from '@/components/fornecedores/selecao-multipla-catalogo'
 import { ListaParesPlanoCfop, type PlanoCfopPar } from '@/components/fornecedores/lista-pares-plano-cfop'
 import { mesclarTexto, mesclarArray, mesclarBoolean } from '@/lib/mesclar-pre-preenchimento'
-import { GrupoEconomicoField } from '@/components/fornecedores/grupo-economico-field'
+import {
+  FornecedoresRelacionadosField,
+  type FornecedorRelacionadoItem,
+} from '@/components/fornecedores/fornecedores-relacionados-field'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -96,8 +99,9 @@ type Fornecedor = {
   planosFinanceiros?: ItemCatalogo[]
   cfopsEntrada?: ItemCatalogo[]
   paresPlanoCfopPadrao?: PlanoCfopPar[]
-  grupoEconomicoId?: string | null
-  grupoEconomicoNome?: string | null
+  dadosFornecedorId?: string | null
+  fornecedoresVinculadosIds?: string[]
+  fornecedoresRelacionados?: FornecedorRelacionadoItem[]
   dadosBancarios?: DadosBancarioForm[]
 }
 
@@ -134,8 +138,8 @@ type FormFornecedor = {
   planosFinanceiros: ItemCatalogo[]
   cfopsEntrada: ItemCatalogo[]
   paresPlanoCfopPadrao: PlanoCfopPar[]
-  grupoEconomicoId: string
-  grupoEconomicoNome: string
+  fornecedoresVinculadosIds: string[]
+  fornecedoresRelacionados: FornecedorRelacionadoItem[]
   dadosBancarios: DadosBancarioForm[]
   contatos: ContatoForm[]
   enderecos: EnderecoForm[]
@@ -183,8 +187,8 @@ const FORM_VAZIO: FormFornecedor = {
   planosFinanceiros: [],
   cfopsEntrada: [],
   paresPlanoCfopPadrao: [],
-  grupoEconomicoId: '',
-  grupoEconomicoNome: '',
+  fornecedoresVinculadosIds: [],
+  fornecedoresRelacionados: [],
   dadosBancarios: [],
   contatos: [],
   enderecos: [],
@@ -249,8 +253,8 @@ function fornecedorParaForm(f: Fornecedor): FormFornecedor {
       cfopCodigo: par.cfopCodigo || '',
       cfopDescricao: par.cfopDescricao || '',
     })),
-    grupoEconomicoId: f.grupoEconomicoId || '',
-    grupoEconomicoNome: f.grupoEconomicoNome || '',
+    fornecedoresVinculadosIds: f.fornecedoresVinculadosIds ?? [],
+    fornecedoresRelacionados: f.fornecedoresRelacionados ?? [],
     dadosBancarios: Array.isArray(f.dadosBancarios)
       ? f.dadosBancarios.map((db) => ({
           apelido: db.apelido || '',
@@ -754,8 +758,6 @@ function ConteudoDaPaginaDeFornecedores() {
             exigirItensEntrada: mesclarBoolean(f.exigirItensEntrada, importado.exigirItensEntrada),
             prazosPagamento: importado.prazosPagamento.some((p) => p) ? importado.prazosPagamento : f.prazosPagamento,
             paresPlanoCfopPadrao: mesclarArray(f.paresPlanoCfopPadrao, importado.paresPlanoCfopPadrao),
-            grupoEconomicoId: mesclarTexto(f.grupoEconomicoId, importado.grupoEconomicoId),
-            grupoEconomicoNome: mesclarTexto(f.grupoEconomicoNome, importado.grupoEconomicoNome),
           }))
         }
       }
@@ -1012,7 +1014,7 @@ function ConteudoDaPaginaDeFornecedores() {
       paresPlanoCfopPadrao: form.paresPlanoCfopPadrao
         .filter((par) => par.planoFinanceiroId && par.cfopId)
         .map((par) => ({ planoFinanceiroId: par.planoFinanceiroId, cfopId: par.cfopId })),
-      grupoEconomicoId: form.grupoEconomicoId || null,
+      fornecedoresVinculadosIds: form.fornecedoresVinculadosIds,
       dadosBancarios: dadosBancariosPayload.length > 0 ? dadosBancariosPayload : undefined,
     }
 
@@ -1567,9 +1569,17 @@ function ConteudoDaPaginaDeFornecedores() {
                   </div>
                 )}
 
-                <GrupoEconomicoField
-                  value={{ id: form.grupoEconomicoId, nome: form.grupoEconomicoNome }}
-                  aoMudar={(id, nome) => { set('grupoEconomicoId', id); set('grupoEconomicoNome', nome) }}
+                <FornecedoresRelacionadosField
+                  pessoaIdAtual={modoEdicao ? idEmEdicao : undefined}
+                  relacionados={form.fornecedoresRelacionados}
+                  vinculadosDiretosIds={form.fornecedoresVinculadosIds}
+                  aoMudarVinculosDiretos={(ids, relacionados) => {
+                    setForm((f) => ({
+                      ...f,
+                      fornecedoresVinculadosIds: ids,
+                      fornecedoresRelacionados: relacionados,
+                    }))
+                  }}
                 />
               </div>
             )}

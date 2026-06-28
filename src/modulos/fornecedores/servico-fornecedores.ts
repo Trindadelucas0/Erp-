@@ -6,11 +6,11 @@ import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-audi
 import { repositorioDeFornecedores } from './repositorio-fornecedores.js'
 import type { DadosParaCriarFornecedor, DadosParaEditarFornecedor } from './esquema-fornecedores.js'
 
-async function listarFornecedores(companyId: string) {
+async function listarFornecedores(companyId: string, q?: string) {
   if (!companyId) {
     throw new ErroDaAplicacao('Empresa ativa não informada. Selecione uma empresa.', 400)
   }
-  return repositorioDeFornecedores.listarPorEmpresa(companyId)
+  return repositorioDeFornecedores.listarPorEmpresa(companyId, q)
 }
 
 async function criarFornecedor(
@@ -79,7 +79,7 @@ async function editarFornecedor(
     }
   }
 
-  const atualizado = await repositorioDeFornecedores.atualizar(id, dados)
+  const atualizado = await repositorioDeFornecedores.atualizar(id, dados, companyId)
 
   await registrarAuditoria({
     usuarioId: idDoAutor,

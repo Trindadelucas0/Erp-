@@ -30,7 +30,6 @@ model Company {
   cfops                Cfop[]
   configuracaoZapsign  ConfiguracaoZapsign?
   documentosZapsign    ZapsignDocumento[]
-  gruposEconomicos     GrupoEconomico[]
   createdAt            DateTime      @default(now())
 }
 
@@ -186,26 +185,25 @@ model DadosFornecedor {
   prazoPagamento6   Int?
   observacoes       String?
 
-  grupoEconomicoId  String?
-  grupoEconomico    GrupoEconomico? @relation(fields: [grupoEconomicoId], references: [id])
-
   planosFinanceiros     FornecedorPlanoFinanceiro[]
   cfopsEntrada          FornecedorCfopEntrada[]
   paresPlanoCfopPadrao  FornecedorParPlanoCfopPadrao[]
+  vinculosComoA         FornecedorVinculo[] @relation("VinculosA")
+  vinculosComoB         FornecedorVinculo[] @relation("VinculosB")
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
 
-model GrupoEconomico {
-  id        String   @id @default(uuid())
-  companyId String
-  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  nome      String
-  fornecedores DadosFornecedor[]
-  createdAt DateTime @default(now())
+model FornecedorVinculo {
+  id            String          @id @default(uuid())
+  fornecedorAId String
+  fornecedorBId String
+  fornecedorA   DadosFornecedor @relation("VinculosA", fields: [fornecedorAId], references: [id], onDelete: Cascade)
+  fornecedorB   DadosFornecedor @relation("VinculosB", fields: [fornecedorBId], references: [id], onDelete: Cascade)
+  createdAt     DateTime        @default(now())
 
-  @@unique([companyId, nome])
+  @@unique([fornecedorAId, fornecedorBId])
 }
 
 model FornecedorParPlanoCfopPadrao {

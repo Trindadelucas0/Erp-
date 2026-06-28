@@ -54,7 +54,7 @@ const camposComuns = {
     .optional(),
   planosFinanceirosIds: z.array(z.string().uuid()).optional(),
   cfopsEntradaIds: z.array(z.string().uuid()).optional(),
-  grupoEconomicoId: z.string().uuid().optional().nullable(),
+  fornecedoresVinculadosIds: z.array(z.string().uuid()).optional(),
 }
 
 export const esquemaDeContatoItem = z.object({

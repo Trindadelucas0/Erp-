@@ -15,7 +15,8 @@ async function listarFornecedores(
   resposta: FastifyReply
 ) {
   const companyId = requisicao.empresaAtivaId || ''
-  const fornecedores = await servicoDeFornecedores.listarFornecedores(companyId)
+  const q = (requisicao.query as { q?: string }).q
+  const fornecedores = await servicoDeFornecedores.listarFornecedores(companyId, q)
   return resposta.send({ fornecedores })
 }
 

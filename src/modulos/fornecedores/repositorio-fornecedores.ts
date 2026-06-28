@@ -7,6 +7,13 @@ import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import type { Prisma } from '@prisma/client'
 import type { DadosParaCriarFornecedor, DadosParaEditarFornecedor } from './esquema-fornecedores.js'
 import { extrairContatosEEnderecos } from '../../compartilhado/pessoas/extrair-contatos-enderecos.js'
+import {
+  enriquecerFornecedoresComVinculos,
+  obterFornecedoresRelacionados,
+  sincronizarVinculosDiretosFornecedor,
+} from './vinculos-fornecedor.js'
+
+export { obterRedeFornecedor } from './vinculos-fornecedor.js'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -37,7 +44,6 @@ const INCLUDE_COMPLETO = {
             include: { planoFinanceiro: true, cfop: true },
             orderBy: { ordem: 'asc' as const },
           },
-          grupoEconomico: true,
         },
       },
     },
@@ -86,6 +92,7 @@ function mapearParaFornecedorView(pessoa: PessoaComRelacoes) {
   return {
     id: pessoa.id,
     papelId: papelFornecedor.id,
+    dadosFornecedorId: df?.id ?? null,
     tipo: pessoa.tipo,
     ativo: papelFornecedor.ativo,
     nome: pessoa.nome,
@@ -146,8 +153,6 @@ function mapearParaFornecedorView(pessoa: PessoaComRelacoes) {
         cfopCodigo: par.cfop.codigo,
         cfopDescricao: par.cfop.descricao,
       })) ?? [],
-    grupoEconomicoId: df?.grupoEconomicoId ?? null,
-    grupoEconomicoNome: df?.grupoEconomico?.nome ?? null,
     dadosBancarios: pessoa.dadosBancarios,
     contatos: pessoa.contatos,
     enderecos: pessoa.enderecos,
@@ -240,7 +245,7 @@ type CamposNormalizados = {
   prazoPagamento6: number | null
   planosFinanceirosIds: string[]
   cfopsEntradaIds: string[]
-  grupoEconomicoId: string | null
+  fornecedoresVinculadosIds: string[]
   paresPlanoCfopPadrao: { planoFinanceiroId: string; cfopId: string }[]
   contatosArray?: ContatoItem[]
   enderecosArray?: EnderecoItem[]
@@ -293,7 +298,7 @@ function normalizarDocumento(dados: DadosParaCriarFornecedor | DadosParaEditarFo
     ...prazos,
     planosFinanceirosIds: dados.planosFinanceirosIds ?? [],
     cfopsEntradaIds: dados.cfopsEntradaIds ?? [],
-    grupoEconomicoId: dados.grupoEconomicoId ?? null,
+    fornecedoresVinculadosIds: dados.fornecedoresVinculadosIds ?? [],
     paresPlanoCfopPadrao: dados.paresPlanoCfopPadrao ?? [],
     contatosArray: dados.contatos,
     enderecosArray: dados.enderecos,
@@ -333,16 +338,35 @@ function normalizarDocumento(dados: DadosParaCriarFornecedor | DadosParaEditarFo
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
-async function listarPorEmpresa(companyId: string) {
+async function listarPorEmpresa(companyId: string, q?: string) {
+  const termo = q?.trim()
+  const nums = termo?.replace(/\D/g, '') ?? ''
+
   const pessoas = await clientePrisma.pessoa.findMany({
     where: {
       companyId,
       papeis: { some: { papel: 'fornecedor' } },
+      ...(termo
+        ? {
+            OR: [
+              { nome: { contains: termo, mode: 'insensitive' } },
+              ...(nums.length >= 3
+                ? [{ cpf: { contains: nums } }, { cnpj: { contains: nums } }]
+                : []),
+            ],
+          }
+        : {}),
     },
     include: INCLUDE_COMPLETO,
     orderBy: { nome: 'asc' },
+    ...(termo ? { take: 50 } : {}),
   })
-  return pessoas.map(mapearParaFornecedorView)
+
+  const base = pessoas.map(mapearParaFornecedorView)
+
+  if (termo) return base
+
+  return enriquecerFornecedoresComVinculos(base, companyId)
 }
 
 async function buscarPorId(id: string) {
@@ -351,7 +375,24 @@ async function buscarPorId(id: string) {
     include: INCLUDE_COMPLETO,
   })
   if (!pessoa || !pessoa.papeis.length) return null
-  return mapearParaFornecedorView(pessoa)
+
+  const base = mapearParaFornecedorView(pessoa)
+  if (!base.dadosFornecedorId) {
+    return { ...base, fornecedoresVinculadosIds: [], fornecedoresRelacionados: [] }
+  }
+
+  const fornecedoresRelacionados = await obterFornecedoresRelacionados(
+    base.dadosFornecedorId,
+    base.companyId
+  )
+
+  return {
+    ...base,
+    fornecedoresVinculadosIds: fornecedoresRelacionados
+      .filter((r) => r.vinculoDireto)
+      .map((r) => r.dadosFornecedorId),
+    fornecedoresRelacionados,
+  }
 }
 
 async function buscarPorCpfNaEmpresa(cpf: string, companyId: string) {
@@ -454,8 +495,9 @@ async function buscarPessoaPorDocumentoNaEmpresa(
       planosFinanceiros: [],
       cfopsEntrada: [],
       paresPlanoCfopPadrao: [],
-      grupoEconomicoId: null,
-      grupoEconomicoNome: null,
+      dadosFornecedorId: null,
+      fornecedoresVinculadosIds: [],
+      fornecedoresRelacionados: [],
       createdAt: pessoa.createdAt,
       updatedAt: pessoa.updatedAt,
     } as unknown as FornecedorView
@@ -623,11 +665,10 @@ function dadosFornecedorDeCampos(campos: CamposNormalizados) {
     prazoPagamento4: campos.prazoPagamento4,
     prazoPagamento5: campos.prazoPagamento5,
     prazoPagamento6: campos.prazoPagamento6,
-    grupoEconomicoId: campos.grupoEconomicoId,
   }
 }
 
-async function sincronizarVinculosFornecedor(
+async function sincronizarVinculosCatalogoFornecedor(
   tx: TxCliente,
   dadosFornecedorId: string,
   campos: CamposNormalizados
@@ -740,7 +781,13 @@ async function criar(dados: DadosParaCriarFornecedor, companyId: string) {
       }
 
       await sincronizarRelacoesPessoa(tx, pessoaId, campos)
-      await sincronizarVinculosFornecedor(tx, dadosFornecedorId, campos)
+      await sincronizarVinculosCatalogoFornecedor(tx, dadosFornecedorId, campos)
+      await sincronizarVinculosDiretosFornecedor(
+        tx,
+        dadosFornecedorId,
+        campos.fornecedoresVinculadosIds,
+        companyId
+      )
     } else {
       const pessoa = await tx.pessoa.create({
         data: { ...dadosDaPessoaDeCampos(campos), companyId },
@@ -760,7 +807,13 @@ async function criar(dados: DadosParaCriarFornecedor, companyId: string) {
       await criarEnderecos(tx, pessoaId, campos)
       await criarDadosBancarios(tx, pessoaId, campos)
       await criarCnaes(tx, pessoaId, campos)
-      await sincronizarVinculosFornecedor(tx, dadosFornecedorId, campos)
+      await sincronizarVinculosCatalogoFornecedor(tx, dadosFornecedorId, campos)
+      await sincronizarVinculosDiretosFornecedor(
+        tx,
+        dadosFornecedorId,
+        campos.fornecedoresVinculadosIds,
+        companyId
+      )
     }
 
     const pessoaCompleta = await tx.pessoa.findUniqueOrThrow({
@@ -768,11 +821,26 @@ async function criar(dados: DadosParaCriarFornecedor, companyId: string) {
       include: INCLUDE_COMPLETO,
     })
 
-    return mapearParaFornecedorView(pessoaCompleta)
+    const base = mapearParaFornecedorView(pessoaCompleta)
+    if (!base.dadosFornecedorId) return base
+
+    const fornecedoresRelacionados = await obterFornecedoresRelacionados(
+      base.dadosFornecedorId,
+      companyId,
+      tx
+    )
+
+    return {
+      ...base,
+      fornecedoresVinculadosIds: fornecedoresRelacionados
+        .filter((r) => r.vinculoDireto)
+        .map((r) => r.dadosFornecedorId),
+      fornecedoresRelacionados,
+    }
   })
 }
 
-async function atualizar(id: string, dados: DadosParaEditarFornecedor) {
+async function atualizar(id: string, dados: DadosParaEditarFornecedor, companyId: string) {
   const campos = normalizarDocumento(dados)
 
   return clientePrisma.$transaction(async (tx) => {
@@ -791,7 +859,13 @@ async function atualizar(id: string, dados: DadosParaEditarFornecedor) {
         update: dadosFornecedorDeCampos(campos),
         create: { papelId: papelFornecedor.id, ...dadosFornecedorDeCampos(campos) },
       })
-      await sincronizarVinculosFornecedor(tx, df.id, campos)
+      await sincronizarVinculosCatalogoFornecedor(tx, df.id, campos)
+      await sincronizarVinculosDiretosFornecedor(
+        tx,
+        df.id,
+        campos.fornecedoresVinculadosIds,
+        companyId
+      )
     }
 
     await sincronizarRelacoesPessoa(tx, id, campos)
@@ -801,7 +875,22 @@ async function atualizar(id: string, dados: DadosParaEditarFornecedor) {
       include: INCLUDE_COMPLETO,
     })
 
-    return mapearParaFornecedorView(pessoaCompleta)
+    const base = mapearParaFornecedorView(pessoaCompleta)
+    if (!base.dadosFornecedorId) return base
+
+    const fornecedoresRelacionados = await obterFornecedoresRelacionados(
+      base.dadosFornecedorId,
+      companyId,
+      tx
+    )
+
+    return {
+      ...base,
+      fornecedoresVinculadosIds: fornecedoresRelacionados
+        .filter((r) => r.vinculoDireto)
+        .map((r) => r.dadosFornecedorId),
+      fornecedoresRelacionados,
+    }
   })
 }
 
