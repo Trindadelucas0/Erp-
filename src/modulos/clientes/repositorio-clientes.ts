@@ -9,6 +9,7 @@ import type { DadosParaCriarCliente, DadosParaEditarCliente, DadosParaAprovacaoD
 import { STATUS_APROVACAO } from './regras-cliente.js'
 import { randomUUID } from 'node:crypto'
 import { extrairContatosEEnderecos } from '../../compartilhado/pessoas/extrair-contatos-enderecos.js'
+import { normalizarIe, resolverIndicadorIe } from '../../compartilhado/validacoes/inscricao-estadual.js'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -180,10 +181,13 @@ type CamposNormalizados = {
 }
 
 function normalizarDocumento(dados: DadosParaCriarCliente | DadosParaEditarCliente): CamposNormalizados {
+  const ieNormalizada =
+    dados.tipo === 'PJ' ? normalizarIe(dados.ie) : null
+
   const base = {
     tipo: dados.tipo,
     nome: dados.nome,
-    indicadorIe: dados.indicadorIe ?? '9',
+    indicadorIe: resolverIndicadorIe(ieNormalizada, dados.indicadorIe),
     observacoes: dados.observacoes || null,
     aceitaNFe55: dados.aceitaNFe55 ?? true,
     email: dados.email || null,
@@ -233,7 +237,7 @@ function normalizarDocumento(dados: DadosParaCriarCliente | DadosParaEditarClien
     nomeFantasia: dados.nomeFantasia || null,
     cnae: cnaePrincipal,
     dataFundacao: dados.dataFundacao || null,
-    ie: dados.ie || null,
+    ie: ieNormalizada,
     im: dados.im || null,
     suframa: dados.suframa || null,
     simplesNacional: dados.simplesNacional ?? false,
