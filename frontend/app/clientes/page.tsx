@@ -43,6 +43,7 @@ import { mesclarTexto, mesclarArray, mesclarBoolean } from '@/lib/mesclar-pre-pr
 import { ListaContatos, type ContatoForm } from '@/components/clientes/lista-contatos'
 import { ListaEnderecos, ENDERECO_VAZIO, type EnderecoForm } from '@/components/clientes/lista-enderecos'
 import { ListaCnaes, type CnaeForm } from '@/components/pessoas/lista-cnaes'
+import { CampoInscricaoEstadual } from '@/components/pessoas/campo-inscricao-estadual'
 import Link from 'next/link'
 import {
   rotuloStatusAprovacao,
@@ -1551,28 +1552,19 @@ function ConteudoDaPaginaDeClientes() {
                     placeholder="Nome comercial (opcional)"
                   />
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <CampoInput
-                        rotulo="Inscrição Estadual (IE)"
-                        valor={form.ieIsento ? 'ISENTO' : form.ie}
-                        aoMudar={(v) => set('ie', v)}
-                        placeholder="Número da IE"
-                        maxLength={30}
-                        disabled={form.ieIsento}
-                      />
-                      <CampoCheckbox
-                        rotulo="Isento (não contribuinte ICMS)"
-                        valor={form.ieIsento}
-                        aoMudar={(v) => {
-                          setForm((f) => ({
-                            ...f,
-                            ieIsento: v,
-                            ie: v ? 'ISENTO' : '',
-                            indicadorIe: v ? '2' : (f.indicadorIe === '2' ? '9' : f.indicadorIe),
-                          }))
-                        }}
-                      />
-                    </div>
+                    <CampoInscricaoEstadual
+                      ie={form.ie}
+                      ieIsento={form.ieIsento}
+                      aoMudarIe={(v) => set('ie', v)}
+                      aoMudarIsento={(v) => {
+                        setForm((f) => ({
+                          ...f,
+                          ieIsento: v,
+                          ie: v ? '' : f.ie,
+                          indicadorIe: v ? '2' : (f.indicadorIe === '2' ? '9' : f.indicadorIe),
+                        }))
+                      }}
+                    />
                     <CampoInput
                       rotulo="Inscrição Municipal (IM)"
                       valor={form.im}

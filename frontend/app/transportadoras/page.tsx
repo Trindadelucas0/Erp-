@@ -40,7 +40,8 @@ import {
 import { useConsultaDocumento } from '@/hooks/use-consulta-documento'
 import { ListaContatos, type ContatoForm } from '@/components/clientes/lista-contatos'
 import { ListaEnderecos, type EnderecoForm } from '@/components/clientes/lista-enderecos'
-import { ListaDadosBancarios, DADOS_BANCARIO_VAZIO, type DadosBancarioForm } from '@/components/clientes/lista-dados-bancarios'
+import { ListaDadosBancarios, DADOS_BANCARIO_VAZIO, dadosBancarioApiParaForm, type DadosBancarioForm } from '@/components/clientes/lista-dados-bancarios'
+import { CampoInscricaoEstadual } from '@/components/pessoas/campo-inscricao-estadual'
 import { mesclarTexto, mesclarArray, mesclarBoolean } from '@/lib/mesclar-pre-preenchimento'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -93,6 +94,7 @@ type FormTransportadora = {
   cnae: string
   dataFundacao: string
   ie: string
+  ieIsento: boolean
   im: string
   simplesNacional: boolean
   observacaoNF: string
@@ -141,6 +143,7 @@ const FORM_VAZIO: FormTransportadora = {
   cnae: '',
   dataFundacao: '',
   ie: '',
+  ieIsento: false,
   im: '',
   simplesNacional: false,
   observacaoNF: '',
@@ -183,7 +186,8 @@ function transportadoraParaForm(t: Transportadora): FormTransportadora {
     nomeFantasia: t.nomeFantasia || '',
     cnae: t.cnae || '',
     dataFundacao: t.dataFundacao || '',
-    ie: t.ie || '',
+    ie: t.ie === 'ISENTO' ? '' : (t.ie || ''),
+    ieIsento: t.ie === 'ISENTO',
     im: t.im || '',
     simplesNacional: t.simplesNacional ?? false,
     observacaoNF: t.observacaoNF || '',
@@ -217,12 +221,9 @@ function transportadoraParaForm(t: Transportadora): FormTransportadora {
         }))
       : [],
     dadosBancarios: Array.isArray((t as any).dadosBancarios)
-      ? (t as any).dadosBancarios.map((db: any) => ({
-          apelido: db.apelido || '', banco: db.banco || '', agencia: db.agencia || '',
-          conta: db.conta || '', tipoConta: (db.tipoConta as DadosBancarioForm['tipoConta']) || '',
-          pix: db.pix || '', favorecido: db.favorecido || '',
-          documentoFavorecido: db.documentoFavorecido || '', principal: db.principal ?? false,
-        }))
+      ? (t as any).dadosBancarios.map((db: any) =>
+          dadosBancarioApiParaForm(db, t.nome, documentoParaMascara(t))
+        )
       : [],
   }
 }
@@ -562,7 +563,8 @@ function ConteudoDaPaginaDeTransportadoras() {
             nomeFantasia: mesclarTexto(f.nomeFantasia, importado.nomeFantasia),
             cnae: mesclarTexto(f.cnae, importado.cnae),
             dataFundacao: mesclarTexto(f.dataFundacao, importado.dataFundacao),
-            ie: mesclarTexto(f.ie, importado.ie),
+            ie: importado.ieIsento ? '' : mesclarTexto(f.ie, importado.ie),
+            ieIsento: importado.ieIsento || f.ieIsento,
             im: mesclarTexto(f.im, importado.im),
             simplesNacional: mesclarBoolean(f.simplesNacional, importado.simplesNacional),
             email: mesclarTexto(f.email, importado.email),
@@ -754,6 +756,7 @@ function ConteudoDaPaginaDeTransportadoras() {
       cnae: '',
       dataFundacao: '',
       ie: '',
+      ieIsento: false,
       im: '',
       simplesNacional: false,
       observacaoNF: '',
@@ -822,7 +825,7 @@ function ConteudoDaPaginaDeTransportadoras() {
     }))
 
     if (form.tipo === 'PF') return { ...base, ...contatosPayload, ...enderecosPayload, cpf: nums, rg: form.rg || undefined, dataNascimento: form.dataNascimento || undefined, aceitaNFe55: form.aceitaNFe55, dadosBancarios: dadosBancariosPayload.length > 0 ? dadosBancariosPayload : undefined }
-    return { ...base, ...contatosPayload, ...enderecosPayload, cnpj: nums, nomeFantasia: form.nomeFantasia || undefined, cnae: form.cnae || undefined, dataFundacao: form.dataFundacao || undefined, ie: form.ie || undefined, im: form.im || undefined, simplesNacional: form.simplesNacional, observacaoNF: form.observacaoNF || undefined, aceitaNFe55: true, dadosBancarios: dadosBancariosPayload.length > 0 ? dadosBancariosPayload : undefined }
+    return { ...base, ...contatosPayload, ...enderecosPayload, cnpj: nums, nomeFantasia: form.nomeFantasia || undefined, cnae: form.cnae || undefined, dataFundacao: form.dataFundacao || undefined, ie: form.ieIsento ? 'ISENTO' : (form.ie || undefined), im: form.im || undefined, simplesNacional: form.simplesNacional, observacaoNF: form.observacaoNF || undefined, aceitaNFe55: true, dadosBancarios: dadosBancariosPayload.length > 0 ? dadosBancariosPayload : undefined }
   }
 
   async function aoSalvar(evento: FormEvent) {
@@ -1100,7 +1103,19 @@ function ConteudoDaPaginaDeTransportadoras() {
                     <CampoInput rotulo="Razão social" valor={form.nome} aoMudar={(v) => { tocarCampo('nome'); set('nome', v) }} placeholder="Razão social completa" obrigatorio mensagemDeErro={erroVisivel('nome')} />
                     <CampoInput rotulo="Nome fantasia" valor={form.nomeFantasia} aoMudar={(v) => set('nomeFantasia', v)} placeholder="Nome comercial (opcional)" />
                     <div className="grid gap-4 sm:grid-cols-2">
-                      <CampoInput rotulo="IE" valor={form.ie} aoMudar={(v) => set('ie', v)} placeholder="Inscrição Estadual" maxLength={30} />
+                      <CampoInscricaoEstadual
+                        ie={form.ie}
+                        ieIsento={form.ieIsento}
+                        aoMudarIe={(v) => set('ie', v)}
+                        aoMudarIsento={(v) => {
+                          setForm((f) => ({
+                            ...f,
+                            ieIsento: v,
+                            ie: v ? '' : f.ie,
+                            indicadorIe: v ? '2' : (f.indicadorIe === '2' ? '9' : f.indicadorIe),
+                          }))
+                        }}
+                      />
                       <CampoInput rotulo="IM" valor={form.im} aoMudar={(v) => set('im', v)} placeholder="Inscrição Municipal" maxLength={30} />
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
@@ -1164,6 +1179,8 @@ function ConteudoDaPaginaDeTransportadoras() {
               <ListaDadosBancarios
                 dadosBancarios={form.dadosBancarios}
                 aoMudar={(v) => set('dadosBancarios', v)}
+                nomeCadastro={form.nome}
+                documentoCadastro={form.documento}
                 disabled={somenteLeitura}
               />
             )}

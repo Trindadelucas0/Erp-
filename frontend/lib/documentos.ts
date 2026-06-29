@@ -80,3 +80,8 @@ export function mascaraTelefone(v: string): string {
 export function mascaraCep(v: string): string {
   return v.replace(/\D/g, '').slice(0, 8).replace(/^(\d{5})(\d)/, '$1-$2')
 }
+
+/** Remove pontos, traços e demais caracteres — mantém só dígitos (cola do site do governo). */
+export function sanitizarIeDigitos(valor: string): string {
+  return valor.replace(/\D/g, '')
+}

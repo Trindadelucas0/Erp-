@@ -43,9 +43,11 @@ import { ListaEnderecos, ENDERECO_VAZIO, type EnderecoForm } from '@/components/
 import {
   ListaDadosBancarios,
   DADOS_BANCARIO_VAZIO,
+  dadosBancarioApiParaForm,
   type DadosBancarioForm,
 } from '@/components/clientes/lista-dados-bancarios'
 import { ListaCnaes, type CnaeForm } from '@/components/pessoas/lista-cnaes'
+import { CampoInscricaoEstadual } from '@/components/pessoas/campo-inscricao-estadual'
 import {
   SelecaoMultiplaCatalogo,
   type ItemCatalogo,
@@ -115,6 +117,7 @@ type FormFornecedor = {
   cnaes: CnaeForm[]
   dataFundacao: string
   ie: string
+  ieIsento: boolean
   im: string
   simplesNacional: boolean
   email: string
@@ -164,6 +167,7 @@ const FORM_VAZIO: FormFornecedor = {
   cnaes: [],
   dataFundacao: '',
   ie: '',
+  ieIsento: false,
   im: '',
   simplesNacional: false,
   email: '',
@@ -222,7 +226,8 @@ function fornecedorParaForm(f: Fornecedor): FormFornecedor {
         }))
       : [],
     dataFundacao: f.dataFundacao || '',
-    ie: f.ie || '',
+    ie: f.ie === 'ISENTO' ? '' : (f.ie || ''),
+    ieIsento: f.ie === 'ISENTO',
     im: f.im || '',
     simplesNacional: f.simplesNacional ?? false,
     email: f.email || '',
@@ -256,17 +261,9 @@ function fornecedorParaForm(f: Fornecedor): FormFornecedor {
     fornecedoresVinculadosIds: f.fornecedoresVinculadosIds ?? [],
     fornecedoresRelacionados: f.fornecedoresRelacionados ?? [],
     dadosBancarios: Array.isArray(f.dadosBancarios)
-      ? f.dadosBancarios.map((db) => ({
-          apelido: db.apelido || '',
-          banco: db.banco || '',
-          agencia: db.agencia || '',
-          conta: db.conta || '',
-          tipoConta: (db.tipoConta as DadosBancarioForm['tipoConta']) || '',
-          pix: db.pix || '',
-          favorecido: db.favorecido || '',
-          documentoFavorecido: db.documentoFavorecido || '',
-          principal: db.principal ?? false,
-        }))
+      ? f.dadosBancarios.map((db) =>
+          dadosBancarioApiParaForm(db, f.nome, documentoParaMascara(f))
+        )
       : [],
     contatos: Array.isArray((f as Fornecedor & { contatos?: ContatoForm[] }).contatos)
       ? (f as Fornecedor & { contatos: ContatoForm[] }).contatos.map((ct) => ({
@@ -738,7 +735,8 @@ function ConteudoDaPaginaDeFornecedores() {
             ...f,
             nome: mesclarTexto(f.nome, importado.nome),
             nomeFantasia: mesclarTexto(f.nomeFantasia, importado.nomeFantasia),
-            ie: mesclarTexto(f.ie, importado.ie),
+            ie: importado.ieIsento ? '' : mesclarTexto(f.ie, importado.ie),
+            ieIsento: importado.ieIsento || f.ieIsento,
             im: mesclarTexto(f.im, importado.im),
             cnaes: importado.cnaes.length > 0 ? importado.cnaes : f.cnaes,
             dataFundacao: mesclarTexto(f.dataFundacao, importado.dataFundacao),
@@ -959,6 +957,7 @@ function ConteudoDaPaginaDeFornecedores() {
       cnaes: [] as CnaeForm[],
       dataFundacao: '',
       ie: '',
+      ieIsento: false,
       im: '',
       simplesNacional: false,
     }
@@ -1089,7 +1088,7 @@ function ConteudoDaPaginaDeFornecedores() {
       nomeFantasia: form.nomeFantasia || undefined,
       cnaes: form.cnaes.length > 0 ? form.cnaes : undefined,
       dataFundacao: form.dataFundacao || undefined,
-      ie: form.ie || undefined,
+      ie: form.ieIsento ? 'ISENTO' : (form.ie || undefined),
       im: form.im || undefined,
       simplesNacional: form.simplesNacional,
     }
@@ -1436,7 +1435,18 @@ function ConteudoDaPaginaDeFornecedores() {
                       mensagemDeErro={erroVisivel('nome')} />
                     <CampoInput rotulo="Nome fantasia" valor={form.nomeFantasia} aoMudar={(v) => set('nomeFantasia', v)} placeholder="Nome comercial (opcional)" />
                     <div className="grid gap-4 sm:grid-cols-2">
-                      <CampoInput rotulo="IE" valor={form.ie} aoMudar={(v) => set('ie', v)} placeholder="Inscrição Estadual" maxLength={30} />
+                      <CampoInscricaoEstadual
+                        ie={form.ie}
+                        ieIsento={form.ieIsento}
+                        aoMudarIe={(v) => set('ie', v)}
+                        aoMudarIsento={(v) => {
+                          setForm((f) => ({
+                            ...f,
+                            ieIsento: v,
+                            ie: v ? '' : f.ie,
+                          }))
+                        }}
+                      />
                       <CampoInput rotulo="IM" valor={form.im} aoMudar={(v) => set('im', v)} placeholder="Inscrição Municipal" maxLength={30} />
                     </div>
                     <CampoInput rotulo="Data de fundação" valor={form.dataFundacao} aoMudar={(v) => set('dataFundacao', v)} tipo="date" />
@@ -1590,6 +1600,8 @@ function ConteudoDaPaginaDeFornecedores() {
               <ListaDadosBancarios
                 dadosBancarios={form.dadosBancarios}
                 aoMudar={(v) => { tocarCampo('dadosBancarios'); set('dadosBancarios', v) }}
+                nomeCadastro={form.nome}
+                documentoCadastro={form.documento}
                 mensagemDeErro={erroVisivel('dadosBancarios')}
                 disabled={somenteLeitura}
               />
