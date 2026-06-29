@@ -25,7 +25,6 @@ CADASTRO DE FORNECEDOR (1).docx
 CADASTRO DE TRANSPORTADORA.docx
 
 # Documentação, notas e deploy local
-busca_fornecedores_dinâmica_6fc2244f.plan.md
 deploy/cloudflared-ingress-exemplo.yml
 deploy/env.vps.exemplo
 documentação assinatura.docx

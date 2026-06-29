@@ -3,6 +3,16 @@
  */
 import { z } from 'zod'
 import { validarCpf, validarCnpj } from '../../compartilhado/validacoes/documentos.js'
+import { normalizarIe } from '../../compartilhado/validacoes/inscricao-estadual.js'
+
+const campoIeOpcional = z
+  .string()
+  .max(30)
+  .optional()
+  .refine(
+    (v) => !v || normalizarIe(v) !== null,
+    'IE inválida — use apenas dígitos ou ISENTO'
+  )
 
 const camposComuns = {
   nome: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres'),
@@ -125,7 +135,7 @@ export const esquemaDeCriacaoDeTransportadoraPJ = z.object({
       (v) => !v || /^\d{4}-\d{2}-\d{2}$/.test(v),
       'Data no formato AAAA-MM-DD'
     ),
-  ie: z.string().max(30).optional(),
+  ie: campoIeOpcional,
   im: z.string().max(30).optional(),
   simplesNacional: z.boolean().optional(),
   observacaoNF: z.string().max(500).optional(),

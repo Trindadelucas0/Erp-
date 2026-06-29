@@ -7,6 +7,7 @@ import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import type { Prisma } from '@prisma/client'
 import type { DadosParaCriarTransportadora, DadosParaEditarTransportadora } from './esquema-transportadoras.js'
 import { extrairContatosEEnderecos } from '../../compartilhado/pessoas/extrair-contatos-enderecos.js'
+import { normalizarIe, resolverIndicadorIe } from '../../compartilhado/validacoes/inscricao-estadual.js'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -173,10 +174,13 @@ type CamposNormalizados = {
 }
 
 function normalizarDocumento(dados: DadosParaCriarTransportadora | DadosParaEditarTransportadora): CamposNormalizados {
+  const ieNormalizada =
+    dados.tipo === 'PJ' ? normalizarIe(dados.ie) : null
+
   const base = {
     tipo: dados.tipo,
     nome: dados.nome,
-    indicadorIe: dados.indicadorIe ?? '9',
+    indicadorIe: resolverIndicadorIe(ieNormalizada, dados.indicadorIe),
     observacoes: dados.observacoes || null,
     email: dados.email || null,
     telefone: dados.telefone ? limparNumeros(dados.telefone) : null,
@@ -220,7 +224,7 @@ function normalizarDocumento(dados: DadosParaCriarTransportadora | DadosParaEdit
     nomeFantasia: dados.nomeFantasia || null,
     cnae: dados.cnae || null,
     dataFundacao: dados.dataFundacao || null,
-    ie: dados.ie || null,
+    ie: ieNormalizada,
     im: dados.im || null,
     simplesNacional: dados.simplesNacional ?? false,
     observacaoNF: dados.observacaoNF || null,

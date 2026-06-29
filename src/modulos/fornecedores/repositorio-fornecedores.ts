@@ -7,6 +7,7 @@ import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import type { Prisma } from '@prisma/client'
 import type { DadosParaCriarFornecedor, DadosParaEditarFornecedor } from './esquema-fornecedores.js'
 import { extrairContatosEEnderecos } from '../../compartilhado/pessoas/extrair-contatos-enderecos.js'
+import { normalizarIe, resolverIndicadorIe } from '../../compartilhado/validacoes/inscricao-estadual.js'
 import {
   enriquecerFornecedoresComVinculos,
   obterFornecedoresRelacionados,
@@ -219,6 +220,7 @@ type CamposNormalizados = {
   dataFundacao: string | null
   ie: string | null
   im: string | null
+  indicadorIe: string
   simplesNacional: boolean
   email: string | null
   telefone: string | null
@@ -267,6 +269,8 @@ function normalizarPrazos(prazos?: (number | null)[] | null) {
 
 function normalizarDocumento(dados: DadosParaCriarFornecedor | DadosParaEditarFornecedor): CamposNormalizados {
   const prazos = normalizarPrazos(dados.prazosPagamento)
+  const ieNormalizada =
+    dados.tipo === 'PJ' ? normalizarIe(dados.ie) : null
   const cnaesArray = dados.cnaes
   const cnaePrincipal =
     cnaesArray?.find((c) => c.principal)?.codigo ??
@@ -318,6 +322,7 @@ function normalizarDocumento(dados: DadosParaCriarFornecedor | DadosParaEditarFo
       dataFundacao: null,
       ie: null,
       im: null,
+      indicadorIe: '9',
       simplesNacional: false,
     }
   }
@@ -327,8 +332,9 @@ function normalizarDocumento(dados: DadosParaCriarFornecedor | DadosParaEditarFo
     cnpj: limparNumeros(dados.cnpj),
     nomeFantasia: dados.nomeFantasia || null,
     dataFundacao: dados.dataFundacao || null,
-    ie: dados.ie || null,
+    ie: ieNormalizada,
     im: dados.im || null,
+    indicadorIe: resolverIndicadorIe(ieNormalizada),
     simplesNacional: dados.simplesNacional ?? false,
     cpf: null,
     rg: null,
@@ -647,6 +653,7 @@ function dadosDaPessoaDeCampos(campos: CamposNormalizados) {
     dataFundacao: campos.dataFundacao,
     ie: campos.ie,
     im: campos.im,
+    indicadorIe: campos.indicadorIe,
     simplesNacional: campos.simplesNacional,
     observacoes: campos.observacoes,
   }
