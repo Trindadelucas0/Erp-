@@ -903,10 +903,11 @@ function ConteudoDaPaginaDeTransportadoras() {
   const transportadorasFiltradas = listaTransportadoras.filter((t) => {
     const termo = busca.toLowerCase()
     return t.nome.toLowerCase().includes(termo) ||
+      (t.nomeFantasia && t.nomeFantasia.toLowerCase().includes(termo)) ||
       (t.cpf && t.cpf.includes(busca.replace(/\D/g, ''))) ||
       (t.cnpj && t.cnpj.includes(busca.replace(/\D/g, ''))) ||
       (t.email && t.email.toLowerCase().includes(termo)) ||
-      (t.cidade && t.cidade.toLowerCase().includes(termo))
+      (t.estado && t.estado.toLowerCase().includes(termo))
   })
 
   return (
@@ -1272,26 +1273,34 @@ function ConteudoDaPaginaDeTransportadoras() {
             type="text"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por nome, documento ou cidade..."
+            placeholder="Buscar por razão social, nome fantasia, CPF/CNPJ ou UF..."
             className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
         </div>
 
         <div className="overflow-x-auto rounded-md border border-border">
-          <table className="w-full text-sm">
+          <table className="w-full table-fixed text-sm">
+            <colgroup>
+              <col className="w-[35%]" />
+              <col className="w-[25%]" />
+              <col className="w-[11.5rem]" />
+              <col className="w-[6rem]" />
+              <col className="w-12" />
+              <col className="w-[5.5rem]" />
+            </colgroup>
             <thead>
               <tr className="border-b border-border bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium">Nome</th>
-                <th className="px-4 py-3 text-left font-medium">Documento</th>
+                <th className="px-4 py-3 text-left font-medium">Razão social</th>
+                <th className="px-4 py-3 text-left font-medium">Nome fantasia</th>
+                <th className="px-4 py-3 text-left font-medium">CPF/CNPJ</th>
                 <th className="px-4 py-3 text-left font-medium">ANTT</th>
-                <th className="px-4 py-3 text-left font-medium">Email</th>
-                <th className="px-4 py-3 text-left font-medium">Cidade</th>
+                <th className="px-4 py-3 text-left font-medium">UF</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
               </tr>
             </thead>
             <tbody>
               {carregandoLista && Array.from({ length: 3 }).map((_, i) => (
                 <tr key={i} className="border-b border-border last:border-0">
-                  {Array.from({ length: 7 }).map((__, j) => (
+                  {Array.from({ length: 6 }).map((__, j) => (
                     <td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-muted" /></td>
                   ))}
                 </tr>
@@ -1314,11 +1323,27 @@ function ConteudoDaPaginaDeTransportadoras() {
                     ariaLabel={`Visualizar transportadora ${t.nome}`}
                     desabilitada={alterandoStatus === t.id}
                   >
-                    <td className="px-4 py-3 font-medium">{t.nome}</td>
-                    <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{documento}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{t.antt || '—'}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{t.email || '—'}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{t.cidade || '—'}</td>
+                    <td
+                      className="max-w-0 truncate whitespace-nowrap px-4 py-3 font-medium"
+                      title={t.nome}
+                    >
+                      {t.nome}
+                    </td>
+                    <td
+                      className="max-w-0 truncate whitespace-nowrap px-4 py-3 text-muted-foreground"
+                      title={t.nomeFantasia || undefined}
+                    >
+                      {t.nomeFantasia || '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 font-mono text-muted-foreground">
+                      {documento}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                      {t.antt || '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                      {t.estado || '—'}
+                    </td>
                     <td className="px-4 py-3">
                       <BadgeStatus variante={t.ativo ? 'ativo' : 'inativo'}>{t.ativo ? 'Ativo' : 'Inativo'}</BadgeStatus>
                     </td>

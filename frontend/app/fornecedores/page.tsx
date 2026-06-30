@@ -1180,7 +1180,7 @@ function ConteudoDaPaginaDeFornecedores() {
       (f.cpf && f.cpf.includes(busca.replace(/\D/g, ''))) ||
       (f.cnpj && f.cnpj.includes(busca.replace(/\D/g, ''))) ||
       (f.email && f.email.toLowerCase().includes(termo)) ||
-      (f.cidade && f.cidade.toLowerCase().includes(termo))
+      (f.estado && f.estado.toLowerCase().includes(termo))
     )
   })
 
@@ -1717,19 +1717,27 @@ function ConteudoDaPaginaDeFornecedores() {
             type="text"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por razão social, nome fantasia ou CPF/CNPJ..."
+            placeholder="Buscar por razão social, nome fantasia, CPF/CNPJ ou UF..."
             className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
 
         <div className="overflow-x-auto rounded-md border border-border">
-          <table className="w-full text-sm">
+          <table className="w-full table-fixed text-sm">
+            <colgroup>
+              <col className="w-[40%]" />
+              <col className="w-[30%]" />
+              <col className="w-[11.5rem]" />
+              <col className="w-12" />
+              <col className="w-[5.5rem]" />
+              <col className="w-[6.5rem]" />
+            </colgroup>
             <thead>
               <tr className="border-b border-border bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium">Nome</th>
-                <th className="px-4 py-3 text-left font-medium">Documento</th>
-                <th className="px-4 py-3 text-left font-medium">Email</th>
-                <th className="px-4 py-3 text-left font-medium">Cidade</th>
+                <th className="px-4 py-3 text-left font-medium">Razão social</th>
+                <th className="px-4 py-3 text-left font-medium">Nome fantasia</th>
+                <th className="px-4 py-3 text-left font-medium">CPF/CNPJ</th>
+                <th className="px-4 py-3 text-left font-medium">UF</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
                 <th className="px-4 py-3 text-left font-medium">Cadastro</th>
               </tr>
@@ -1738,7 +1746,7 @@ function ConteudoDaPaginaDeFornecedores() {
               {carregandoLista &&
                 Array.from({ length: 3 }).map((_, i) => (
                   <tr key={i} className="border-b border-border last:border-0">
-                    {Array.from({ length: 7 }).map((__, j) => (
+                    {Array.from({ length: 6 }).map((__, j) => (
                       <td key={j} className="px-4 py-3">
                         <div className="h-4 animate-pulse rounded bg-muted" />
                       </td>
@@ -1767,15 +1775,24 @@ function ConteudoDaPaginaDeFornecedores() {
                     ariaLabel={`Visualizar fornecedor ${f.nome}`}
                     desabilitada={alterandoStatus === f.id}
                   >
-                    <td className="px-4 py-3 font-medium">
+                    <td
+                      className="max-w-0 truncate whitespace-nowrap px-4 py-3 font-medium"
+                      title={f.nome}
+                    >
                       {f.nome}
-                      {f.nomeFantasia && (
-                        <div className="text-xs text-muted-foreground">{f.nomeFantasia}</div>
-                      )}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{documento}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{f.email || '—'}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{f.cidade || '—'}</td>
+                    <td
+                      className="max-w-0 truncate whitespace-nowrap px-4 py-3 text-muted-foreground"
+                      title={f.nomeFantasia || undefined}
+                    >
+                      {f.nomeFantasia || '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 font-mono text-muted-foreground">
+                      {documento}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                      {f.estado || '—'}
+                    </td>
                     <td className="px-4 py-3">
                       <BadgeStatus variante={f.ativo ? 'ativo' : 'inativo'}>
                         {f.ativo ? 'Ativo' : 'Inativo'}

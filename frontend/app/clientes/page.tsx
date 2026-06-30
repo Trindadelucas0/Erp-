@@ -1181,10 +1181,11 @@ function ConteudoDaPaginaDeClientes() {
     const termo = busca.toLowerCase()
     const matchBusca =
       c.nome.toLowerCase().includes(termo) ||
+      (c.nomeFantasia && c.nomeFantasia.toLowerCase().includes(termo)) ||
       (c.cpf && c.cpf.includes(busca.replace(/\D/g, ''))) ||
       (c.cnpj && c.cnpj.includes(busca.replace(/\D/g, ''))) ||
       (c.email && c.email.toLowerCase().includes(termo)) ||
-      (c.cidade && c.cidade.toLowerCase().includes(termo))
+      (c.estado && c.estado.toLowerCase().includes(termo))
 
     const status = c.statusAprovacao ?? 'ativo'
     const matchStatus =
@@ -1913,7 +1914,7 @@ function ConteudoDaPaginaDeClientes() {
           <input
             ref={refBusca}
             className="flex h-9 w-full max-w-xs rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            placeholder="Buscar por nome, CPF/CNPJ, email, cidade..."
+            placeholder="Buscar por razão social, nome fantasia, CPF/CNPJ ou UF..."
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
           />
@@ -1931,14 +1932,24 @@ function ConteudoDaPaginaDeClientes() {
         </div>
 
         <div className="overflow-x-auto rounded-md border border-border">
-          <table className="w-full text-sm">
+          <table className="w-full table-fixed text-sm">
+            <colgroup>
+              <col className="w-14" />
+              <col className="w-[38%]" />
+              <col className="w-[28%]" />
+              <col className="w-[11.5rem]" />
+              <col className="w-12" />
+              <col className="w-[9rem]" />
+              <col className="w-[5.5rem]" />
+              <col className="w-[6.5rem]" />
+            </colgroup>
             <thead>
               <tr className="border-b border-border bg-muted/50">
                 <th className="px-4 py-3 text-left font-medium">Tipo</th>
-                <th className="px-4 py-3 text-left font-medium">Nome / Razão Social</th>
-                <th className="px-4 py-3 text-left font-medium">CPF / CNPJ</th>
-                <th className="px-4 py-3 text-left font-medium">Email</th>
-                <th className="px-4 py-3 text-left font-medium">Cidade / UF</th>
+                <th className="px-4 py-3 text-left font-medium">Razão social</th>
+                <th className="px-4 py-3 text-left font-medium">Nome fantasia</th>
+                <th className="px-4 py-3 text-left font-medium">CPF/CNPJ</th>
+                <th className="px-4 py-3 text-left font-medium">UF</th>
                 <th className="px-4 py-3 text-left font-medium">Aprovação</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
                 <th className="px-4 py-3 text-left font-medium">Cadastro</th>
@@ -1991,20 +2002,23 @@ function ConteudoDaPaginaDeClientes() {
                         {cliente.tipo}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium">{cliente.nome}</div>
-                      {cliente.nomeFantasia && (
-                        <div className="text-xs text-muted-foreground">{cliente.nomeFantasia}</div>
-                      )}
+                    <td
+                      className="max-w-0 truncate whitespace-nowrap px-4 py-3 font-medium"
+                      title={cliente.nome}
+                    >
+                      {cliente.nome}
                     </td>
-                    <td className="px-4 py-3 font-mono text-muted-foreground">
+                    <td
+                      className="max-w-0 truncate whitespace-nowrap px-4 py-3 text-muted-foreground"
+                      title={cliente.nomeFantasia || undefined}
+                    >
+                      {cliente.nomeFantasia || '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 font-mono text-muted-foreground">
                       {formatarDocumentoTabela(cliente)}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{cliente.email || '—'}</td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {cliente.cidade && cliente.estado
-                        ? `${cliente.cidade} / ${cliente.estado}`
-                        : cliente.cidade || '—'}
+                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                      {cliente.estado || '—'}
                     </td>
                     <td className="px-4 py-3">
                       <BadgeStatus variante={varianteBadgeAprovacao(cliente.statusAprovacao)}>
