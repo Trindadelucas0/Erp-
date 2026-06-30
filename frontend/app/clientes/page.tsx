@@ -5,9 +5,11 @@
  * BrasilAPI, verificação de duplicidade, flags fiscais e validação de abas.
  */
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Eye, Pencil, RotateCcw, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
+import { MenuAcoesLinha } from '@/components/compartilhado/menu-acoes-linha'
 import { CampoSelect } from '@/components/compartilhado/campo-select'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { usePermissao } from '@/hooks/use-permissao'
@@ -29,6 +31,7 @@ import { Modal } from '@/components/ui/modal'
 import { Abas } from '@/components/ui/abas'
 import { Separator } from '@/components/ui/separator'
 import { submeterFormularioPorId } from '@/lib/atalhos/submeter-formulario'
+import { paraCaixaAlta } from '@/lib/texto'
 import {
   mascaraPorTipo,
   mascaraTelefone,
@@ -985,9 +988,9 @@ function ConteudoDaPaginaDeClientes() {
       if (!dados.erro) {
         setForm((f) => ({
           ...f,
-          logradouro: dados.logradouro || f.logradouro,
-          bairro: dados.bairro || f.bairro,
-          cidade: dados.localidade || f.cidade,
+          logradouro: dados.logradouro ? paraCaixaAlta(dados.logradouro) : f.logradouro,
+          bairro: dados.bairro ? paraCaixaAlta(dados.bairro) : f.bairro,
+          cidade: dados.localidade ? paraCaixaAlta(dados.localidade) : f.cidade,
           estado: dados.uf || f.estado,
           codigoIbge: dados.ibge || f.codigoIbge,
         }))
@@ -1294,39 +1297,16 @@ function ConteudoDaPaginaDeClientes() {
                   })}
                 </div>
               </div>
-              <div className="flex shrink-0 gap-2">
-                {abaAtiva !== 'identificacao' && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={aoVoltar}
-                    disabled={qualquerOperacaoAtiva}
-                  >
-                    Voltar
-                  </Button>
-                )}
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={solicitarFechar}
-                  disabled={qualquerOperacaoAtiva}
-                  title={tituloComAtalho('Cancelar', teclaCancelar)}
-                >
-                  Cancelar
-                </Button>
-                {abaAtiva !== 'endereco' ? (
-                  <BotaoPrimario
-                    type="button"
-                    onClick={aoAvancar}
-                    disabled={!etapaAtualLiberada || qualquerOperacaoAtiva}
-                  >
-                    {abaAtiva === 'identificacao' ? 'Próximo: Contato' : 'Próximo: Endereço'}
-                  </BotaoPrimario>
-                ) : (
+              <div className="flex w-full shrink-0 items-center justify-between gap-2 sm:w-auto">
+                <div className="flex shrink-0 gap-2">
                   <BotaoPrimario
                     form="form-cliente"
                     type="submit"
-                    disabled={!formularioValido || qualquerOperacaoAtiva || recemChegouAoEndereco}
+                    disabled={
+                      !formularioValido ||
+                      qualquerOperacaoAtiva ||
+                      (abaAtiva === 'endereco' && recemChegouAoEndereco)
+                    }
                     title={tituloComAtalho(
                       modoEdicao ? 'Salvar' : 'Enviar para aprovação',
                       teclaSalvar
@@ -1343,7 +1323,37 @@ function ConteudoDaPaginaDeClientes() {
                       modoEdicao ? 'Salvar' : 'Enviar para aprovação'
                     )}
                   </BotaoPrimario>
-                )}
+                  {abaAtiva !== 'identificacao' && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={aoVoltar}
+                      disabled={qualquerOperacaoAtiva}
+                    >
+                      ← Anterior
+                    </Button>
+                  )}
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={solicitarFechar}
+                    disabled={qualquerOperacaoAtiva}
+                    title={tituloComAtalho('Cancelar', teclaCancelar)}
+                  >
+                    Cancelar
+                  </Button>
+                  {abaAtiva !== 'endereco' && (
+                    <BotaoPrimario
+                      type="button"
+                      onClick={aoAvancar}
+                      disabled={!etapaAtualLiberada || qualquerOperacaoAtiva}
+                    >
+                      {abaAtiva === 'identificacao' ? 'Próximo: Contato' : 'Próximo: Endereço'}
+                    </BotaoPrimario>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -2030,48 +2040,30 @@ function ConteudoDaPaginaDeClientes() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          disabled={estaAlterandoEsseLine}
-                          onClick={() => abrirModalVisualizacao(cliente)}
-                        >
-                          Visualizar
-                        </Button>
-                        {podeEditar && clientePermiteEdicao(cliente) && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              disabled={estaAlterandoEsseLine}
-                              onClick={() => abrirModalEdicao(cliente)}
-                            >
-                              Editar
-                            </Button>
-                          )}
-                          {podeDesativar && (
-                            <Button
-                              type="button"
-                              variant={cliente.ativo ? 'destructive' : 'outline'}
-                              size="sm"
-                              disabled={estaAlterandoEsseLine}
-                              onClick={() => alternarStatus(cliente)}
-                            >
-                              {estaAlterandoEsseLine ? (
-                                <span className="flex items-center gap-1.5">
-                                  <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
-                                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="31.4" strokeDashoffset="10" />
-                                  </svg>
-                                  {cliente.ativo ? 'Desativando...' : 'Reativando...'}
-                                </span>
-                              ) : (
-                                cliente.ativo ? 'Desativar' : 'Reativar'
-                              )}
-                            </Button>
-                          )}
-                      </div>
+                      <MenuAcoesLinha
+                        carregando={estaAlterandoEsseLine}
+                        ariaLabel={`Ações do cliente ${cliente.nome}`}
+                        itens={[
+                          {
+                            rotulo: 'Visualizar',
+                            icone: Eye,
+                            onClick: () => abrirModalVisualizacao(cliente),
+                          },
+                          {
+                            rotulo: 'Editar',
+                            icone: Pencil,
+                            onClick: () => abrirModalEdicao(cliente),
+                            oculto: !podeEditar || !clientePermiteEdicao(cliente),
+                          },
+                          {
+                            rotulo: cliente.ativo ? 'Desativar' : 'Reativar',
+                            icone: cliente.ativo ? Trash2 : RotateCcw,
+                            onClick: () => alternarStatus(cliente),
+                            destrutivo: cliente.ativo,
+                            oculto: !podeDesativar,
+                          },
+                        ]}
+                      />
                     </td>
                   </tr>
                 )

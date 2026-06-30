@@ -5,9 +5,11 @@
  * BrasilAPI, verificação de duplicidade e campos específicos (ANTT, tipo veículo).
  */
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Eye, Pencil, RotateCcw, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
+import { MenuAcoesLinha } from '@/components/compartilhado/menu-acoes-linha'
 import { CampoSelect } from '@/components/compartilhado/campo-select'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { usePermissao } from '@/hooks/use-permissao'
@@ -28,6 +30,7 @@ import { Modal } from '@/components/ui/modal'
 import { Abas } from '@/components/ui/abas'
 import { Separator } from '@/components/ui/separator'
 import { submeterFormularioPorId } from '@/lib/atalhos/submeter-formulario'
+import { paraCaixaAlta } from '@/lib/texto'
 import {
   mascaraPorTipo,
   mascaraTelefone,
@@ -793,7 +796,14 @@ function ConteudoDaPaginaDeTransportadoras() {
     try {
       const res = await fetch(`https://viacep.com.br/ws/${nums}/json/`)
       const dados = await res.json()
-      if (!dados.erro) setForm((f) => ({ ...f, logradouro: dados.logradouro || f.logradouro, bairro: dados.bairro || f.bairro, cidade: dados.localidade || f.cidade, estado: dados.uf || f.estado, codigoIbge: dados.ibge || f.codigoIbge }))
+      if (!dados.erro) setForm((f) => ({
+        ...f,
+        logradouro: dados.logradouro ? paraCaixaAlta(dados.logradouro) : f.logradouro,
+        bairro: dados.bairro ? paraCaixaAlta(dados.bairro) : f.bairro,
+        cidade: dados.localidade ? paraCaixaAlta(dados.localidade) : f.cidade,
+        estado: dados.uf || f.estado,
+        codigoIbge: dados.ibge || f.codigoIbge,
+      }))
     } catch { /* ignora */ }
   }
 
@@ -966,40 +976,15 @@ function ConteudoDaPaginaDeTransportadoras() {
               ) : (
                 <span />
               )}
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={solicitarFechar}
-                  disabled={salvando}
-                  title={tituloComAtalho('Cancelar', teclaCancelar)}
-                >
-                  Cancelar
-                </Button>
-                {!ehPrimeiraAba && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={irParaAbaAnterior}
-                    disabled={salvando}
+              <div className="flex w-full items-center justify-between gap-2 sm:w-auto">
+                <div className="flex gap-2">
+                  <BotaoPrimario
+                    form="form-transportadora"
+                    type="submit"
+                    disabled={salvando || !formularioValido}
+                    title={tituloComAtalho(modoEdicao ? 'Salvar' : 'Cadastrar transportadora', teclaSalvar)}
                   >
-                    ← Anterior
-                  </Button>
-                )}
-                <BotaoPrimario
-                  type="button"
-                  onClick={() => {
-                    if (ehUltimaAba) {
-                      submeterFormularioPorId('form-transportadora')
-                    } else {
-                      aoAvancar()
-                    }
-                  }}
-                  disabled={salvando || (ehUltimaAba && !formularioValido)}
-                  title={ehUltimaAba ? tituloComAtalho(modoEdicao ? 'Salvar' : 'Cadastrar transportadora', teclaSalvar) : undefined}
-                >
-                  {ehUltimaAba ? (
-                    salvando ? (
+                    {salvando ? (
                       <span className="flex items-center gap-2">
                         <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -1007,9 +992,39 @@ function ConteudoDaPaginaDeTransportadoras() {
                         </svg>
                         Salvando...
                       </span>
-                    ) : modoEdicao ? 'Salvar' : 'Cadastrar transportadora'
-                  ) : 'Próximo →'}
-                </BotaoPrimario>
+                    ) : modoEdicao ? 'Salvar' : 'Cadastrar transportadora'}
+                  </BotaoPrimario>
+                  {!ehPrimeiraAba && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={irParaAbaAnterior}
+                      disabled={salvando}
+                    >
+                      ← Anterior
+                    </Button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={solicitarFechar}
+                    disabled={salvando}
+                    title={tituloComAtalho('Cancelar', teclaCancelar)}
+                  >
+                    Cancelar
+                  </Button>
+                  {!ehUltimaAba && (
+                    <BotaoPrimario
+                      type="button"
+                      onClick={aoAvancar}
+                      disabled={salvando || !etapaAtualLiberada}
+                    >
+                      Próximo →
+                    </BotaoPrimario>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -1301,18 +1316,30 @@ function ConteudoDaPaginaDeTransportadoras() {
                       <BadgeStatus variante={t.ativo ? 'ativo' : 'inativo'}>{t.ativo ? 'Ativo' : 'Inativo'}</BadgeStatus>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={() => abrirModalVisualizacao(t)}>
-                          Visualizar
-                        </Button>
-                        {podeEditar && <Button type="button" variant="outline" size="sm" onClick={() => abrirModalEdicao(t)}>Editar</Button>}
-                        {podeDesativar && (
-                          <Button type="button" variant={t.ativo ? 'destructive' : 'outline'} size="sm"
-                            onClick={() => alternarStatus(t)} disabled={alterandoStatus === t.id}>
-                            {alterandoStatus === t.id ? 'Aguarde...' : t.ativo ? 'Desativar' : 'Reativar'}
-                          </Button>
-                        )}
-                      </div>
+                      <MenuAcoesLinha
+                        carregando={alterandoStatus === t.id}
+                        ariaLabel={`Ações da transportadora ${t.nome}`}
+                        itens={[
+                          {
+                            rotulo: 'Visualizar',
+                            icone: Eye,
+                            onClick: () => abrirModalVisualizacao(t),
+                          },
+                          {
+                            rotulo: 'Editar',
+                            icone: Pencil,
+                            onClick: () => abrirModalEdicao(t),
+                            oculto: !podeEditar,
+                          },
+                          {
+                            rotulo: t.ativo ? 'Desativar' : 'Reativar',
+                            icone: t.ativo ? Trash2 : RotateCcw,
+                            onClick: () => alternarStatus(t),
+                            destrutivo: t.ativo,
+                            oculto: !podeDesativar,
+                          },
+                        ]}
+                      />
                     </td>
                   </tr>
                 )

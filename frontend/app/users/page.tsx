@@ -4,10 +4,12 @@
  * Tela de usuários — listar, criar, editar, desativar e permissões extras.
  */
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { KeyRound, Pencil, RotateCcw, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
+import { MenuAcoesLinha } from '@/components/compartilhado/menu-acoes-linha'
 import { useRegistrarAtalhos } from '@/hooks/use-registrar-atalhos'
 import {
   tituloComAtalho,
@@ -737,40 +739,15 @@ function ConteudoDaPaginaDeUsuarios() {
               ) : (
                 <span />
               )}
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={solicitarFechar}
-                  disabled={salvando}
-                  title={tituloComAtalho('Cancelar', teclaCancelar)}
-                >
-                  Cancelar
-                </Button>
-                {!ehPrimeiraAba && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={irParaAbaAnterior}
-                    disabled={salvando}
+              <div className="flex w-full items-center justify-between gap-2 sm:w-auto">
+                <div className="flex gap-2">
+                  <BotaoPrimario
+                    form="form-usuario"
+                    type="submit"
+                    disabled={salvando || !formularioValido}
+                    title={tituloComAtalho(modoEdicao ? 'Salvar' : 'Criar usuário', teclaSalvar)}
                   >
-                    ← Anterior
-                  </Button>
-                )}
-                <BotaoPrimario
-                  type="button"
-                  onClick={() => {
-                    if (ehUltimaAba) {
-                      submeterFormularioPorId('form-usuario')
-                    } else {
-                      aoAvancar()
-                    }
-                  }}
-                  disabled={salvando || (ehUltimaAba && !formularioValido)}
-                  title={ehUltimaAba ? tituloComAtalho(modoEdicao ? 'Salvar' : 'Criar usuário', teclaSalvar) : undefined}
-                >
-                  {ehUltimaAba ? (
-                    salvando ? (
+                    {salvando ? (
                       <span className="flex items-center gap-2">
                         <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -778,9 +755,39 @@ function ConteudoDaPaginaDeUsuarios() {
                         </svg>
                         Salvando...
                       </span>
-                    ) : modoEdicao ? 'Salvar' : 'Criar usuário'
-                  ) : 'Próximo →'}
-                </BotaoPrimario>
+                    ) : modoEdicao ? 'Salvar' : 'Criar usuário'}
+                  </BotaoPrimario>
+                  {!ehPrimeiraAba && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={irParaAbaAnterior}
+                      disabled={salvando}
+                    >
+                      ← Anterior
+                    </Button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={solicitarFechar}
+                    disabled={salvando}
+                    title={tituloComAtalho('Cancelar', teclaCancelar)}
+                  >
+                    Cancelar
+                  </Button>
+                  {!ehUltimaAba && (
+                    <BotaoPrimario
+                      type="button"
+                      onClick={aoAvancar}
+                      disabled={salvando || !etapaAtualLiberada}
+                    >
+                      Próximo →
+                    </BotaoPrimario>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -1147,69 +1154,38 @@ function ConteudoDaPaginaDeUsuarios() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => abrirModalEdicao(usuario)}
-                            disabled={operacaoEmAndamento}
-                          >
-                            Editar
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setUsuarioParaResetarSenha(usuario)
-                              setNovaSenhaReset('')
-                              setMensagemDeErro('')
-                            }}
-                            disabled={operacaoEmAndamento}
-                          >
-                            Redefinir senha
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => {
-                              setUsuarioParaDesativar(usuario)
-                              setMensagemDeErro('')
-                            }}
-                            disabled={operacaoEmAndamento}
-                          >
-                            {esteAlterando ? (
-                              <span className="flex items-center gap-1">
-                                <svg
-                                  className="h-3 w-3 animate-spin"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                >
-                                  <circle
-                                    className="opacity-25"
-                                    cx="12"
-                                    cy="12"
-                                    r="10"
-                                    stroke="currentColor"
-                                    strokeWidth="4"
-                                  />
-                                  <path
-                                    className="opacity-75"
-                                    fill="currentColor"
-                                    d="M4 12a8 8 0 018-8v8H4z"
-                                  />
-                                </svg>
-                                Aguarde...
-                              </span>
-                            ) : usuario.active ? (
-                              'Desativar'
-                            ) : (
-                              'Reativar'
-                            )}
-                          </Button>
-                        </div>
+                        <MenuAcoesLinha
+                          carregando={esteAlterando}
+                          ariaLabel={`Ações do usuário ${usuario.name}`}
+                          itens={[
+                            {
+                              rotulo: 'Editar',
+                              icone: Pencil,
+                              onClick: () => abrirModalEdicao(usuario),
+                              desabilitado: operacaoEmAndamento,
+                            },
+                            {
+                              rotulo: 'Redefinir senha',
+                              icone: KeyRound,
+                              onClick: () => {
+                                setUsuarioParaResetarSenha(usuario)
+                                setNovaSenhaReset('')
+                                setMensagemDeErro('')
+                              },
+                              desabilitado: operacaoEmAndamento,
+                            },
+                            {
+                              rotulo: usuario.active ? 'Desativar' : 'Reativar',
+                              icone: usuario.active ? Trash2 : RotateCcw,
+                              onClick: () => {
+                                setUsuarioParaDesativar(usuario)
+                                setMensagemDeErro('')
+                              },
+                              destrutivo: usuario.active,
+                              desabilitado: operacaoEmAndamento,
+                            },
+                          ]}
+                        />
                       </td>
                     </tr>
                   )
