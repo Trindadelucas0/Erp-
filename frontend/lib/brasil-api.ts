@@ -8,6 +8,7 @@
  */
 import { clienteHttp } from '@/services/api'
 import { mascaraTelefone } from '@/lib/documentos'
+import { paraCaixaAlta } from '@/lib/texto'
 
 export type CnaeItem = {
   codigo: string
@@ -39,6 +40,13 @@ export type DadosCnpj = {
 function normalizarTelefones(dados: DadosCnpj): DadosCnpj {
   return {
     ...dados,
+    nome: paraCaixaAlta(dados.nome),
+    nomeFantasia: paraCaixaAlta(dados.nomeFantasia),
+    complemento: dados.complemento ? paraCaixaAlta(dados.complemento) : '',
+    logradouro: dados.logradouro ? paraCaixaAlta(dados.logradouro) : '',
+    bairro: dados.bairro ? paraCaixaAlta(dados.bairro) : '',
+    cidade: dados.cidade ? paraCaixaAlta(dados.cidade) : '',
+    estado: dados.estado ? paraCaixaAlta(dados.estado) : '',
     telefone: dados.telefone ? mascaraTelefone(dados.telefone) : '',
     celular: dados.celular ? mascaraTelefone(dados.celular) : '',
   }

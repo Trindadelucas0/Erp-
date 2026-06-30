@@ -7,6 +7,7 @@
  */
 
 import { Select, classesOption, classesSelectCompacto } from '@/components/ui/select'
+import { mascaraTelefone } from '@/lib/documentos'
 
 export type ContatoForm = {
   tipo: 'email' | 'telefone' | 'outro'
@@ -133,7 +134,13 @@ export function ListaContatos({ contatos, aoMudar, disabled, mensagemDeErro }: P
                 className="flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 type={contato.tipo === 'email' ? 'email' : 'text'}
                 value={contato.valor}
-                onChange={(e) => atualizar(idx, 'valor', e.target.value)}
+                onChange={(e) => {
+                  const valor =
+                    contato.tipo === 'telefone'
+                      ? mascaraTelefone(e.target.value)
+                      : e.target.value
+                  atualizar(idx, 'valor', valor)
+                }}
                 placeholder={
                   contato.tipo === 'email'
                     ? 'email@exemplo.com'
@@ -141,6 +148,7 @@ export function ListaContatos({ contatos, aoMudar, disabled, mensagemDeErro }: P
                     ? '(00) 00000-0000'
                     : 'Valor do contato'
                 }
+                maxLength={contato.tipo === 'telefone' ? 15 : undefined}
                 disabled={disabled}
               />
             </div>

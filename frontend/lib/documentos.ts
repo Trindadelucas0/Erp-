@@ -72,9 +72,11 @@ export function detectarTipoDocumento(valor: string): 'CPF' | 'CNPJ' | null {
 
 export function mascaraTelefone(v: string): string {
   const n = v.replace(/\D/g, '').slice(0, 11)
-  if (n.length <= 10)
-    return n.replace(/^(\d{2})(\d)/, '($1) $2').replace(/(\d{4})(\d)/, '$1-$2')
-  return n.replace(/^(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2')
+  if (n.length === 0) return ''
+  if (n.length <= 2) return `(${n}`
+  if (n.length <= 6) return `(${n.slice(0, 2)}) ${n.slice(2)}`
+  if (n.length <= 10) return `(${n.slice(0, 2)}) ${n.slice(2, 6)}-${n.slice(6)}`
+  return `(${n.slice(0, 2)}) ${n.slice(2, 7)}-${n.slice(7)}`
 }
 
 export function mascaraCep(v: string): string {

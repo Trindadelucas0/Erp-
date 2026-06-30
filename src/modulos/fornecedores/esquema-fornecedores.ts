@@ -4,6 +4,11 @@
 import { z } from 'zod'
 import { validarCpf, validarCnpj } from '../../compartilhado/validacoes/documentos.js'
 import { normalizarIe } from '../../compartilhado/validacoes/inscricao-estadual.js'
+import { normalizarTextoCadastro } from '../../compartilhado/normalizacao/texto-cadastro.js'
+import {
+  textoCadastroObrigatorio,
+  textoCadastroOpcional,
+} from '../../compartilhado/normalizacao/esquema-texto-cadastro.js'
 
 const campoIeOpcional = z
   .string()
@@ -15,7 +20,7 @@ const campoIeOpcional = z
   )
 
 const camposComuns = {
-  nome: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres'),
+  nome: textoCadastroObrigatorio(2),
   email: z.string().email('Email inválido').optional().or(z.literal('')),
   telefone: z
     .string()
@@ -36,11 +41,11 @@ const camposComuns = {
     .string()
     .optional()
     .refine((v) => !v || /^\d{5}-?\d{3}$/.test(v), 'CEP inválido'),
-  logradouro: z.string().max(200).optional(),
-  numero: z.string().max(20).optional(),
-  complemento: z.string().max(100).optional(),
-  bairro: z.string().max(100).optional(),
-  cidade: z.string().max(100).optional(),
+  logradouro: textoCadastroOpcional(200),
+  numero: textoCadastroOpcional(20),
+  complemento: textoCadastroOpcional(100),
+  bairro: textoCadastroOpcional(100),
+  cidade: textoCadastroOpcional(100),
   estado: z
     .string()
     .length(2, 'Use a sigla do estado (ex: SP)')
@@ -52,7 +57,7 @@ const camposComuns = {
     .max(7)
     .optional()
     .refine((v) => !v || /^\d{7}$/.test(v), 'Código IBGE deve ter 7 dígitos'),
-  observacoes: z.string().max(500).optional(),
+  observacoes: textoCadastroOpcional(500),
   tipoRevenda: z.boolean().optional().default(false),
   tipoConsumo: z.boolean().optional().default(false),
   tipoPrestadorServico: z.boolean().optional().default(false),
@@ -67,23 +72,28 @@ const camposComuns = {
   fornecedoresVinculadosIds: z.array(z.string().uuid()).optional(),
 }
 
-export const esquemaDeContatoItem = z.object({
-  tipo: z.enum(['email', 'telefone', 'outro']),
-  valor: z.string().min(1, 'Valor do contato obrigatório'),
-  descricao: z.string().max(100).optional(),
-  whatsapp: z.boolean().optional(),
-  principal: z.boolean().optional(),
-})
+export const esquemaDeContatoItem = z
+  .object({
+    tipo: z.enum(['email', 'telefone', 'outro']),
+    valor: z.string().min(1, 'Valor do contato obrigatório'),
+    descricao: textoCadastroOpcional(100),
+    whatsapp: z.boolean().optional(),
+    principal: z.boolean().optional(),
+  })
+  .transform((c) => ({
+    ...c,
+    valor: c.tipo === 'outro' ? (normalizarTextoCadastro(c.valor) ?? c.valor) : c.valor,
+  }))
 
 export const esquemaDeEnderecoItem = z.object({
   tipo: z.enum(['principal', 'entrega']),
-  apelido: z.string().max(100).optional(),
+  apelido: textoCadastroOpcional(100),
   cep: z.string().optional().refine((v) => !v || /^\d{5}-?\d{3}$/.test(v), 'CEP inválido'),
-  logradouro: z.string().max(200).optional(),
-  numero: z.string().max(20).optional(),
-  complemento: z.string().max(100).optional(),
-  bairro: z.string().max(100).optional(),
-  cidade: z.string().max(100).optional(),
+  logradouro: textoCadastroOpcional(200),
+  numero: textoCadastroOpcional(20),
+  complemento: textoCadastroOpcional(100),
+  bairro: textoCadastroOpcional(100),
+  cidade: textoCadastroOpcional(100),
   estado: z.string().length(2).toUpperCase().optional().or(z.literal('')),
   codigoIbge: z
     .string()
@@ -93,20 +103,20 @@ export const esquemaDeEnderecoItem = z.object({
 })
 
 export const esquemaDeDadosBancarioItem = z.object({
-  apelido: z.string().max(100).optional(),
-  banco: z.string().max(100).optional(),
+  apelido: textoCadastroOpcional(100),
+  banco: textoCadastroOpcional(100),
   agencia: z.string().max(20).optional(),
   conta: z.string().max(30).optional(),
   tipoConta: z.enum(['corrente', 'poupanca']).optional(),
   pix: z.string().max(200).optional(),
-  favorecido: z.string().max(200).optional(),
+  favorecido: textoCadastroOpcional(200),
   documentoFavorecido: z.string().max(18).optional(),
   principal: z.boolean().optional(),
 })
 
 export const esquemaDeCnaeItem = z.object({
   codigo: z.string().min(1).max(10),
-  descricao: z.string().max(500).optional(),
+  descricao: textoCadastroOpcional(500),
   principal: z.boolean().optional(),
 })
 
@@ -147,7 +157,7 @@ export const esquemaDeCriacaoDeFornecedorPJ = z.object({
     .string()
     .min(14, 'CNPJ inválido')
     .refine(validarCnpj, 'CNPJ inválido — verifique os dígitos'),
-  nomeFantasia: z.string().max(200).optional(),
+  nomeFantasia: textoCadastroOpcional(200),
   cnae: z.string().max(10).optional(),
   dataFundacao: z
     .string()

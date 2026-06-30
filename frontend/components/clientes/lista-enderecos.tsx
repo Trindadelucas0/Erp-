@@ -7,6 +7,7 @@
  */
 
 import { Select, classesOption, classesSelectCompacto } from '@/components/ui/select'
+import { paraCaixaAlta } from '@/lib/texto'
 
 export type EnderecoForm = {
   tipo: 'principal' | 'entrega'
@@ -55,10 +56,10 @@ async function buscarCep(cep: string): Promise<Partial<EnderecoForm> | null> {
     const dados = await res.json()
     if (dados.erro) return null
     return {
-      logradouro: dados.logradouro || '',
-      bairro: dados.bairro || '',
-      cidade: dados.localidade || '',
-      estado: dados.uf || '',
+      logradouro: paraCaixaAlta(dados.logradouro || ''),
+      bairro: paraCaixaAlta(dados.bairro || ''),
+      cidade: paraCaixaAlta(dados.localidade || ''),
+      estado: (dados.uf || '').toUpperCase(),
       codigoIbge: dados.ibge || '',
     }
   } catch {

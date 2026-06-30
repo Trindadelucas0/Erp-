@@ -3,9 +3,13 @@
  * com o estado atual do formulário — mantendo o valor existente quando já preenchido.
  */
 
-/** Usa `importado` apenas se `atual` estiver vazio. */
+import { paraCaixaAlta } from './texto'
+
+/** Usa `importado` apenas se `atual` estiver vazio. Texto importado em caixa alta. */
 export function mesclarTexto(atual: string, importado: string | null | undefined): string {
-  return atual.trim() ? atual : (importado?.trim() ?? '')
+  if (atual.trim()) return atual
+  const texto = importado?.trim() ?? ''
+  return texto ? paraCaixaAlta(texto) : ''
 }
 
 /** Usa o array `importado` apenas se `atual` estiver vazio. */

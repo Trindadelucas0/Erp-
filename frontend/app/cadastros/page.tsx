@@ -4,8 +4,10 @@
  * Tela de cadastros — CRUD de empresas com permissões cadastros:*.
  */
 import { FormEvent, useCallback, useEffect, useState } from 'react'
+import { KeyRound, Pencil, RotateCcw, Trash2 } from 'lucide-react'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
+import { MenuAcoesLinha } from '@/components/compartilhado/menu-acoes-linha'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { usePermissao } from '@/hooks/use-permissao'
 import { useRegistrarAtalhos } from '@/hooks/use-registrar-atalhos'
@@ -24,6 +26,8 @@ import { SelectPadrao } from '@/components/ui/select-padrao'
 import { Modal } from '@/components/ui/modal'
 import { Separator } from '@/components/ui/separator'
 import { submeterFormularioPorId } from '@/lib/atalhos/submeter-formulario'
+import { mascaraTelefone, mascaraCep } from '@/lib/documentos'
+import { paraCaixaAlta } from '@/lib/texto'
 
 const ESTADOS_BR = [
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA',
@@ -102,21 +106,8 @@ function aplicarMascaraCnpj(valor: string): string {
     .replace(/(\d{4})(\d)/, '$1-$2')
 }
 
-function aplicarMascaraTelefone(valor: string): string {
-  const numeros = valor.replace(/\D/g, '').slice(0, 11)
-  if (numeros.length <= 10) {
-    return numeros
-      .replace(/^(\d{2})(\d)/, '($1) $2')
-      .replace(/(\d{4})(\d)/, '$1-$2')
-  }
-  return numeros
-    .replace(/^(\d{2})(\d)/, '($1) $2')
-    .replace(/(\d{5})(\d)/, '$1-$2')
-}
-
 function aplicarMascaraCep(valor: string): string {
-  const numeros = valor.replace(/\D/g, '').slice(0, 8)
-  return numeros.replace(/^(\d{5})(\d)/, '$1-$2')
+  return mascaraCep(valor)
 }
 
 function empresaParaFormulario(empresa: Empresa): FormularioEmpresa {
@@ -124,7 +115,7 @@ function empresaParaFormulario(empresa: Empresa): FormularioEmpresa {
   return {
     nome: empresa.name,
     cnpj: aplicarMascaraCnpj(cnpj),
-    phone: empresa.phone ? aplicarMascaraTelefone(empresa.phone) : '',
+    phone: empresa.phone ? mascaraTelefone(empresa.phone) : '',
     email: empresa.email || '',
     cep: empresa.cep ? aplicarMascaraCep(empresa.cep) : '',
     logradouro: empresa.logradouro || '',
@@ -221,9 +212,9 @@ function ConteudoDaPaginaDeCadastros() {
       if (!dados.erro) {
         setForm((f) => ({
           ...f,
-          logradouro: dados.logradouro || f.logradouro,
-          bairro: dados.bairro || f.bairro,
-          cidade: dados.localidade || f.cidade,
+          logradouro: dados.logradouro ? paraCaixaAlta(dados.logradouro) : f.logradouro,
+          bairro: dados.bairro ? paraCaixaAlta(dados.bairro) : f.bairro,
+          cidade: dados.localidade ? paraCaixaAlta(dados.localidade) : f.cidade,
           estado: dados.uf || f.estado,
         }))
       }
@@ -399,7 +390,7 @@ function ConteudoDaPaginaDeCadastros() {
                   onChange={(e) =>
                     atualizarCampo(
                       'phone',
-                      aplicarMascaraTelefone(e.target.value)
+                      mascaraTelefone(e.target.value)
                     )
                   }
                   placeholder="(00) 00000-0000"
@@ -541,7 +532,7 @@ function ConteudoDaPaginaDeCadastros() {
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {empresa.phone
-                      ? aplicarMascaraTelefone(empresa.phone)
+                      ? mascaraTelefone(empresa.phone)
                       : '—'}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
@@ -556,28 +547,24 @@ function ConteudoDaPaginaDeCadastros() {
                   </td>
                   {(podeEditar || podeDesativar) && (
                     <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        {podeEditar && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => abrirModalEdicao(empresa)}
-                          >
-                            Editar
-                          </Button>
-                        )}
-                        {podeDesativar && (
-                          <Button
-                            type="button"
-                            variant={empresa.active ? 'destructive' : 'outline'}
-                            size="sm"
-                            onClick={() => alternarStatusDaEmpresa(empresa)}
-                          >
-                            {empresa.active ? 'Desativar' : 'Reativar'}
-                          </Button>
-                        )}
-                      </div>
+                      <MenuAcoesLinha
+                        ariaLabel={`Ações da empresa ${empresa.name}`}
+                        itens={[
+                          {
+                            rotulo: 'Editar',
+                            icone: Pencil,
+                            onClick: () => abrirModalEdicao(empresa),
+                            oculto: !podeEditar,
+                          },
+                          {
+                            rotulo: empresa.active ? 'Desativar' : 'Reativar',
+                            icone: empresa.active ? Trash2 : RotateCcw,
+                            onClick: () => alternarStatusDaEmpresa(empresa),
+                            destrutivo: empresa.active,
+                            oculto: !podeDesativar,
+                          },
+                        ]}
+                      />
                     </td>
                   )}
                 </tr>
