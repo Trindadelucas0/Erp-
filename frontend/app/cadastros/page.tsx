@@ -4,10 +4,10 @@
  * Tela de cadastros — CRUD de empresas com permissões cadastros:*.
  */
 import { FormEvent, useCallback, useEffect, useState } from 'react'
-import { KeyRound, Pencil, RotateCcw, Trash2 } from 'lucide-react'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
-import { MenuAcoesLinha } from '@/components/compartilhado/menu-acoes-linha'
+import { LinhaTabelaClicavel } from '@/components/compartilhado/linha-tabela-clicavel'
+import { RodapeModalVisualizacao } from '@/components/compartilhado/rodape-modal-visualizacao'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { usePermissao } from '@/hooks/use-permissao'
 import { useRegistrarAtalhos } from '@/hooks/use-registrar-atalhos'
@@ -139,8 +139,10 @@ function ConteudoDaPaginaDeCadastros() {
 
   const [modalAberto, setModalAberto] = useState(false)
   const [modoEdicao, setModoEdicao] = useState(false)
+  const [modoVisualizacao, setModoVisualizacao] = useState(false)
   const [idDaEmpresaEmEdicao, setIdDaEmpresaEmEdicao] = useState('')
   const [salvando, setSalvando] = useState(false)
+  const [alterandoStatusId, setAlterandoStatusId] = useState('')
 
   const [form, setForm] = useState<FormularioEmpresa>(formularioVazio)
   const [formInicial, setFormInicial] = useState<FormularioEmpresa>(() =>
@@ -177,6 +179,7 @@ function ConteudoDaPaginaDeCadastros() {
     setForm(vazio)
     setFormInicial(vazio)
     setModoEdicao(false)
+    setModoVisualizacao(false)
     setIdDaEmpresaEmEdicao('')
     setMensagemDeErro('')
     setModalAberto(true)
@@ -187,13 +190,33 @@ function ConteudoDaPaginaDeCadastros() {
     setForm(f)
     setFormInicial(clonarFormulario(f))
     setModoEdicao(true)
+    setModoVisualizacao(false)
     setIdDaEmpresaEmEdicao(empresa.id)
     setMensagemDeErro('')
     setModalAberto(true)
   }
 
+  function abrirModalVisualizacao(empresa: Empresa) {
+    const f = empresaParaFormulario(empresa)
+    setForm(f)
+    setFormInicial(clonarFormulario(f))
+    setModoEdicao(false)
+    setModoVisualizacao(true)
+    setIdDaEmpresaEmEdicao(empresa.id)
+    setMensagemDeErro('')
+    setModalAberto(true)
+  }
+
+  function alternarParaEdicao() {
+    if (!podeEditar) return
+    setModoVisualizacao(false)
+    setModoEdicao(true)
+    setFormInicial(clonarFormulario(form))
+  }
+
   const fecharModal = useCallback(() => {
     setModalAberto(false)
+    setModoVisualizacao(false)
     setMensagemDeErro('')
   }, [])
 
@@ -259,19 +282,25 @@ function ConteudoDaPaginaDeCadastros() {
     }
   }
 
-  async function alternarStatusDaEmpresa(empresa: Empresa) {
+  async function alternarStatusDaEmpresa(empresa: Empresa, opcoes?: { fecharModalApos?: boolean }) {
     setMensagemDeErro('')
     setMensagemDeSucesso('')
+    setAlterandoStatusId(empresa.id)
     try {
       await clienteHttp.patch(`/companies/${empresa.id}/ativo`, {
         ativo: !empresa.active,
       })
       setMensagemDeSucesso(empresa.active ? 'Empresa desativada.' : 'Empresa reativada.')
       await carregarEmpresas()
+      if (opcoes?.fecharModalApos) fecharModal()
     } catch (erro: unknown) {
       setMensagemDeErro(extrairMensagemDeErro(erro, 'Erro ao alterar status'))
+    } finally {
+      setAlterandoStatusId('')
     }
   }
+
+  const empresaEmVisualizacao = listaDeEmpresas.find((e) => e.id === idDaEmpresaEmEdicao)
 
   useRegistrarAtalhos(
     {
@@ -283,7 +312,7 @@ function ConteudoDaPaginaDeCadastros() {
     {
       novo: podeCriar && !modalAberto,
       atualizar: !modalAberto,
-      salvar: modalAberto && !salvando,
+      salvar: modalAberto && !salvando && !modoVisualizacao,
       cancelar: modalAberto && !salvando,
     }
   )
@@ -307,14 +336,37 @@ function ConteudoDaPaginaDeCadastros() {
       <Modal
         aberto={modalAberto}
         aoFechar={solicitarFechar}
-        titulo={modoEdicao ? 'Editar empresa' : 'Nova empresa'}
+        titulo={
+          modoVisualizacao
+            ? `Visualizar empresa: ${form.nome || 'empresa'}`
+            : modoEdicao
+              ? 'Editar empresa'
+              : 'Nova empresa'
+        }
         descricao={
-          modoEdicao
-            ? 'Altere os dados e clique em Salvar'
-            : 'Preencha os dados para cadastrar uma nova empresa'
+          modoVisualizacao
+            ? 'Consulta dos dados cadastrados (somente leitura)'
+            : modoEdicao
+              ? 'Altere os dados e clique em Salvar'
+              : 'Preencha os dados para cadastrar uma nova empresa'
         }
         largura="xl"
         rodape={
+          modoVisualizacao ? (
+            <RodapeModalVisualizacao
+              aoFechar={fecharModal}
+              aoEditar={alternarParaEdicao}
+              podeEditar={podeEditar}
+              aoAlternarStatus={() => {
+                if (empresaEmVisualizacao) {
+                  void alternarStatusDaEmpresa(empresaEmVisualizacao, { fecharModalApos: true })
+                }
+              }}
+              podeDesativar={podeDesativar}
+              registroAtivo={empresaEmVisualizacao?.active ?? true}
+              carregandoStatus={alterandoStatusId === empresaEmVisualizacao?.id}
+            />
+          ) : (
           <div className="flex justify-end gap-2">
             <Button
               type="button"
@@ -337,6 +389,7 @@ function ConteudoDaPaginaDeCadastros() {
               {salvando ? 'Salvando...' : modoEdicao ? 'Salvar' : 'Criar empresa'}
             </BotaoPrimario>
           </div>
+          )
         }
       >
         {mensagemDeErro && modalAberto && (
@@ -350,6 +403,7 @@ function ConteudoDaPaginaDeCadastros() {
           onSubmit={aoSalvarEmpresa}
           className="space-y-5"
         >
+          <fieldset disabled={modoVisualizacao} className="m-0 min-w-0 space-y-5 border-0 p-0">
           {/* Identificação */}
           <div className="space-y-1">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -476,6 +530,7 @@ function ConteudoDaPaginaDeCadastros() {
               />
             </div>
           </div>
+          </fieldset>
         </form>
       </Modal>
 
@@ -505,16 +560,13 @@ function ConteudoDaPaginaDeCadastros() {
                 <th className="px-4 py-3 text-left font-medium">Telefone</th>
                 <th className="px-4 py-3 text-left font-medium">Cidade / UF</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
-                {(podeEditar || podeDesativar) && (
-                  <th className="px-4 py-3 text-left font-medium">Ações</th>
-                )}
               </tr>
             </thead>
             <tbody>
               {listaDeEmpresas.length === 0 && (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={5}
                     className="px-4 py-8 text-center text-sm text-muted-foreground"
                   >
                     Nenhuma empresa cadastrada.
@@ -522,9 +574,11 @@ function ConteudoDaPaginaDeCadastros() {
                 </tr>
               )}
               {listaDeEmpresas.map((empresa) => (
-                <tr
+                <LinhaTabelaClicavel
                   key={empresa.id}
-                  className="border-b border-border last:border-0 hover:bg-muted/30"
+                  ariaLabel={`Visualizar ${empresa.name}`}
+                  desabilitada={alterandoStatusId === empresa.id}
+                  aoClicar={() => abrirModalVisualizacao(empresa)}
                 >
                   <td className="px-4 py-3 font-medium">{empresa.name}</td>
                   <td className="px-4 py-3 font-mono text-muted-foreground">
@@ -545,29 +599,7 @@ function ConteudoDaPaginaDeCadastros() {
                       {empresa.active ? 'Ativa' : 'Inativa'}
                     </BadgeStatus>
                   </td>
-                  {(podeEditar || podeDesativar) && (
-                    <td className="px-4 py-3">
-                      <MenuAcoesLinha
-                        ariaLabel={`Ações da empresa ${empresa.name}`}
-                        itens={[
-                          {
-                            rotulo: 'Editar',
-                            icone: Pencil,
-                            onClick: () => abrirModalEdicao(empresa),
-                            oculto: !podeEditar,
-                          },
-                          {
-                            rotulo: empresa.active ? 'Desativar' : 'Reativar',
-                            icone: empresa.active ? Trash2 : RotateCcw,
-                            onClick: () => alternarStatusDaEmpresa(empresa),
-                            destrutivo: empresa.active,
-                            oculto: !podeDesativar,
-                          },
-                        ]}
-                      />
-                    </td>
-                  )}
-                </tr>
+                </LinhaTabelaClicavel>
               ))}
             </tbody>
           </table>

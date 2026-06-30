@@ -5,11 +5,11 @@
  * BrasilAPI, verificação de duplicidade e campos específicos (ANTT, tipo veículo).
  */
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Eye, Pencil, RotateCcw, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
-import { MenuAcoesLinha } from '@/components/compartilhado/menu-acoes-linha'
+import { LinhaTabelaClicavel } from '@/components/compartilhado/linha-tabela-clicavel'
+import { RodapeModalVisualizacao } from '@/components/compartilhado/rodape-modal-visualizacao'
 import { CampoSelect } from '@/components/compartilhado/campo-select'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { usePermissao } from '@/hooks/use-permissao'
@@ -868,15 +868,18 @@ function ConteudoDaPaginaDeTransportadoras() {
     } finally { setSalvando(false) }
   }
 
-  async function alternarStatus(t: Transportadora) {
+  async function alternarStatus(t: Transportadora, opcoes?: { fecharModalApos?: boolean }) {
     setMensagemDeErro(''); setMensagemDeSucesso(''); setAlterandoStatus(t.id)
     try {
       await clienteHttp.patch(`/transportadoras/${t.id}/ativo`, { ativo: !t.ativo })
       setMensagemDeSucesso(t.ativo ? 'Transportadora desativada.' : 'Transportadora reativada.')
       await carregarTransportadoras()
+      if (opcoes?.fecharModalApos) fecharModal()
     } catch (erro) { setMensagemDeErro(extrairErro(erro, 'Erro ao alterar status')) }
     finally { setAlterandoStatus(null) }
   }
+
+  const transportadoraEmVisualizacao = listaTransportadoras.find((item) => item.id === idEmEdicao)
 
   const qualquerOperacaoAtiva = salvando || verificandoDocumento || carregandoBrasilApi
 
@@ -931,26 +934,26 @@ function ConteudoDaPaginaDeTransportadoras() {
         largura="2xl"
         rodape={
           modoVisualizacao ? (
-            <div className="flex items-center justify-end gap-2">
-              <Button type="button" variant="outline" onClick={fecharModal}>
-                Fechar
-              </Button>
-              {!ehPrimeiraAba && (
-                <Button type="button" variant="outline" onClick={irParaAbaAnterior}>
-                  ← Anterior
-                </Button>
-              )}
-              {!ehUltimaAba && (
-                <Button type="button" variant="outline" onClick={aoAvancar}>
-                  Próximo →
-                </Button>
-              )}
-              {podeEditar && (
-                <BotaoPrimario type="button" onClick={alternarParaEdicao}>
-                  Editar
-                </BotaoPrimario>
-              )}
-            </div>
+            <RodapeModalVisualizacao
+              aoFechar={fecharModal}
+              aoAnterior={irParaAbaAnterior}
+              aoProximo={aoAvancar}
+              mostrarAnterior={!ehPrimeiraAba}
+              mostrarProximo={!ehUltimaAba}
+              aoEditar={alternarParaEdicao}
+              podeEditar={podeEditar}
+              aoAlternarStatus={() => {
+                if (transportadoraEmVisualizacao) {
+                  void alternarStatus(transportadoraEmVisualizacao, { fecharModalApos: true })
+                }
+              }}
+              podeDesativar={podeDesativar}
+              registroAtivo={transportadoraEmVisualizacao?.ativo ?? true}
+              carregandoStatus={
+                !!transportadoraEmVisualizacao &&
+                alterandoStatus === transportadoraEmVisualizacao.id
+              }
+            />
           ) : (
           <div className="flex w-full flex-col gap-2">
             {errosDaAbaAtual.length > 0 && (
@@ -1283,7 +1286,6 @@ function ConteudoDaPaginaDeTransportadoras() {
                 <th className="px-4 py-3 text-left font-medium">Email</th>
                 <th className="px-4 py-3 text-left font-medium">Cidade</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
-                <th className="px-4 py-3 text-left font-medium">Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -1297,7 +1299,7 @@ function ConteudoDaPaginaDeTransportadoras() {
 
               {!carregandoLista && transportadorasFiltradas.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
                     {listaTransportadoras.length === 0 ? 'Nenhuma transportadora cadastrada.' : 'Nenhuma transportadora encontrada.'}
                   </td>
                 </tr>
@@ -1306,7 +1308,12 @@ function ConteudoDaPaginaDeTransportadoras() {
               {!carregandoLista && transportadorasFiltradas.map((t) => {
                 const documento = t.tipo === 'PF' ? (t.cpf ? mascaraCpf(t.cpf) : '—') : (t.cnpj ? mascaraCnpj(t.cnpj) : '—')
                 return (
-                  <tr key={t.id} className="border-b border-border last:border-0 hover:bg-muted/30">
+                  <LinhaTabelaClicavel
+                    key={t.id}
+                    aoClicar={() => abrirModalVisualizacao(t)}
+                    ariaLabel={`Visualizar transportadora ${t.nome}`}
+                    desabilitada={alterandoStatus === t.id}
+                  >
                     <td className="px-4 py-3 font-medium">{t.nome}</td>
                     <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{documento}</td>
                     <td className="px-4 py-3 text-muted-foreground">{t.antt || '—'}</td>
@@ -1315,33 +1322,7 @@ function ConteudoDaPaginaDeTransportadoras() {
                     <td className="px-4 py-3">
                       <BadgeStatus variante={t.ativo ? 'ativo' : 'inativo'}>{t.ativo ? 'Ativo' : 'Inativo'}</BadgeStatus>
                     </td>
-                    <td className="px-4 py-3">
-                      <MenuAcoesLinha
-                        carregando={alterandoStatus === t.id}
-                        ariaLabel={`Ações da transportadora ${t.nome}`}
-                        itens={[
-                          {
-                            rotulo: 'Visualizar',
-                            icone: Eye,
-                            onClick: () => abrirModalVisualizacao(t),
-                          },
-                          {
-                            rotulo: 'Editar',
-                            icone: Pencil,
-                            onClick: () => abrirModalEdicao(t),
-                            oculto: !podeEditar,
-                          },
-                          {
-                            rotulo: t.ativo ? 'Desativar' : 'Reativar',
-                            icone: t.ativo ? Trash2 : RotateCcw,
-                            onClick: () => alternarStatus(t),
-                            destrutivo: t.ativo,
-                            oculto: !podeDesativar,
-                          },
-                        ]}
-                      />
-                    </td>
-                  </tr>
+                  </LinhaTabelaClicavel>
                 )
               })}
             </tbody>

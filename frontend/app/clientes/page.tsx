@@ -5,11 +5,11 @@
  * BrasilAPI, verificação de duplicidade, flags fiscais e validação de abas.
  */
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Eye, Pencil, RotateCcw, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
-import { MenuAcoesLinha } from '@/components/compartilhado/menu-acoes-linha'
+import { LinhaTabelaClicavel } from '@/components/compartilhado/linha-tabela-clicavel'
+import { RodapeModalVisualizacao } from '@/components/compartilhado/rodape-modal-visualizacao'
 import { CampoSelect } from '@/components/compartilhado/campo-select'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { usePermissao } from '@/hooks/use-permissao'
@@ -1121,7 +1121,7 @@ function ConteudoDaPaginaDeClientes() {
     }
   }
 
-  async function alternarStatus(cliente: Cliente) {
+  async function alternarStatus(cliente: Cliente, opcoes?: { fecharModalApos?: boolean }) {
     setMensagemDeErro('')
     setMensagemDeSucesso('')
     setAlterandoStatus(cliente.id)
@@ -1131,12 +1131,19 @@ function ConteudoDaPaginaDeClientes() {
       })
       setMensagemDeSucesso(cliente.ativo ? 'Cliente desativado.' : 'Cliente reativado.')
       await carregarClientes()
+      if (opcoes?.fecharModalApos) fecharModal()
     } catch (erro) {
       setMensagemDeErro(extrairErro(erro, 'Erro ao alterar status'))
     } finally {
       setAlterandoStatus(null)
     }
   }
+
+  const clienteEmVisualizacao = listaDeClientes.find((c) => c.id === idEmEdicao)
+  const podeEditarClienteEmVisualizacao =
+    !!clienteEmVisualizacao &&
+    podeEditar &&
+    clientePermiteEdicao(clienteEmVisualizacao)
 
   // Banner de pendências no modal — recalculado a cada mudança no form
   const pendenciasDoForm = useMemo(
@@ -1226,29 +1233,26 @@ function ConteudoDaPaginaDeClientes() {
         largura="2xl"
         rodape={
           modoVisualizacao ? (
-            <div className="flex items-center justify-end gap-2">
-              <Button type="button" variant="outline" onClick={fecharModal}>
-                Fechar
-              </Button>
-              {abaAtiva !== 'identificacao' && (
-                <Button type="button" variant="outline" onClick={aoVoltar}>
-                  ← Anterior
-                </Button>
-              )}
-              {abaAtiva !== 'endereco' && (
-                <Button type="button" variant="outline" onClick={aoAvancar}>
-                  Próximo →
-                </Button>
-              )}
-              {podeEditar && (() => {
-                const cliente = listaDeClientes.find((c) => c.id === idEmEdicao)
-                return !cliente || clientePermiteEdicao(cliente)
-              })() && (
-                <BotaoPrimario type="button" onClick={alternarParaEdicao}>
-                  Editar
-                </BotaoPrimario>
-              )}
-            </div>
+            <RodapeModalVisualizacao
+              aoFechar={fecharModal}
+              aoAnterior={aoVoltar}
+              aoProximo={aoAvancar}
+              mostrarAnterior={abaAtiva !== 'identificacao'}
+              mostrarProximo={abaAtiva !== 'endereco'}
+              rotuloProximo={
+                abaAtiva === 'identificacao' ? 'Próximo: Contato' : 'Próximo: Endereço'
+              }
+              aoEditar={alternarParaEdicao}
+              podeEditar={podeEditarClienteEmVisualizacao}
+              aoAlternarStatus={() => {
+                if (clienteEmVisualizacao) {
+                  void alternarStatus(clienteEmVisualizacao, { fecharModalApos: true })
+                }
+              }}
+              podeDesativar={podeDesativar}
+              registroAtivo={clienteEmVisualizacao?.ativo ?? true}
+              carregandoStatus={!!clienteEmVisualizacao && alterandoStatus === clienteEmVisualizacao.id}
+            />
           ) : (
           <div className="space-y-3">
             {(errosDaAbaAtual.length > 0 || erroSalvar) && (
@@ -1938,7 +1942,6 @@ function ConteudoDaPaginaDeClientes() {
                 <th className="px-4 py-3 text-left font-medium">Aprovação</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
                 <th className="px-4 py-3 text-left font-medium">Cadastro</th>
-                <th className="px-4 py-3 text-left font-medium">Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -1946,7 +1949,7 @@ function ConteudoDaPaginaDeClientes() {
                 <>
                   {[1, 2, 3].map((i) => (
                     <tr key={i} className="border-b border-border">
-                      {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((j) => (
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map((j) => (
                         <td key={j} className="px-4 py-3">
                           <div className="h-4 animate-pulse rounded bg-muted" />
                         </td>
@@ -1958,7 +1961,7 @@ function ConteudoDaPaginaDeClientes() {
               {!carregandoLista && clientesFiltrados.length === 0 && (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={8}
                     className="px-4 py-8 text-center text-sm text-muted-foreground"
                   >
                     {busca
@@ -1971,9 +1974,11 @@ function ConteudoDaPaginaDeClientes() {
                 const statusCadastro = calcularStatusCadastro(cliente)
                 const estaAlterandoEsseLine = alterandoStatus === cliente.id
                 return (
-                  <tr
+                  <LinhaTabelaClicavel
                     key={cliente.id}
-                    className="border-b border-border last:border-0 hover:bg-muted/30"
+                    aoClicar={() => abrirModalVisualizacao(cliente)}
+                    ariaLabel={`Visualizar cliente ${cliente.nome}`}
+                    desabilitada={estaAlterandoEsseLine}
                   >
                     <td className="px-4 py-3">
                       <span
@@ -2039,33 +2044,7 @@ function ConteudoDaPaginaDeClientes() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3">
-                      <MenuAcoesLinha
-                        carregando={estaAlterandoEsseLine}
-                        ariaLabel={`Ações do cliente ${cliente.nome}`}
-                        itens={[
-                          {
-                            rotulo: 'Visualizar',
-                            icone: Eye,
-                            onClick: () => abrirModalVisualizacao(cliente),
-                          },
-                          {
-                            rotulo: 'Editar',
-                            icone: Pencil,
-                            onClick: () => abrirModalEdicao(cliente),
-                            oculto: !podeEditar || !clientePermiteEdicao(cliente),
-                          },
-                          {
-                            rotulo: cliente.ativo ? 'Desativar' : 'Reativar',
-                            icone: cliente.ativo ? Trash2 : RotateCcw,
-                            onClick: () => alternarStatus(cliente),
-                            destrutivo: cliente.ativo,
-                            oculto: !podeDesativar,
-                          },
-                        ]}
-                      />
-                    </td>
-                  </tr>
+                  </LinhaTabelaClicavel>
                 )
               })}
             </tbody>

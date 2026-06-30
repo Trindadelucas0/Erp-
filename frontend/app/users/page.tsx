@@ -4,12 +4,14 @@
  * Tela de usuários — listar, criar, editar, desativar e permissões extras.
  */
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { KeyRound, Pencil, RotateCcw, Trash2 } from 'lucide-react'
+import { KeyRound } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
+import { LinhaTabelaClicavel } from '@/components/compartilhado/linha-tabela-clicavel'
 import { MenuAcoesLinha } from '@/components/compartilhado/menu-acoes-linha'
+import { RodapeModalVisualizacao } from '@/components/compartilhado/rodape-modal-visualizacao'
 import { useRegistrarAtalhos } from '@/hooks/use-registrar-atalhos'
 import {
   tituloComAtalho,
@@ -193,6 +195,7 @@ function ConteudoDaPaginaDeUsuarios() {
   // Modal de criar/editar
   const [modalUsuarioAberto, setModalUsuarioAberto] = useState(false)
   const [modoEdicao, setModoEdicao] = useState(false)
+  const [modoVisualizacao, setModoVisualizacao] = useState(false)
   const [idDoUsuarioEmEdicao, setIdDoUsuarioEmEdicao] = useState('')
   const [abaAtiva, setAbaAtiva] = useState('dados')
   const [salvando, setSalvando] = useState(false)
@@ -407,6 +410,13 @@ function ConteudoDaPaginaDeUsuarios() {
     })
   }
 
+  function avancarAbaVisualizacao() {
+    setAbaAtiva((atual) => {
+      const i = idsAbas.indexOf(atual)
+      return i >= 0 && i < idsAbas.length - 1 ? idsAbas[i + 1] : atual
+    })
+  }
+
   function aplicarFormulario(f: FormularioUsuario) {
     setNome(f.nome)
     setEmail(f.email)
@@ -452,6 +462,7 @@ function ConteudoDaPaginaDeUsuarios() {
     aplicarFormulario(vazio)
     setFormInicial(vazio)
     setModoEdicao(false)
+    setModoVisualizacao(false)
     setIdDoUsuarioEmEdicao('')
     setModalUsuarioAberto(true)
   }
@@ -461,12 +472,30 @@ function ConteudoDaPaginaDeUsuarios() {
     aplicarFormulario(f)
     setFormInicial(clonarFormulario(f))
     setModoEdicao(true)
+    setModoVisualizacao(false)
     setIdDoUsuarioEmEdicao(usuario.id)
     setModalUsuarioAberto(true)
   }
 
+  function abrirModalVisualizacao(usuario: Usuario) {
+    const f = usuarioParaFormulario(usuario)
+    aplicarFormulario(f)
+    setFormInicial(clonarFormulario(f))
+    setModoEdicao(false)
+    setModoVisualizacao(true)
+    setIdDoUsuarioEmEdicao(usuario.id)
+    setModalUsuarioAberto(true)
+  }
+
+  function alternarParaEdicao() {
+    setModoVisualizacao(false)
+    setModoEdicao(true)
+    setFormInicial(clonarFormulario(formAtual))
+  }
+
   const fecharModalUsuario = useCallback(() => {
     setModalUsuarioAberto(false)
+    setModoVisualizacao(false)
     setCamposTocados(new Set())
     setErroSalvar('')
     setErrosDaAbaAtual([])
@@ -569,6 +598,8 @@ function ConteudoDaPaginaDeUsuarios() {
 
   const operacaoEmAndamento = salvando || alterandoStatusId !== null
 
+  const usuarioEmVisualizacao = listaDeUsuarios.find((u) => u.id === idDoUsuarioEmEdicao)
+
   const fecharDialogsAbertos = useCallback(() => {
     if (modalUsuarioAberto) solicitarFechar()
     else if (usuarioParaDesativar) setUsuarioParaDesativar(null)
@@ -603,7 +634,7 @@ function ConteudoDaPaginaDeUsuarios() {
         !usuarioParaResetarSenha &&
         !carregandoLista,
       salvar:
-        modalUsuarioAberto && formularioValido && !salvando,
+        modalUsuarioAberto && formularioValido && !salvando && !modoVisualizacao,
       cancelar:
         modalUsuarioAberto ||
         Boolean(usuarioParaDesativar) ||
@@ -712,9 +743,38 @@ function ConteudoDaPaginaDeUsuarios() {
       <Modal
         aberto={modalUsuarioAberto}
         aoFechar={solicitarFechar}
-        titulo={modoEdicao ? `Editar: ${nome}` : 'Novo usuário'}
+        titulo={
+          modoVisualizacao
+            ? `Visualizar: ${nome || 'usuário'}`
+            : modoEdicao
+              ? `Editar: ${nome}`
+              : 'Novo usuário'
+        }
         largura="2xl"
         rodape={
+          modoVisualizacao ? (
+            <RodapeModalVisualizacao
+              aoFechar={fecharModalUsuario}
+              aoAnterior={irParaAbaAnterior}
+              aoProximo={avancarAbaVisualizacao}
+              mostrarAnterior={!ehPrimeiraAba}
+              mostrarProximo={!ehUltimaAba}
+              aoEditar={alternarParaEdicao}
+              podeEditar
+              aoAlternarStatus={() => {
+                if (usuarioEmVisualizacao) {
+                  fecharModalUsuario()
+                  setUsuarioParaDesativar(usuarioEmVisualizacao)
+                  setMensagemDeErro('')
+                }
+              }}
+              podeDesativar
+              registroAtivo={usuarioEmVisualizacao?.active ?? true}
+              carregandoStatus={
+                !!usuarioEmVisualizacao && alterandoStatusId === usuarioEmVisualizacao.id
+              }
+            />
+          ) : (
           <div className="flex w-full flex-col gap-2">
             {errosDaAbaAtual.length > 0 && (
               <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -791,6 +851,7 @@ function ConteudoDaPaginaDeUsuarios() {
               </div>
             </div>
           </div>
+          )
         }
       >
         <Abas
@@ -805,6 +866,7 @@ function ConteudoDaPaginaDeUsuarios() {
             <div className="absolute inset-0 z-10 rounded-md bg-background/60 backdrop-blur-[1px]" />
           )}
         <form id="form-usuario" onSubmit={aoSalvarUsuario}>
+          <fieldset disabled={modoVisualizacao} className="m-0 min-w-0 border-0 p-0">
           {/* Aba 1: Dados básicos */}
           {abaAtiva === 'dados' && (
             <div className="space-y-4">
@@ -835,6 +897,7 @@ function ConteudoDaPaginaDeUsuarios() {
                   placeholder="Ex: Vendedor, Analista Financeiro"
                   maxLength={100}
                 />
+                {!modoVisualizacao && (
                 <InputPadrao
                   rotulo={
                     modoEdicao
@@ -849,13 +912,16 @@ function ConteudoDaPaginaDeUsuarios() {
                   required={!modoEdicao}
                   placeholder="Mínimo 6 caracteres"
                 />
+                )}
               </div>
+              {!modoVisualizacao && (
               <div className="rounded-md border border-border bg-muted/30 px-4 py-3">
                 <p className="text-xs text-muted-foreground">
                   Após preencher os dados básicos, avance para a aba{' '}
                   <strong>Acesso</strong> para vincular papéis e empresas.
                 </p>
               </div>
+              )}
             </div>
           )}
 
@@ -984,6 +1050,7 @@ function ConteudoDaPaginaDeUsuarios() {
               </div>
             </div>
           )}
+          </fieldset>
         </form>
         </div>
       </Modal>
@@ -1060,7 +1127,9 @@ function ConteudoDaPaginaDeUsuarios() {
                 <th className="px-4 py-3 text-left font-medium">Status</th>
                 <th className="px-4 py-3 text-left font-medium">Papéis</th>
                 <th className="px-4 py-3 text-left font-medium">Cadastro</th>
-                <th className="px-4 py-3 text-left font-medium">Ações</th>
+                <th className="w-12 px-2 py-3 text-left font-medium">
+                  <span className="sr-only">Mais</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -1096,9 +1165,11 @@ function ConteudoDaPaginaDeUsuarios() {
                   const esteAlterando = alterandoStatusId === usuario.id
 
                   return (
-                    <tr
+                    <LinhaTabelaClicavel
                       key={usuario.id}
-                      className="border-b border-border last:border-0 hover:bg-muted/30"
+                      ariaLabel={`Visualizar ${usuario.name}`}
+                      desabilitada={esteAlterando}
+                      aoClicar={() => abrirModalVisualizacao(usuario)}
                     >
                       <td className="px-4 py-3 font-medium">{usuario.name}</td>
                       <td className="px-4 py-3 text-muted-foreground">
@@ -1119,7 +1190,11 @@ function ConteudoDaPaginaDeUsuarios() {
                       </td>
                       {/* Coluna de cadastro com badge e tooltip */}
                       <td className="px-4 py-3">
-                        <div className="relative inline-block">
+                        <div
+                          className="relative inline-block"
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => e.stopPropagation()}
+                        >
                           <span
                             className={`inline-flex cursor-default items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
                               statusCadastro === 'completo'
@@ -1153,17 +1228,15 @@ function ConteudoDaPaginaDeUsuarios() {
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3">
+                      <td
+                        className="w-12 px-2 py-3"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      >
                         <MenuAcoesLinha
                           carregando={esteAlterando}
-                          ariaLabel={`Ações do usuário ${usuario.name}`}
+                          ariaLabel={`Mais opções para ${usuario.name}`}
                           itens={[
-                            {
-                              rotulo: 'Editar',
-                              icone: Pencil,
-                              onClick: () => abrirModalEdicao(usuario),
-                              desabilitado: operacaoEmAndamento,
-                            },
                             {
                               rotulo: 'Redefinir senha',
                               icone: KeyRound,
@@ -1174,20 +1247,10 @@ function ConteudoDaPaginaDeUsuarios() {
                               },
                               desabilitado: operacaoEmAndamento,
                             },
-                            {
-                              rotulo: usuario.active ? 'Desativar' : 'Reativar',
-                              icone: usuario.active ? Trash2 : RotateCcw,
-                              onClick: () => {
-                                setUsuarioParaDesativar(usuario)
-                                setMensagemDeErro('')
-                              },
-                              destrutivo: usuario.active,
-                              desabilitado: operacaoEmAndamento,
-                            },
                           ]}
                         />
                       </td>
-                    </tr>
+                    </LinhaTabelaClicavel>
                   )
                 })}
             </tbody>

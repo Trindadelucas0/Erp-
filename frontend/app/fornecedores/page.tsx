@@ -5,11 +5,11 @@
  * BrasilAPI, verificação de duplicidade e flags fiscais.
  */
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Eye, Pencil, RotateCcw, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
-import { MenuAcoesLinha } from '@/components/compartilhado/menu-acoes-linha'
+import { LinhaTabelaClicavel } from '@/components/compartilhado/linha-tabela-clicavel'
+import { RodapeModalVisualizacao } from '@/components/compartilhado/rodape-modal-visualizacao'
 import { CampoSelect } from '@/components/compartilhado/campo-select'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { usePermissao } from '@/hooks/use-permissao'
@@ -1135,7 +1135,7 @@ function ConteudoDaPaginaDeFornecedores() {
     }
   }
 
-  async function alternarStatus(f: Fornecedor) {
+  async function alternarStatus(f: Fornecedor, opcoes?: { fecharModalApos?: boolean }) {
     setMensagemDeErro('')
     setMensagemDeSucesso('')
     setAlterandoStatus(f.id)
@@ -1143,12 +1143,15 @@ function ConteudoDaPaginaDeFornecedores() {
       await clienteHttp.patch(`/fornecedores/${f.id}/ativo`, { ativo: !f.ativo })
       setMensagemDeSucesso(f.ativo ? 'Fornecedor desativado.' : 'Fornecedor reativado.')
       await carregarFornecedores()
+      if (opcoes?.fecharModalApos) fecharModal()
     } catch (erro) {
       setMensagemDeErro(extrairErro(erro, 'Erro ao alterar status'))
     } finally {
       setAlterandoStatus(null)
     }
   }
+
+  const fornecedorEmVisualizacao = listaFornecedores.find((f) => f.id === idEmEdicao)
 
   const qualquerOperacaoAtiva = salvando || verificandoDocumento || carregandoBrasilApi
 
@@ -1209,26 +1212,25 @@ function ConteudoDaPaginaDeFornecedores() {
         largura="2xl"
         rodape={
           modoVisualizacao ? (
-            <div className="flex items-center justify-end gap-2">
-              <Button type="button" variant="outline" onClick={fecharModal}>
-                Fechar
-              </Button>
-              {!ehPrimeiraAba && (
-                <Button type="button" variant="outline" onClick={irParaAbaAnterior}>
-                  ← Anterior
-                </Button>
-              )}
-              {!ehUltimaAba && (
-                <Button type="button" variant="outline" onClick={aoAvancar}>
-                  Próximo →
-                </Button>
-              )}
-              {podeEditar && (
-                <BotaoPrimario type="button" onClick={alternarParaEdicao}>
-                  Editar
-                </BotaoPrimario>
-              )}
-            </div>
+            <RodapeModalVisualizacao
+              aoFechar={fecharModal}
+              aoAnterior={irParaAbaAnterior}
+              aoProximo={aoAvancar}
+              mostrarAnterior={!ehPrimeiraAba}
+              mostrarProximo={!ehUltimaAba}
+              aoEditar={alternarParaEdicao}
+              podeEditar={podeEditar}
+              aoAlternarStatus={() => {
+                if (fornecedorEmVisualizacao) {
+                  void alternarStatus(fornecedorEmVisualizacao, { fecharModalApos: true })
+                }
+              }}
+              podeDesativar={podeDesativar}
+              registroAtivo={fornecedorEmVisualizacao?.ativo ?? true}
+              carregandoStatus={
+                !!fornecedorEmVisualizacao && alterandoStatus === fornecedorEmVisualizacao.id
+              }
+            />
           ) : (
           <div className="flex w-full flex-col gap-2">
             {errosDaAbaAtual.length > 0 && (
@@ -1730,7 +1732,6 @@ function ConteudoDaPaginaDeFornecedores() {
                 <th className="px-4 py-3 text-left font-medium">Cidade</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
                 <th className="px-4 py-3 text-left font-medium">Cadastro</th>
-                <th className="px-4 py-3 text-left font-medium">Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -1747,7 +1748,7 @@ function ConteudoDaPaginaDeFornecedores() {
 
               {!carregandoLista && fornecedoresFiltrados.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
                     {listaFornecedores.length === 0 ? 'Nenhum fornecedor cadastrado.' : 'Nenhum fornecedor encontrado.'}
                   </td>
                 </tr>
@@ -1760,7 +1761,12 @@ function ConteudoDaPaginaDeFornecedores() {
                   : (f.cnpj ? mascaraCnpj(f.cnpj) : '—')
 
                 return (
-                  <tr key={f.id} className="border-b border-border last:border-0 hover:bg-muted/30">
+                  <LinhaTabelaClicavel
+                    key={f.id}
+                    aoClicar={() => abrirModalVisualizacao(f)}
+                    ariaLabel={`Visualizar fornecedor ${f.nome}`}
+                    desabilitada={alterandoStatus === f.id}
+                  >
                     <td className="px-4 py-3 font-medium">
                       {f.nome}
                       {f.nomeFantasia && (
@@ -1800,33 +1806,7 @@ function ConteudoDaPaginaDeFornecedores() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <MenuAcoesLinha
-                        carregando={alterandoStatus === f.id}
-                        ariaLabel={`Ações do fornecedor ${f.nome}`}
-                        itens={[
-                          {
-                            rotulo: 'Visualizar',
-                            icone: Eye,
-                            onClick: () => abrirModalVisualizacao(f),
-                          },
-                          {
-                            rotulo: 'Editar',
-                            icone: Pencil,
-                            onClick: () => abrirModalEdicao(f),
-                            oculto: !podeEditar,
-                          },
-                          {
-                            rotulo: f.ativo ? 'Desativar' : 'Reativar',
-                            icone: f.ativo ? Trash2 : RotateCcw,
-                            onClick: () => alternarStatus(f),
-                            destrutivo: f.ativo,
-                            oculto: !podeDesativar,
-                          },
-                        ]}
-                      />
-                    </td>
-                  </tr>
+                  </LinhaTabelaClicavel>
                 )
               })}
             </tbody>
