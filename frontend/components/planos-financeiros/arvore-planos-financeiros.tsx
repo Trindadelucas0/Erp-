@@ -14,9 +14,9 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
-import { ChevronDown, ChevronRight, GripVertical, MoreVertical } from 'lucide-react'
+import { ChevronDown, ChevronRight, GripVertical, Pencil, Plus, Power } from 'lucide-react'
+import { MenuAcoesLinha } from '@/components/compartilhado/menu-acoes-linha'
 import { BadgeStatus } from '@/components/ui/badge-status'
-import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { criarRestrictToContainer } from './modifier-restrict-container'
 import { LinhaOverlayDrag } from './linha-overlay-drag'
@@ -91,8 +91,6 @@ type Props = {
 type LinhaProps = {
   linha: LinhaPlana
   expandidos: Set<string>
-  menuAberto: string | null
-  refMenu: React.RefObject<HTMLDivElement | null>
   arrastarHabilitado: boolean
   movendoId?: string | null
   dicaDrop: DicaDrop | null
@@ -104,14 +102,11 @@ type LinhaProps = {
   aoAlternarAtivo: (plano: PlanoFinanceiroNo) => void
   aoAdicionarSubgrupo?: (plano: PlanoFinanceiroNo) => void
   aoAlternarExpansao: (id: string) => void
-  aoAbrirMenu: (id: string | null) => void
 }
 
 function LinhaPlanoFinanceiro({
   linha,
   expandidos,
-  menuAberto,
-  refMenu,
   arrastarHabilitado,
   movendoId,
   dicaDrop,
@@ -123,7 +118,6 @@ function LinhaPlanoFinanceiro({
   aoAlternarAtivo,
   aoAdicionarSubgrupo,
   aoAlternarExpansao,
-  aoAbrirMenu,
 }: LinhaProps) {
   const { attributes, listeners, setNodeRef: setDragRef } = useDraggable({
     id: linha.id,
@@ -240,59 +234,31 @@ function LinhaPlanoFinanceiro({
           {linha.ativo ? 'Habilitado' : 'Desabilitado'}
         </BadgeStatus>
       </td>
-      <td className="relative overflow-visible px-2 py-3">
+      <td className="px-2 py-3">
         {(podeEditar || podeDesativar || podeCriar) && (
-          <div ref={menuAberto === linha.id ? refMenu : undefined} className="relative inline-block">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0"
-              onClick={() => aoAbrirMenu(menuAberto === linha.id ? null : linha.id)}
-            >
-              <MoreVertical className="size-4" />
-            </Button>
-            {menuAberto === linha.id && (
-              <div className="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-md border border-border bg-card py-1 shadow-lg">
-                {podeCriar && aoAdicionarSubgrupo && (
-                  <button
-                    type="button"
-                    className="block w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                    onClick={() => {
-                      aoAbrirMenu(null)
-                      aoAdicionarSubgrupo(linha)
-                    }}
-                  >
-                    Adicionar subgrupo
-                  </button>
-                )}
-                {podeEditar && (
-                  <button
-                    type="button"
-                    className="block w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                    onClick={() => {
-                      aoAbrirMenu(null)
-                      aoEditar(linha)
-                    }}
-                  >
-                    Editar
-                  </button>
-                )}
-                {podeDesativar && (
-                  <button
-                    type="button"
-                    className="block w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                    onClick={() => {
-                      aoAbrirMenu(null)
-                      aoAlternarAtivo(linha)
-                    }}
-                  >
-                    {linha.ativo ? 'Desabilitar' : 'Habilitar'}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
+          <MenuAcoesLinha
+            ariaLabel={`Ações do plano ${linha.nome}`}
+            itens={[
+              {
+                rotulo: 'Adicionar subgrupo',
+                icone: Plus,
+                onClick: () => aoAdicionarSubgrupo?.(linha),
+                oculto: !podeCriar || !aoAdicionarSubgrupo,
+              },
+              {
+                rotulo: 'Editar',
+                icone: Pencil,
+                onClick: () => aoEditar(linha),
+                oculto: !podeEditar,
+              },
+              {
+                rotulo: linha.ativo ? 'Desabilitar' : 'Habilitar',
+                icone: Power,
+                onClick: () => aoAlternarAtivo(linha),
+                oculto: !podeDesativar,
+              },
+            ]}
+          />
         )}
       </td>
     </tr>
@@ -348,11 +314,9 @@ export function ArvorePlanosFinanceiros({
   aoMover,
 }: Props) {
   const [expandidos, setExpandidos] = useState<Set<string>>(() => new Set())
-  const [menuAberto, setMenuAberto] = useState<string | null>(null)
   const [arrastandoId, setArrastandoId] = useState<string | null>(null)
   const [dicaDrop, setDicaDrop] = useState<DicaDrop | null>(null)
   const [larguraTabela, setLarguraTabela] = useState(0)
-  const refMenu = useRef<HTMLDivElement>(null)
   const refAreaDrag = useRef<HTMLDivElement>(null)
   const refTabela = useRef<HTMLTableElement>(null)
 
@@ -375,19 +339,6 @@ export function ArvorePlanosFinanceiros({
       setLarguraTabela(refTabela.current.offsetWidth)
     }
   }, [])
-
-  useEffect(() => {
-    if (!menuAberto) return
-
-    function aoClicarFora(evento: MouseEvent) {
-      if (refMenu.current && !refMenu.current.contains(evento.target as Node)) {
-        setMenuAberto(null)
-      }
-    }
-
-    document.addEventListener('mousedown', aoClicarFora)
-    return () => document.removeEventListener('mousedown', aoClicarFora)
-  }, [menuAberto])
 
   useEffect(() => {
     if (!idsParaExpandir?.length) return
@@ -511,8 +462,6 @@ export function ArvorePlanosFinanceiros({
 
   const propsLinha: Omit<LinhaProps, 'linha'> = {
     expandidos,
-    menuAberto,
-    refMenu,
     arrastarHabilitado,
     movendoId,
     dicaDrop,
@@ -524,7 +473,6 @@ export function ArvorePlanosFinanceiros({
     aoAlternarAtivo,
     aoAdicionarSubgrupo,
     aoAlternarExpansao: alternarExpansao,
-    aoAbrirMenu: setMenuAberto,
   }
 
   if (linhas.length === 0) {
