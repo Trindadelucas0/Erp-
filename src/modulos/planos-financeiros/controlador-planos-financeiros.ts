@@ -5,6 +5,7 @@ import {
   esquemaDeAtivarPlanoFinanceiro,
   esquemaDeCriacaoDePlanoFinanceiro,
   esquemaDeEdicaoDePlanoFinanceiro,
+  esquemaDeMoverPlanoFinanceiro,
 } from './esquema-planos-financeiros.js'
 import type { TipoPlanoFinanceiro } from './codigo-plano-financeiro.js'
 
@@ -104,6 +105,22 @@ async function alterarStatusDoPlanoFinanceiro(requisicao: FastifyRequest, respos
   return resposta.send({ plano })
 }
 
+async function moverPlanoFinanceiro(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id } = requisicao.params as { id: string }
+  const resultado = esquemaDeMoverPlanoFinanceiro.safeParse(requisicao.body)
+  if (!resultado.success) {
+    throw new ErroDaAplicacao(resultado.error.errors[0].message, 400)
+  }
+
+  const plano = await servicoDePlanosFinanceiros.moverPlano(
+    companyId(requisicao),
+    id,
+    resultado.data,
+    requisicao.idDoUsuario!
+  )
+  return resposta.send({ plano })
+}
+
 export const controladorDePlanosFinanceiros = {
   listarPlanosFinanceiros,
   sugerirProximoCodigo,
@@ -111,4 +128,5 @@ export const controladorDePlanosFinanceiros = {
   criarPlanoFinanceiro,
   editarPlanoFinanceiro,
   alterarStatusDoPlanoFinanceiro,
+  moverPlanoFinanceiro,
 }

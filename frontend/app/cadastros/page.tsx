@@ -151,7 +151,6 @@ function ConteudoDaPaginaDeCadastros() {
 
   const teclaNovo = useTeclaDaAcao('novo')
   const teclaSalvar = useTeclaDaAcao('salvar')
-  const teclaCancelar = useTeclaDaAcao('cancelar')
 
   useEffect(() => {
     if (carregandoSessao || !estaAutenticado) return
@@ -368,15 +367,6 @@ function ConteudoDaPaginaDeCadastros() {
             />
           ) : (
           <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={solicitarFechar}
-              disabled={salvando}
-              title={tituloComAtalho('Cancelar', teclaCancelar)}
-            >
-              Cancelar
-            </Button>
             <BotaoPrimario
               form="form-empresa"
               type="submit"

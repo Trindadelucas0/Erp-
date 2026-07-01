@@ -136,9 +136,6 @@ export function ModalEnviarDocumentoCliente({ cliente, aberto, aoFechar, aoEnvia
 
   const rodapePasso1 = (
     <div className="flex justify-end gap-2">
-      <Button type="button" variant="outline" onClick={fechar}>
-        Cancelar
-      </Button>
       <BotaoPrimario type="button" onClick={avancar}>
         Próximo
       </BotaoPrimario>

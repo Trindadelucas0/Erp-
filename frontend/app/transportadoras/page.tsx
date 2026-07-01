@@ -10,6 +10,8 @@ import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { LinhaTabelaClicavel } from '@/components/compartilhado/linha-tabela-clicavel'
 import { RodapeModalVisualizacao } from '@/components/compartilhado/rodape-modal-visualizacao'
+import { RodapeModalFormulario } from '@/components/compartilhado/rodape-modal-formulario'
+import { IndicadorEtapasModal } from '@/components/compartilhado/indicador-etapas-modal'
 import { CampoSelect } from '@/components/compartilhado/campo-select'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { usePermissao } from '@/hooks/use-permissao'
@@ -444,7 +446,6 @@ function ConteudoDaPaginaDeTransportadoras() {
 
   const teclaNovo = useTeclaDaAcao('novo')
   const teclaSalvar = useTeclaDaAcao('salvar')
-  const teclaCancelar = useTeclaDaAcao('cancelar')
 
   function validarDadosBancariosTransp(dados: DadosBancarioForm[]): boolean {
     return !erroDadosBancariosTransp(dados)
@@ -502,6 +503,8 @@ function ConteudoDaPaginaDeTransportadoras() {
     { id: 'endereco', rotulo: 'Endereço', status: statusDasAbas['endereco'] },
     { id: 'dados-bancarios', rotulo: 'Dados Bancários', status: statusDasAbas['dados-bancarios'] },
   ]
+
+  const etapasModalTransportadora = abasComStatus.map(({ id, rotulo }) => ({ id, rotulo }))
 
   const errosForm = useMemo(() => validarFormTransportadora(form), [form])
   const documentoDuplicado = avisoDuplicidade?.tipo === 'transportadora_existente'
@@ -933,6 +936,8 @@ function ConteudoDaPaginaDeTransportadoras() {
         }
         descricao={modoVisualizacao ? 'Consulta dos dados cadastrados (somente leitura)' : undefined}
         largura="2xl"
+        manterPosicao={!modoVisualizacao}
+        alturaMinimaConteudo={!modoVisualizacao ? 'min-h-[420px]' : undefined}
         rodape={
           modoVisualizacao ? (
             <RodapeModalVisualizacao
@@ -956,82 +961,22 @@ function ConteudoDaPaginaDeTransportadoras() {
               }
             />
           ) : (
-          <div className="flex w-full flex-col gap-2">
-            {errosDaAbaAtual.length > 0 && (
-              <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                <ul className="space-y-0.5">
-                  {errosDaAbaAtual.map((erro, i) => (
-                    <li key={i} className="flex items-start gap-1">
-                      <span className="mt-0.5 shrink-0">•</span>
-                      <span>{erro}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {!etapaAtualLiberada && !ehUltimaAba && errosDaAbaAtual.length === 0 && (
-              <p className="text-xs text-muted-foreground">
-                Preencha os campos obrigatórios desta etapa para continuar
-              </p>
-            )}
-            <div className="flex items-center justify-between gap-2">
-              {erroSalvar ? (
-                <p className="text-sm text-destructive">{erroSalvar}</p>
-              ) : (
-                <span />
+            <RodapeModalFormulario
+              formId="form-transportadora"
+              rotuloSalvar={modoEdicao ? 'Salvar' : 'Cadastrar transportadora'}
+              salvando={salvando}
+              podeSalvar={formularioValido}
+              titleSalvar={tituloComAtalho(
+                modoEdicao ? 'Salvar' : 'Cadastrar transportadora',
+                teclaSalvar
               )}
-              <div className="flex w-full items-center justify-between gap-2 sm:w-auto">
-                <div className="flex gap-2">
-                  <BotaoPrimario
-                    form="form-transportadora"
-                    type="submit"
-                    disabled={salvando || !formularioValido}
-                    title={tituloComAtalho(modoEdicao ? 'Salvar' : 'Cadastrar transportadora', teclaSalvar)}
-                  >
-                    {salvando ? (
-                      <span className="flex items-center gap-2">
-                        <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                        </svg>
-                        Salvando...
-                      </span>
-                    ) : modoEdicao ? 'Salvar' : 'Cadastrar transportadora'}
-                  </BotaoPrimario>
-                  {!ehPrimeiraAba && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={irParaAbaAnterior}
-                      disabled={salvando}
-                    >
-                      ← Anterior
-                    </Button>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={solicitarFechar}
-                    disabled={salvando}
-                    title={tituloComAtalho('Cancelar', teclaCancelar)}
-                  >
-                    Cancelar
-                  </Button>
-                  {!ehUltimaAba && (
-                    <BotaoPrimario
-                      type="button"
-                      onClick={aoAvancar}
-                      disabled={salvando || !etapaAtualLiberada}
-                    >
-                      Próximo →
-                    </BotaoPrimario>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+              aoAnterior={irParaAbaAnterior}
+              mostrarAnterior={!ehPrimeiraAba}
+              aoProximo={aoAvancar}
+              mostrarProximo={!ehUltimaAba}
+              podeProximo={etapaAtualLiberada}
+              desabilitado={salvando}
+            />
           )
         }
       >
@@ -1041,12 +986,47 @@ function ConteudoDaPaginaDeTransportadoras() {
           </div>
         )}
 
+        {!modoVisualizacao && (
+          <IndicadorEtapasModal
+            etapas={etapasModalTransportadora}
+            etapaAtiva={abaAtiva}
+            className="mb-4"
+          />
+        )}
+
+        {!modoVisualizacao && (errosDaAbaAtual.length > 0 || erroSalvar) && (
+          <div className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {erroSalvar ? (
+              <p>{erroSalvar}</p>
+            ) : (
+              <ul className="space-y-0.5">
+                {errosDaAbaAtual.map((erro, i) => (
+                  <li key={i} className="flex items-start gap-1">
+                    <span className="mt-0.5 shrink-0">•</span>
+                    <span>{erro}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {!modoVisualizacao &&
+          !etapaAtualLiberada &&
+          !ehUltimaAba &&
+          errosDaAbaAtual.length === 0 && (
+            <p className="mb-4 text-xs text-muted-foreground">
+              Preencha os campos obrigatórios desta etapa para continuar
+            </p>
+          )}
+
         <Abas abas={abasComStatus} abaAtiva={abaAtiva} aoMudar={setAbaAtiva} className="mb-5" />
 
         <div className="relative">
           {salvando && <div className="absolute inset-0 z-10 rounded-md bg-background/60 backdrop-blur-[1px]" />}
           <form id="form-transportadora" onSubmit={aoSalvar}>
             <fieldset disabled={somenteLeitura} className="m-0 min-w-0 border-0 p-0">
+            <div key={abaAtiva} className="transition-opacity duration-150">
 
             {abaAtiva === 'identificacao' && (
               <div className="space-y-5">
@@ -1245,6 +1225,7 @@ function ConteudoDaPaginaDeTransportadoras() {
                 )}
               </div>
             )}
+            </div>
             </fieldset>
           </form>
         </div>
@@ -1277,8 +1258,8 @@ function ConteudoDaPaginaDeTransportadoras() {
             className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
         </div>
 
-        <div className="rounded-md border border-border">
-          <table className="w-full table-fixed text-sm">
+        <div className="overflow-x-auto rounded-md border border-border">
+          <table className="w-full min-w-[800px] text-sm">
             <colgroup>
               <col className="w-[30%]" />
               <col className="w-[22%]" />

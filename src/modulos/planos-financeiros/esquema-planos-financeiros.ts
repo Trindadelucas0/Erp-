@@ -30,5 +30,11 @@ export const esquemaDeAtivarPlanoFinanceiro = z.object({
   ativo: z.boolean(),
 })
 
+export const esquemaDeMoverPlanoFinanceiro = z.object({
+  alvoId: z.string().uuid('alvoId inválido'),
+  posicao: z.enum(['antes', 'depois', 'dentro']),
+})
+
 export type DadosParaCriarPlanoFinanceiro = z.infer<typeof esquemaDeCriacaoDePlanoFinanceiro>
 export type DadosParaEditarPlanoFinanceiro = z.infer<typeof esquemaDeEdicaoDePlanoFinanceiro>
+export type DadosParaMoverPlanoFinanceiro = z.infer<typeof esquemaDeMoverPlanoFinanceiro>

@@ -15,22 +15,15 @@ import { BotaoPrimario } from '@/components/ui/botao-primario'
 import {
   ArvorePlanosFinanceiros,
   type PlanoFinanceiroNo,
+  type PosicaoMoverPlano,
 } from '@/components/planos-financeiros/arvore-planos-financeiros'
 import {
   ModalPlanoFinanceiro,
   type TipoPlanoAba,
 } from '@/components/planos-financeiros/modal-plano-financeiro'
+import { achatarPlanosComNivel } from '@/components/planos-financeiros/util-arvore-planos'
 
 type AbaId = 'receitas' | 'despesas' | 'resultado'
-
-function achatarParaSelecao(nos: PlanoFinanceiroNo[]): PlanoFinanceiroNo[] {
-  const lista: PlanoFinanceiroNo[] = []
-  for (const no of nos) {
-    lista.push(no)
-    if (no.filhos?.length) lista.push(...achatarParaSelecao(no.filhos))
-  }
-  return lista
-}
 
 function ConteudoDaPagina() {
   const { estaAutenticado, carregando: carregandoSessao } = useSessaoDoUsuario()
@@ -50,6 +43,9 @@ function ConteudoDaPagina() {
   const [planoEmEdicao, setPlanoEmEdicao] = useState<PlanoFinanceiroNo | null>(null)
   const [mensagem, setMensagem] = useState('')
   const [erro, setErro] = useState('')
+  const [movendoId, setMovendoId] = useState<string | null>(null)
+  const [paiPreSelecionadoId, setPaiPreSelecionadoId] = useState<string | null>(null)
+  const [idsParaExpandir, setIdsParaExpandir] = useState<string[]>([])
 
   const tipoAtual: TipoPlanoAba = abaAtiva === 'despesas' ? 'despesa' : 'receita'
   const arvoreAtual = abaAtiva === 'despesas' ? arvoreDespesas : arvoreReceitas
@@ -88,14 +84,27 @@ function ConteudoDaPagina() {
   }, [filtrosAbertos])
 
   const planosParaPai = useMemo(
-    () => achatarParaSelecao(arvoreAtual),
+    () => achatarPlanosComNivel(arvoreAtual),
     [arvoreAtual]
   )
 
   function abrirNovo() {
     setModoEdicao(false)
     setPlanoEmEdicao(null)
+    setPaiPreSelecionadoId(null)
     setModalAberto(true)
+  }
+
+  function abrirSubgrupo(plano: PlanoFinanceiroNo) {
+    setModoEdicao(false)
+    setPlanoEmEdicao(null)
+    setPaiPreSelecionadoId(plano.id)
+    setModalAberto(true)
+  }
+
+  function fecharModal() {
+    setModalAberto(false)
+    setPaiPreSelecionadoId(null)
   }
 
   function abrirEdicao(plano: PlanoFinanceiroNo) {
@@ -118,6 +127,27 @@ function ConteudoDaPagina() {
         (e as { response?: { data?: { mensagem?: string } } })?.response?.data?.mensagem ||
         'Erro ao alterar situação'
       setErro(msg)
+    }
+  }
+
+  async function moverPlano(planoId: string, alvoId: string, posicao: PosicaoMoverPlano) {
+    setErro('')
+    setMensagem('')
+    setMovendoId(planoId)
+    try {
+      await clienteHttp.patch(`/planos-financeiros/${planoId}/mover`, {
+        alvoId,
+        posicao,
+      })
+      setMensagem('Plano movido com sucesso.')
+      await carregarPlanos()
+    } catch (e: unknown) {
+      const msg =
+        (e as { response?: { data?: { mensagem?: string } } })?.response?.data?.mensagem ||
+        'Erro ao mover plano'
+      setErro(msg)
+    } finally {
+      setMovendoId(null)
     }
   }
 
@@ -246,8 +276,13 @@ function ConteudoDaPagina() {
             filtroSituacao={filtroSituacao}
             podeEditar={podeEditar}
             podeDesativar={podeDesativar}
+            podeCriar={podeCriar}
+            movendoId={movendoId}
+            idsParaExpandir={idsParaExpandir}
             aoEditar={abrirEdicao}
             aoAlternarAtivo={alternarAtivo}
+            aoAdicionarSubgrupo={podeCriar ? abrirSubgrupo : undefined}
+            aoMover={podeEditar ? moverPlano : undefined}
           />
         </CardPadrao>
       )}
@@ -258,9 +293,13 @@ function ConteudoDaPagina() {
         modoEdicao={modoEdicao}
         planoEmEdicao={planoEmEdicao}
         planosDisponiveis={planosParaPai}
-        aoFechar={() => setModalAberto(false)}
-        aoSalvo={async () => {
+        paiPreSelecionadoId={paiPreSelecionadoId}
+        aoFechar={fecharModal}
+        aoSalvo={async (parentIdCriado) => {
           setMensagem(modoEdicao ? 'Plano atualizado.' : 'Plano criado.')
+          if (parentIdCriado) {
+            setIdsParaExpandir([parentIdCriado])
+          }
           await carregarPlanos()
         }}
       />

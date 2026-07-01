@@ -42,4 +42,10 @@ export async function rotasDePlanosFinanceiros(aplicacao: FastifyInstance) {
     { preHandler: [...auth, middlewareDeAutorizacao('financeiro:delete')] },
     controladorDePlanosFinanceiros.alterarStatusDoPlanoFinanceiro
   )
+
+  aplicacao.patch(
+    '/:id/mover',
+    { preHandler: [...auth, middlewareDeAutorizacao('financeiro:edit')] },
+    controladorDePlanosFinanceiros.moverPlanoFinanceiro
+  )
 }

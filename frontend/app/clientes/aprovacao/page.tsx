@@ -410,9 +410,6 @@ function ConteudoAprovacao() {
         largura="lg"
         rodape={
           <div className="flex flex-wrap justify-end gap-2">
-            <Button type="button" variant="outline" onClick={fecharAnalise} disabled={processando}>
-              Cancelar
-            </Button>
             {!modoReprovar ? (
               <>
                 <Button

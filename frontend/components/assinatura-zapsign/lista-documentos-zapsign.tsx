@@ -178,13 +178,6 @@ export function ListaDocumentosZapsign() {
         descricao="Escolha o cliente aguardando assinatura para enviar o contrato."
         rodape={
           <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setModalSelecionarClienteAberto(false)}
-            >
-              Cancelar
-            </Button>
             <BotaoPrimario type="button" onClick={confirmarSeleçãoCliente}>
               Continuar
             </BotaoPrimario>

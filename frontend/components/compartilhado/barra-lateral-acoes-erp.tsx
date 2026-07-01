@@ -6,7 +6,6 @@ import { cn } from '@/lib/utils'
 
 type Props = {
   aoGravar: () => void
-  aoCancelar: () => void
   aoExcluir?: () => void
   gravando?: boolean
   podeGravar?: boolean
@@ -17,7 +16,6 @@ type Props = {
 /** Barra lateral legada — preferir rodapé do Modal em telas novas */
 export function BarraLateralAcoesErp({
   aoGravar,
-  aoCancelar,
   aoExcluir,
   gravando,
   podeGravar = true,
@@ -29,9 +27,6 @@ export function BarraLateralAcoesErp({
       <BotaoPrimario type="button" onClick={aoGravar} disabled={gravando || !podeGravar}>
         Salvar
       </BotaoPrimario>
-      <Button type="button" variant="outline" onClick={aoCancelar} disabled={gravando}>
-        Cancelar
-      </Button>
       {aoExcluir && podeExcluir && (
         <Button
           type="button"

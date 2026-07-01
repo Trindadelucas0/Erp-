@@ -10,6 +10,8 @@ import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { LinhaTabelaClicavel } from '@/components/compartilhado/linha-tabela-clicavel'
 import { RodapeModalVisualizacao } from '@/components/compartilhado/rodape-modal-visualizacao'
+import { RodapeModalFormulario } from '@/components/compartilhado/rodape-modal-formulario'
+import { IndicadorEtapasModal } from '@/components/compartilhado/indicador-etapas-modal'
 import { CampoSelect } from '@/components/compartilhado/campo-select'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { usePermissao } from '@/hooks/use-permissao'
@@ -22,6 +24,8 @@ import { useValidacaoDeAbas, type ConfigDeAba } from '@/hooks/use-validacao-de-a
 import { useConfirmarSaida } from '@/hooks/use-confirmar-saida'
 import { clonarFormulario } from '@/lib/formulario-alterado'
 import { BadgeStatus } from '@/components/ui/badge-status'
+import { BadgeCadastro } from '@/components/ui/badge-cadastro'
+import { CelulaBadge } from '@/components/ui/celula-badge'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { CardPadrao } from '@/components/ui/card-padrao'
@@ -599,12 +603,10 @@ function ConteudoDaPaginaDeFornecedores() {
   } | null>(null)
   const [camposTocados, setCamposTocados] = useState<Set<string>>(() => new Set())
   const [erroSalvar, setErroSalvar] = useState('')
-  const [tooltipAberto, setTooltipAberto] = useState<string | null>(null)
   const refBusca = useRef<HTMLInputElement>(null)
 
   const teclaNovo = useTeclaDaAcao('novo')
   const teclaSalvar = useTeclaDaAcao('salvar')
-  const teclaCancelar = useTeclaDaAcao('cancelar')
 
   // ─── Validação de abas ───────────────────────────────────────────────────
 
@@ -675,6 +677,8 @@ function ConteudoDaPaginaDeFornecedores() {
     { id: 'dados-bancarios', rotulo: 'Dados Bancários', status: statusDasAbas['dados-bancarios'] },
     { id: 'outros', rotulo: 'Outros', status: statusDasAbas['outros'] },
   ]
+
+  const etapasModalFornecedor = abasComStatus.map(({ id, rotulo }) => ({ id, rotulo }))
 
   const errosForm = useMemo(() => validarFormFornecedor(form), [form])
   const documentoDuplicado = avisoDuplicidade?.tipo === 'fornecedor_existente'
@@ -1221,6 +1225,8 @@ function ConteudoDaPaginaDeFornecedores() {
         }
         descricao={modoVisualizacao ? 'Consulta dos dados cadastrados (somente leitura)' : undefined}
         largura="2xl"
+        manterPosicao={!modoVisualizacao}
+        alturaMinimaConteudo={!modoVisualizacao ? 'min-h-[420px]' : undefined}
         rodape={
           modoVisualizacao ? (
             <RodapeModalVisualizacao
@@ -1243,82 +1249,22 @@ function ConteudoDaPaginaDeFornecedores() {
               }
             />
           ) : (
-          <div className="flex w-full flex-col gap-2">
-            {errosDaAbaAtual.length > 0 && (
-              <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                <ul className="space-y-0.5">
-                  {errosDaAbaAtual.map((erro, i) => (
-                    <li key={i} className="flex items-start gap-1">
-                      <span className="mt-0.5 shrink-0">•</span>
-                      <span>{erro}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {!etapaAtualLiberada && !ehUltimaAba && errosDaAbaAtual.length === 0 && (
-              <p className="text-xs text-muted-foreground">
-                Preencha os campos obrigatórios desta etapa para continuar
-              </p>
-            )}
-            <div className="flex items-center justify-between gap-2">
-              {erroSalvar ? (
-                <p className="text-sm text-destructive">{erroSalvar}</p>
-              ) : (
-                <span />
+            <RodapeModalFormulario
+              formId="form-fornecedor"
+              rotuloSalvar={modoEdicao ? 'Salvar' : 'Cadastrar fornecedor'}
+              salvando={salvando}
+              podeSalvar={formularioValido}
+              titleSalvar={tituloComAtalho(
+                modoEdicao ? 'Salvar' : 'Cadastrar fornecedor',
+                teclaSalvar
               )}
-              <div className="flex w-full items-center justify-between gap-2 sm:w-auto">
-                <div className="flex gap-2">
-                  <BotaoPrimario
-                    form="form-fornecedor"
-                    type="submit"
-                    disabled={salvando || !formularioValido}
-                    title={tituloComAtalho(modoEdicao ? 'Salvar' : 'Cadastrar fornecedor', teclaSalvar)}
-                  >
-                    {salvando ? (
-                      <span className="flex items-center gap-2">
-                        <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                        </svg>
-                        Salvando...
-                      </span>
-                    ) : modoEdicao ? 'Salvar' : 'Cadastrar fornecedor'}
-                  </BotaoPrimario>
-                  {!ehPrimeiraAba && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={irParaAbaAnterior}
-                      disabled={salvando}
-                    >
-                      ← Anterior
-                    </Button>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={solicitarFechar}
-                    disabled={salvando}
-                    title={tituloComAtalho('Cancelar', teclaCancelar)}
-                  >
-                    Cancelar
-                  </Button>
-                  {!ehUltimaAba && (
-                    <BotaoPrimario
-                      type="button"
-                      onClick={aoAvancar}
-                      disabled={salvando || !etapaAtualLiberada}
-                    >
-                      Próximo →
-                    </BotaoPrimario>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+              aoAnterior={irParaAbaAnterior}
+              mostrarAnterior={!ehPrimeiraAba}
+              aoProximo={aoAvancar}
+              mostrarProximo={!ehUltimaAba}
+              podeProximo={etapaAtualLiberada}
+              desabilitado={salvando}
+            />
           )
         }
       >
@@ -1332,6 +1278,40 @@ function ConteudoDaPaginaDeFornecedores() {
           </div>
         )}
 
+        {!modoVisualizacao && (
+          <IndicadorEtapasModal
+            etapas={etapasModalFornecedor}
+            etapaAtiva={abaAtiva}
+            className="mb-4"
+          />
+        )}
+
+        {!modoVisualizacao && (errosDaAbaAtual.length > 0 || erroSalvar) && (
+          <div className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {erroSalvar ? (
+              <p>{erroSalvar}</p>
+            ) : (
+              <ul className="space-y-0.5">
+                {errosDaAbaAtual.map((erro, i) => (
+                  <li key={i} className="flex items-start gap-1">
+                    <span className="mt-0.5 shrink-0">•</span>
+                    <span>{erro}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {!modoVisualizacao &&
+          !etapaAtualLiberada &&
+          !ehUltimaAba &&
+          errosDaAbaAtual.length === 0 && (
+            <p className="mb-4 text-xs text-muted-foreground">
+              Preencha os campos obrigatórios desta etapa para continuar
+            </p>
+          )}
+
         <Abas abas={abasComStatus} abaAtiva={abaAtiva} aoMudar={setAbaAtiva} className="mb-5" />
 
         <div className="relative">
@@ -1340,6 +1320,7 @@ function ConteudoDaPaginaDeFornecedores() {
           )}
           <form id="form-fornecedor" onSubmit={aoSalvar}>
             <fieldset disabled={somenteLeitura} className="m-0 min-w-0 border-0 p-0">
+            <div key={abaAtiva} className="transition-opacity duration-150">
             {/* ── Aba 1: Identificação ─────────────────────────────────── */}
             {abaAtiva === 'identificacao' && (
               <div className="space-y-5">
@@ -1726,6 +1707,7 @@ function ConteudoDaPaginaDeFornecedores() {
                 />
               </div>
             )}
+            </div>
             </fieldset>
           </form>
         </div>
@@ -1760,15 +1742,15 @@ function ConteudoDaPaginaDeFornecedores() {
           />
         </div>
 
-        <div className="rounded-md border border-border">
-          <table className="w-full table-fixed text-sm">
+        <div className="overflow-x-auto rounded-md border border-border">
+          <table className="w-full min-w-[800px] text-sm">
             <colgroup>
-              <col className="w-[32%]" />
-              <col className="w-[24%]" />
-              <col className="w-[18%]" />
-              <col className="w-[8%]" />
-              <col className="w-[10%]" />
-              <col className="w-[8%]" />
+              <col />
+              <col />
+              <col className="w-[9rem]" />
+              <col className="w-[2.5rem]" />
+              <col className="w-[4.5rem]" />
+              <col className="w-[5.5rem]" />
             </colgroup>
             <thead>
               <tr className="border-b border-border bg-muted/50">
@@ -1831,36 +1813,14 @@ function ConteudoDaPaginaDeFornecedores() {
                     <td className="whitespace-nowrap px-2 py-2 text-muted-foreground">
                       {f.estado || '—'}
                     </td>
-                    <td className="px-2 py-2">
+                    <CelulaBadge>
                       <BadgeStatus variante={f.ativo ? 'ativo' : 'inativo'}>
                         {f.ativo ? 'Ativo' : 'Inativo'}
                       </BadgeStatus>
-                    </td>
-                    <td className="px-2 py-2">
-                      <div className="relative inline-block">
-                        <span
-                          className={`inline-flex cursor-default items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-                            completo
-                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                              : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                          }`}
-                          onMouseEnter={() => !completo && setTooltipAberto(f.id)}
-                          onMouseLeave={() => setTooltipAberto(null)}
-                        >
-                          {completo ? '✓ Completo' : '⚠ Incompleto'}
-                        </span>
-                        {tooltipAberto === f.id && pendencias.length > 0 && (
-                          <div className="absolute bottom-full left-0 z-50 mb-1 w-52 rounded-md border border-border bg-popover p-2 shadow-md">
-                            <p className="mb-1 text-xs font-medium">Pendências:</p>
-                            <ul className="space-y-0.5">
-                              {pendencias.map((p, idx) => (
-                                <li key={idx} className="text-xs text-muted-foreground">• {p}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    </td>
+                    </CelulaBadge>
+                    <CelulaBadge>
+                      <BadgeCadastro completo={completo} pendencias={pendencias} />
+                    </CelulaBadge>
                   </LinhaTabelaClicavel>
                 )
               })}

@@ -186,6 +186,29 @@ async function alterarAtivo(companyId: string, id: string, ativo: boolean) {
   return mapear(plano)
 }
 
+async function listarPorEmpresaParaMover(companyId: string, tipo: TipoPlanoFinanceiro) {
+  return clientePrisma.planoFinanceiro.findMany({
+    where: { companyId, tipo },
+    orderBy: { codigo: 'asc' },
+  })
+}
+
+async function atualizarPosicaoEmLote(
+  updates: { id: string; codigo: string; parentId?: string | null }[]
+) {
+  await clientePrisma.$transaction(
+    updates.map((u) =>
+      clientePrisma.planoFinanceiro.update({
+        where: { id: u.id },
+        data: {
+          codigo: u.codigo,
+          ...(u.parentId !== undefined ? { parentId: u.parentId } : {}),
+        },
+      })
+    )
+  )
+}
+
 export const repositorioDePlanosFinanceiros = {
   listarPorEmpresa,
   listarFolhasAtivas,
@@ -197,5 +220,7 @@ export const repositorioDePlanosFinanceiros = {
   criar,
   atualizar,
   alterarAtivo,
+  listarPorEmpresaParaMover,
+  atualizarPosicaoEmLote,
   mapear,
 }

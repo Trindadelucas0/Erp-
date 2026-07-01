@@ -7,6 +7,7 @@ type Props = {
   variante: Variante
   children: React.ReactNode
   className?: string
+  title?: string
 }
 
 const ESTILOS_POR_VARIANTE: Record<Variante, string> = {
@@ -18,13 +19,18 @@ const ESTILOS_POR_VARIANTE: Record<Variante, string> = {
   aguardando: 'bg-blue-500/15 text-blue-700 hover:bg-blue-500/15',
 }
 
-export function BadgeStatus({ variante, children, className }: Props) {
+export function BadgeStatus({ variante, children, className, title }: Props) {
   return (
     <Badge
       variant="secondary"
-      className={cn(ESTILOS_POR_VARIANTE[variante], className)}
+      title={title}
+      className={cn(
+        ESTILOS_POR_VARIANTE[variante],
+        'max-w-full shrink',
+        className
+      )}
     >
-      {children}
+      <span className="truncate">{children}</span>
     </Badge>
   )
 }

@@ -7,9 +7,32 @@ export const STATUS_APROVACAO = {
 
 export type StatusAprovacaoCliente = keyof typeof STATUS_APROVACAO
 
+export const ROTULO_CURTO_APROVACAO = {
+  pendente_aprovacao: 'Pendente',
+  reprovado: 'Reprovado',
+  aguardando_assinatura: 'Assinatura',
+  ativo: 'Ativo',
+} as const
+
 export function rotuloStatusAprovacao(status?: string | null): string {
   if (!status) return STATUS_APROVACAO.ativo
   return STATUS_APROVACAO[status as StatusAprovacaoCliente] ?? status
+}
+
+export function rotuloCurtoStatusAprovacao(status?: string | null): string {
+  if (!status) return ROTULO_CURTO_APROVACAO.ativo
+  return ROTULO_CURTO_APROVACAO[status as StatusAprovacaoCliente] ?? status
+}
+
+export function titleStatusAprovacao(
+  status?: string | null,
+  motivoReprovacao?: string | null
+): string {
+  const completo = rotuloStatusAprovacao(status)
+  if (status === 'reprovado' && motivoReprovacao) {
+    return `${completo}: ${motivoReprovacao}`
+  }
+  return completo
 }
 
 export function varianteBadgeAprovacao(

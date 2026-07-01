@@ -6,7 +6,7 @@ dist/
 *.tsbuildinfo
 docs/
 .cursor/
-.env.example
+.env.example 
 scripts/linear-connect.mjs
 package-lock.json
 

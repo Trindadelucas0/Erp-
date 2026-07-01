@@ -10,6 +10,8 @@ import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { LinhaTabelaClicavel } from '@/components/compartilhado/linha-tabela-clicavel'
 import { RodapeModalVisualizacao } from '@/components/compartilhado/rodape-modal-visualizacao'
+import { RodapeModalFormulario } from '@/components/compartilhado/rodape-modal-formulario'
+import { IndicadorEtapasModal } from '@/components/compartilhado/indicador-etapas-modal'
 import { CampoSelect } from '@/components/compartilhado/campo-select'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { usePermissao } from '@/hooks/use-permissao'
@@ -22,6 +24,8 @@ import { useValidacaoDeAbas, type ConfigDeAba } from '@/hooks/use-validacao-de-a
 import { useConfirmarSaida } from '@/hooks/use-confirmar-saida'
 import { clonarFormulario } from '@/lib/formulario-alterado'
 import { BadgeStatus } from '@/components/ui/badge-status'
+import { BadgeCadastro } from '@/components/ui/badge-cadastro'
+import { CelulaBadge } from '@/components/ui/celula-badge'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { CardPadrao } from '@/components/ui/card-padrao'
@@ -49,7 +53,8 @@ import { ListaCnaes, type CnaeForm } from '@/components/pessoas/lista-cnaes'
 import { CampoInscricaoEstadual } from '@/components/pessoas/campo-inscricao-estadual'
 import Link from 'next/link'
 import {
-  rotuloStatusAprovacao,
+  rotuloCurtoStatusAprovacao,
+  titleStatusAprovacao,
   varianteBadgeAprovacao,
 } from '@/lib/status-cliente'
 
@@ -561,7 +566,6 @@ function ConteudoDaPaginaDeClientes() {
 
   const teclaNovo = useTeclaDaAcao('novo')
   const teclaSalvar = useTeclaDaAcao('salvar')
-  const teclaCancelar = useTeclaDaAcao('cancelar')
 
   // ─── Validação de abas ────────────────────────────────────────────────────
 
@@ -643,6 +647,8 @@ function ConteudoDaPaginaDeClientes() {
     { id: 'contato', rotulo: 'Contato', status: statusDasAbas['contato'] },
     { id: 'endereco', rotulo: 'Endereço', status: statusDasAbas['endereco'] },
   ]
+
+  const etapasModalCliente = abasComStatus.map(({ id, rotulo }) => ({ id, rotulo }))
 
   const errosForm = useMemo(() => validarFormCliente(form), [form])
   const documentoDuplicado = avisoDuplicidade?.tipo === 'cliente_existente'
@@ -1232,6 +1238,8 @@ function ConteudoDaPaginaDeClientes() {
               : 'Preencha os dados para cadastrar um cliente'
         }
         largura="2xl"
+        manterPosicao={!modoVisualizacao}
+        alturaMinimaConteudo={!modoVisualizacao ? 'min-h-[420px]' : undefined}
         rodape={
           modoVisualizacao ? (
             <RodapeModalVisualizacao
@@ -1255,113 +1263,28 @@ function ConteudoDaPaginaDeClientes() {
               carregandoStatus={!!clienteEmVisualizacao && alterandoStatus === clienteEmVisualizacao.id}
             />
           ) : (
-          <div className="space-y-3">
-            {(errosDaAbaAtual.length > 0 || erroSalvar) && (
-              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {erroSalvar ? (
-                  <p>{erroSalvar}</p>
-                ) : (
-                  <ul className="space-y-0.5">
-                    {errosDaAbaAtual.map((erro, i) => (
-                      <li key={i} className="flex items-start gap-1">
-                        <span className="mt-0.5 shrink-0">•</span>
-                        <span>{erro}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-            {!etapaAtualLiberada && abaAtiva !== 'endereco' && errosDaAbaAtual.length === 0 && (
-              <p className="text-xs text-muted-foreground">
-                Preencha os campos obrigatórios desta etapa para continuar
-              </p>
-            )}
-            <div className="flex items-center justify-between gap-3">
-              <div className="hidden min-w-0 flex-1 sm:block">
-                <div className="flex flex-wrap gap-1">
-                  {abasComStatus.map((a, i) => {
-                    const desabilitada = !abaPermitida(a.id)
-                    return (
-                      <button
-                        key={a.id}
-                        type="button"
-                        onClick={() => aoMudarAba(a.id)}
-                        disabled={qualquerOperacaoAtiva || desabilitada}
-                        className={`rounded px-2 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                          abaAtiva === a.id
-                            ? 'bg-primary/10 text-primary'
-                            : desabilitada
-                              ? 'text-muted-foreground/50'
-                              : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        {i + 1}. {a.rotulo}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-              <div className="flex w-full shrink-0 items-center justify-between gap-2 sm:w-auto">
-                <div className="flex shrink-0 gap-2">
-                  <BotaoPrimario
-                    form="form-cliente"
-                    type="submit"
-                    disabled={
-                      !formularioValido ||
-                      qualquerOperacaoAtiva ||
-                      (abaAtiva === 'endereco' && recemChegouAoEndereco)
-                    }
-                    title={tituloComAtalho(
-                      modoEdicao ? 'Salvar' : 'Enviar para aprovação',
-                      teclaSalvar
-                    )}
-                  >
-                    {salvando ? (
-                      <span className="flex items-center gap-2">
-                        <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
-                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="31.4" strokeDashoffset="10" />
-                        </svg>
-                        Salvando...
-                      </span>
-                    ) : (
-                      modoEdicao ? 'Salvar' : 'Enviar para aprovação'
-                    )}
-                  </BotaoPrimario>
-                  {abaAtiva !== 'identificacao' && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={aoVoltar}
-                      disabled={qualquerOperacaoAtiva}
-                    >
-                      ← Anterior
-                    </Button>
-                  )}
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={solicitarFechar}
-                    disabled={qualquerOperacaoAtiva}
-                    title={tituloComAtalho('Cancelar', teclaCancelar)}
-                  >
-                    Cancelar
-                  </Button>
-                  {abaAtiva !== 'endereco' && (
-                    <BotaoPrimario
-                      type="button"
-                      onClick={aoAvancar}
-                      disabled={!etapaAtualLiberada || qualquerOperacaoAtiva}
-                    >
-                      {abaAtiva === 'identificacao' ? 'Próximo: Contato' : 'Próximo: Endereço'}
-                    </BotaoPrimario>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+            <RodapeModalFormulario
+              formId="form-cliente"
+              rotuloSalvar={modoEdicao ? 'Salvar' : 'Enviar para aprovação'}
+              salvando={salvando}
+              podeSalvar={
+                formularioValido &&
+                !(abaAtiva === 'endereco' && recemChegouAoEndereco)
+              }
+              titleSalvar={tituloComAtalho(
+                modoEdicao ? 'Salvar' : 'Enviar para aprovação',
+                teclaSalvar
+              )}
+              aoAnterior={aoVoltar}
+              mostrarAnterior={abaAtiva !== 'identificacao'}
+              aoProximo={aoAvancar}
+              mostrarProximo={abaAtiva !== 'endereco'}
+              rotuloProximo={
+                abaAtiva === 'identificacao' ? 'Próximo: Contato' : 'Próximo: Endereço'
+              }
+              podeProximo={etapaAtualLiberada}
+              desabilitado={qualquerOperacaoAtiva}
+            />
           )
         }
       >
@@ -1409,6 +1332,40 @@ function ConteudoDaPaginaDeClientes() {
           </div>
         )}
 
+        {!modoVisualizacao && (
+          <IndicadorEtapasModal
+            etapas={etapasModalCliente}
+            etapaAtiva={abaAtiva}
+            className="mb-4"
+          />
+        )}
+
+        {!modoVisualizacao && (errosDaAbaAtual.length > 0 || erroSalvar) && (
+          <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {erroSalvar ? (
+              <p>{erroSalvar}</p>
+            ) : (
+              <ul className="space-y-0.5">
+                {errosDaAbaAtual.map((erro, i) => (
+                  <li key={i} className="flex items-start gap-1">
+                    <span className="mt-0.5 shrink-0">•</span>
+                    <span>{erro}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {!modoVisualizacao &&
+          !etapaAtualLiberada &&
+          abaAtiva !== 'endereco' &&
+          errosDaAbaAtual.length === 0 && (
+            <p className="mb-4 text-xs text-muted-foreground">
+              Preencha os campos obrigatórios desta etapa para continuar
+            </p>
+          )}
+
         <Abas
           abas={abasComStatus}
           abaAtiva={abaAtiva}
@@ -1427,6 +1384,7 @@ function ConteudoDaPaginaDeClientes() {
           }}
         >
           <fieldset disabled={somenteLeitura} className="m-0 min-w-0 border-0 p-0">
+          <div key={abaAtiva} className="transition-opacity duration-150">
           {/* ── Aba 1: Identificação ──────────────────────────────────────── */}
           {abaAtiva === 'identificacao' && (
             <div className="space-y-5">
@@ -1881,6 +1839,7 @@ function ConteudoDaPaginaDeClientes() {
               )}
             </div>
           )}
+          </div>
           </fieldset>
         </form>
       </Modal>
@@ -1931,17 +1890,17 @@ function ConteudoDaPaginaDeClientes() {
           </Select>
         </div>
 
-        <div className="rounded-md border border-border">
-          <table className="w-full table-fixed text-sm">
+        <div className="overflow-x-auto rounded-md border border-border">
+          <table className="w-full min-w-[960px] text-sm">
             <colgroup>
-              <col className="w-[6%]" />
-              <col className="w-[26%]" />
-              <col className="w-[20%]" />
-              <col className="w-[16%]" />
-              <col className="w-[6%]" />
-              <col className="w-[12%]" />
-              <col className="w-[8%]" />
-              <col className="w-[6%]" />
+              <col className="w-[3rem]" />
+              <col />
+              <col />
+              <col className="w-[9rem]" />
+              <col className="w-[2.5rem]" />
+              <col className="w-[6.5rem]" />
+              <col className="w-[4.5rem]" />
+              <col className="w-[5.5rem]" />
             </colgroup>
             <thead>
               <tr className="border-b border-border bg-muted/50">
@@ -2020,44 +1979,28 @@ function ConteudoDaPaginaDeClientes() {
                     <td className="whitespace-nowrap px-2 py-2 text-muted-foreground">
                       {cliente.estado || '—'}
                     </td>
-                    <td className="px-2 py-2">
-                      <BadgeStatus variante={varianteBadgeAprovacao(cliente.statusAprovacao)}>
-                        <span title={cliente.motivoReprovacao ?? undefined}>
-                          {rotuloStatusAprovacao(cliente.statusAprovacao)}
-                        </span>
+                    <CelulaBadge>
+                      <BadgeStatus
+                        variante={varianteBadgeAprovacao(cliente.statusAprovacao)}
+                        title={titleStatusAprovacao(
+                          cliente.statusAprovacao,
+                          cliente.motivoReprovacao
+                        )}
+                      >
+                        {rotuloCurtoStatusAprovacao(cliente.statusAprovacao)}
                       </BadgeStatus>
-                      {cliente.statusAprovacao === 'reprovado' && cliente.motivoReprovacao && (
-                        <p className="mt-1 max-w-[200px] truncate text-xs text-muted-foreground" title={cliente.motivoReprovacao}>
-                          {cliente.motivoReprovacao}
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-2 py-2">
+                    </CelulaBadge>
+                    <CelulaBadge>
                       <BadgeStatus variante={cliente.ativo ? 'ativo' : 'inativo'}>
                         {cliente.ativo ? 'Ativo' : 'Inativo'}
                       </BadgeStatus>
-                    </td>
-                    <td className="px-2 py-2">
-                      {statusCadastro.completo ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-700 dark:text-green-400">
-                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                            <path d="M2 5l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                          Completo
-                        </span>
-                      ) : (
-                        <span
-                          title={`Pendências:\n${statusCadastro.pendencias.join('\n')}`}
-                          className="inline-flex cursor-help items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400"
-                        >
-                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                            <circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1.5"/>
-                            <path d="M5 3v2.5M5 7h.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                          </svg>
-                          Incompleto
-                        </span>
-                      )}
-                    </td>
+                    </CelulaBadge>
+                    <CelulaBadge>
+                      <BadgeCadastro
+                        completo={statusCadastro.completo}
+                        pendencias={statusCadastro.pendencias}
+                      />
+                    </CelulaBadge>
                   </LinhaTabelaClicavel>
                 )
               })}

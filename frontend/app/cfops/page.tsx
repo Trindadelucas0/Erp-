@@ -203,8 +203,8 @@ function ConteudoDaPagina() {
             placeholder="Código ou nome..."
           />
         </div>
-        <div className="overflow-visible rounded-lg border border-border bg-card">
-          <table className="w-full table-fixed text-sm">
+        <div className="overflow-x-auto rounded-lg border border-border bg-card">
+          <table className="w-full min-w-[640px] text-sm">
             <colgroup>
               <col className="w-[12%]" />
               <col className="w-[38%]" />
@@ -277,15 +277,7 @@ function ConteudoDaPagina() {
                 </Button>
               )}
             </div>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setModalAberto(false)}
-                disabled={salvando}
-              >
-                Cancelar
-              </Button>
+            <div className="flex justify-end gap-2">
               <BotaoPrimario
                 type="submit"
                 form="form-cfop"

@@ -4,7 +4,6 @@ import { useRef, useState } from 'react'
 import { clienteHttp } from '@/services/api'
 import { Modal } from '@/components/ui/modal'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
-import { Button } from '@/components/ui/button'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Label } from '@/components/ui/label'
 
@@ -141,9 +140,6 @@ export function ModalEnviarDocumento({ aberto, aoFechar, aoEnviar }: Props) {
       largura="md"
       rodape={
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={fechar} disabled={enviando}>
-            Cancelar
-          </Button>
           <BotaoPrimario type="button" onClick={enviar} disabled={enviando}>
             {enviando ? 'Enviando...' : 'Enviar para assinatura'}
           </BotaoPrimario>

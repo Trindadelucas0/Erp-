@@ -12,6 +12,8 @@ import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { LinhaTabelaClicavel } from '@/components/compartilhado/linha-tabela-clicavel'
 import { MenuAcoesLinha } from '@/components/compartilhado/menu-acoes-linha'
 import { RodapeModalVisualizacao } from '@/components/compartilhado/rodape-modal-visualizacao'
+import { RodapeModalFormulario } from '@/components/compartilhado/rodape-modal-formulario'
+import { IndicadorEtapasModal } from '@/components/compartilhado/indicador-etapas-modal'
 import { useRegistrarAtalhos } from '@/hooks/use-registrar-atalhos'
 import {
   tituloComAtalho,
@@ -26,6 +28,8 @@ import {
   type Permissao,
 } from '@/components/compartilhado/grade-permissoes'
 import { BadgeStatus } from '@/components/ui/badge-status'
+import { BadgeCadastro } from '@/components/ui/badge-cadastro'
+import { CelulaBadge } from '@/components/ui/celula-badge'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { CardPadrao } from '@/components/ui/card-padrao'
@@ -222,12 +226,10 @@ function ConteudoDaPaginaDeUsuarios() {
 
   const teclaNovo = useTeclaDaAcao('novo')
   const teclaSalvar = useTeclaDaAcao('salvar')
-  const teclaCancelar = useTeclaDaAcao('cancelar')
   const [novaSenhaReset, setNovaSenhaReset] = useState('')
   const [salvandoResetSenha, setSalvandoResetSenha] = useState(false)
 
   // Tooltip de pendências
-  const [tooltipAberto, setTooltipAberto] = useState<string | null>(null)
   const [camposTocados, setCamposTocados] = useState<Set<string>>(() => new Set())
   const [erroSalvar, setErroSalvar] = useState('')
   const [errosDaAbaAtual, setErrosDaAbaAtual] = useState<string[]>([])
@@ -356,6 +358,8 @@ function ConteudoDaPaginaDeUsuarios() {
     ...aba,
     status: statusDasAbas[aba.id as keyof typeof statusDasAbas],
   }))
+
+  const etapasModalUsuario = ABAS_USUARIO.map(({ id, rotulo }) => ({ id, rotulo }))
 
   // ─── Helpers de formulário ─────────────────────────────────────────────────
 
@@ -751,6 +755,8 @@ function ConteudoDaPaginaDeUsuarios() {
               : 'Novo usuário'
         }
         largura="2xl"
+        manterPosicao={!modoVisualizacao}
+        alturaMinimaConteudo={!modoVisualizacao ? 'min-h-[420px]' : undefined}
         rodape={
           modoVisualizacao ? (
             <RodapeModalVisualizacao
@@ -775,85 +781,56 @@ function ConteudoDaPaginaDeUsuarios() {
               }
             />
           ) : (
-          <div className="flex w-full flex-col gap-2">
-            {errosDaAbaAtual.length > 0 && (
-              <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                <ul className="space-y-0.5">
-                  {errosDaAbaAtual.map((erro, i) => (
-                    <li key={i} className="flex items-start gap-1">
-                      <span className="mt-0.5 shrink-0">•</span>
-                      <span>{erro}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {!etapaAtualLiberada && !ehUltimaAba && errosDaAbaAtual.length === 0 && (
-              <p className="text-xs text-muted-foreground">
-                Preencha os campos obrigatórios desta etapa para continuar
-              </p>
-            )}
-            <div className="flex items-center justify-between gap-2">
-              {erroSalvar ? (
-                <p className="text-sm text-destructive">{erroSalvar}</p>
-              ) : (
-                <span />
-              )}
-              <div className="flex w-full items-center justify-between gap-2 sm:w-auto">
-                <div className="flex gap-2">
-                  <BotaoPrimario
-                    form="form-usuario"
-                    type="submit"
-                    disabled={salvando || !formularioValido}
-                    title={tituloComAtalho(modoEdicao ? 'Salvar' : 'Criar usuário', teclaSalvar)}
-                  >
-                    {salvando ? (
-                      <span className="flex items-center gap-2">
-                        <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                        </svg>
-                        Salvando...
-                      </span>
-                    ) : modoEdicao ? 'Salvar' : 'Criar usuário'}
-                  </BotaoPrimario>
-                  {!ehPrimeiraAba && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={irParaAbaAnterior}
-                      disabled={salvando}
-                    >
-                      ← Anterior
-                    </Button>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={solicitarFechar}
-                    disabled={salvando}
-                    title={tituloComAtalho('Cancelar', teclaCancelar)}
-                  >
-                    Cancelar
-                  </Button>
-                  {!ehUltimaAba && (
-                    <BotaoPrimario
-                      type="button"
-                      onClick={aoAvancar}
-                      disabled={salvando || !etapaAtualLiberada}
-                    >
-                      Próximo →
-                    </BotaoPrimario>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+            <RodapeModalFormulario
+              formId="form-usuario"
+              rotuloSalvar={modoEdicao ? 'Salvar' : 'Criar usuário'}
+              salvando={salvando}
+              podeSalvar={formularioValido}
+              titleSalvar={tituloComAtalho(modoEdicao ? 'Salvar' : 'Criar usuário', teclaSalvar)}
+              aoAnterior={irParaAbaAnterior}
+              mostrarAnterior={!ehPrimeiraAba}
+              aoProximo={aoAvancar}
+              mostrarProximo={!ehUltimaAba}
+              podeProximo={etapaAtualLiberada}
+              desabilitado={salvando}
+            />
           )
         }
       >
+        {!modoVisualizacao && (
+          <IndicadorEtapasModal
+            etapas={etapasModalUsuario}
+            etapaAtiva={abaAtiva}
+            className="mb-4"
+          />
+        )}
+
+        {!modoVisualizacao && (errosDaAbaAtual.length > 0 || erroSalvar) && (
+          <div className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {erroSalvar ? (
+              <p>{erroSalvar}</p>
+            ) : (
+              <ul className="space-y-0.5">
+                {errosDaAbaAtual.map((erro, i) => (
+                  <li key={i} className="flex items-start gap-1">
+                    <span className="mt-0.5 shrink-0">•</span>
+                    <span>{erro}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {!modoVisualizacao &&
+          !etapaAtualLiberada &&
+          !ehUltimaAba &&
+          errosDaAbaAtual.length === 0 && (
+            <p className="mb-4 text-xs text-muted-foreground">
+              Preencha os campos obrigatórios desta etapa para continuar
+            </p>
+          )}
+
         <Abas
           abas={abasComStatus}
           abaAtiva={abaAtiva}
@@ -867,6 +844,7 @@ function ConteudoDaPaginaDeUsuarios() {
           )}
         <form id="form-usuario" onSubmit={aoSalvarUsuario}>
           <fieldset disabled={modoVisualizacao} className="m-0 min-w-0 border-0 p-0">
+          <div key={abaAtiva} className="transition-opacity duration-150">
           {/* Aba 1: Dados básicos */}
           {abaAtiva === 'dados' && (
             <div className="space-y-4">
@@ -1050,6 +1028,7 @@ function ConteudoDaPaginaDeUsuarios() {
               </div>
             </div>
           )}
+          </div>
           </fieldset>
         </form>
         </div>
@@ -1118,16 +1097,27 @@ function ConteudoDaPaginaDeUsuarios() {
         </div>
 
         <div className="overflow-x-auto rounded-md border border-border">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[900px] text-sm">
+            <colgroup>
+              <col />
+              <col className="w-[8rem]" />
+              <col />
+              <col className="w-[4.5rem]" />
+              <col className="w-[10rem]" />
+              <col className="w-[5.5rem]" />
+              <col className="w-[3rem]" />
+            </colgroup>
             <thead>
               <tr className="border-b border-border bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium">Nome</th>
-                <th className="px-4 py-3 text-left font-medium">Cargo</th>
-                <th className="px-4 py-3 text-left font-medium">Email</th>
-                <th className="px-4 py-3 text-left font-medium">Status</th>
-                <th className="px-4 py-3 text-left font-medium">Papéis</th>
-                <th className="px-4 py-3 text-left font-medium">Cadastro</th>
-                <th className="w-12 px-2 py-3 text-left font-medium">
+                <th className="px-2 py-2 text-left font-medium">Nome</th>
+                <th className="px-2 py-2 text-left font-medium">Cargo</th>
+                <th className="px-2 py-2 text-left font-medium">Email</th>
+                <th className="px-2 py-2 text-left font-medium">Status</th>
+                <th className="px-2 py-2 text-left font-medium">Papéis</th>
+                <th className="px-2 py-2 text-left font-medium" title="Situação do cadastro">
+                  Cadastro
+                </th>
+                <th className="px-2 py-2 text-left font-medium">
                   <span className="sr-only">Mais</span>
                 </th>
               </tr>
@@ -1138,7 +1128,7 @@ function ConteudoDaPaginaDeUsuarios() {
                 Array.from({ length: 4 }).map((_, i) => (
                   <tr key={i} className="border-b border-border last:border-0">
                     {Array.from({ length: 7 }).map((__, j) => (
-                      <td key={j} className="px-4 py-3">
+                      <td key={j} className="px-2 py-2">
                         <div className="h-4 animate-pulse rounded bg-muted" />
                       </td>
                     ))}
@@ -1171,65 +1161,37 @@ function ConteudoDaPaginaDeUsuarios() {
                       desabilitada={esteAlterando}
                       aoClicar={() => abrirModalVisualizacao(usuario)}
                     >
-                      <td className="px-4 py-3 font-medium">{usuario.name}</td>
-                      <td className="px-4 py-3 text-muted-foreground">
+                      <td className="max-w-0 truncate px-2 py-2 font-medium">{usuario.name}</td>
+                      <td className="max-w-0 truncate px-2 py-2 text-muted-foreground">
                         {usuario.cargo || (
                           <span className="italic text-muted-foreground/60">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground">
+                      <td className="max-w-0 truncate px-2 py-2 text-muted-foreground">
                         {usuario.email}
                       </td>
-                      <td className="px-4 py-3">
+                      <CelulaBadge>
                         <BadgeStatus variante={usuario.active ? 'ativo' : 'inativo'}>
                           {usuario.active ? 'Ativo' : 'Inativo'}
                         </BadgeStatus>
-                      </td>
-                      <td className="px-4 py-3">
+                      </CelulaBadge>
+                      <td className="max-w-0 truncate px-2 py-2 text-muted-foreground">
                         {usuario.roles.map((r) => r.role.name).join(', ')}
                       </td>
-                      {/* Coluna de cadastro com badge e tooltip */}
-                      <td className="px-4 py-3">
-                        <div
-                          className="relative inline-block"
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => e.stopPropagation()}
-                        >
-                          <span
-                            className={`inline-flex cursor-default items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-                              statusCadastro === 'completo'
-                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                            }`}
-                            onMouseEnter={() =>
-                              statusCadastro === 'incompleto' &&
-                              setTooltipAberto(usuario.id)
-                            }
-                            onMouseLeave={() => setTooltipAberto(null)}
-                          >
-                            {statusCadastro === 'completo' ? '✓ Completo' : '⚠ Incompleto'}
-                          </span>
-                          {tooltipAberto === usuario.id && pendencias.length > 0 && (
-                            <div className="absolute bottom-full left-0 z-50 mb-1 w-56 rounded-md border border-border bg-popover p-2 shadow-md">
-                              <p className="mb-1 text-xs font-medium text-foreground">
-                                Pendências:
-                              </p>
-                              <ul className="space-y-0.5">
-                                {pendencias.map((p, idx) => (
-                                  <li
-                                    key={idx}
-                                    className="text-xs text-muted-foreground"
-                                  >
-                                    • {p}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
+                      <td
+                        className="overflow-hidden px-2 py-2"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      >
+                        <div className="min-w-0 max-w-full">
+                          <BadgeCadastro
+                            completo={statusCadastro === 'completo'}
+                            pendencias={pendencias}
+                          />
                         </div>
                       </td>
                       <td
-                        className="w-12 px-2 py-3"
+                        className="w-12 px-2 py-2"
                         onClick={(e) => e.stopPropagation()}
                         onKeyDown={(e) => e.stopPropagation()}
                       >

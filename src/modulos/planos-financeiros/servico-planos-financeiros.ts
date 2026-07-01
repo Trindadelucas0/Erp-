@@ -7,10 +7,15 @@ import {
   raizDoTipo,
   type TipoPlanoFinanceiro,
 } from './codigo-plano-financeiro.js'
+import {
+  ErroMovimentoPlano,
+  executarMovimentoEmMemoria,
+} from './logica-mover-plano-financeiro.js'
 import { repositorioDePlanosFinanceiros } from './repositorio-planos-financeiros.js'
 import type {
   DadosParaCriarPlanoFinanceiro,
   DadosParaEditarPlanoFinanceiro,
+  DadosParaMoverPlanoFinanceiro,
 } from './esquema-planos-financeiros.js'
 
 function paraRespostaApi(plano: ReturnType<typeof repositorioDePlanosFinanceiros.mapear>) {
@@ -180,6 +185,76 @@ async function alterarStatus(companyId: string, id: string, ativo: boolean, idDo
   return paraRespostaApi(plano)
 }
 
+async function moverPlano(
+  companyId: string,
+  planoId: string,
+  dados: DadosParaMoverPlanoFinanceiro,
+  idDoAutor: string
+) {
+  const registroInicial = await repositorioDePlanosFinanceiros.buscarPorId(companyId, planoId)
+  if (!registroInicial) throw new ErroDaAplicacao('Plano financeiro não encontrado', 404)
+
+  const tipo = registroInicial.tipo as TipoPlanoFinanceiro
+  const todos = await repositorioDePlanosFinanceiros.listarPorEmpresaParaMover(companyId, tipo)
+
+  const plano = todos.find((p) => p.id === planoId)
+  if (!plano) throw new ErroDaAplicacao('Plano financeiro não encontrado', 404)
+
+  const alvo = todos.find((p) => p.id === dados.alvoId)
+  if (!alvo) throw new ErroDaAplicacao('Plano alvo não encontrado', 404)
+
+  if (plano.tipo !== alvo.tipo) {
+    throw new ErroDaAplicacao('Plano e alvo devem ser do mesmo tipo', 400)
+  }
+
+  const codigoAntes = plano.codigo
+  const parentIdAntigo = plano.parentId
+
+  let updates: { id: string; codigo: string; parentId?: string | null }[]
+  try {
+    const resultado = executarMovimentoEmMemoria(
+      todos.map((p) => ({ id: p.id, codigo: p.codigo, parentId: p.parentId })),
+      tipo,
+      planoId,
+      dados.alvoId,
+      dados.posicao
+    )
+    updates = resultado.updates
+  } catch (erro) {
+    if (erro instanceof ErroMovimentoPlano) {
+      throw new ErroDaAplicacao(erro.message, 400)
+    }
+    throw erro
+  }
+
+  if (updates.length === 0) {
+    return paraRespostaApi(repositorioDePlanosFinanceiros.mapear(plano))
+  }
+
+  try {
+    await repositorioDePlanosFinanceiros.atualizarPosicaoEmLote(updates)
+  } catch {
+    throw new ErroDaAplicacao(
+      'Não foi possível mover o plano. Verifique se outro usuário alterou a estrutura.',
+      409
+    )
+  }
+
+  const atualizado = await repositorioDePlanosFinanceiros.buscarPorId(companyId, planoId)
+  if (!atualizado) throw new ErroDaAplicacao('Plano financeiro não encontrado', 404)
+
+  await registrarAuditoria({
+    usuarioId: idDoAutor,
+    acao: 'mover',
+    entidade: 'planoFinanceiro',
+    entidadeId: planoId,
+    valoresAntes: { codigo: codigoAntes, parentId: parentIdAntigo },
+    valoresDepois: { codigo: atualizado.codigo, parentId: atualizado.parentId },
+  })
+
+  return paraRespostaApi(repositorioDePlanosFinanceiros.mapear(atualizado))
+}
+
 export const servicoDePlanosFinanceiros = {
   listarParaGestao,
   listarParaCatalogo,
@@ -188,4 +263,5 @@ export const servicoDePlanosFinanceiros = {
   criarPlano,
   editarPlano,
   alterarStatus,
+  moverPlano,
 }
