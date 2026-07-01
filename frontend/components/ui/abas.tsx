@@ -48,7 +48,7 @@ export function Abas({ abas, abaAtiva, aoMudar, className, abaDesabilitada }: Pr
   return (
     <div
       className={cn(
-        'flex gap-1 border-b border-border',
+        'flex flex-wrap gap-1 border-b border-border',
         className
       )}
     >
@@ -61,7 +61,7 @@ export function Abas({ abas, abaAtiva, aoMudar, className, abaDesabilitada }: Pr
           onClick={() => !desabilitada && aoMudar(aba.id)}
           disabled={desabilitada}
           className={cn(
-            'relative flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors',
+            'relative flex items-center gap-1.5 px-2.5 py-2 text-xs font-medium transition-colors sm:text-sm',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             desabilitada && 'cursor-not-allowed opacity-50 pointer-events-none',
             abaAtiva === aba.id

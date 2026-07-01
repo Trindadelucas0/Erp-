@@ -185,9 +185,13 @@ model DadosFornecedor {
   prazoPagamento6   Int?
   observacoes       String?
 
-  planosFinanceiros     FornecedorPlanoFinanceiro[]
-  cfopsEntrada          FornecedorCfopEntrada[]
-  paresPlanoCfopPadrao  FornecedorParPlanoCfopPadrao[]
+  planosFinanceiros              FornecedorPlanoFinanceiro[]
+  cfopsEntrada                   FornecedorCfopEntrada[]
+  paresPlanoCfopPadrao           FornecedorParPlanoCfopPadrao[]
+  cfopSugestaoXmlId              String?
+  cfopSugestaoXml                Cfop?             @relation("FornecedorCfopSugestaoXml", fields: [cfopSugestaoXmlId], references: [id], onDelete: SetNull)
+  planoFinanceiroAlternativoId   String?
+  planoFinanceiroAlternativo     PlanoFinanceiro?  @relation("FornecedorPlanoAlternativo", fields: [planoFinanceiroAlternativoId], references: [id], onDelete: SetNull)
   vinculosComoA         FornecedorVinculo[] @relation("VinculosA")
   vinculosComoB         FornecedorVinculo[] @relation("VinculosB")
 
@@ -291,30 +295,45 @@ model PessoaCnae {
 }
 
 model PlanoFinanceiro {
-  id          String   @id @default(uuid())
-  codigo      String
-  descricao   String
-  companyId   String
-  company     Company  @relation(fields: [companyId], references: [id])
-  ativo       Boolean  @default(true)
-  fornecedores    FornecedorPlanoFinanceiro[]
-  paresPlanoCfop  FornecedorParPlanoCfopPadrao[]
-  createdAt   DateTime @default(now())
+  id                        String   @id @default(uuid())
+  codigo                    String
+  nome                      String
+  tipo                      String   @default("receita")
+  classificacao             String?
+  mostrarNaDre              Boolean  @default(true)
+  permiteLancamentoManual   Boolean  @default(false)
+  exigeAnexoLancamento      Boolean  @default(false)
+  permiteUsoConsumo         Boolean  @default(false)
+  parentId                  String?
+  parent                    PlanoFinanceiro?  @relation("PlanoHierarquia", fields: [parentId], references: [id], onDelete: Restrict)
+  children                  PlanoFinanceiro[] @relation("PlanoHierarquia")
+  companyId                 String
+  company                   Company  @relation(fields: [companyId], references: [id])
+  ativo                     Boolean  @default(true)
+  fornecedores              FornecedorPlanoFinanceiro[]
+  paresPlanoCfop            FornecedorParPlanoCfopPadrao[]
+  fornecedoresPlanoAlternativo DadosFornecedor[] @relation("FornecedorPlanoAlternativo")
+  createdAt                 DateTime @default(now())
 
   @@unique([codigo, companyId])
+  @@index([parentId])
+  @@index([companyId, tipo])
 }
 
 model Cfop {
-  id          String   @id @default(uuid())
-  codigo      String
-  descricao   String
-  tipo        String   @default("entrada")
-  companyId   String
-  company     Company  @relation(fields: [companyId], references: [id])
-  ativo       Boolean  @default(true)
-  fornecedores    FornecedorCfopEntrada[]
-  paresPlanoCfop  FornecedorParPlanoCfopPadrao[]
-  createdAt   DateTime @default(now())
+  id                    String   @id @default(uuid())
+  codigo                String
+  nome                  String
+  descricao             String   @default("")
+  tipoCfop              String   @default("01")
+  tipo                  String   @default("entrada")
+  companyId             String
+  company               Company  @relation(fields: [companyId], references: [id])
+  ativo                 Boolean  @default(true)
+  fornecedores          FornecedorCfopEntrada[]
+  paresPlanoCfop        FornecedorParPlanoCfopPadrao[]
+  fornecedoresSugestaoXml DadosFornecedor[] @relation("FornecedorCfopSugestaoXml")
+  createdAt             DateTime @default(now())
 
   @@unique([codigo, companyId])
 }

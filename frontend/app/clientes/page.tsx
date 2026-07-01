@@ -1279,7 +1279,7 @@ function ConteudoDaPaginaDeClientes() {
             )}
             <div className="flex items-center justify-between gap-3">
               <div className="hidden min-w-0 flex-1 sm:block">
-                <div className="flex gap-1">
+                <div className="flex flex-wrap gap-1">
                   {abasComStatus.map((a, i) => {
                     const desabilitada = !abaPermitida(a.id)
                     return (
@@ -1931,28 +1931,28 @@ function ConteudoDaPaginaDeClientes() {
           </Select>
         </div>
 
-        <div className="overflow-x-auto rounded-md border border-border">
+        <div className="rounded-md border border-border">
           <table className="w-full table-fixed text-sm">
             <colgroup>
-              <col className="w-14" />
-              <col className="w-[38%]" />
-              <col className="w-[28%]" />
-              <col className="w-[11.5rem]" />
-              <col className="w-12" />
-              <col className="w-[9rem]" />
-              <col className="w-[5.5rem]" />
-              <col className="w-[6.5rem]" />
+              <col className="w-[6%]" />
+              <col className="w-[26%]" />
+              <col className="w-[20%]" />
+              <col className="w-[16%]" />
+              <col className="w-[6%]" />
+              <col className="w-[12%]" />
+              <col className="w-[8%]" />
+              <col className="w-[6%]" />
             </colgroup>
             <thead>
               <tr className="border-b border-border bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium">Tipo</th>
-                <th className="px-4 py-3 text-left font-medium">Razão social</th>
-                <th className="px-4 py-3 text-left font-medium">Nome fantasia</th>
-                <th className="px-4 py-3 text-left font-medium">CPF/CNPJ</th>
-                <th className="px-4 py-3 text-left font-medium">UF</th>
-                <th className="px-4 py-3 text-left font-medium">Aprovação</th>
-                <th className="px-4 py-3 text-left font-medium">Status</th>
-                <th className="px-4 py-3 text-left font-medium">Cadastro</th>
+                <th className="px-2 py-2 text-left font-medium">Tipo</th>
+                <th className="px-2 py-2 text-left font-medium">Razão social</th>
+                <th className="px-2 py-2 text-left font-medium">Nome fantasia</th>
+                <th className="px-2 py-2 text-left font-medium">CPF/CNPJ</th>
+                <th className="px-2 py-2 text-left font-medium">UF</th>
+                <th className="px-2 py-2 text-left font-medium">Aprovação</th>
+                <th className="px-2 py-2 text-left font-medium">Status</th>
+                <th className="px-2 py-2 text-left font-medium">Cadastro</th>
               </tr>
             </thead>
             <tbody>
@@ -1961,7 +1961,7 @@ function ConteudoDaPaginaDeClientes() {
                   {[1, 2, 3].map((i) => (
                     <tr key={i} className="border-b border-border">
                       {[1, 2, 3, 4, 5, 6, 7, 8].map((j) => (
-                        <td key={j} className="px-4 py-3">
+                        <td key={j} className="px-2 py-2">
                           <div className="h-4 animate-pulse rounded bg-muted" />
                         </td>
                       ))}
@@ -1991,7 +1991,7 @@ function ConteudoDaPaginaDeClientes() {
                     ariaLabel={`Visualizar cliente ${cliente.nome}`}
                     desabilitada={estaAlterandoEsseLine}
                   >
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-2">
                       <span
                         className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
                           cliente.tipo === 'PF'
@@ -2003,24 +2003,24 @@ function ConteudoDaPaginaDeClientes() {
                       </span>
                     </td>
                     <td
-                      className="max-w-0 truncate whitespace-nowrap px-4 py-3 font-medium"
+                      className="max-w-0 truncate whitespace-nowrap px-2 py-2 font-medium"
                       title={cliente.nome}
                     >
                       {cliente.nome}
                     </td>
                     <td
-                      className="max-w-0 truncate whitespace-nowrap px-4 py-3 text-muted-foreground"
+                      className="max-w-0 truncate whitespace-nowrap px-2 py-2 text-muted-foreground"
                       title={cliente.nomeFantasia || undefined}
                     >
                       {cliente.nomeFantasia || '—'}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 font-mono text-muted-foreground">
+                    <td className="whitespace-nowrap px-2 py-2 font-mono text-muted-foreground">
                       {formatarDocumentoTabela(cliente)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                    <td className="whitespace-nowrap px-2 py-2 text-muted-foreground">
                       {cliente.estado || '—'}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-2">
                       <BadgeStatus variante={varianteBadgeAprovacao(cliente.statusAprovacao)}>
                         <span title={cliente.motivoReprovacao ?? undefined}>
                           {rotuloStatusAprovacao(cliente.statusAprovacao)}
@@ -2032,12 +2032,12 @@ function ConteudoDaPaginaDeClientes() {
                         </p>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-2">
                       <BadgeStatus variante={cliente.ativo ? 'ativo' : 'inativo'}>
                         {cliente.ativo ? 'Ativo' : 'Inativo'}
                       </BadgeStatus>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-2">
                       {statusCadastro.completo ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-700 dark:text-green-400">
                           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">

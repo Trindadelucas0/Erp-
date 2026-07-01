@@ -13,11 +13,20 @@ type Props = {
   acoes?: React.ReactNode
   children: React.ReactNode
   className?: string
+  /** Permite menus/dropdowns absolutos no header sem serem cortados pelo card */
+  permitirOverflow?: boolean
 }
 
-export function CardPadrao({ titulo, descricao, acoes, children, className }: Props) {
+export function CardPadrao({
+  titulo,
+  descricao,
+  acoes,
+  children,
+  className,
+  permitirOverflow,
+}: Props) {
   return (
-    <Card className={cn(className)}>
+    <Card className={cn(permitirOverflow && '!overflow-visible', className)}>
       {(titulo || descricao || acoes) && (
         <CardHeader>
           <div className="flex items-start justify-between gap-4">

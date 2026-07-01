@@ -14,9 +14,13 @@ const TITULOS_POR_ROTA: Record<string, string> = {
   '/papeis': 'Gerenciar papéis',
   '/auditoria': 'Auditoria',
   '/configuracoes': 'Configurações',
+  '/configuracoes/assinatura': 'Assinatura digital',
   '/clientes': 'Clientes',
+  '/clientes/aprovacao': 'Aprovação de clientes',
   '/fornecedores': 'Fornecedores',
   '/transportadoras': 'Transportadoras',
+  '/cfops': 'CFOPs',
+  '/planos-financeiros': 'Planos financeiros',
 }
 
 type Props = {
@@ -27,7 +31,7 @@ type Props = {
 
 export function Cabecalho({ titulo, acoes, aoAbrirMenuMobile }: Props) {
   const caminhoAtual = usePathname()
-  const tituloExibido = titulo ?? TITULOS_POR_ROTA[caminhoAtual] ?? 'ERP PRÓPRIO'
+  const tituloExibido = titulo ?? TITULOS_POR_ROTA[caminhoAtual] ?? 'Sistema de Gestão'
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-background px-4 md:px-6">

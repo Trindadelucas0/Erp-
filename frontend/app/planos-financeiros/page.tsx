@@ -1,0 +1,277 @@
+'use client'
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronDown, DollarSign, Filter, Plus } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
+import { clienteHttp } from '@/services/api'
+import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
+import { usePermissao } from '@/hooks/use-permissao'
+import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
+import { CardPadrao } from '@/components/ui/card-padrao'
+import { Abas } from '@/components/ui/abas'
+import { Button } from '@/components/ui/button'
+import { BotaoPrimario } from '@/components/ui/botao-primario'
+import {
+  ArvorePlanosFinanceiros,
+  type PlanoFinanceiroNo,
+} from '@/components/planos-financeiros/arvore-planos-financeiros'
+import {
+  ModalPlanoFinanceiro,
+  type TipoPlanoAba,
+} from '@/components/planos-financeiros/modal-plano-financeiro'
+
+type AbaId = 'receitas' | 'despesas' | 'resultado'
+
+function achatarParaSelecao(nos: PlanoFinanceiroNo[]): PlanoFinanceiroNo[] {
+  const lista: PlanoFinanceiroNo[] = []
+  for (const no of nos) {
+    lista.push(no)
+    if (no.filhos?.length) lista.push(...achatarParaSelecao(no.filhos))
+  }
+  return lista
+}
+
+function ConteudoDaPagina() {
+  const { estaAutenticado, carregando: carregandoSessao } = useSessaoDoUsuario()
+  const podeCriar = usePermissao('financeiro:create')
+  const podeEditar = usePermissao('financeiro:edit')
+  const podeDesativar = usePermissao('financeiro:delete')
+
+  const [abaAtiva, setAbaAtiva] = useState<AbaId>('receitas')
+  const [arvoreReceitas, setArvoreReceitas] = useState<PlanoFinanceiroNo[]>([])
+  const [arvoreDespesas, setArvoreDespesas] = useState<PlanoFinanceiroNo[]>([])
+  const [busca, setBusca] = useState('')
+  const [filtroSituacao, setFiltroSituacao] = useState<'todos' | 'ativos' | 'inativos'>('todos')
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false)
+  const refFiltros = useRef<HTMLDivElement>(null)
+  const [modalAberto, setModalAberto] = useState(false)
+  const [modoEdicao, setModoEdicao] = useState(false)
+  const [planoEmEdicao, setPlanoEmEdicao] = useState<PlanoFinanceiroNo | null>(null)
+  const [mensagem, setMensagem] = useState('')
+  const [erro, setErro] = useState('')
+
+  const tipoAtual: TipoPlanoAba = abaAtiva === 'despesas' ? 'despesa' : 'receita'
+  const arvoreAtual = abaAtiva === 'despesas' ? arvoreDespesas : arvoreReceitas
+  const tituloSecao =
+    abaAtiva === 'receitas' ? 'Receitas' : abaAtiva === 'despesas' ? 'Despesas' : 'Resultado'
+
+  const carregarPlanos = useCallback(async () => {
+    try {
+      const [resReceitas, resDespesas] = await Promise.all([
+        clienteHttp.get('/planos-financeiros?incluirInativos=true&tipo=receita'),
+        clienteHttp.get('/planos-financeiros?incluirInativos=true&tipo=despesa'),
+      ])
+      setArvoreReceitas(resReceitas.data.arvore ?? [])
+      setArvoreDespesas(resDespesas.data.arvore ?? [])
+    } catch {
+      setErro('Erro ao carregar planos financeiros.')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (carregandoSessao || !estaAutenticado) return
+    carregarPlanos()
+  }, [carregandoSessao, estaAutenticado, carregarPlanos])
+
+  useEffect(() => {
+    if (!filtrosAbertos) return
+
+    function aoClicarFora(evento: MouseEvent) {
+      if (refFiltros.current && !refFiltros.current.contains(evento.target as Node)) {
+        setFiltrosAbertos(false)
+      }
+    }
+
+    document.addEventListener('mousedown', aoClicarFora)
+    return () => document.removeEventListener('mousedown', aoClicarFora)
+  }, [filtrosAbertos])
+
+  const planosParaPai = useMemo(
+    () => achatarParaSelecao(arvoreAtual),
+    [arvoreAtual]
+  )
+
+  function abrirNovo() {
+    setModoEdicao(false)
+    setPlanoEmEdicao(null)
+    setModalAberto(true)
+  }
+
+  function abrirEdicao(plano: PlanoFinanceiroNo) {
+    setModoEdicao(true)
+    setPlanoEmEdicao(plano)
+    setModalAberto(true)
+  }
+
+  async function alternarAtivo(plano: PlanoFinanceiroNo) {
+    setErro('')
+    setMensagem('')
+    try {
+      await clienteHttp.patch(`/planos-financeiros/${plano.id}/ativo`, {
+        ativo: !plano.ativo,
+      })
+      setMensagem(plano.ativo ? 'Plano desabilitado.' : 'Plano habilitado.')
+      await carregarPlanos()
+    } catch (e: unknown) {
+      const msg =
+        (e as { response?: { data?: { mensagem?: string } } })?.response?.data?.mensagem ||
+        'Erro ao alterar situação'
+      setErro(msg)
+    }
+  }
+
+  const totaisResultado = useMemo(() => {
+    const contar = (nos: PlanoFinanceiroNo[]): { ativos: number; inativos: number } => {
+      let ativos = 0
+      let inativos = 0
+      for (const no of nos) {
+        if (no.ativo) ativos++
+        else inativos++
+        if (no.filhos?.length) {
+          const sub = contar(no.filhos)
+          ativos += sub.ativos
+          inativos += sub.inativos
+        }
+      }
+      return { ativos, inativos }
+    }
+    const rec = contar(arvoreReceitas)
+    const desp = contar(arvoreDespesas)
+    return { rec, desp }
+  }, [arvoreReceitas, arvoreDespesas])
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <DollarSign className="size-3.5 shrink-0" />
+          Financeiro &gt; Planos Financeiros
+        </p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight">Planos Financeiros</h1>
+      </div>
+
+      {mensagem && (
+        <p className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">{mensagem}</p>
+      )}
+      {erro && (
+        <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{erro}</p>
+      )}
+
+      <Abas
+        abas={[
+          { id: 'receitas', rotulo: 'Receitas' },
+          { id: 'despesas', rotulo: 'Despesas' },
+          { id: 'resultado', rotulo: 'Resultado' },
+        ]}
+        abaAtiva={abaAtiva}
+        aoMudar={(id) => setAbaAtiva(id as AbaId)}
+      />
+
+      {abaAtiva === 'resultado' ? (
+        <CardPadrao titulo="Resultado" descricao="Resumo dos planos cadastrados">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-lg border border-border p-4">
+              <p className="text-sm font-medium text-muted-foreground">Receitas</p>
+              <p className="mt-2 text-2xl font-bold">{totaisResultado.rec.ativos + totaisResultado.rec.inativos}</p>
+              <p className="text-xs text-muted-foreground">
+                {totaisResultado.rec.ativos} habilitados · {totaisResultado.rec.inativos} desabilitados
+              </p>
+            </div>
+            <div className="rounded-lg border border-border p-4">
+              <p className="text-sm font-medium text-muted-foreground">Despesas</p>
+              <p className="mt-2 text-2xl font-bold">{totaisResultado.desp.ativos + totaisResultado.desp.inativos}</p>
+              <p className="text-xs text-muted-foreground">
+                {totaisResultado.desp.ativos} habilitados · {totaisResultado.desp.inativos} desabilitados
+              </p>
+            </div>
+          </div>
+        </CardPadrao>
+      ) : (
+        <CardPadrao
+          titulo={tituloSecao}
+          permitirOverflow
+          acoes={
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative" ref={refFiltros}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFiltrosAbertos((v) => !v)}
+                >
+                  <Filter className="mr-1 size-4" />
+                  Filtros
+                  <ChevronDown className="ml-1 size-4" />
+                </Button>
+                {filtrosAbertos && (
+                  <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-md border border-border bg-card p-3 shadow-lg">
+                    <p className="mb-1.5 text-xs font-medium text-muted-foreground">Buscar</p>
+                    <Input
+                      value={busca}
+                      onChange={(e) => setBusca(e.target.value)}
+                      placeholder="Código ou nome..."
+                    />
+                    <Separator className="my-3" />
+                    <p className="mb-1.5 text-xs font-medium text-muted-foreground">Situação</p>
+                    <div className="space-y-0.5">
+                      {(['todos', 'ativos', 'inativos'] as const).map((op) => (
+                        <button
+                          key={op}
+                          type="button"
+                          className={`block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-muted ${
+                            filtroSituacao === op ? 'bg-muted font-medium' : ''
+                          }`}
+                          onClick={() => setFiltroSituacao(op)}
+                        >
+                          {op === 'todos' ? 'Todos' : op === 'ativos' ? 'Habilitados' : 'Desabilitados'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {podeCriar && (
+                <BotaoPrimario type="button" onClick={abrirNovo}>
+                  <Plus className="mr-1 size-4 inline" />
+                  Adicionar plano
+                </BotaoPrimario>
+              )}
+            </div>
+          }
+        >
+          <ArvorePlanosFinanceiros
+            arvore={arvoreAtual}
+            busca={busca}
+            filtroSituacao={filtroSituacao}
+            podeEditar={podeEditar}
+            podeDesativar={podeDesativar}
+            aoEditar={abrirEdicao}
+            aoAlternarAtivo={alternarAtivo}
+          />
+        </CardPadrao>
+      )}
+
+      <ModalPlanoFinanceiro
+        aberto={modalAberto}
+        tipo={tipoAtual}
+        modoEdicao={modoEdicao}
+        planoEmEdicao={planoEmEdicao}
+        planosDisponiveis={planosParaPai}
+        aoFechar={() => setModalAberto(false)}
+        aoSalvo={async () => {
+          setMensagem(modoEdicao ? 'Plano atualizado.' : 'Plano criado.')
+          await carregarPlanos()
+        }}
+      />
+    </div>
+  )
+}
+
+export default function PaginaPlanosFinanceiros() {
+  return (
+    <ProtegerRota chaveDaPagina="planos-financeiros">
+      <ConteudoDaPagina />
+    </ProtegerRota>
+  )
+}

@@ -45,6 +45,8 @@ const INCLUDE_COMPLETO = {
             include: { planoFinanceiro: true, cfop: true },
             orderBy: { ordem: 'asc' as const },
           },
+          cfopSugestaoXml: true,
+          planoFinanceiroAlternativo: true,
         },
       },
     },
@@ -136,23 +138,37 @@ function mapearParaFornecedorView(pessoa: PessoaComRelacoes) {
       df?.planosFinanceiros.map((p) => ({
         id: p.planoFinanceiro.id,
         codigo: p.planoFinanceiro.codigo,
-        descricao: p.planoFinanceiro.descricao,
+        descricao: p.planoFinanceiro.nome,
       })) ?? [],
     cfopsEntrada:
       df?.cfopsEntrada.map((c) => ({
         id: c.cfop.id,
         codigo: c.cfop.codigo,
-        descricao: c.cfop.descricao,
+        descricao: c.cfop.nome,
       })) ?? [],
+    cfopSugestaoXml: df?.cfopSugestaoXml
+      ? {
+          id: df.cfopSugestaoXml.id,
+          codigo: df.cfopSugestaoXml.codigo,
+          descricao: df.cfopSugestaoXml.nome,
+        }
+      : null,
+    planoFinanceiroAlternativo: df?.planoFinanceiroAlternativo
+      ? {
+          id: df.planoFinanceiroAlternativo.id,
+          codigo: df.planoFinanceiroAlternativo.codigo,
+          descricao: df.planoFinanceiroAlternativo.nome,
+        }
+      : null,
     paresPlanoCfopPadrao:
       df?.paresPlanoCfopPadrao.map((par) => ({
         id: par.id,
         planoFinanceiroId: par.planoFinanceiro.id,
         planoCodigo: par.planoFinanceiro.codigo,
-        planoDescricao: par.planoFinanceiro.descricao,
+        planoDescricao: par.planoFinanceiro.nome,
         cfopId: par.cfop.id,
         cfopCodigo: par.cfop.codigo,
-        cfopDescricao: par.cfop.descricao,
+        cfopDescricao: par.cfop.nome,
       })) ?? [],
     dadosBancarios: pessoa.dadosBancarios,
     contatos: pessoa.contatos,
@@ -247,6 +263,8 @@ type CamposNormalizados = {
   prazoPagamento6: number | null
   planosFinanceirosIds: string[]
   cfopsEntradaIds: string[]
+  cfopSugestaoXmlId: string | null
+  planoFinanceiroAlternativoId: string | null
   fornecedoresVinculadosIds: string[]
   paresPlanoCfopPadrao: { planoFinanceiroId: string; cfopId: string }[]
   contatosArray?: ContatoItem[]
@@ -302,6 +320,8 @@ function normalizarDocumento(dados: DadosParaCriarFornecedor | DadosParaEditarFo
     ...prazos,
     planosFinanceirosIds: dados.planosFinanceirosIds ?? [],
     cfopsEntradaIds: dados.cfopsEntradaIds ?? [],
+    cfopSugestaoXmlId: dados.cfopSugestaoXmlId ?? null,
+    planoFinanceiroAlternativoId: dados.planoFinanceiroAlternativoId ?? null,
     fornecedoresVinculadosIds: dados.fornecedoresVinculadosIds ?? [],
     paresPlanoCfopPadrao: dados.paresPlanoCfopPadrao ?? [],
     contatosArray: dados.contatos,
@@ -672,6 +692,8 @@ function dadosFornecedorDeCampos(campos: CamposNormalizados) {
     prazoPagamento4: campos.prazoPagamento4,
     prazoPagamento5: campos.prazoPagamento5,
     prazoPagamento6: campos.prazoPagamento6,
+    cfopSugestaoXmlId: campos.cfopSugestaoXmlId,
+    planoFinanceiroAlternativoId: campos.planoFinanceiroAlternativoId,
   }
 }
 

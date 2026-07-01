@@ -1,36 +1,21 @@
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 
-async function listarPlanosFinanceiros(companyId: string, q?: string) {
-  const termo = q?.trim()
-  return clientePrisma.planoFinanceiro.findMany({
-    where: {
-      companyId,
-      ativo: true,
-      ...(termo
-        ? {
-            OR: [
-              { codigo: { contains: termo, mode: 'insensitive' } },
-              { descricao: { contains: termo, mode: 'insensitive' } },
-            ],
-          }
-        : {}),
-    },
-    orderBy: { codigo: 'asc' },
-    take: 50,
-  })
-}
+const TIPOS_CFOP_ENTRADA = ['01', '02', '03', '04', '06']
 
 async function listarCfops(companyId: string, tipo = 'entrada', q?: string) {
   const termo = q?.trim()
-  return clientePrisma.cfop.findMany({
+  const cfops = await clientePrisma.cfop.findMany({
     where: {
       companyId,
       ativo: true,
-      tipo,
+      ...(tipo === 'entrada'
+        ? { OR: [{ tipo: 'entrada' }, { tipoCfop: { in: TIPOS_CFOP_ENTRADA } }] }
+        : { tipo }),
       ...(termo
         ? {
             OR: [
               { codigo: { contains: termo, mode: 'insensitive' } },
+              { nome: { contains: termo, mode: 'insensitive' } },
               { descricao: { contains: termo, mode: 'insensitive' } },
             ],
           }
@@ -39,9 +24,14 @@ async function listarCfops(companyId: string, tipo = 'entrada', q?: string) {
     orderBy: { codigo: 'asc' },
     take: 50,
   })
+
+  return cfops.map((c) => ({
+    id: c.id,
+    codigo: c.codigo,
+    descricao: c.nome,
+  }))
 }
 
 export const repositorioDeCatalogos = {
-  listarPlanosFinanceiros,
   listarCfops,
 }

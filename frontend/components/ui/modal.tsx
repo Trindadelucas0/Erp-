@@ -75,7 +75,7 @@ export function Modal({
         </div>
 
         {/* Conteúdo rolável */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">{children}</div>
+        <div className="flex-1 overflow-x-hidden overflow-y-auto px-6 py-4">{children}</div>
 
         {/* Rodapé fixo (opcional) */}
         {rodape && (

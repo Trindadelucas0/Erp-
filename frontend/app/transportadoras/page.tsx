@@ -1277,31 +1277,31 @@ function ConteudoDaPaginaDeTransportadoras() {
             className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
         </div>
 
-        <div className="overflow-x-auto rounded-md border border-border">
+        <div className="rounded-md border border-border">
           <table className="w-full table-fixed text-sm">
             <colgroup>
-              <col className="w-[35%]" />
-              <col className="w-[25%]" />
-              <col className="w-[11.5rem]" />
-              <col className="w-[6rem]" />
-              <col className="w-12" />
-              <col className="w-[5.5rem]" />
+              <col className="w-[30%]" />
+              <col className="w-[22%]" />
+              <col className="w-[18%]" />
+              <col className="w-[10%]" />
+              <col className="w-[8%]" />
+              <col className="w-[12%]" />
             </colgroup>
             <thead>
               <tr className="border-b border-border bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium">Razão social</th>
-                <th className="px-4 py-3 text-left font-medium">Nome fantasia</th>
-                <th className="px-4 py-3 text-left font-medium">CPF/CNPJ</th>
-                <th className="px-4 py-3 text-left font-medium">ANTT</th>
-                <th className="px-4 py-3 text-left font-medium">UF</th>
-                <th className="px-4 py-3 text-left font-medium">Status</th>
+                <th className="px-2 py-2 text-left font-medium">Razão social</th>
+                <th className="px-2 py-2 text-left font-medium">Nome fantasia</th>
+                <th className="px-2 py-2 text-left font-medium">CPF/CNPJ</th>
+                <th className="px-2 py-2 text-left font-medium">ANTT</th>
+                <th className="px-2 py-2 text-left font-medium">UF</th>
+                <th className="px-2 py-2 text-left font-medium">Status</th>
               </tr>
             </thead>
             <tbody>
               {carregandoLista && Array.from({ length: 3 }).map((_, i) => (
                 <tr key={i} className="border-b border-border last:border-0">
                   {Array.from({ length: 6 }).map((__, j) => (
-                    <td key={j} className="px-4 py-3"><div className="h-4 animate-pulse rounded bg-muted" /></td>
+                    <td key={j} className="px-2 py-2"><div className="h-4 animate-pulse rounded bg-muted" /></td>
                   ))}
                 </tr>
               ))}
@@ -1324,27 +1324,27 @@ function ConteudoDaPaginaDeTransportadoras() {
                     desabilitada={alterandoStatus === t.id}
                   >
                     <td
-                      className="max-w-0 truncate whitespace-nowrap px-4 py-3 font-medium"
+                      className="max-w-0 truncate whitespace-nowrap px-2 py-2 font-medium"
                       title={t.nome}
                     >
                       {t.nome}
                     </td>
                     <td
-                      className="max-w-0 truncate whitespace-nowrap px-4 py-3 text-muted-foreground"
+                      className="max-w-0 truncate whitespace-nowrap px-2 py-2 text-muted-foreground"
                       title={t.nomeFantasia || undefined}
                     >
                       {t.nomeFantasia || '—'}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 font-mono text-muted-foreground">
+                    <td className="whitespace-nowrap px-2 py-2 font-mono text-muted-foreground">
                       {documento}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                    <td className="whitespace-nowrap px-2 py-2 text-muted-foreground">
                       {t.antt || '—'}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                    <td className="whitespace-nowrap px-2 py-2 text-muted-foreground">
                       {t.estado || '—'}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-2">
                       <BadgeStatus variante={t.ativo ? 'ativo' : 'inativo'}>{t.ativo ? 'Ativo' : 'Inativo'}</BadgeStatus>
                     </td>
                   </LinhaTabelaClicavel>

@@ -36,6 +36,18 @@ export const PAGINAS_VINCULAVEIS: readonly PaginaDoSistema[] = [
     rotulo: 'Transportadoras',
     modulo: 'transportadoras',
   },
+  {
+    chave: 'planos-financeiros',
+    caminho: '/planos-financeiros',
+    rotulo: 'Planos Financeiros',
+    modulo: 'financeiro',
+  },
+  {
+    chave: 'cfops',
+    caminho: '/cfops',
+    rotulo: 'CFOP',
+    modulo: 'financeiro',
+  },
 ]
 
 /** Páginas exclusivas do administrador (não aparecem no formulário de vínculo). */

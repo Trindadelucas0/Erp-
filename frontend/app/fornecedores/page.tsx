@@ -57,6 +57,7 @@ import {
 } from '@/components/fornecedores/selecao-multipla-catalogo'
 import { ListaParesPlanoCfop, type PlanoCfopPar } from '@/components/fornecedores/lista-pares-plano-cfop'
 import { mesclarTexto, mesclarArray, mesclarBoolean } from '@/lib/mesclar-pre-preenchimento'
+import { CampoLookupCatalogo } from '@/components/compartilhado/campo-lookup-catalogo'
 import {
   FornecedoresRelacionadosField,
   type FornecedorRelacionadoItem,
@@ -103,6 +104,8 @@ type Fornecedor = {
   prazosPagamento?: (number | null)[]
   planosFinanceiros?: ItemCatalogo[]
   cfopsEntrada?: ItemCatalogo[]
+  cfopSugestaoXml?: ItemCatalogo | null
+  planoFinanceiroAlternativo?: ItemCatalogo | null
   paresPlanoCfopPadrao?: PlanoCfopPar[]
   dadosFornecedorId?: string | null
   fornecedoresVinculadosIds?: string[]
@@ -143,6 +146,8 @@ type FormFornecedor = {
   prazosPagamento: string[]
   planosFinanceiros: ItemCatalogo[]
   cfopsEntrada: ItemCatalogo[]
+  cfopSugestaoXml: ItemCatalogo | null
+  planoFinanceiroAlternativo: ItemCatalogo | null
   paresPlanoCfopPadrao: PlanoCfopPar[]
   fornecedoresVinculadosIds: string[]
   fornecedoresRelacionados: FornecedorRelacionadoItem[]
@@ -193,6 +198,8 @@ const FORM_VAZIO: FormFornecedor = {
   prazosPagamento: ['', '', '', '', '', ''],
   planosFinanceiros: [],
   cfopsEntrada: [],
+  cfopSugestaoXml: null,
+  planoFinanceiroAlternativo: null,
   paresPlanoCfopPadrao: [],
   fornecedoresVinculadosIds: [],
   fornecedoresRelacionados: [],
@@ -253,6 +260,8 @@ function fornecedorParaForm(f: Fornecedor): FormFornecedor {
     prazosPagamento: prazos.slice(0, 6).map((p) => (p != null ? String(p) : '')),
     planosFinanceiros: f.planosFinanceiros ?? [],
     cfopsEntrada: f.cfopsEntrada ?? [],
+    cfopSugestaoXml: f.cfopSugestaoXml ?? null,
+    planoFinanceiroAlternativo: f.planoFinanceiroAlternativo ?? null,
     paresPlanoCfopPadrao: (f.paresPlanoCfopPadrao ?? []).map((par: any) => ({
       planoFinanceiroId: par.planoFinanceiroId || '',
       planoCodigo: par.planoCodigo || '',
@@ -1058,6 +1067,8 @@ function ConteudoDaPaginaDeFornecedores() {
       prazosPagamento,
       planosFinanceirosIds: form.planosFinanceiros.map((p) => p.id),
       cfopsEntradaIds: form.cfopsEntrada.map((c) => c.id),
+      cfopSugestaoXmlId: form.cfopSugestaoXml?.id ?? null,
+      planoFinanceiroAlternativoId: form.planoFinanceiroAlternativo?.id ?? null,
       paresPlanoCfopPadrao: form.paresPlanoCfopPadrao
         .filter((par) => par.planoFinanceiroId && par.cfopId)
         .map((par) => ({ planoFinanceiroId: par.planoFinanceiroId, cfopId: par.cfopId })),
@@ -1662,6 +1673,33 @@ function ConteudoDaPaginaDeFornecedores() {
                 )}
 
                 {(form.tipoConsumo || form.tipoPrestadorServico) && (
+                  <div className="space-y-4">
+                    <CampoLookupCatalogo
+                      rotulo="CFOP sugestão ao carregar XML"
+                      endpoint="/cfops"
+                      queryParams="tipo=entrada"
+                      valor={form.cfopSugestaoXml}
+                      aoSelecionar={(v) => set('cfopSugestaoXml', v)}
+                      disabled={somenteLeitura}
+                    />
+                    <CampoLookupCatalogo
+                      rotulo="Plano financeiro alternativo"
+                      endpoint="/planos-financeiros"
+                      valor={form.planoFinanceiroAlternativo}
+                      aoSelecionar={(v) => set('planoFinanceiroAlternativo', v)}
+                      disabled={somenteLeitura}
+                    />
+                    <SelecaoMultiplaCatalogo
+                        endpoint="/planos-financeiros"
+                        rotulo="Planos financeiros liberados para entrada"
+                        selecionados={form.planosFinanceiros}
+                        aoMudar={(v) => set('planosFinanceiros', v)}
+                        disabled={somenteLeitura}
+                      />
+                  </div>
+                )}
+
+                {(form.tipoConsumo || form.tipoPrestadorServico) && (
                   <div className="space-y-2">
                     <label className="text-sm font-medium leading-none">Pares Plano Financeiro + CFOP Padrão</label>
                     <p className="text-xs text-muted-foreground">Cada par define um plano financeiro padrão e o CFOP de entrada correspondente.</p>
@@ -1722,24 +1760,24 @@ function ConteudoDaPaginaDeFornecedores() {
           />
         </div>
 
-        <div className="overflow-x-auto rounded-md border border-border">
+        <div className="rounded-md border border-border">
           <table className="w-full table-fixed text-sm">
             <colgroup>
-              <col className="w-[40%]" />
-              <col className="w-[30%]" />
-              <col className="w-[11.5rem]" />
-              <col className="w-12" />
-              <col className="w-[5.5rem]" />
-              <col className="w-[6.5rem]" />
+              <col className="w-[32%]" />
+              <col className="w-[24%]" />
+              <col className="w-[18%]" />
+              <col className="w-[8%]" />
+              <col className="w-[10%]" />
+              <col className="w-[8%]" />
             </colgroup>
             <thead>
               <tr className="border-b border-border bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium">Razão social</th>
-                <th className="px-4 py-3 text-left font-medium">Nome fantasia</th>
-                <th className="px-4 py-3 text-left font-medium">CPF/CNPJ</th>
-                <th className="px-4 py-3 text-left font-medium">UF</th>
-                <th className="px-4 py-3 text-left font-medium">Status</th>
-                <th className="px-4 py-3 text-left font-medium">Cadastro</th>
+                <th className="px-2 py-2 text-left font-medium">Razão social</th>
+                <th className="px-2 py-2 text-left font-medium">Nome fantasia</th>
+                <th className="px-2 py-2 text-left font-medium">CPF/CNPJ</th>
+                <th className="px-2 py-2 text-left font-medium">UF</th>
+                <th className="px-2 py-2 text-left font-medium">Status</th>
+                <th className="px-2 py-2 text-left font-medium">Cadastro</th>
               </tr>
             </thead>
             <tbody>
@@ -1747,7 +1785,7 @@ function ConteudoDaPaginaDeFornecedores() {
                 Array.from({ length: 3 }).map((_, i) => (
                   <tr key={i} className="border-b border-border last:border-0">
                     {Array.from({ length: 6 }).map((__, j) => (
-                      <td key={j} className="px-4 py-3">
+                      <td key={j} className="px-2 py-2">
                         <div className="h-4 animate-pulse rounded bg-muted" />
                       </td>
                     ))}
@@ -1776,29 +1814,29 @@ function ConteudoDaPaginaDeFornecedores() {
                     desabilitada={alterandoStatus === f.id}
                   >
                     <td
-                      className="max-w-0 truncate whitespace-nowrap px-4 py-3 font-medium"
+                      className="max-w-0 truncate whitespace-nowrap px-2 py-2 font-medium"
                       title={f.nome}
                     >
                       {f.nome}
                     </td>
                     <td
-                      className="max-w-0 truncate whitespace-nowrap px-4 py-3 text-muted-foreground"
+                      className="max-w-0 truncate whitespace-nowrap px-2 py-2 text-muted-foreground"
                       title={f.nomeFantasia || undefined}
                     >
                       {f.nomeFantasia || '—'}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 font-mono text-muted-foreground">
+                    <td className="whitespace-nowrap px-2 py-2 font-mono text-muted-foreground">
                       {documento}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                    <td className="whitespace-nowrap px-2 py-2 text-muted-foreground">
                       {f.estado || '—'}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-2">
                       <BadgeStatus variante={f.ativo ? 'ativo' : 'inativo'}>
                         {f.ativo ? 'Ativo' : 'Inativo'}
                       </BadgeStatus>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-2">
                       <div className="relative inline-block">
                         <span
                           className={`inline-flex cursor-default items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
