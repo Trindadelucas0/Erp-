@@ -26,6 +26,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Modal } from '@/components/ui/modal'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Label } from '@/components/ui/label'
+import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 
 type Cfop = {
   id: string
@@ -52,7 +53,6 @@ function ConteudoDaPagina() {
   const { estaAutenticado, carregando: carregandoSessao } = useSessaoDoUsuario()
   const podeCriar = usePermissao('financeiro:create')
   const podeEditar = usePermissao('financeiro:edit')
-  const podeDesativar = usePermissao('financeiro:delete')
 
   const [lista, setLista] = useState<Cfop[]>([])
   const [busca, setBusca] = useState('')
@@ -157,29 +157,28 @@ function ConteudoDaPagina() {
       setModalAberto(false)
       await carregar()
     } catch (err: unknown) {
-      setErro(
-        (err as { response?: { data?: { mensagem?: string } } })?.response?.data?.mensagem ||
-          'Erro ao salvar CFOP'
-      )
+      setErro(extrairMensagemApi(err, 'Erro ao salvar CFOP'))
     } finally {
       setSalvando(false)
     }
   }
 
-  async function aoExcluir() {
+  async function alternarSituacao() {
     if (!modoEdicao || !idEmEdicao) return
-    if (!confirm('Desativar este CFOP?')) return
+    const novoAtivo = !form.ativo
+    const confirmacao = novoAtivo
+      ? 'Ativar este CFOP?'
+      : 'Desativar este CFOP?'
+    if (!confirm(confirmacao)) return
     setSalvando(true)
+    setErro('')
     try {
-      await clienteHttp.patch(`/cfops/${idEmEdicao}/ativo`, { ativo: false })
-      setMensagem('CFOP desativado.')
+      await clienteHttp.patch(`/cfops/${idEmEdicao}/ativo`, { ativo: novoAtivo })
+      setMensagem(novoAtivo ? 'CFOP ativado.' : 'CFOP desativado.')
       setModalAberto(false)
       await carregar()
     } catch (err: unknown) {
-      setErro(
-        (err as { response?: { data?: { mensagem?: string } } })?.response?.data?.mensagem ||
-          'Erro ao desativar CFOP'
-      )
+      setErro(extrairMensagemApi(err, 'Erro ao alterar situação do CFOP'))
     } finally {
       setSalvando(false)
     }
@@ -298,15 +297,19 @@ function ConteudoDaPagina() {
         rodape={
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              {modoEdicao && podeDesativar && form.ativo && (
+              {modoEdicao && podeEditar && (
                 <Button
                   type="button"
                   variant="outline"
-                  className="border-destructive/50 text-destructive hover:bg-destructive/10"
-                  onClick={aoExcluir}
+                  className={
+                    form.ativo
+                      ? 'border-destructive/50 text-destructive hover:bg-destructive/10'
+                      : undefined
+                  }
+                  onClick={alternarSituacao}
                   disabled={salvando}
                 >
-                  Desativar
+                  {form.ativo ? 'Desativar' : 'Ativar'}
                 </Button>
               )}
             </div>
@@ -341,6 +344,7 @@ function ConteudoDaPagina() {
             }
             aoMudarNome={(v) => setForm((f) => ({ ...f, nome: v }))}
             aoMudarAtivo={(v) => setForm((f) => ({ ...f, ativo: v }))}
+            ativoSomenteLeitura={modoEdicao}
             disabled={salvando}
           />
 

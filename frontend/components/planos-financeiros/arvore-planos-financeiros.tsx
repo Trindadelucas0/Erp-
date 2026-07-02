@@ -57,6 +57,10 @@ export type { PosicaoMoverPlano }
 
 type LinhaPlana = PlanoFinanceiroNo & { nivel: number; temFilhos: boolean }
 
+function temFilhosAtivos(plano: PlanoFinanceiroNo): boolean {
+  return (plano.filhos ?? []).some((filho) => filho.ativo)
+}
+
 function achatarArvore(
   nos: PlanoFinanceiroNo[],
   expandidos: Set<string>,
@@ -85,6 +89,7 @@ type Props = {
   idsParaExpandir?: string[]
   aoEditar: (plano: PlanoFinanceiroNo) => void
   aoAlternarAtivo: (plano: PlanoFinanceiroNo) => void
+  aoAviso?: (mensagem: string) => void
   aoAdicionarSubgrupo?: (plano: PlanoFinanceiroNo) => void
   aoMover?: (planoId: string, alvoId: string, posicao: PosicaoMoverPlano) => Promise<void>
 }
@@ -101,6 +106,7 @@ type LinhaProps = {
   podeCriar: boolean
   aoEditar: (plano: PlanoFinanceiroNo) => void
   aoAlternarAtivo: (plano: PlanoFinanceiroNo) => void
+  aoAviso?: (mensagem: string) => void
   aoAdicionarSubgrupo?: (plano: PlanoFinanceiroNo) => void
   aoAlternarExpansao: (id: string) => void
 }
@@ -117,6 +123,7 @@ function LinhaPlanoFinanceiro({
   podeCriar,
   aoEditar,
   aoAlternarAtivo,
+  aoAviso,
   aoAdicionarSubgrupo,
   aoAlternarExpansao,
 }: LinhaProps) {
@@ -133,6 +140,14 @@ function LinhaPlanoFinanceiro({
   const mostraAntes = dicaDrop?.alvoId === linha.id && dicaDrop.posicao === 'antes'
   const mostraDepois = dicaDrop?.alvoId === linha.id && dicaDrop.posicao === 'depois'
   const mostraDentro = dicaDrop?.alvoId === linha.id && dicaDrop.posicao === 'dentro'
+
+  function clicarAlternarAtivo() {
+    if (linha.ativo && temFilhosAtivos(linha)) {
+      aoAviso?.('Este grupo tem subplanos habilitados. Desabilite os subplanos primeiro.')
+      return
+    }
+    aoAlternarAtivo(linha)
+  }
 
   if (arrastandoId === linha.id) {
     return (
@@ -250,7 +265,7 @@ function LinhaPlanoFinanceiro({
               {
                 rotulo: linha.ativo ? 'Desabilitar' : 'Habilitar',
                 icone: Power,
-                onClick: () => aoAlternarAtivo(linha),
+                onClick: clicarAlternarAtivo,
                 oculto: !podeDesativar,
               },
             ]}
@@ -306,6 +321,7 @@ export function ArvorePlanosFinanceiros({
   idsParaExpandir,
   aoEditar,
   aoAlternarAtivo,
+  aoAviso,
   aoAdicionarSubgrupo,
   aoMover,
 }: Props) {
@@ -484,6 +500,7 @@ export function ArvorePlanosFinanceiros({
     podeCriar,
     aoEditar,
     aoAlternarAtivo,
+    aoAviso,
     aoAdicionarSubgrupo,
     aoAlternarExpansao: alternarExpansao,
   }

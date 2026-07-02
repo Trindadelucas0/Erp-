@@ -29,7 +29,7 @@ export async function rotasDeCfops(aplicacao: FastifyInstance) {
 
   aplicacao.patch(
     '/:id/ativo',
-    { preHandler: [...auth, middlewareDeAutorizacao('financeiro:delete')] },
+    { preHandler: [...auth, middlewareDeAutorizacao('financeiro:edit')] },
     controladorDeCfops.alterarStatusDoCfop
   )
 }

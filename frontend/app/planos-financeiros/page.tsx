@@ -22,6 +22,7 @@ import {
   type TipoPlanoAba,
 } from '@/components/planos-financeiros/modal-plano-financeiro'
 import { achatarPlanosComNivel } from '@/components/planos-financeiros/util-arvore-planos'
+import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 
 type AbaId = 'receitas' | 'despesas' | 'resultado'
 
@@ -41,7 +42,6 @@ function ConteudoDaPagina() {
   const { estaAutenticado, carregando: carregandoSessao } = useSessaoDoUsuario()
   const podeCriar = usePermissao('financeiro:create')
   const podeEditar = usePermissao('financeiro:edit')
-  const podeDesativar = usePermissao('financeiro:delete')
 
   const [abaAtiva, setAbaAtiva] = useState<AbaId>('receitas')
   const [arvoreReceitas, setArvoreReceitas] = useState<PlanoFinanceiroNo[]>([])
@@ -141,10 +141,7 @@ function ConteudoDaPagina() {
       setMensagem(plano.ativo ? 'Plano desabilitado.' : 'Plano habilitado.')
       await carregarPlanos()
     } catch (e: unknown) {
-      const msg =
-        (e as { response?: { data?: { mensagem?: string } } })?.response?.data?.mensagem ||
-        'Erro ao alterar situação'
-      setErro(msg)
+      setErro(extrairMensagemApi(e, 'Erro ao alterar situação'))
     }
   }
 
@@ -160,10 +157,7 @@ function ConteudoDaPagina() {
       setMensagem('Plano movido com sucesso.')
       await carregarPlanos()
     } catch (e: unknown) {
-      const msg =
-        (e as { response?: { data?: { mensagem?: string } } })?.response?.data?.mensagem ||
-        'Erro ao mover plano'
-      setErro(msg)
+      setErro(extrairMensagemApi(e, 'Erro ao mover plano'))
     } finally {
       setMovendoId(null)
     }
@@ -254,12 +248,16 @@ function ConteudoDaPagina() {
           busca={busca}
           filtroSituacao={filtroSituacao}
           podeEditar={podeEditar}
-          podeDesativar={podeDesativar}
+          podeDesativar={podeEditar}
           podeCriar={podeCriar}
           movendoId={movendoId}
           idsParaExpandir={idsParaExpandir}
           aoEditar={abrirEdicao}
           aoAlternarAtivo={alternarAtivo}
+          aoAviso={(mensagem) => {
+            setMensagem('')
+            setErro(mensagem)
+          }}
           aoAdicionarSubgrupo={podeCriar ? abrirSubgrupo : undefined}
           aoMover={podeEditar ? moverPlano : undefined}
         />

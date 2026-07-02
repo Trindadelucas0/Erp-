@@ -15,6 +15,7 @@ type Props = {
   aoMudarNome: (v: string) => void
   aoMudarAtivo: (v: boolean) => void
   disabled?: boolean
+  ativoSomenteLeitura?: boolean
 }
 
 export function CabecalhoCadastroErp({
@@ -26,6 +27,7 @@ export function CabecalhoCadastroErp({
   aoMudarNome,
   aoMudarAtivo,
   disabled,
+  ativoSomenteLeitura = false,
 }: Props) {
   return (
     <div className="grid gap-4 sm:grid-cols-[7rem_minmax(0,1fr)_auto] sm:items-end">
@@ -57,7 +59,7 @@ export function CabecalhoCadastroErp({
           id="cfop-ativo"
           checked={ativo}
           onCheckedChange={(checked) => aoMudarAtivo(checked === true)}
-          disabled={disabled}
+          disabled={disabled || ativoSomenteLeitura}
         />
         <Label htmlFor="cfop-ativo" className="cursor-pointer font-medium">
           Ativo
