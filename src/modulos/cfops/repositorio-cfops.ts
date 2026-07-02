@@ -7,6 +7,12 @@ import {
   tipoCfopFinal,
 } from './classificacao-cfop.js'
 
+export type CfopSugestaoEntradaCatalogo = {
+  id: string
+  codigo: string
+  descricao: string
+} | null
+
 export type CfopRegistro = {
   id: string
   codigo: string
@@ -19,7 +25,22 @@ export type CfopRegistro = {
   aproveitarCreditoIcms: boolean
   tipo: string
   ativo: boolean
+  cfopSugestaoEntradaId: string | null
+  cfopSugestaoEntrada: CfopSugestaoEntradaCatalogo
   createdAt: Date
+}
+
+const includeSugestaoEntrada = {
+  cfopSugestaoEntrada: {
+    select: { id: true, codigo: true, nome: true },
+  },
+} as const
+
+function mapearSugestaoEntrada(
+  cfop: { id: string; codigo: string; nome: string } | null | undefined
+): CfopSugestaoEntradaCatalogo {
+  if (!cfop) return null
+  return { id: cfop.id, codigo: cfop.codigo, descricao: cfop.nome }
 }
 
 function mapear(cfop: {
@@ -34,6 +55,8 @@ function mapear(cfop: {
   aproveitarCreditoIcms: boolean
   tipo: string
   ativo: boolean
+  cfopSugestaoEntradaId?: string | null
+  cfopSugestaoEntrada?: { id: string; codigo: string; nome: string } | null
   createdAt: Date
 }): CfopRegistro {
   return {
@@ -48,6 +71,8 @@ function mapear(cfop: {
     aproveitarCreditoIcms: cfop.aproveitarCreditoIcms,
     tipo: cfop.tipo,
     ativo: cfop.ativo,
+    cfopSugestaoEntradaId: cfop.cfopSugestaoEntradaId ?? null,
+    cfopSugestaoEntrada: mapearSugestaoEntrada(cfop.cfopSugestaoEntrada),
     createdAt: cfop.createdAt,
   }
 }
@@ -95,14 +120,17 @@ async function listarPorEmpresa(
 }
 
 async function buscarPorId(companyId: string, id: string) {
-  return clientePrisma.cfop.findFirst({ where: { id, companyId } })
+  return clientePrisma.cfop.findFirst({
+    where: { id, companyId },
+    include: includeSugestaoEntrada,
+  })
 }
 
 async function buscarPorCodigo(companyId: string, codigo: string) {
   return clientePrisma.cfop.findFirst({ where: { companyId, codigo } })
 }
 
-async function criar(companyId: string, dados: DadosParaCriarCfop) {
+async function criar(companyId: string, dados: DadosParaCriarCfop & { cfopSugestaoEntradaId: string | null }) {
   const classificados = dadosClassificados(dados.codigo, dados.subtipoCfop)
   const aproveitarCreditoIcms = aproveitarCreditoIcmsPermitido(
     dados.codigo,
@@ -114,9 +142,11 @@ async function criar(companyId: string, dados: DadosParaCriarCfop) {
       codigo: dados.codigo,
       nome: dados.nome,
       descricao: dados.descricao || '',
+      cfopSugestaoEntradaId: dados.cfopSugestaoEntradaId,
       ...classificados,
       aproveitarCreditoIcms,
     },
+    include: includeSugestaoEntrada,
   })
   return mapear(cfop)
 }
@@ -124,7 +154,7 @@ async function criar(companyId: string, dados: DadosParaCriarCfop) {
 async function atualizar(
   companyId: string,
   id: string,
-  dados: DadosParaEditarCfop,
+  dados: DadosParaEditarCfop & { cfopSugestaoEntradaId: string | null },
   codigo: string
 ) {
   const classificados = dadosClassificados(codigo, dados.subtipoCfop)
@@ -137,18 +167,13 @@ async function atualizar(
     data: {
       nome: dados.nome,
       descricao: dados.descricao || '',
+      cfopSugestaoEntradaId: dados.cfopSugestaoEntradaId,
       ...classificados,
       aproveitarCreditoIcms,
     },
+    include: includeSugestaoEntrada,
   })
   if (cfop.companyId !== companyId) throw new Error('CFOP não pertence à empresa')
-  return mapear(cfop)
-}
-
-async function alterarAtivo(companyId: string, id: string, ativo: boolean) {
-  const existente = await buscarPorId(companyId, id)
-  if (!existente) return null
-  const cfop = await clientePrisma.cfop.update({ where: { id }, data: { ativo } })
   return mapear(cfop)
 }
 
@@ -173,7 +198,6 @@ export const repositorioDeCfops = {
   buscarPorCodigo,
   criar,
   atualizar,
-  alterarAtivo,
   mapear,
   validarIdsEntradaFornecedor,
 }

@@ -1,11 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { servicoDeCfops } from './servico-cfops.js'
-import {
-  esquemaDeAtivarCfop,
-  esquemaDeCriacaoDeCfop,
-  esquemaDeEdicaoDeCfop,
-} from './esquema-cfops.js'
+import { esquemaDeCriacaoDeCfop, esquemaDeEdicaoDeCfop } from './esquema-cfops.js'
 
 function companyId(requisicao: FastifyRequest) {
   return requisicao.empresaAtivaId || ''
@@ -67,26 +63,9 @@ async function editarCfop(requisicao: FastifyRequest, resposta: FastifyReply) {
   return resposta.send({ cfop })
 }
 
-async function alterarStatusDoCfop(requisicao: FastifyRequest, resposta: FastifyReply) {
-  const { id } = requisicao.params as { id: string }
-  const resultado = esquemaDeAtivarCfop.safeParse(requisicao.body)
-  if (!resultado.success) {
-    throw new ErroDaAplicacao(resultado.error.errors[0].message, 400)
-  }
-
-  const cfop = await servicoDeCfops.alterarStatus(
-    companyId(requisicao),
-    id,
-    resultado.data.ativo,
-    requisicao.idDoUsuario!
-  )
-  return resposta.send({ cfop })
-}
-
 export const controladorDeCfops = {
   listarCfops,
   buscarCfop,
   criarCfop,
   editarCfop,
-  alterarStatusDoCfop,
 }

@@ -26,10 +26,4 @@ export async function rotasDeCfops(aplicacao: FastifyInstance) {
     { preHandler: [...auth, middlewareDeAutorizacao('financeiro:edit')] },
     controladorDeCfops.editarCfop
   )
-
-  aplicacao.patch(
-    '/:id/ativo',
-    { preHandler: [...auth, middlewareDeAutorizacao('financeiro:edit')] },
-    controladorDeCfops.alterarStatusDoCfop
-  )
 }

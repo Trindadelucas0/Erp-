@@ -334,6 +334,9 @@ model Cfop {
   companyId             String
   company               Company  @relation(fields: [companyId], references: [id])
   ativo                 Boolean  @default(true)
+  cfopSugestaoEntradaId String?
+  cfopSugestaoEntrada    Cfop?   @relation("CfopSugestaoEntrada", fields: [cfopSugestaoEntradaId], references: [id], onDelete: SetNull)
+  cfopsComSugestao       Cfop[]  @relation("CfopSugestaoEntrada")
   fornecedores          FornecedorCfopEntrada[]
   paresPlanoCfop        FornecedorParPlanoCfopPadrao[]
   fornecedoresSugestaoXml DadosFornecedor[] @relation("FornecedorCfopSugestaoXml")

@@ -16,6 +16,7 @@ type Props = {
   aoMudarAtivo: (v: boolean) => void
   disabled?: boolean
   ativoSomenteLeitura?: boolean
+  ocultarAtivo?: boolean
 }
 
 export function CabecalhoCadastroErp({
@@ -28,9 +29,15 @@ export function CabecalhoCadastroErp({
   aoMudarAtivo,
   disabled,
   ativoSomenteLeitura = false,
+  ocultarAtivo = false,
 }: Props) {
   return (
-    <div className="grid gap-4 sm:grid-cols-[7rem_minmax(0,1fr)_auto] sm:items-end">
+    <div
+      className={cn(
+        'grid gap-4 sm:items-end',
+        ocultarAtivo ? 'sm:grid-cols-[7rem_minmax(0,1fr)]' : 'sm:grid-cols-[7rem_minmax(0,1fr)_auto]'
+      )}
+    >
       <div className="space-y-2">
         <Label htmlFor="cfop-codigo">Código</Label>
         <Input
@@ -54,17 +61,19 @@ export function CabecalhoCadastroErp({
           placeholder="Nome do CFOP"
         />
       </div>
-      <div className="flex h-9 items-center gap-2 pb-0.5 sm:pb-0">
-        <Checkbox
-          id="cfop-ativo"
-          checked={ativo}
-          onCheckedChange={(checked) => aoMudarAtivo(checked === true)}
-          disabled={disabled || ativoSomenteLeitura}
-        />
-        <Label htmlFor="cfop-ativo" className="cursor-pointer font-medium">
-          Ativo
-        </Label>
-      </div>
+      {!ocultarAtivo && (
+        <div className="flex h-9 items-center gap-2 pb-0.5 sm:pb-0">
+          <Checkbox
+            id="cfop-ativo"
+            checked={ativo}
+            onCheckedChange={(checked) => aoMudarAtivo(checked === true)}
+            disabled={disabled || ativoSomenteLeitura}
+          />
+          <Label htmlFor="cfop-ativo" className="cursor-pointer font-medium">
+            Ativo
+          </Label>
+        </div>
+      )}
     </div>
   )
 }

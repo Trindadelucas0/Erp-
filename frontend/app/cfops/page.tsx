@@ -16,6 +16,10 @@ import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { usePermissao } from '@/hooks/use-permissao'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { CabecalhoCadastroErp } from '@/components/compartilhado/cabecalho-cadastro-erp'
+import {
+  CampoLookupCatalogo,
+  type ItemCatalogo,
+} from '@/components/compartilhado/campo-lookup-catalogo'
 import { SecaoFormularioErp } from '@/components/compartilhado/secao-formulario-erp'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { Abas } from '@/components/ui/abas'
@@ -47,6 +51,7 @@ const formVazio = {
   subtipoCfop: null as SubtipoCfop | null,
   aproveitarCreditoIcms: false,
   ativo: true,
+  cfopSugestaoEntrada: null as ItemCatalogo | null,
 }
 
 function ConteudoDaPagina() {
@@ -69,6 +74,8 @@ function ConteudoDaPagina() {
     () => inferirCfopDoCodigo(form.codigo),
     [form.codigo]
   )
+
+  const cfopEhSaida = classificacaoAtual?.tipo === 'saida'
 
   const carregar = useCallback(async () => {
     try {
@@ -106,6 +113,7 @@ function ConteudoDaPagina() {
         subtipoCfop: (c.subtipoCfop as SubtipoCfop | null) ?? null,
         aproveitarCreditoIcms: c.aproveitarCreditoIcms ?? false,
         ativo: c.ativo,
+        cfopSugestaoEntrada: c.cfopSugestaoEntrada ?? null,
       })
       setModoEdicao(true)
       setIdEmEdicao(c.id)
@@ -129,13 +137,16 @@ function ConteudoDaPagina() {
     setSalvando(true)
     setErro('')
     try {
+      const payload = {
+        nome: form.nome,
+        descricao: form.descricao,
+        subtipoCfop: form.subtipoCfop,
+        aproveitarCreditoIcms: form.aproveitarCreditoIcms,
+        cfopSugestaoEntradaId: cfopEhSaida ? form.cfopSugestaoEntrada?.id ?? null : null,
+      }
+
       if (modoEdicao) {
-        await clienteHttp.put(`/cfops/${idEmEdicao}`, {
-          nome: form.nome,
-          descricao: form.descricao,
-          subtipoCfop: form.subtipoCfop,
-          aproveitarCreditoIcms: form.aproveitarCreditoIcms,
-        })
+        await clienteHttp.put(`/cfops/${idEmEdicao}`, payload)
         setMensagem('CFOP atualizado.')
       } else {
         if (!codigoCfopCompleto(form.codigo)) {
@@ -147,10 +158,7 @@ function ConteudoDaPagina() {
         }
         await clienteHttp.post('/cfops', {
           codigo: form.codigo,
-          nome: form.nome,
-          descricao: form.descricao,
-          subtipoCfop: form.subtipoCfop,
-          aproveitarCreditoIcms: form.aproveitarCreditoIcms,
+          ...payload,
         })
         setMensagem('CFOP criado.')
       }
@@ -158,27 +166,6 @@ function ConteudoDaPagina() {
       await carregar()
     } catch (err: unknown) {
       setErro(extrairMensagemApi(err, 'Erro ao salvar CFOP'))
-    } finally {
-      setSalvando(false)
-    }
-  }
-
-  async function alternarSituacao() {
-    if (!modoEdicao || !idEmEdicao) return
-    const novoAtivo = !form.ativo
-    const confirmacao = novoAtivo
-      ? 'Ativar este CFOP?'
-      : 'Desativar este CFOP?'
-    if (!confirm(confirmacao)) return
-    setSalvando(true)
-    setErro('')
-    try {
-      await clienteHttp.patch(`/cfops/${idEmEdicao}/ativo`, { ativo: novoAtivo })
-      setMensagem(novoAtivo ? 'CFOP ativado.' : 'CFOP desativado.')
-      setModalAberto(false)
-      await carregar()
-    } catch (err: unknown) {
-      setErro(extrairMensagemApi(err, 'Erro ao alterar situação do CFOP'))
     } finally {
       setSalvando(false)
     }
@@ -295,33 +282,14 @@ function ConteudoDaPagina() {
         titulo={modoEdicao ? 'Editar CFOP' : 'Novo CFOP'}
         largura="2xl"
         rodape={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              {modoEdicao && podeEditar && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className={
-                    form.ativo
-                      ? 'border-destructive/50 text-destructive hover:bg-destructive/10'
-                      : undefined
-                  }
-                  onClick={alternarSituacao}
-                  disabled={salvando}
-                >
-                  {form.ativo ? 'Desativar' : 'Ativar'}
-                </Button>
-              )}
-            </div>
-            <div className="flex justify-end gap-2">
-              <BotaoPrimario
-                type="submit"
-                form="form-cfop"
-                disabled={salvando || !podeSalvar}
-              >
-                {salvando ? 'Salvando...' : 'Salvar'}
-              </BotaoPrimario>
-            </div>
+          <div className="flex justify-end gap-2">
+            <BotaoPrimario
+              type="submit"
+              form="form-cfop"
+              disabled={salvando || !podeSalvar}
+            >
+              {salvando ? 'Salvando...' : 'Salvar'}
+            </BotaoPrimario>
           </div>
         }
       >
@@ -335,16 +303,19 @@ function ConteudoDaPagina() {
             nome={form.nome}
             ativo={form.ativo}
             codigoReadonly={modoEdicao}
-            aoMudarCodigo={(v) =>
+            aoMudarCodigo={(v) => {
+              const classificacao = inferirCfopDoCodigo(v)
               setForm((f) => ({
                 ...f,
                 codigo: v,
                 aproveitarCreditoIcms: prefixoPermiteIcms(v) ? f.aproveitarCreditoIcms : false,
+                cfopSugestaoEntrada:
+                  classificacao?.tipo === 'saida' ? f.cfopSugestaoEntrada : null,
               }))
-            }
+            }}
             aoMudarNome={(v) => setForm((f) => ({ ...f, nome: v }))}
             aoMudarAtivo={(v) => setForm((f) => ({ ...f, ativo: v }))}
-            ativoSomenteLeitura={modoEdicao}
+            ocultarAtivo
             disabled={salvando}
           />
 
@@ -379,6 +350,17 @@ function ConteudoDaPagina() {
                   </p>
                 )}
               </SecaoFormularioErp>
+
+              {cfopEhSaida && (
+                <CampoLookupCatalogo
+                  rotulo="CFOP de sugestão na entrada de notas"
+                  endpoint="/cfops"
+                  queryParams="tipo=entrada"
+                  valor={form.cfopSugestaoEntrada}
+                  aoSelecionar={(v) => setForm((f) => ({ ...f, cfopSugestaoEntrada: v }))}
+                  disabled={salvando}
+                />
+              )}
 
               <SecaoFormularioErp titulo="Características opcionais">
                 <p className="mb-3 text-xs text-muted-foreground">

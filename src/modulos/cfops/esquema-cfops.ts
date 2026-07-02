@@ -17,6 +17,7 @@ export const esquemaDeCriacaoDeCfop = z.object({
   descricao: z.string().trim().max(2000).optional().or(z.literal('')),
   subtipoCfop,
   aproveitarCreditoIcms: z.boolean().optional().default(false),
+  cfopSugestaoEntradaId: z.string().uuid().optional().nullable(),
 })
 
 export const esquemaDeEdicaoDeCfop = z.object({
@@ -24,10 +25,7 @@ export const esquemaDeEdicaoDeCfop = z.object({
   descricao: z.string().trim().max(2000).optional().or(z.literal('')),
   subtipoCfop,
   aproveitarCreditoIcms: z.boolean().optional().default(false),
-})
-
-export const esquemaDeAtivarCfop = z.object({
-  ativo: z.boolean(),
+  cfopSugestaoEntradaId: z.string().uuid().optional().nullable(),
 })
 
 export type DadosParaCriarCfop = z.infer<typeof esquemaDeCriacaoDeCfop>
