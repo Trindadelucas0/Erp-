@@ -12,7 +12,7 @@
 
 'use client'
 
-import { type ReactNode } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 
 type ModalFaixaErroProps = {
@@ -95,8 +95,20 @@ export function ModalConfiguracoesAvancadas({
   abertoPorPadrao = false,
   children,
 }: ModalConfiguracoesAvancadasProps) {
+  const [aberto, setAberto] = useState(abertoPorPadrao)
+
+  useEffect(() => {
+    if (abertoPorPadrao) {
+      setAberto(true)
+    }
+  }, [abertoPorPadrao])
+
   return (
-    <details className="group rounded-md border border-border" open={abertoPorPadrao}>
+    <details
+      className="group rounded-md border border-border"
+      open={aberto}
+      onToggle={(e) => setAberto(e.currentTarget.open)}
+    >
       <summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-medium text-foreground marker:content-none [&::-webkit-details-marker]:hidden">
         <span className="flex items-center justify-between gap-2">
           Opções avançadas

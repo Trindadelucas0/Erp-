@@ -1,18 +1,29 @@
 import { z } from 'zod'
+import { SUBTIPOS_CFOP } from './classificacao-cfop.js'
 
-const tiposCfop = z.enum(['01', '02', '03', '04', '05', '06'])
+const codigoCfop = z
+  .string()
+  .trim()
+  .regex(
+    /^[123567]\.\d{3}$/,
+    'Código deve ter 4 dígitos no formato X.XXX, começando com 1, 2, 3, 5, 6 ou 7'
+  )
+
+const subtipoCfop = z.enum(['03', '04', '05', '06']).optional().nullable()
 
 export const esquemaDeCriacaoDeCfop = z.object({
-  codigo: z.string().trim().min(1, 'Código obrigatório').max(20),
+  codigo: codigoCfop,
   nome: z.string().trim().min(2, 'Nome deve ter pelo menos 2 caracteres').max(200),
   descricao: z.string().trim().max(2000).optional().or(z.literal('')),
-  tipoCfop: tiposCfop,
+  subtipoCfop,
+  aproveitarCreditoIcms: z.boolean().optional().default(false),
 })
 
 export const esquemaDeEdicaoDeCfop = z.object({
   nome: z.string().trim().min(2, 'Nome deve ter pelo menos 2 caracteres').max(200),
   descricao: z.string().trim().max(2000).optional().or(z.literal('')),
-  tipoCfop: tiposCfop,
+  subtipoCfop,
+  aproveitarCreditoIcms: z.boolean().optional().default(false),
 })
 
 export const esquemaDeAtivarCfop = z.object({
@@ -22,17 +33,9 @@ export const esquemaDeAtivarCfop = z.object({
 export type DadosParaCriarCfop = z.infer<typeof esquemaDeCriacaoDeCfop>
 export type DadosParaEditarCfop = z.infer<typeof esquemaDeEdicaoDeCfop>
 
-export const ROTULOS_TIPO_CFOP: Record<string, string> = {
-  '01': '01 - Entrada',
-  '02': '02 - Transferência',
-  '03': '03 - Conhecimento frete',
-  '04': '04 - Devolução de compra',
-  '05': '05 - Devolução de venda',
-  '06': '06 - Doação',
-}
+export { ROTULOS_SUBTIPO_CFOP, SUBTIPOS_CFOP } from './classificacao-cfop.js'
 
-export function tipoLegadoDeCfop(tipoCfop: string): string {
-  if (tipoCfop === '05') return 'saida'
-  if (tipoCfop === '01' || tipoCfop === '04' || tipoCfop === '06') return 'entrada'
-  return 'entrada'
+export function subtipoCfopValido(valor: string | null | undefined): boolean {
+  if (!valor) return true
+  return (SUBTIPOS_CFOP as readonly string[]).includes(valor)
 }

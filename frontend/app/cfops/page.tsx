@@ -1,8 +1,17 @@
 'use client'
 
-import { FormEvent, useCallback, useEffect, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { clienteHttp } from '@/services/api'
+import {
+  codigoCfopCompleto,
+  inferirCfopDoCodigo,
+  prefixoPermiteIcms,
+  rotuloExibicaoCfop,
+  ROTULOS_SUBTIPO_CFOP,
+  SUBTIPOS_CFOP,
+  type SubtipoCfop,
+} from '@/lib/cfop'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { usePermissao } from '@/hooks/use-permissao'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
@@ -13,34 +22,29 @@ import { Abas } from '@/components/ui/abas'
 import { BadgeStatus } from '@/components/ui/badge-status'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Modal } from '@/components/ui/modal'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Label } from '@/components/ui/label'
-import { cn } from '@/lib/utils'
 
 type Cfop = {
   id: string
   codigo: string
   nome: string
   descricao: string
-  tipoCfop: string
+  natureza: string
+  abrangencia: string | null
+  subtipoCfop: string | null
+  aproveitarCreditoIcms: boolean
   ativo: boolean
 }
-
-const TIPOS_CFOP = [
-  { id: '01', rotulo: '01 - Entrada' },
-  { id: '02', rotulo: '02 - Transferência' },
-  { id: '03', rotulo: '03 - Conhecimento frete' },
-  { id: '04', rotulo: '04 - Devolução de compra' },
-  { id: '05', rotulo: '05 - Devolução de venda' },
-  { id: '06', rotulo: '06 - Doação' },
-]
 
 const formVazio = {
   codigo: '',
   nome: '',
   descricao: '',
-  tipoCfop: '01',
+  subtipoCfop: null as SubtipoCfop | null,
+  aproveitarCreditoIcms: false,
   ativo: true,
 }
 
@@ -60,6 +64,11 @@ function ConteudoDaPagina() {
   const [salvando, setSalvando] = useState(false)
   const [mensagem, setMensagem] = useState('')
   const [erro, setErro] = useState('')
+
+  const classificacaoAtual = useMemo(
+    () => inferirCfopDoCodigo(form.codigo),
+    [form.codigo]
+  )
 
   const carregar = useCallback(async () => {
     try {
@@ -94,7 +103,8 @@ function ConteudoDaPagina() {
         codigo: c.codigo,
         nome: c.nome,
         descricao: c.descricao,
-        tipoCfop: c.tipoCfop,
+        subtipoCfop: (c.subtipoCfop as SubtipoCfop | null) ?? null,
+        aproveitarCreditoIcms: c.aproveitarCreditoIcms ?? false,
         ativo: c.ativo,
       })
       setModoEdicao(true)
@@ -107,6 +117,13 @@ function ConteudoDaPagina() {
     }
   }
 
+  function aoMudarSubtipo(subtipo: SubtipoCfop, marcado: boolean) {
+    setForm((f) => ({
+      ...f,
+      subtipoCfop: marcado ? subtipo : null,
+    }))
+  }
+
   async function aoSalvar(e?: FormEvent) {
     e?.preventDefault()
     setSalvando(true)
@@ -116,15 +133,24 @@ function ConteudoDaPagina() {
         await clienteHttp.put(`/cfops/${idEmEdicao}`, {
           nome: form.nome,
           descricao: form.descricao,
-          tipoCfop: form.tipoCfop,
+          subtipoCfop: form.subtipoCfop,
+          aproveitarCreditoIcms: form.aproveitarCreditoIcms,
         })
         setMensagem('CFOP atualizado.')
       } else {
+        if (!codigoCfopCompleto(form.codigo)) {
+          setErro(
+            'Código deve ter 4 dígitos no formato X.XXX, começando com 1, 2, 3, 5, 6 ou 7 (ex.: 5.201)'
+          )
+          setSalvando(false)
+          return
+        }
         await clienteHttp.post('/cfops', {
           codigo: form.codigo,
           nome: form.nome,
           descricao: form.descricao,
-          tipoCfop: form.tipoCfop,
+          subtipoCfop: form.subtipoCfop,
+          aproveitarCreditoIcms: form.aproveitarCreditoIcms,
         })
         setMensagem('CFOP criado.')
       }
@@ -229,29 +255,36 @@ function ConteudoDaPagina() {
                   </td>
                 </tr>
               )}
-              {listaFiltrada.map((cfop) => (
-                <tr key={cfop.id} className="border-b border-border/60 last:border-0 hover:bg-muted/20">
-                  <td className="px-4 py-3 font-medium font-mono">{cfop.codigo}</td>
-                  <td className="max-w-0 truncate px-4 py-3" title={cfop.nome}>
-                    {cfop.nome}
-                  </td>
-                  <td className="max-w-0 truncate px-4 py-3 text-muted-foreground" title={TIPOS_CFOP.find((t) => t.id === cfop.tipoCfop)?.rotulo}>
-                    {TIPOS_CFOP.find((t) => t.id === cfop.tipoCfop)?.rotulo ?? cfop.tipoCfop}
-                  </td>
-                  <td className="px-4 py-3">
-                    <BadgeStatus variante={cfop.ativo ? 'ativo' : 'reprovado'}>
-                      {cfop.ativo ? 'Ativo' : 'Inativo'}
-                    </BadgeStatus>
-                  </td>
-                  <td className="px-2 py-3">
-                    {podeEditar && (
-                      <Button type="button" variant="ghost" size="sm" onClick={() => abrirEdicao(cfop)}>
-                        Editar
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {listaFiltrada.map((cfop) => {
+                const rotuloTipo = rotuloExibicaoCfop(
+                  cfop.natureza,
+                  cfop.abrangencia,
+                  cfop.subtipoCfop
+                )
+                return (
+                  <tr key={cfop.id} className="border-b border-border/60 last:border-0 hover:bg-muted/20">
+                    <td className="px-4 py-3 font-medium font-mono">{cfop.codigo}</td>
+                    <td className="max-w-0 truncate px-4 py-3" title={cfop.nome}>
+                      {cfop.nome}
+                    </td>
+                    <td className="max-w-0 truncate px-4 py-3 text-muted-foreground" title={rotuloTipo}>
+                      {rotuloTipo}
+                    </td>
+                    <td className="px-4 py-3">
+                      <BadgeStatus variante={cfop.ativo ? 'ativo' : 'reprovado'}>
+                        {cfop.ativo ? 'Ativo' : 'Inativo'}
+                      </BadgeStatus>
+                    </td>
+                    <td className="px-2 py-3">
+                      {podeEditar && (
+                        <Button type="button" variant="ghost" size="sm" onClick={() => abrirEdicao(cfop)}>
+                          Editar
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -299,7 +332,13 @@ function ConteudoDaPagina() {
             nome={form.nome}
             ativo={form.ativo}
             codigoReadonly={modoEdicao}
-            aoMudarCodigo={(v) => setForm((f) => ({ ...f, codigo: v }))}
+            aoMudarCodigo={(v) =>
+              setForm((f) => ({
+                ...f,
+                codigo: v,
+                aproveitarCreditoIcms: prefixoPermiteIcms(v) ? f.aproveitarCreditoIcms : false,
+              }))
+            }
             aoMudarNome={(v) => setForm((f) => ({ ...f, nome: v }))}
             aoMudarAtivo={(v) => setForm((f) => ({ ...f, ativo: v }))}
             disabled={salvando}
@@ -325,36 +364,65 @@ function ConteudoDaPagina() {
                 />
               </div>
 
-              <SecaoFormularioErp titulo="Tipo de CFOP">
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {TIPOS_CFOP.map((tipo) => {
-                    const selecionado = form.tipoCfop === tipo.id
-                    return (
-                      <label
-                        key={tipo.id}
-                        className={cn(
-                          'flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors',
-                          selecionado
-                            ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
-                            : 'border-border hover:bg-muted/40',
-                          salvando && 'pointer-events-none opacity-50'
-                        )}
+              <SecaoFormularioErp titulo="Classificação">
+                {classificacaoAtual ? (
+                  <p className="inline-flex rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-medium text-primary">
+                    {classificacaoAtual.rotulo}
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Informe o código para ver a classificação automática.
+                  </p>
+                )}
+              </SecaoFormularioErp>
+
+              <SecaoFormularioErp titulo="Características opcionais">
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Marque no máximo uma característica, se aplicável.
+                </p>
+                <div className="space-y-3">
+                  {SUBTIPOS_CFOP.map((subtipo) => (
+                    <div key={subtipo} className="flex items-start gap-2">
+                      <Checkbox
+                        id={`cfop-subtipo-${subtipo}`}
+                        checked={form.subtipoCfop === subtipo}
+                        onCheckedChange={(checked) =>
+                          aoMudarSubtipo(subtipo, checked === true)
+                        }
+                        disabled={salvando}
+                      />
+                      <Label
+                        htmlFor={`cfop-subtipo-${subtipo}`}
+                        className="cursor-pointer text-sm font-medium leading-snug"
                       >
-                        <input
-                          type="radio"
-                          name="tipoCfop"
-                          value={tipo.id}
-                          checked={selecionado}
-                          onChange={() => setForm((f) => ({ ...f, tipoCfop: tipo.id }))}
-                          disabled={salvando}
-                          className="size-4 shrink-0 accent-primary"
-                        />
-                        <span className="text-sm font-medium leading-snug">{tipo.rotulo}</span>
-                      </label>
-                    )
-                  })}
+                        {ROTULOS_SUBTIPO_CFOP[subtipo]}
+                      </Label>
+                    </div>
+                  ))}
                 </div>
               </SecaoFormularioErp>
+
+              {prefixoPermiteIcms(form.codigo) && (
+                <div className="flex items-start gap-2">
+                  <Checkbox
+                    id="cfop-aproveitar-credito-icms"
+                    checked={form.aproveitarCreditoIcms}
+                    onCheckedChange={(checked) =>
+                      setForm((f) => ({
+                        ...f,
+                        aproveitarCreditoIcms: checked === true,
+                      }))
+                    }
+                    disabled={salvando}
+                  />
+                  <Label
+                    htmlFor="cfop-aproveitar-credito-icms"
+                    className="cursor-pointer text-sm font-medium leading-snug"
+                  >
+                    Aproveitar crédito de ICMS na apuração e custo da entrada
+                  </Label>
+                </div>
+              )}
             </div>
           )}
         </form>

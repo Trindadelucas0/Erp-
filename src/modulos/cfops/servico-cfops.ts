@@ -60,7 +60,7 @@ async function editarCfop(
   const existente = await repositorioDeCfops.buscarPorId(companyId, id)
   if (!existente) throw new ErroDaAplicacao('CFOP não encontrado', 404)
 
-  const cfop = await repositorioDeCfops.atualizar(companyId, id, dados)
+  const cfop = await repositorioDeCfops.atualizar(companyId, id, dados, existente.codigo)
 
   await registrarAuditoria({
     usuarioId: idDoAutor,
