@@ -1,9 +1,14 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import { clienteHttp } from '@/services/api'
 import { MSG_PLANO_SOMENTE_DESPESA, planoEhDespesa } from '@/lib/plano-financeiro'
+import {
+  notificarAberturaDropdownCatalogo,
+  useInstanciaDropdownCatalogo,
+  useOuvirFechamentoDropdownCatalogo,
+} from '@/lib/dropdown-catalogo'
 import { cn } from '@/lib/utils'
 
 export type ItemCatalogo = { id: string; codigo: string; descricao: string; tipo?: string }
@@ -34,6 +39,16 @@ export function CampoLookupCatalogo({
   const [erroSelecao, setErroSelecao] = useState('')
   const ref = useRef<HTMLDivElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const instanciaId = useInstanciaDropdownCatalogo()
+
+  const fechar = useCallback(() => setAberto(false), [])
+
+  useOuvirFechamentoDropdownCatalogo(instanciaId, fechar)
+
+  function abrir() {
+    notificarAberturaDropdownCatalogo(instanciaId)
+    setAberto(true)
+  }
 
   const valorInvalido =
     !!valor &&
@@ -71,12 +86,13 @@ export function CampoLookupCatalogo({
   }, [busca, aberto, endpoint, queryParams])
 
   useEffect(() => {
+    if (!aberto) return
     function aoClicarFora(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false)
     }
     document.addEventListener('mousedown', aoClicarFora)
     return () => document.removeEventListener('mousedown', aoClicarFora)
-  }, [])
+  }, [aberto])
 
   function tentarSelecionar(item: ItemCatalogo) {
     if (
@@ -114,7 +130,7 @@ export function CampoLookupCatalogo({
             setErroSelecao('')
             if (valor) aoSelecionar(null)
           }}
-          onFocus={() => setAberto(true)}
+          onFocus={abrir}
           disabled={disabled}
           placeholder="Buscar..."
         />
@@ -131,7 +147,7 @@ export function CampoLookupCatalogo({
         <button
           type="button"
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input text-muted-foreground hover:bg-muted"
-          onClick={() => setAberto((v) => !v)}
+          onClick={() => (aberto ? fechar() : abrir())}
           disabled={disabled}
         >
           <Search className="size-4" />

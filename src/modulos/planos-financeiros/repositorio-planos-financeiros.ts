@@ -77,7 +77,8 @@ async function listarPorEmpresa(
 async function listarFolhasAtivas(
   companyId: string,
   q?: string,
-  tipo?: TipoPlanoFinanceiro
+  tipo?: TipoPlanoFinanceiro,
+  somenteSubgrupo?: boolean
 ) {
   const termo = q?.trim()
   const planos = await clientePrisma.planoFinanceiro.findMany({
@@ -85,6 +86,7 @@ async function listarFolhasAtivas(
       companyId,
       ativo: true,
       ...(tipo ? { tipo } : {}),
+      ...(somenteSubgrupo ? { parentId: { not: null } } : {}),
       ...(termo
         ? {
             OR: [

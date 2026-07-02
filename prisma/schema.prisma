@@ -188,10 +188,6 @@ model DadosFornecedor {
   planosFinanceiros              FornecedorPlanoFinanceiro[]
   cfopsEntrada                   FornecedorCfopEntrada[]
   paresPlanoCfopPadrao           FornecedorParPlanoCfopPadrao[]
-  cfopSugestaoXmlId              String?
-  cfopSugestaoXml                Cfop?             @relation("FornecedorCfopSugestaoXml", fields: [cfopSugestaoXmlId], references: [id], onDelete: SetNull)
-  planoFinanceiroAlternativoId   String?
-  planoFinanceiroAlternativo     PlanoFinanceiro?  @relation("FornecedorPlanoAlternativo", fields: [planoFinanceiroAlternativoId], references: [id], onDelete: SetNull)
   vinculosComoA         FornecedorVinculo[] @relation("VinculosA")
   vinculosComoB         FornecedorVinculo[] @relation("VinculosB")
 
@@ -312,7 +308,6 @@ model PlanoFinanceiro {
   ativo                     Boolean  @default(true)
   fornecedores              FornecedorPlanoFinanceiro[]
   paresPlanoCfop            FornecedorParPlanoCfopPadrao[]
-  fornecedoresPlanoAlternativo DadosFornecedor[] @relation("FornecedorPlanoAlternativo")
   createdAt                 DateTime @default(now())
 
   @@unique([codigo, companyId])
@@ -339,7 +334,6 @@ model Cfop {
   cfopsComSugestao       Cfop[]  @relation("CfopSugestaoEntrada")
   fornecedores          FornecedorCfopEntrada[]
   paresPlanoCfop        FornecedorParPlanoCfopPadrao[]
-  fornecedoresSugestaoXml DadosFornecedor[] @relation("FornecedorCfopSugestaoXml")
   createdAt             DateTime @default(now())
 
   @@unique([codigo, companyId])

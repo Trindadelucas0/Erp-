@@ -1,9 +1,14 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { clienteHttp } from '@/services/api'
-import { MSG_PLANO_SOMENTE_DESPESA, planoEhDespesa } from '@/lib/plano-financeiro'
+import { MSG_PLANO_SOMENTE_DESPESA, MSG_PLANO_SOMENTE_SUBGRUPO, planoEhDespesa, planoEhSubgrupo } from '@/lib/plano-financeiro'
+import {
+  notificarAberturaDropdownCatalogo,
+  useInstanciaDropdownCatalogo,
+  useOuvirFechamentoDropdownCatalogo,
+} from '@/lib/dropdown-catalogo'
 import { cn } from '@/lib/utils'
 
 export type PlanoCfopPar = {
@@ -50,8 +55,27 @@ function ComboboxItem({
   const [aberto, setAberto] = useState(false)
   const [carregando, setCarregando] = useState(false)
   const [erroSelecao, setErroSelecao] = useState('')
-  const refInput = useRef<HTMLInputElement>(null)
+  const ref = useRef<HTMLDivElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const instanciaId = useInstanciaDropdownCatalogo()
+
+  const fechar = useCallback(() => setAberto(false), [])
+
+  useOuvirFechamentoDropdownCatalogo(instanciaId, fechar)
+
+  function abrir() {
+    notificarAberturaDropdownCatalogo(instanciaId)
+    setAberto(true)
+  }
+
+  useEffect(() => {
+    if (!aberto) return
+    function aoClicarFora(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false)
+    }
+    document.addEventListener('mousedown', aoClicarFora)
+    return () => document.removeEventListener('mousedown', aoClicarFora)
+  }, [aberto])
 
   useEffect(() => {
     if (!aberto) return
@@ -78,6 +102,10 @@ function ComboboxItem({
       setErroSelecao(MSG_PLANO_SOMENTE_DESPESA)
       return
     }
+    if (queryParams?.includes('somenteSubgrupo=true') && !planoEhSubgrupo(item)) {
+      setErroSelecao(MSG_PLANO_SOMENTE_SUBGRUPO)
+      return
+    }
     setErroSelecao('')
     aoSelecionar(item)
     setAberto(false)
@@ -87,11 +115,10 @@ function ComboboxItem({
   const textoAtual = valor ? `${valor.codigo} — ${valor.descricao}` : ''
 
   return (
-    <div className="relative flex-1 space-y-1">
+    <div ref={ref} className="relative flex-1 space-y-1">
       <label className="text-xs font-medium text-muted-foreground">{rotulo}</label>
       <div className="flex gap-1">
         <input
-          ref={refInput}
           className={cn(
             'flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50',
             (invalido || erroSelecao) && 'border-destructive'
@@ -99,9 +126,8 @@ function ComboboxItem({
           value={aberto ? busca : textoAtual}
           placeholder="Buscar..."
           disabled={disabled}
-          onChange={(e) => { setBusca(e.target.value); setErroSelecao(''); setAberto(true) }}
-          onFocus={() => setAberto(true)}
-          onBlur={() => setTimeout(() => setAberto(false), 150)}
+          onChange={(e) => { setBusca(e.target.value); setErroSelecao(''); abrir() }}
+          onFocus={abrir}
         />
         {valor && !disabled && (
           <button
@@ -195,7 +221,8 @@ export function ListaParesPlanoCfop({ pares, aoMudar, disabled }: Props) {
       {pares.map((par, idx) => {
         const planoInvalido =
           !!par.planoFinanceiroId &&
-          !planoEhDespesa({ codigo: par.planoCodigo, tipo: par.planoTipo })
+          (!planoEhDespesa({ codigo: par.planoCodigo, tipo: par.planoTipo }) ||
+            !planoEhSubgrupo({ codigo: par.planoCodigo }))
         return (
           <div
             key={idx}
@@ -207,7 +234,7 @@ export function ListaParesPlanoCfop({ pares, aoMudar, disabled }: Props) {
             <ComboboxItem
               rotulo="Plano Financeiro"
               endpoint="/planos-financeiros"
-              queryParams="tipo=despesa"
+              queryParams="tipo=despesa&somenteSubgrupo=true"
               tipoPlanoEsperado="despesa"
               valor={par.planoFinanceiroId ? { id: par.planoFinanceiroId, codigo: par.planoCodigo, descricao: par.planoDescricao, tipo: par.planoTipo } : null}
               aoSelecionar={(item) => atualizarPlano(idx, item)}

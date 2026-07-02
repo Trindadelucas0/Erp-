@@ -1,8 +1,10 @@
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 
+export const MSG_PLANO_SUBGRUPO_DESPESA =
+  'Plano financeiro deve ser subgrupo de Despesas (ex.: 2.1.1)'
+
 export type DadosComVinculosPlanos = {
   planosFinanceirosIds?: string[]
-  planoFinanceiroAlternativoId?: string | null
   paresPlanoCfopPadrao?: { planoFinanceiroId: string; cfopId: string }[]
 }
 
@@ -10,18 +12,17 @@ export type DadosComVinculosPlanos = {
 export function coletarIdsPlanosFinanceiros(dados: DadosComVinculosPlanos): string[] {
   const planoIds = [
     ...(dados.planosFinanceirosIds ?? []),
-    ...(dados.planoFinanceiroAlternativoId ? [dados.planoFinanceiroAlternativoId] : []),
     ...(dados.paresPlanoCfopPadrao ?? []).map((p) => p.planoFinanceiroId),
   ]
   return [...new Set(planoIds)]
 }
 
-/** Garante que todos os IDs enviados correspondem a planos despesa ativos retornados pela consulta. */
-export function assertTodosPlanosDespesaEncontrados(
+/** Garante que todos os IDs enviados correspondem a subgrupos despesa ativos retornados pela consulta. */
+export function assertTodosPlanosSubgrupoDespesaEncontrados(
   idsEsperados: string[],
   planosEncontrados: { id: string }[]
 ): void {
   if (idsEsperados.length > 0 && planosEncontrados.length !== idsEsperados.length) {
-    throw new ErroDaAplicacao('Plano financeiro deve ser do tipo Despesas', 400)
+    throw new ErroDaAplicacao(MSG_PLANO_SUBGRUPO_DESPESA, 400)
   }
 }

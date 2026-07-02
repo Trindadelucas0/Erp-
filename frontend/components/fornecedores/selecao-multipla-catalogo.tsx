@@ -1,11 +1,15 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import { clienteHttp } from '@/services/api'
-import { MSG_PLANO_SOMENTE_DESPESA, planoEhDespesa } from '@/lib/plano-financeiro'
+import { MSG_PLANO_SOMENTE_DESPESA, MSG_PLANO_SOMENTE_SUBGRUPO, planoEhDespesa, planoEhSubgrupo } from '@/lib/plano-financeiro'
+import {
+  notificarAberturaDropdownCatalogo,
+  useInstanciaDropdownCatalogo,
+  useOuvirFechamentoDropdownCatalogo,
+} from '@/lib/dropdown-catalogo'
 import { cn } from '@/lib/utils'
-
 export type ItemCatalogo = {
   id: string
   codigo: string
@@ -19,6 +23,7 @@ type Props = {
   endpoint: '/planos-financeiros' | '/cfops'
   tipoCfop?: string
   tipoPlano?: string
+  somenteSubgrupo?: boolean
   selecionados: ItemCatalogo[]
   aoMudar: (itens: ItemCatalogo[]) => void
   disabled?: boolean
@@ -30,6 +35,7 @@ export function SelecaoMultiplaCatalogo({
   endpoint,
   tipoCfop,
   tipoPlano,
+  somenteSubgrupo,
   selecionados,
   aoMudar,
   disabled,
@@ -39,6 +45,26 @@ export function SelecaoMultiplaCatalogo({
   const [abrindo, setAbrindo] = useState(false)
   const [carregando, setCarregando] = useState(false)
   const [erroSelecao, setErroSelecao] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+  const instanciaId = useInstanciaDropdownCatalogo()
+
+  const fechar = useCallback(() => setAbrindo(false), [])
+
+  useOuvirFechamentoDropdownCatalogo(instanciaId, fechar)
+
+  function abrir() {
+    notificarAberturaDropdownCatalogo(instanciaId)
+    setAbrindo(true)
+  }
+
+  useEffect(() => {
+    if (!abrindo) return
+    function aoClicarFora(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAbrindo(false)
+    }
+    document.addEventListener('mousedown', aoClicarFora)
+    return () => document.removeEventListener('mousedown', aoClicarFora)
+  }, [abrindo])
 
   useEffect(() => {
     if (!abrindo) return
@@ -48,6 +74,7 @@ export function SelecaoMultiplaCatalogo({
         const params: Record<string, string> = { q: busca }
         if (endpoint === '/cfops' && tipoCfop) params.tipo = tipoCfop
         if (endpoint === '/planos-financeiros' && tipoPlano) params.tipo = tipoPlano
+        if (endpoint === '/planos-financeiros' && somenteSubgrupo) params.somenteSubgrupo = 'true'
         const chave = endpoint === '/planos-financeiros' ? 'planos' : 'cfops'
         const { data } = await clienteHttp.get(endpoint, { params })
         const lista = (data[chave] ?? []) as ItemCatalogo[]
@@ -60,7 +87,7 @@ export function SelecaoMultiplaCatalogo({
       }
     }, 300)
     return () => clearTimeout(timer)
-  }, [busca, abrindo, endpoint, tipoCfop, tipoPlano, selecionados])
+  }, [busca, abrindo, endpoint, tipoCfop, tipoPlano, somenteSubgrupo, selecionados])
 
   function adicionar(item: ItemCatalogo) {
     if (
@@ -69,6 +96,14 @@ export function SelecaoMultiplaCatalogo({
       !planoEhDespesa(item)
     ) {
       setErroSelecao(MSG_PLANO_SOMENTE_DESPESA)
+      return
+    }
+    if (
+      endpoint === '/planos-financeiros' &&
+      somenteSubgrupo &&
+      !planoEhSubgrupo(item)
+    ) {
+      setErroSelecao(MSG_PLANO_SOMENTE_SUBGRUPO)
       return
     }
     setErroSelecao('')
@@ -82,7 +117,7 @@ export function SelecaoMultiplaCatalogo({
   }
 
   return (
-    <div className="space-y-2">
+    <div ref={ref} className="space-y-2">
       <label className="text-sm font-medium leading-none">{rotulo}</label>
       <div className="relative">
         <div className="flex items-center gap-2">
@@ -92,9 +127,9 @@ export function SelecaoMultiplaCatalogo({
             onChange={(e) => {
               setBusca(e.target.value)
               setErroSelecao('')
-              setAbrindo(true)
+              abrir()
             }}
-            onFocus={() => setAbrindo(true)}
+            onFocus={abrir}
             placeholder="Buscar por código ou descrição..."
             disabled={disabled}
           />
@@ -132,8 +167,8 @@ export function SelecaoMultiplaCatalogo({
           {selecionados.map((item) => {
             const invalido =
               endpoint === '/planos-financeiros' &&
-              tipoPlano === 'despesa' &&
-              !planoEhDespesa(item)
+              ((tipoPlano === 'despesa' && !planoEhDespesa(item)) ||
+                (somenteSubgrupo && !planoEhSubgrupo(item)))
             return (
               <span
                 key={item.id}

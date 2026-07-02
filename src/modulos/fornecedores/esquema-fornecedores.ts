@@ -69,8 +69,6 @@ const camposComuns = {
     .optional(),
   planosFinanceirosIds: z.array(z.string().uuid()).optional(),
   cfopsEntradaIds: z.array(z.string().uuid()).optional(),
-  cfopSugestaoXmlId: z.string().uuid().optional().nullable(),
-  planoFinanceiroAlternativoId: z.string().uuid().optional().nullable(),
   fornecedoresVinculadosIds: z.array(z.string().uuid()).optional(),
 }
 

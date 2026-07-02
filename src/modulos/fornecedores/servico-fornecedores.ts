@@ -7,16 +7,14 @@ import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-audi
 import { repositorioDeCfops } from '../cfops/repositorio-cfops.js'
 import { repositorioDeFornecedores } from './repositorio-fornecedores.js'
 import {
-  assertTodosPlanosDespesaEncontrados,
+  assertTodosPlanosSubgrupoDespesaEncontrados,
   coletarIdsPlanosFinanceiros,
 } from './validacao-planos-fornecedor.js'
 import type { DadosParaCriarFornecedor, DadosParaEditarFornecedor } from './esquema-fornecedores.js'
 
 type DadosComVinculos = {
   planosFinanceirosIds?: string[]
-  planoFinanceiroAlternativoId?: string | null
   cfopsEntradaIds?: string[]
-  cfopSugestaoXmlId?: string | null
   paresPlanoCfopPadrao?: { planoFinanceiroId: string; cfopId: string }[]
 }
 
@@ -30,15 +28,15 @@ async function validarVinculosFinanceirosECfop(companyId: string, dados: DadosCo
         companyId,
         tipo: 'despesa',
         ativo: true,
+        parentId: { not: null },
       },
       select: { id: true },
     })
-    assertTodosPlanosDespesaEncontrados(idsUnicosPlanos, planos)
+    assertTodosPlanosSubgrupoDespesaEncontrados(idsUnicosPlanos, planos)
   }
 
   const cfopIds = [
     ...(dados.cfopsEntradaIds ?? []),
-    ...(dados.cfopSugestaoXmlId ? [dados.cfopSugestaoXmlId] : []),
     ...(dados.paresPlanoCfopPadrao ?? []).map((p) => p.cfopId),
   ]
   const idsUnicosCfops = [...new Set(cfopIds)]

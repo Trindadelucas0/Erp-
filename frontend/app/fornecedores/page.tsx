@@ -61,8 +61,7 @@ import {
 } from '@/components/fornecedores/selecao-multipla-catalogo'
 import { ListaParesPlanoCfop, type PlanoCfopPar } from '@/components/fornecedores/lista-pares-plano-cfop'
 import { mesclarTexto, mesclarArray, mesclarBoolean } from '@/lib/mesclar-pre-preenchimento'
-import { CampoLookupCatalogo } from '@/components/compartilhado/campo-lookup-catalogo'
-import { MSG_PLANO_SOMENTE_DESPESA, planoEhDespesa } from '@/lib/plano-financeiro'
+import { MSG_PLANO_SOMENTE_DESPESA, MSG_PLANO_SOMENTE_SUBGRUPO, planoEhDespesa, planoEhSubgrupo } from '@/lib/plano-financeiro'
 import {
   FornecedoresRelacionadosField,
   type FornecedorRelacionadoItem,
@@ -109,8 +108,6 @@ type Fornecedor = {
   prazosPagamento?: (number | null)[]
   planosFinanceiros?: ItemCatalogo[]
   cfopsEntrada?: ItemCatalogo[]
-  cfopSugestaoXml?: ItemCatalogo | null
-  planoFinanceiroAlternativo?: ItemCatalogo | null
   paresPlanoCfopPadrao?: PlanoCfopPar[]
   dadosFornecedorId?: string | null
   fornecedoresVinculadosIds?: string[]
@@ -151,8 +148,6 @@ type FormFornecedor = {
   prazosPagamento: string[]
   planosFinanceiros: ItemCatalogo[]
   cfopsEntrada: ItemCatalogo[]
-  cfopSugestaoXml: ItemCatalogo | null
-  planoFinanceiroAlternativo: ItemCatalogo | null
   paresPlanoCfopPadrao: PlanoCfopPar[]
   fornecedoresVinculadosIds: string[]
   fornecedoresRelacionados: FornecedorRelacionadoItem[]
@@ -203,8 +198,6 @@ const FORM_VAZIO: FormFornecedor = {
   prazosPagamento: ['', '', '', '', '', ''],
   planosFinanceiros: [],
   cfopsEntrada: [],
-  cfopSugestaoXml: null,
-  planoFinanceiroAlternativo: null,
   paresPlanoCfopPadrao: [],
   fornecedoresVinculadosIds: [],
   fornecedoresRelacionados: [],
@@ -265,8 +258,6 @@ function fornecedorParaForm(f: Fornecedor): FormFornecedor {
     prazosPagamento: prazos.slice(0, 6).map((p) => (p != null ? String(p) : '')),
     planosFinanceiros: f.planosFinanceiros ?? [],
     cfopsEntrada: f.cfopsEntrada ?? [],
-    cfopSugestaoXml: f.cfopSugestaoXml ?? null,
-    planoFinanceiroAlternativo: f.planoFinanceiroAlternativo ?? null,
     paresPlanoCfopPadrao: (f.paresPlanoCfopPadrao ?? []).map((par: PlanoCfopPar & { planoTipo?: string }) => ({
       planoFinanceiroId: par.planoFinanceiroId || '',
       planoCodigo: par.planoCodigo || '',
@@ -384,22 +375,27 @@ function contatoSimplesValido(email: string, telefone: string): boolean {
 function validarPlanosFinanceirosFornecedor(form: FormFornecedor): string | undefined {
   if (!form.tipoConsumo && !form.tipoPrestadorServico) return undefined
 
-  if (form.planoFinanceiroAlternativo && !planoEhDespesa(form.planoFinanceiroAlternativo)) {
-    return `${MSG_PLANO_SOMENTE_DESPESA} (plano alternativo)`
-  }
-
-  const planoLiberadoInvalido = form.planosFinanceiros.find((p) => !planoEhDespesa(p))
+  const planoLiberadoInvalido = form.planosFinanceiros.find(
+    (p) => !planoEhDespesa(p) || !planoEhSubgrupo(p)
+  )
   if (planoLiberadoInvalido) {
-    return `${MSG_PLANO_SOMENTE_DESPESA} (${planoLiberadoInvalido.codigo})`
+    if (!planoEhDespesa(planoLiberadoInvalido)) {
+      return `${MSG_PLANO_SOMENTE_DESPESA} (${planoLiberadoInvalido.codigo})`
+    }
+    return `${MSG_PLANO_SOMENTE_SUBGRUPO} (${planoLiberadoInvalido.codigo})`
   }
 
   const parInvalido = form.paresPlanoCfopPadrao.find(
     (par) =>
       par.planoFinanceiroId &&
-      !planoEhDespesa({ codigo: par.planoCodigo, tipo: par.planoTipo })
+      (!planoEhDespesa({ codigo: par.planoCodigo, tipo: par.planoTipo }) ||
+        !planoEhSubgrupo({ codigo: par.planoCodigo }))
   )
   if (parInvalido) {
-    return `${MSG_PLANO_SOMENTE_DESPESA} (par padrão ${parInvalido.planoCodigo})`
+    if (!planoEhDespesa({ codigo: parInvalido.planoCodigo, tipo: parInvalido.planoTipo })) {
+      return `${MSG_PLANO_SOMENTE_DESPESA} (par padrão ${parInvalido.planoCodigo})`
+    }
+    return `${MSG_PLANO_SOMENTE_SUBGRUPO} (par padrão ${parInvalido.planoCodigo})`
   }
 
   return undefined
@@ -1101,8 +1097,6 @@ function ConteudoDaPaginaDeFornecedores() {
       prazosPagamento,
       planosFinanceirosIds: form.planosFinanceiros.map((p) => p.id),
       cfopsEntradaIds: form.cfopsEntrada.map((c) => c.id),
-      cfopSugestaoXmlId: form.cfopSugestaoXml?.id ?? null,
-      planoFinanceiroAlternativoId: form.planoFinanceiroAlternativo?.id ?? null,
       paresPlanoCfopPadrao: form.paresPlanoCfopPadrao
         .filter((par) => par.planoFinanceiroId && par.cfopId)
         .map((par) => ({ planoFinanceiroId: par.planoFinanceiroId, cfopId: par.cfopId })),
@@ -1690,23 +1684,6 @@ function ConteudoDaPaginaDeFornecedores() {
                         {erroVisivel('planosFinanceiros')}
                       </p>
                     )}
-                    <CampoLookupCatalogo
-                      rotulo="CFOP sugestão ao carregar XML"
-                      endpoint="/cfops"
-                      queryParams="tipo=entrada"
-                      valor={form.cfopSugestaoXml}
-                      aoSelecionar={(v) => set('cfopSugestaoXml', v)}
-                      disabled={somenteLeitura}
-                    />
-                    <CampoLookupCatalogo
-                      rotulo="Plano financeiro alternativo"
-                      endpoint="/planos-financeiros"
-                      queryParams="tipo=despesa"
-                      tipoPlanoEsperado="despesa"
-                      valor={form.planoFinanceiroAlternativo}
-                      aoSelecionar={(v) => set('planoFinanceiroAlternativo', v)}
-                      disabled={somenteLeitura}
-                    />
                     <SelecaoMultiplaCatalogo
                       endpoint="/cfops"
                       tipoCfop="entrada"
@@ -1718,6 +1695,7 @@ function ConteudoDaPaginaDeFornecedores() {
                     <SelecaoMultiplaCatalogo
                         endpoint="/planos-financeiros"
                         tipoPlano="despesa"
+                        somenteSubgrupo
                         rotulo="Planos financeiros liberados para entrada"
                         selecionados={form.planosFinanceiros}
                         aoMudar={(v) => set('planosFinanceiros', v)}

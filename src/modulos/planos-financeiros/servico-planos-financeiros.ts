@@ -118,9 +118,15 @@ async function listarParaGestao(
 async function listarParaCatalogo(
   companyId: string,
   q?: string,
-  tipo?: TipoPlanoFinanceiro
+  tipo?: TipoPlanoFinanceiro,
+  somenteSubgrupo?: boolean
 ) {
-  const folhas = await repositorioDePlanosFinanceiros.listarFolhasAtivas(companyId, q, tipo)
+  const folhas = await repositorioDePlanosFinanceiros.listarFolhasAtivas(
+    companyId,
+    q,
+    tipo,
+    somenteSubgrupo
+  )
   return folhas.map((p) => ({
     id: p.id,
     codigo: p.codigo,

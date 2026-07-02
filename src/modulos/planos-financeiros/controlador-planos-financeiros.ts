@@ -18,10 +18,12 @@ async function listarPlanosFinanceiros(requisicao: FastifyRequest, resposta: Fas
     q?: string
     tipo?: string
     incluirInativos?: string
+    somenteSubgrupo?: string
   }
 
   const incluirInativos = query.incluirInativos === 'true'
   const tipo = query.tipo as TipoPlanoFinanceiro | undefined
+  const somenteSubgrupo = query.somenteSubgrupo === 'true'
 
   if (incluirInativos) {
     const resultado = await servicoDePlanosFinanceiros.listarParaGestao(
@@ -36,7 +38,8 @@ async function listarPlanosFinanceiros(requisicao: FastifyRequest, resposta: Fas
   const planos = await servicoDePlanosFinanceiros.listarParaCatalogo(
     companyId(requisicao),
     query.q,
-    tipo
+    tipo,
+    somenteSubgrupo
   )
   return resposta.send({ planos })
 }
