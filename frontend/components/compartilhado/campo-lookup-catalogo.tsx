@@ -6,6 +6,7 @@ import { clienteHttp } from '@/services/api'
 import { MSG_PLANO_SOMENTE_DESPESA, planoEhDespesa } from '@/lib/plano-financeiro'
 import {
   notificarAberturaDropdownCatalogo,
+  useFecharAoSairComMouse,
   useInstanciaDropdownCatalogo,
   useOuvirFechamentoDropdownCatalogo,
 } from '@/lib/dropdown-catalogo'
@@ -44,6 +45,7 @@ export function CampoLookupCatalogo({
   const fechar = useCallback(() => setAberto(false), [])
 
   useOuvirFechamentoDropdownCatalogo(instanciaId, fechar)
+  const zonaHover = useFecharAoSairComMouse(fechar)
 
   function abrir() {
     notificarAberturaDropdownCatalogo(instanciaId)
@@ -116,60 +118,67 @@ export function CampoLookupCatalogo({
   }
 
   return (
-    <div ref={ref} className="space-y-1">
+    <div className="space-y-1">
       <label className="text-sm font-medium leading-none">{rotulo}</label>
-      <div className="relative flex gap-1">
-        <input
-          className={cn(
-            'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm disabled:opacity-50',
-            (valorInvalido || erroSelecao) && 'border-destructive'
+      <div ref={ref} className="relative" {...zonaHover}>
+        <div className="flex gap-1">
+          <input
+            className={cn(
+              'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm disabled:opacity-50',
+              (valorInvalido || erroSelecao) && 'border-destructive'
+            )}
+            value={busca}
+            onChange={(e) => {
+              setBusca(e.target.value)
+              setErroSelecao('')
+              if (valor) aoSelecionar(null)
+            }}
+            onFocus={abrir}
+            disabled={disabled}
+            placeholder="Buscar..."
+          />
+          {valor && !disabled && (
+            <button
+              type="button"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input text-muted-foreground hover:bg-muted hover:text-destructive"
+              onClick={limpar}
+              aria-label="Limpar seleção"
+            >
+              <X className="size-4" />
+            </button>
           )}
-          value={busca}
-          onChange={(e) => {
-            setBusca(e.target.value)
-            setErroSelecao('')
-            if (valor) aoSelecionar(null)
-          }}
-          onFocus={abrir}
-          disabled={disabled}
-          placeholder="Buscar..."
-        />
-        {valor && !disabled && (
           <button
             type="button"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input text-muted-foreground hover:bg-muted hover:text-destructive"
-            onClick={limpar}
-            aria-label="Limpar seleção"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input text-muted-foreground hover:bg-muted"
+            onClick={() => (aberto ? fechar() : abrir())}
+            disabled={disabled}
           >
-            <X className="size-4" />
+            <Search className="size-4" />
           </button>
-        )}
-        <button
-          type="button"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input text-muted-foreground hover:bg-muted"
-          onClick={() => (aberto ? fechar() : abrir())}
-          disabled={disabled}
-        >
-          <Search className="size-4" />
-        </button>
+        </div>
         {aberto && (
-          <div className="absolute left-0 top-full z-20 mt-1 max-h-48 w-full overflow-auto rounded-md border border-border bg-card shadow-lg">
-            {carregando && (
-              <p className="px-3 py-2 text-sm text-muted-foreground">Carregando...</p>
-            )}
-            {!carregando && itens.length === 0 && (
-              <p className="px-3 py-2 text-sm text-muted-foreground">Nenhum resultado</p>
-            )}
-            {itens.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className="block w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                onClick={() => tentarSelecionar(item)}
-              >
-                {item.codigo} - {item.descricao}
-              </button>
-            ))}
+          <div className="absolute left-0 right-0 top-full z-20 pt-1">
+            <div className="max-h-48 w-full overflow-auto rounded-md border border-border bg-card shadow-lg">
+              {carregando && (
+                <p className="px-3 py-2 text-sm text-muted-foreground">Carregando...</p>
+              )}
+              {!carregando && itens.length === 0 && (
+                <p className="px-3 py-2 text-sm text-muted-foreground">Nenhum resultado</p>
+              )}
+              {itens.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="block w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    tentarSelecionar(item)
+                  }}
+                >
+                  {item.codigo} - {item.descricao}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>

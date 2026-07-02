@@ -6,6 +6,7 @@ import { clienteHttp } from '@/services/api'
 import { MSG_PLANO_SOMENTE_DESPESA, MSG_PLANO_SOMENTE_SUBGRUPO, planoEhDespesa, planoEhSubgrupo } from '@/lib/plano-financeiro'
 import {
   notificarAberturaDropdownCatalogo,
+  useFecharAoSairComMouse,
   useInstanciaDropdownCatalogo,
   useOuvirFechamentoDropdownCatalogo,
 } from '@/lib/dropdown-catalogo'
@@ -62,6 +63,7 @@ function ComboboxItem({
   const fechar = useCallback(() => setAberto(false), [])
 
   useOuvirFechamentoDropdownCatalogo(instanciaId, fechar)
+  const zonaHover = useFecharAoSairComMouse(fechar)
 
   function abrir() {
     notificarAberturaDropdownCatalogo(instanciaId)
@@ -115,50 +117,56 @@ function ComboboxItem({
   const textoAtual = valor ? `${valor.codigo} — ${valor.descricao}` : ''
 
   return (
-    <div ref={ref} className="relative flex-1 space-y-1">
+    <div className="relative flex-1 space-y-1">
       <label className="text-xs font-medium text-muted-foreground">{rotulo}</label>
-      <div className="flex gap-1">
-        <input
-          className={cn(
-            'flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50',
-            (invalido || erroSelecao) && 'border-destructive'
+      <div ref={ref} className="relative" {...zonaHover}>
+        <div className="flex gap-1">
+          <input
+            className={cn(
+              'flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50',
+              (invalido || erroSelecao) && 'border-destructive'
+            )}
+            value={aberto ? busca : textoAtual}
+            placeholder="Buscar..."
+            disabled={disabled}
+            onChange={(e) => { setBusca(e.target.value); setErroSelecao(''); abrir() }}
+            onFocus={abrir}
+          />
+          {valor && !disabled && (
+            <button
+              type="button"
+              onClick={aoLimpar}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-input text-muted-foreground hover:text-destructive"
+              aria-label="Limpar"
+            >
+              <X className="size-3.5" />
+            </button>
           )}
-          value={aberto ? busca : textoAtual}
-          placeholder="Buscar..."
-          disabled={disabled}
-          onChange={(e) => { setBusca(e.target.value); setErroSelecao(''); abrir() }}
-          onFocus={abrir}
-        />
-        {valor && !disabled && (
-          <button
-            type="button"
-            onClick={aoLimpar}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-input text-muted-foreground hover:text-destructive"
-            aria-label="Limpar"
-          >
-            <X className="size-3.5" />
-          </button>
+        </div>
+        {aberto && (
+          <div className="absolute left-0 right-0 top-full z-50 pt-1">
+            <div className="w-full rounded-md border border-border bg-popover shadow-md">
+              {carregando && <div className="px-3 py-2 text-xs text-muted-foreground">Buscando...</div>}
+              {!carregando && itens.length === 0 && (
+                <div className="px-3 py-2 text-xs text-muted-foreground">Nenhum resultado</div>
+              )}
+              {itens.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
+                  onMouseDown={(e) => { e.preventDefault(); selecionar(item) }}
+                >
+                  <span className="font-mono text-xs text-muted-foreground">{item.codigo}</span>
+                  <span className="truncate">{item.descricao}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         )}
       </div>
       {(invalido || erroSelecao) && (
         <p className="text-xs text-destructive">{erroSelecao || MSG_PLANO_SOMENTE_DESPESA}</p>
-      )}
-      {aberto && (
-        <div className="absolute z-50 mt-0.5 w-full rounded-md border border-border bg-popover shadow-md">
-          {carregando && <div className="px-3 py-2 text-xs text-muted-foreground">Buscando...</div>}
-          {!carregando && itens.length === 0 && <div className="px-3 py-2 text-xs text-muted-foreground">Nenhum resultado</div>}
-          {itens.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
-              onMouseDown={(e) => { e.preventDefault(); selecionar(item) }}
-            >
-              <span className="font-mono text-xs text-muted-foreground">{item.codigo}</span>
-              <span className="truncate">{item.descricao}</span>
-            </button>
-          ))}
-        </div>
       )}
     </div>
   )

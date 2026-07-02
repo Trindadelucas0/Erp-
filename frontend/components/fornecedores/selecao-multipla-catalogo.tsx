@@ -6,6 +6,7 @@ import { clienteHttp } from '@/services/api'
 import { MSG_PLANO_SOMENTE_DESPESA, MSG_PLANO_SOMENTE_SUBGRUPO, planoEhDespesa, planoEhSubgrupo } from '@/lib/plano-financeiro'
 import {
   notificarAberturaDropdownCatalogo,
+  useFecharAoSairComMouse,
   useInstanciaDropdownCatalogo,
   useOuvirFechamentoDropdownCatalogo,
 } from '@/lib/dropdown-catalogo'
@@ -51,6 +52,7 @@ export function SelecaoMultiplaCatalogo({
   const fechar = useCallback(() => setAbrindo(false), [])
 
   useOuvirFechamentoDropdownCatalogo(instanciaId, fechar)
+  const zonaHover = useFecharAoSairComMouse(fechar)
 
   function abrir() {
     notificarAberturaDropdownCatalogo(instanciaId)
@@ -117,9 +119,9 @@ export function SelecaoMultiplaCatalogo({
   }
 
   return (
-    <div ref={ref} className="space-y-2">
+    <div className="space-y-2">
       <label className="text-sm font-medium leading-none">{rotulo}</label>
-      <div className="relative">
+      <div ref={ref} className="relative" {...zonaHover}>
         <div className="flex items-center gap-2">
           <input
             className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 pr-9 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
@@ -136,24 +138,29 @@ export function SelecaoMultiplaCatalogo({
           <Search className="pointer-events-none absolute right-3 h-4 w-4 text-muted-foreground" />
         </div>
         {abrindo && !disabled && (
-          <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-md border border-border bg-background shadow-md">
-            {carregando && (
-              <p className="px-3 py-2 text-sm text-muted-foreground">Buscando...</p>
-            )}
-            {!carregando && resultados.length === 0 && (
-              <p className="px-3 py-2 text-sm text-muted-foreground">Nenhum resultado</p>
-            )}
-            {resultados.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className="block w-full px-3 py-2 text-left text-sm hover:bg-muted/50"
-                onClick={() => adicionar(item)}
-              >
-                <span className="font-mono font-medium">{item.codigo}</span>
-                <span className="text-muted-foreground"> — {item.descricao}</span>
-              </button>
-            ))}
+          <div className="absolute left-0 right-0 top-full z-20 pt-1">
+            <div className="max-h-48 w-full overflow-auto rounded-md border border-border bg-background shadow-md">
+              {carregando && (
+                <p className="px-3 py-2 text-sm text-muted-foreground">Buscando...</p>
+              )}
+              {!carregando && resultados.length === 0 && (
+                <p className="px-3 py-2 text-sm text-muted-foreground">Nenhum resultado</p>
+              )}
+              {resultados.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="block w-full px-3 py-2 text-left text-sm hover:bg-muted/50"
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    adicionar(item)
+                  }}
+                >
+                  <span className="font-mono font-medium">{item.codigo}</span>
+                  <span className="text-muted-foreground"> — {item.descricao}</span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
