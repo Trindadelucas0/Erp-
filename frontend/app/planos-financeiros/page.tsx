@@ -78,8 +78,11 @@ function ConteudoDaPagina() {
       setArvoreReceitas(resReceitas.data.arvore ?? [])
       setArvoreDespesas(resDespesas.data.arvore ?? [])
       setArvoreResultado(resResultado.data.arvore ?? [])
-    } catch {
-      setErro('Erro ao carregar planos financeiros.')
+    } catch (e: unknown) {
+      const msg =
+        (e as { response?: { data?: { mensagem?: string } } })?.response?.data?.mensagem ||
+        'Erro ao carregar planos financeiros.'
+      setErro(msg)
     }
   }, [])
 

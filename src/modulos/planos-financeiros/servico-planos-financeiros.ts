@@ -71,7 +71,15 @@ async function sanitizarPlanosSeNecessario(
   const updates = sanitizarProfundidadeEmMemoria(estadoInicial, tipo)
   if (updates.length === 0) return planos
 
-  await repositorioDePlanosFinanceiros.atualizarPosicaoEmLote(updates)
+  try {
+    await repositorioDePlanosFinanceiros.atualizarPosicaoEmLote(updates)
+  } catch (erro) {
+    console.error(
+      `[planos-financeiros] Falha ao sanitizar profundidade (tipo=${tipo}, companyId=${companyId}):`,
+      erro
+    )
+    return planos
+  }
 
   const atualizadosPorId = new Map(updates.map((u) => [u.id, u]))
   return planos.map((plano) => {

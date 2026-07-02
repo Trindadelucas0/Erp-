@@ -198,11 +198,24 @@ async function listarPorEmpresaParaMover(companyId: string, tipo: TipoPlanoFinan
   })
 }
 
+function codigoTemporarioRenumeracao(id: string): string {
+  return `__renum__${id}`
+}
+
 async function atualizarPosicaoEmLote(
   updates: { id: string; codigo: string; parentId?: string | null }[]
 ) {
-  await clientePrisma.$transaction(
-    updates.map((u) =>
+  if (updates.length === 0) return
+
+  // Duas fases evitam violar @@unique([codigo, companyId]) ao renumerar em lote.
+  await clientePrisma.$transaction([
+    ...updates.map((u) =>
+      clientePrisma.planoFinanceiro.update({
+        where: { id: u.id },
+        data: { codigo: codigoTemporarioRenumeracao(u.id) },
+      })
+    ),
+    ...updates.map((u) =>
       clientePrisma.planoFinanceiro.update({
         where: { id: u.id },
         data: {
@@ -210,8 +223,8 @@ async function atualizarPosicaoEmLote(
           ...(u.parentId !== undefined ? { parentId: u.parentId } : {}),
         },
       })
-    )
-  )
+    ),
+  ])
 }
 
 export const repositorioDePlanosFinanceiros = {
