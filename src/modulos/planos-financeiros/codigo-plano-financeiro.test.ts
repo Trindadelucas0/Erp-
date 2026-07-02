@@ -19,6 +19,7 @@ describe('codigo-plano-financeiro', () => {
   it('codigoRaizPorIndice gera código raiz por tipo', () => {
     expect(codigoRaizPorIndice('receita', 3)).toBe('1.3')
     expect(codigoRaizPorIndice('despesa', 2)).toBe('2.2')
+    expect(codigoRaizPorIndice('resultado', 1)).toBe('3.1')
   })
 
   it('substituirPrefixoCodigo atualiza nó e prefixo de descendentes', () => {
@@ -77,24 +78,65 @@ describe('executarMovimentoEmMemoria', () => {
     expect(estado.get(ids.p121)!.parentId).toBe(ids.p11)
   })
 
-  it('move nó com filhos para dentro de outro pai', () => {
-    const comFilho = [
-      ...base,
-      { id: 'id-1-2-2', codigo: '1.2.2', parentId: ids.p12 },
-    ]
+  it('bloqueia grupo dentro de outro grupo', () => {
+    expect(() =>
+      executarMovimentoEmMemoria(base, 'receita', ids.p12, ids.p11, 'dentro')
+    ).toThrow(ErroMovimentoPlano)
+  })
 
+  it('bloqueia grupo em relação a subgrupo', () => {
+    expect(() =>
+      executarMovimentoEmMemoria(base, 'receita', ids.p12, ids.p111, 'antes')
+    ).toThrow(ErroMovimentoPlano)
+  })
+
+  it('bloqueia subgrupo no nível de grupo', () => {
+    expect(() =>
+      executarMovimentoEmMemoria(base, 'receita', ids.p121, ids.p11, 'antes')
+    ).toThrow(ErroMovimentoPlano)
+  })
+
+  it('permite subgrupo dentro de outro grupo', () => {
     const { estado } = executarMovimentoEmMemoria(
-      comFilho,
+      base,
       'receita',
-      ids.p12,
+      ids.p121,
       ids.p11,
       'dentro'
     )
 
-    expect(estado.get(ids.p12)!.codigo).toBe('1.1.2')
-    expect(estado.get(ids.p12)!.parentId).toBe(ids.p11)
-    expect(estado.get(ids.p121)!.codigo).toBe('1.1.2.1')
-    expect(estado.get('id-1-2-2')!.codigo).toBe('1.1.2.2')
+    expect(estado.get(ids.p121)!.parentId).toBe(ids.p11)
+  })
+
+  it('permite reordenar grupos entre si', () => {
+    const { estado } = executarMovimentoEmMemoria(
+      base,
+      'receita',
+      ids.p12,
+      ids.p11,
+      'antes'
+    )
+
+    expect(estado.get(ids.p12)!.parentId).toBeNull()
+    expect(estado.get(ids.p12)!.codigo).toBe('1.1')
+  })
+
+  it('bloqueia aninhar dentro de subgrupo', () => {
+    expect(() =>
+      executarMovimentoEmMemoria(base, 'receita', ids.p121, ids.p111, 'dentro')
+    ).toThrow(ErroMovimentoPlano)
+  })
+
+  it('bloqueia subgrupo com filhos ao tentar aninhar', () => {
+    const comNeto = [
+      { id: ids.p11, codigo: '1.1', parentId: null },
+      { id: ids.p111, codigo: '1.1.1', parentId: ids.p11 },
+      { id: 'id-neto', codigo: '1.1.1.1', parentId: ids.p111 },
+      { id: ids.p12, codigo: '1.2', parentId: null },
+    ]
+    expect(() =>
+      executarMovimentoEmMemoria(comNeto, 'receita', ids.p111, ids.p12, 'dentro')
+    ).toThrow(ErroMovimentoPlano)
   })
 
   it('bloqueia mover para descendente (ciclo)', () => {

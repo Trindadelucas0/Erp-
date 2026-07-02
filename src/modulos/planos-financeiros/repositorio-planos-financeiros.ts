@@ -74,12 +74,17 @@ async function listarPorEmpresa(
   })
 }
 
-async function listarFolhasAtivas(companyId: string, q?: string) {
+async function listarFolhasAtivas(
+  companyId: string,
+  q?: string,
+  tipo?: TipoPlanoFinanceiro
+) {
   const termo = q?.trim()
   const planos = await clientePrisma.planoFinanceiro.findMany({
     where: {
       companyId,
       ativo: true,
+      ...(tipo ? { tipo } : {}),
       ...(termo
         ? {
             OR: [

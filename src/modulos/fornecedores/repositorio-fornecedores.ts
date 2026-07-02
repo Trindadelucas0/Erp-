@@ -139,6 +139,7 @@ function mapearParaFornecedorView(pessoa: PessoaComRelacoes) {
         id: p.planoFinanceiro.id,
         codigo: p.planoFinanceiro.codigo,
         descricao: p.planoFinanceiro.nome,
+        tipo: p.planoFinanceiro.tipo,
       })) ?? [],
     cfopsEntrada:
       df?.cfopsEntrada.map((c) => ({
@@ -158,6 +159,7 @@ function mapearParaFornecedorView(pessoa: PessoaComRelacoes) {
           id: df.planoFinanceiroAlternativo.id,
           codigo: df.planoFinanceiroAlternativo.codigo,
           descricao: df.planoFinanceiroAlternativo.nome,
+          tipo: df.planoFinanceiroAlternativo.tipo,
         }
       : null,
     paresPlanoCfopPadrao:
@@ -166,6 +168,7 @@ function mapearParaFornecedorView(pessoa: PessoaComRelacoes) {
         planoFinanceiroId: par.planoFinanceiro.id,
         planoCodigo: par.planoFinanceiro.codigo,
         planoDescricao: par.planoFinanceiro.nome,
+        planoTipo: par.planoFinanceiro.tipo,
         cfopId: par.cfop.id,
         cfopCodigo: par.cfop.codigo,
         cfopDescricao: par.cfop.nome,

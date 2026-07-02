@@ -1,7 +1,5 @@
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 
-const TIPOS_CFOP_ENTRADA = ['01', '02', '03', '04', '06']
-
 async function listarCfops(companyId: string, tipo = 'entrada', q?: string) {
   const termo = q?.trim()
   const cfops = await clientePrisma.cfop.findMany({
@@ -9,7 +7,7 @@ async function listarCfops(companyId: string, tipo = 'entrada', q?: string) {
       companyId,
       ativo: true,
       ...(tipo === 'entrada'
-        ? { OR: [{ tipo: 'entrada' }, { tipoCfop: { in: TIPOS_CFOP_ENTRADA } }] }
+        ? { natureza: { in: ['entrada', 'importacao'] } }
         : { tipo }),
       ...(termo
         ? {

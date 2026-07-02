@@ -3,6 +3,7 @@
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { mascaraCodigoCfop } from '@/lib/cfop'
 import { cn } from '@/lib/utils'
 
 type Props = {
@@ -33,10 +34,12 @@ export function CabecalhoCadastroErp({
         <Input
           id="cfop-codigo"
           value={codigo}
-          onChange={(e) => aoMudarCodigo?.(e.target.value)}
+          onChange={(e) => aoMudarCodigo?.(mascaraCodigoCfop(e.target.value))}
           readOnly={codigoReadonly}
           disabled={disabled || codigoReadonly}
-          className={cn(codigoReadonly && 'bg-muted/50')}
+          inputMode={codigoReadonly ? undefined : 'numeric'}
+          maxLength={codigoReadonly ? undefined : 5}
+          className={cn('font-mono', codigoReadonly && 'bg-muted/50')}
         />
       </div>
       <div className="space-y-2">

@@ -20,6 +20,9 @@ export type LinhaPlanaBase = {
   nome: string
   classificacao: string | null
   mostrarNaDre: boolean
+  permiteLancamentoManual?: boolean
+  exigeAnexoLancamento?: boolean
+  permiteUsoConsumo?: boolean
   ativo: boolean
   nivel: number
   temFilhos: boolean
@@ -46,6 +49,30 @@ export function calcularPosicaoDrop(evento: DragOverEvent | DragEndEvent): Posic
   return 'dentro'
 }
 
+export function resolverDropPlano(
+  posicao: PosicaoMoverPlano,
+  alvo: LinhaPlanaBase,
+  arrastando: LinhaPlanaBase
+): { posicao: PosicaoMoverPlano; alvoId: string } | null {
+  if (arrastando.nivel === 0) {
+    if (alvo.nivel !== 0) return null
+    if (posicao === 'dentro') {
+      return { posicao: 'depois', alvoId: alvo.id }
+    }
+    return { posicao, alvoId: alvo.id }
+  }
+
+  if (alvo.nivel === 0) {
+    return { posicao: 'dentro', alvoId: alvo.id }
+  }
+
+  if (posicao === 'dentro') {
+    return { posicao: 'depois', alvoId: alvo.id }
+  }
+
+  return { posicao, alvoId: alvo.id }
+}
+
 export function calcularPreviewInsercao(
   linhas: LinhaPlanaBase[],
   arrastandoId: string | null,
@@ -53,17 +80,16 @@ export function calcularPreviewInsercao(
 ): PreviewInsercao | null {
   if (!arrastandoId || !dicaDrop) return null
 
-  const filtradas = linhas.filter((l) => l.id !== arrastandoId)
-  const idxAlvo = filtradas.findIndex((l) => l.id === dicaDrop.alvoId)
-  if (idxAlvo === -1) return null
+  const idxAlvoOriginal = linhas.findIndex((l) => l.id === dicaDrop.alvoId)
+  if (idxAlvoOriginal === -1) return null
 
-  const linhaAlvo = filtradas[idxAlvo]
+  const linhaAlvo = linhas[idxAlvoOriginal]
 
   if (dicaDrop.posicao === 'antes') {
     return {
       alvoId: dicaDrop.alvoId,
       posicao: dicaDrop.posicao,
-      indiceLista: idxAlvo,
+      indiceLista: idxAlvoOriginal,
       nivelPlaceholder: linhaAlvo.nivel,
     }
   }
@@ -72,7 +98,7 @@ export function calcularPreviewInsercao(
     return {
       alvoId: dicaDrop.alvoId,
       posicao: dicaDrop.posicao,
-      indiceLista: idxAlvo + 1,
+      indiceLista: idxAlvoOriginal + 1,
       nivelPlaceholder: linhaAlvo.nivel,
     }
   }
@@ -80,7 +106,7 @@ export function calcularPreviewInsercao(
   return {
     alvoId: dicaDrop.alvoId,
     posicao: dicaDrop.posicao,
-    indiceLista: idxAlvo + 1,
+    indiceLista: idxAlvoOriginal + 1,
     nivelPlaceholder: linhaAlvo.nivel + 1,
   }
 }
@@ -123,21 +149,15 @@ export function montarLinhasComPreview(
   }
 
   const resultado: ItemListaRender[] = []
-  let indiceFiltrado = 0
 
-  for (const linha of linhas) {
-    if (preview.indiceLista === indiceFiltrado) {
+  for (let i = 0; i < linhas.length; i++) {
+    if (preview.indiceLista === i) {
       resultado.push({ tipo: 'placeholder', nivel: preview.nivelPlaceholder })
     }
-
-    resultado.push({ tipo: 'linha', linha })
-
-    if (linha.id !== arrastandoId) {
-      indiceFiltrado++
-    }
+    resultado.push({ tipo: 'linha', linha: linhas[i] })
   }
 
-  if (preview.indiceLista === indiceFiltrado) {
+  if (preview.indiceLista === linhas.length) {
     resultado.push({ tipo: 'placeholder', nivel: preview.nivelPlaceholder })
   }
 

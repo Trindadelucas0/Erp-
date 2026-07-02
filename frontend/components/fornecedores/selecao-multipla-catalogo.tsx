@@ -3,11 +3,14 @@
 import { useEffect, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import { clienteHttp } from '@/services/api'
+import { MSG_PLANO_SOMENTE_DESPESA, planoEhDespesa } from '@/lib/plano-financeiro'
+import { cn } from '@/lib/utils'
 
 export type ItemCatalogo = {
   id: string
   codigo: string
   descricao: string
+  tipo?: string
 }
 
 type Props = {
@@ -15,6 +18,7 @@ type Props = {
   ajuda?: string
   endpoint: '/planos-financeiros' | '/cfops'
   tipoCfop?: string
+  tipoPlano?: string
   selecionados: ItemCatalogo[]
   aoMudar: (itens: ItemCatalogo[]) => void
   disabled?: boolean
@@ -25,6 +29,7 @@ export function SelecaoMultiplaCatalogo({
   ajuda,
   endpoint,
   tipoCfop,
+  tipoPlano,
   selecionados,
   aoMudar,
   disabled,
@@ -33,6 +38,7 @@ export function SelecaoMultiplaCatalogo({
   const [resultados, setResultados] = useState<ItemCatalogo[]>([])
   const [abrindo, setAbrindo] = useState(false)
   const [carregando, setCarregando] = useState(false)
+  const [erroSelecao, setErroSelecao] = useState('')
 
   useEffect(() => {
     if (!abrindo) return
@@ -41,6 +47,7 @@ export function SelecaoMultiplaCatalogo({
       try {
         const params: Record<string, string> = { q: busca }
         if (endpoint === '/cfops' && tipoCfop) params.tipo = tipoCfop
+        if (endpoint === '/planos-financeiros' && tipoPlano) params.tipo = tipoPlano
         const chave = endpoint === '/planos-financeiros' ? 'planos' : 'cfops'
         const { data } = await clienteHttp.get(endpoint, { params })
         const lista = (data[chave] ?? []) as ItemCatalogo[]
@@ -53,9 +60,18 @@ export function SelecaoMultiplaCatalogo({
       }
     }, 300)
     return () => clearTimeout(timer)
-  }, [busca, abrindo, endpoint, tipoCfop, selecionados])
+  }, [busca, abrindo, endpoint, tipoCfop, tipoPlano, selecionados])
 
   function adicionar(item: ItemCatalogo) {
+    if (
+      endpoint === '/planos-financeiros' &&
+      tipoPlano === 'despesa' &&
+      !planoEhDespesa(item)
+    ) {
+      setErroSelecao(MSG_PLANO_SOMENTE_DESPESA)
+      return
+    }
+    setErroSelecao('')
     aoMudar([...selecionados, item])
     setBusca('')
     setAbrindo(false)
@@ -73,7 +89,11 @@ export function SelecaoMultiplaCatalogo({
           <input
             className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 pr-9 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
             value={busca}
-            onChange={(e) => { setBusca(e.target.value); setAbrindo(true) }}
+            onChange={(e) => {
+              setBusca(e.target.value)
+              setErroSelecao('')
+              setAbrindo(true)
+            }}
             onFocus={() => setAbrindo(true)}
             placeholder="Buscar por código ou descrição..."
             disabled={disabled}
@@ -103,22 +123,44 @@ export function SelecaoMultiplaCatalogo({
         )}
       </div>
 
+      {erroSelecao && (
+        <p className="text-xs text-destructive">{erroSelecao}</p>
+      )}
+
       {selecionados.length > 0 && (
         <div className="flex flex-wrap gap-2">
-          {selecionados.map((item) => (
-            <span
-              key={item.id}
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/30 px-2 py-1 text-xs"
-            >
-              <span className="font-mono">{item.codigo}</span>
-              <span className="text-muted-foreground">— {item.descricao}</span>
-              {!disabled && (
-                <button type="button" onClick={() => remover(item.id)} className="text-destructive">
-                  <X className="h-3 w-3" />
-                </button>
-              )}
-            </span>
-          ))}
+          {selecionados.map((item) => {
+            const invalido =
+              endpoint === '/planos-financeiros' &&
+              tipoPlano === 'despesa' &&
+              !planoEhDespesa(item)
+            return (
+              <span
+                key={item.id}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs',
+                  invalido
+                    ? 'border-destructive bg-destructive/10 text-destructive'
+                    : 'border-border bg-muted/30'
+                )}
+              >
+                <span className="font-mono">{item.codigo}</span>
+                <span className={invalido ? '' : 'text-muted-foreground'}>
+                  — {item.descricao}
+                </span>
+                {!disabled && (
+                  <button
+                    type="button"
+                    onClick={() => remover(item.id)}
+                    className="text-destructive"
+                    aria-label="Remover"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </span>
+            )
+          })}
         </div>
       )}
 

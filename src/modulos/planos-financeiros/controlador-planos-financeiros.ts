@@ -33,7 +33,11 @@ async function listarPlanosFinanceiros(requisicao: FastifyRequest, resposta: Fas
     return resposta.send(resultado)
   }
 
-  const planos = await servicoDePlanosFinanceiros.listarParaCatalogo(companyId(requisicao), query.q)
+  const planos = await servicoDePlanosFinanceiros.listarParaCatalogo(
+    companyId(requisicao),
+    query.q,
+    tipo
+  )
   return resposta.send({ planos })
 }
 
@@ -41,8 +45,8 @@ async function sugerirProximoCodigo(requisicao: FastifyRequest, resposta: Fastif
   const query = requisicao.query as { tipo?: string; parentId?: string }
   const tipo = query.tipo as TipoPlanoFinanceiro
 
-  if (!tipo || (tipo !== 'receita' && tipo !== 'despesa')) {
-    throw new ErroDaAplicacao('Parâmetro tipo é obrigatório (receita ou despesa)', 400)
+  if (!tipo || (tipo !== 'receita' && tipo !== 'despesa' && tipo !== 'resultado')) {
+    throw new ErroDaAplicacao('Parâmetro tipo é obrigatório (receita, despesa ou resultado)', 400)
   }
 
   const codigo = await servicoDePlanosFinanceiros.sugerirProximoCodigo(

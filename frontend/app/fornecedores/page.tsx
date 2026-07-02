@@ -62,6 +62,7 @@ import {
 import { ListaParesPlanoCfop, type PlanoCfopPar } from '@/components/fornecedores/lista-pares-plano-cfop'
 import { mesclarTexto, mesclarArray, mesclarBoolean } from '@/lib/mesclar-pre-preenchimento'
 import { CampoLookupCatalogo } from '@/components/compartilhado/campo-lookup-catalogo'
+import { MSG_PLANO_SOMENTE_DESPESA, planoEhDespesa } from '@/lib/plano-financeiro'
 import {
   FornecedoresRelacionadosField,
   type FornecedorRelacionadoItem,
@@ -266,10 +267,11 @@ function fornecedorParaForm(f: Fornecedor): FormFornecedor {
     cfopsEntrada: f.cfopsEntrada ?? [],
     cfopSugestaoXml: f.cfopSugestaoXml ?? null,
     planoFinanceiroAlternativo: f.planoFinanceiroAlternativo ?? null,
-    paresPlanoCfopPadrao: (f.paresPlanoCfopPadrao ?? []).map((par: any) => ({
+    paresPlanoCfopPadrao: (f.paresPlanoCfopPadrao ?? []).map((par: PlanoCfopPar & { planoTipo?: string }) => ({
       planoFinanceiroId: par.planoFinanceiroId || '',
       planoCodigo: par.planoCodigo || '',
       planoDescricao: par.planoDescricao || '',
+      planoTipo: par.planoTipo,
       cfopId: par.cfopId || '',
       cfopCodigo: par.cfopCodigo || '',
       cfopDescricao: par.cfopDescricao || '',
@@ -328,6 +330,7 @@ const PREFIXO_ERRO_POR_CAMPO: Record<string, string> = {
   codigoIbge: 'Endereço',
   enderecos: 'Endereço',
   dadosBancarios: 'Dados Bancários',
+  planosFinanceiros: 'Outros',
 }
 
 function contaBancariaTemAlgumCampo(db: DadosBancarioForm): boolean {
@@ -376,6 +379,30 @@ function validarContatosArray(contatos: ContatoForm[]): string | undefined {
 
 function contatoSimplesValido(email: string, telefone: string): boolean {
   return emailContatoValido(email) && telefoneContatoValido(telefone)
+}
+
+function validarPlanosFinanceirosFornecedor(form: FormFornecedor): string | undefined {
+  if (!form.tipoConsumo && !form.tipoPrestadorServico) return undefined
+
+  if (form.planoFinanceiroAlternativo && !planoEhDespesa(form.planoFinanceiroAlternativo)) {
+    return `${MSG_PLANO_SOMENTE_DESPESA} (plano alternativo)`
+  }
+
+  const planoLiberadoInvalido = form.planosFinanceiros.find((p) => !planoEhDespesa(p))
+  if (planoLiberadoInvalido) {
+    return `${MSG_PLANO_SOMENTE_DESPESA} (${planoLiberadoInvalido.codigo})`
+  }
+
+  const parInvalido = form.paresPlanoCfopPadrao.find(
+    (par) =>
+      par.planoFinanceiroId &&
+      !planoEhDespesa({ codigo: par.planoCodigo, tipo: par.planoTipo })
+  )
+  if (parInvalido) {
+    return `${MSG_PLANO_SOMENTE_DESPESA} (par padrão ${parInvalido.planoCodigo})`
+  }
+
+  return undefined
 }
 
 function validarFormFornecedor(form: FormFornecedor): ErrosDoForm {
@@ -444,6 +471,9 @@ function validarFormFornecedor(form: FormFornecedor): ErrosDoForm {
   const erroDadosBancarios = validarDadosBancarios(form.dadosBancarios)
   if (erroDadosBancarios) erros.dadosBancarios = erroDadosBancarios
 
+  const erroPlanos = validarPlanosFinanceirosFornecedor(form)
+  if (erroPlanos) erros.planosFinanceiros = erroPlanos
+
   return erros
 }
 
@@ -466,7 +496,7 @@ const CAMPOS_POR_ABA: Record<string, string[]> = {
   contato: ['email', 'telefone', 'contatos'],
   endereco: ['cep', 'logradouro', 'numero', 'bairro', 'cidade', 'estado', 'codigoIbge', 'enderecos'],
   'dados-bancarios': ['dadosBancarios'],
-  outros: ['tipoFornecedor'],
+  outros: ['tipoFornecedor', 'planosFinanceiros'],
 }
 
 function gerarPendenciasDaAba(abaId: string, form: FormFornecedor): string[] {
@@ -1655,6 +1685,11 @@ function ConteudoDaPaginaDeFornecedores() {
 
                 {(form.tipoConsumo || form.tipoPrestadorServico) && (
                   <div className="space-y-4">
+                    {erroVisivel('planosFinanceiros') && (
+                      <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                        {erroVisivel('planosFinanceiros')}
+                      </p>
+                    )}
                     <CampoLookupCatalogo
                       rotulo="CFOP sugestão ao carregar XML"
                       endpoint="/cfops"
@@ -1666,12 +1701,23 @@ function ConteudoDaPaginaDeFornecedores() {
                     <CampoLookupCatalogo
                       rotulo="Plano financeiro alternativo"
                       endpoint="/planos-financeiros"
+                      queryParams="tipo=despesa"
+                      tipoPlanoEsperado="despesa"
                       valor={form.planoFinanceiroAlternativo}
                       aoSelecionar={(v) => set('planoFinanceiroAlternativo', v)}
                       disabled={somenteLeitura}
                     />
                     <SelecaoMultiplaCatalogo
+                      endpoint="/cfops"
+                      tipoCfop="entrada"
+                      rotulo="CFOPs liberados para entrada"
+                      selecionados={form.cfopsEntrada}
+                      aoMudar={(v) => set('cfopsEntrada', v)}
+                      disabled={somenteLeitura}
+                    />
+                    <SelecaoMultiplaCatalogo
                         endpoint="/planos-financeiros"
+                        tipoPlano="despesa"
                         rotulo="Planos financeiros liberados para entrada"
                         selecionados={form.planosFinanceiros}
                         aoMudar={(v) => set('planosFinanceiros', v)}

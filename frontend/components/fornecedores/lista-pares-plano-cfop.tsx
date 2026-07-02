@@ -1,18 +1,22 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { X } from 'lucide-react'
 import { clienteHttp } from '@/services/api'
+import { MSG_PLANO_SOMENTE_DESPESA, planoEhDespesa } from '@/lib/plano-financeiro'
+import { cn } from '@/lib/utils'
 
 export type PlanoCfopPar = {
   planoFinanceiroId: string
   planoCodigo: string
   planoDescricao: string
+  planoTipo?: string
   cfopId: string
   cfopCodigo: string
   cfopDescricao: string
 }
 
-type ItemCatalogo = { id: string; codigo: string; descricao: string }
+type ItemCatalogo = { id: string; codigo: string; descricao: string; tipo?: string }
 
 type Props = {
   pares: PlanoCfopPar[]
@@ -24,21 +28,28 @@ function ComboboxItem({
   rotulo,
   endpoint,
   queryParams,
+  tipoPlanoEsperado,
   valor,
   aoSelecionar,
+  aoLimpar,
   disabled,
+  invalido,
 }: {
   rotulo: string
   endpoint: string
   queryParams?: string
-  valor: { id: string; codigo: string; descricao: string } | null
+  tipoPlanoEsperado?: 'despesa'
+  valor: { id: string; codigo: string; descricao: string; tipo?: string } | null
   aoSelecionar: (item: ItemCatalogo) => void
+  aoLimpar: () => void
   disabled?: boolean
+  invalido?: boolean
 }) {
   const [busca, setBusca] = useState('')
   const [itens, setItens] = useState<ItemCatalogo[]>([])
   const [aberto, setAberto] = useState(false)
   const [carregando, setCarregando] = useState(false)
+  const [erroSelecao, setErroSelecao] = useState('')
   const refInput = useRef<HTMLInputElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -63,6 +74,11 @@ function ComboboxItem({
   }, [busca, aberto, endpoint, queryParams])
 
   function selecionar(item: ItemCatalogo) {
+    if (tipoPlanoEsperado === 'despesa' && !planoEhDespesa(item)) {
+      setErroSelecao(MSG_PLANO_SOMENTE_DESPESA)
+      return
+    }
+    setErroSelecao('')
     aoSelecionar(item)
     setAberto(false)
     setBusca('')
@@ -71,18 +87,36 @@ function ComboboxItem({
   const textoAtual = valor ? `${valor.codigo} — ${valor.descricao}` : ''
 
   return (
-    <div className="relative space-y-1 flex-1">
+    <div className="relative flex-1 space-y-1">
       <label className="text-xs font-medium text-muted-foreground">{rotulo}</label>
-      <input
-        ref={refInput}
-        className="flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
-        value={aberto ? busca : textoAtual}
-        placeholder="Buscar..."
-        disabled={disabled}
-        onChange={(e) => { setBusca(e.target.value); setAberto(true) }}
-        onFocus={() => setAberto(true)}
-        onBlur={() => setTimeout(() => setAberto(false), 150)}
-      />
+      <div className="flex gap-1">
+        <input
+          ref={refInput}
+          className={cn(
+            'flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50',
+            (invalido || erroSelecao) && 'border-destructive'
+          )}
+          value={aberto ? busca : textoAtual}
+          placeholder="Buscar..."
+          disabled={disabled}
+          onChange={(e) => { setBusca(e.target.value); setErroSelecao(''); setAberto(true) }}
+          onFocus={() => setAberto(true)}
+          onBlur={() => setTimeout(() => setAberto(false), 150)}
+        />
+        {valor && !disabled && (
+          <button
+            type="button"
+            onClick={aoLimpar}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-input text-muted-foreground hover:text-destructive"
+            aria-label="Limpar"
+          >
+            <X className="size-3.5" />
+          </button>
+        )}
+      </div>
+      {(invalido || erroSelecao) && (
+        <p className="text-xs text-destructive">{erroSelecao || MSG_PLANO_SOMENTE_DESPESA}</p>
+      )}
       {aberto && (
         <div className="absolute z-50 mt-0.5 w-full rounded-md border border-border bg-popover shadow-md">
           {carregando && <div className="px-3 py-2 text-xs text-muted-foreground">Buscando...</div>}
@@ -121,7 +155,21 @@ export function ListaParesPlanoCfop({ pares, aoMudar, disabled }: Props) {
   function atualizarPlano(idx: number, item: ItemCatalogo) {
     aoMudar(pares.map((par, i) =>
       i === idx
-        ? { ...par, planoFinanceiroId: item.id, planoCodigo: item.codigo, planoDescricao: item.descricao }
+        ? {
+            ...par,
+            planoFinanceiroId: item.id,
+            planoCodigo: item.codigo,
+            planoDescricao: item.descricao,
+            planoTipo: item.tipo,
+          }
+        : par
+    ))
+  }
+
+  function limparPlano(idx: number) {
+    aoMudar(pares.map((par, i) =>
+      i === idx
+        ? { ...par, planoFinanceiroId: '', planoCodigo: '', planoDescricao: '', planoTipo: undefined }
         : par
     ))
   }
@@ -134,36 +182,60 @@ export function ListaParesPlanoCfop({ pares, aoMudar, disabled }: Props) {
     ))
   }
 
+  function limparCfop(idx: number) {
+    aoMudar(pares.map((par, i) =>
+      i === idx
+        ? { ...par, cfopId: '', cfopCodigo: '', cfopDescricao: '' }
+        : par
+    ))
+  }
+
   return (
     <div className="space-y-3">
-      {pares.map((par, idx) => (
-        <div key={idx} className="flex items-end gap-2 rounded-md border border-border p-3">
-          <ComboboxItem
-            rotulo="Plano Financeiro"
-            endpoint="/planos-financeiros"
-            valor={par.planoFinanceiroId ? { id: par.planoFinanceiroId, codigo: par.planoCodigo, descricao: par.planoDescricao } : null}
-            aoSelecionar={(item) => atualizarPlano(idx, item)}
-            disabled={disabled}
-          />
-          <ComboboxItem
-            rotulo="CFOP Entrada"
-            endpoint="/cfops"
-            queryParams="tipo=entrada"
-            valor={par.cfopId ? { id: par.cfopId, codigo: par.cfopCodigo, descricao: par.cfopDescricao } : null}
-            aoSelecionar={(item) => atualizarCfop(idx, item)}
-            disabled={disabled}
-          />
-          {!disabled && (
-            <button
-              type="button"
-              onClick={() => remover(idx)}
-              className="mb-0.5 shrink-0 text-xs text-destructive hover:underline"
-            >
-              Remover
-            </button>
-          )}
-        </div>
-      ))}
+      {pares.map((par, idx) => {
+        const planoInvalido =
+          !!par.planoFinanceiroId &&
+          !planoEhDespesa({ codigo: par.planoCodigo, tipo: par.planoTipo })
+        return (
+          <div
+            key={idx}
+            className={cn(
+              'flex items-end gap-2 rounded-md border p-3',
+              planoInvalido ? 'border-destructive bg-destructive/5' : 'border-border'
+            )}
+          >
+            <ComboboxItem
+              rotulo="Plano Financeiro"
+              endpoint="/planos-financeiros"
+              queryParams="tipo=despesa"
+              tipoPlanoEsperado="despesa"
+              valor={par.planoFinanceiroId ? { id: par.planoFinanceiroId, codigo: par.planoCodigo, descricao: par.planoDescricao, tipo: par.planoTipo } : null}
+              aoSelecionar={(item) => atualizarPlano(idx, item)}
+              aoLimpar={() => limparPlano(idx)}
+              disabled={disabled}
+              invalido={planoInvalido}
+            />
+            <ComboboxItem
+              rotulo="CFOP Entrada"
+              endpoint="/cfops"
+              queryParams="tipo=entrada"
+              valor={par.cfopId ? { id: par.cfopId, codigo: par.cfopCodigo, descricao: par.cfopDescricao } : null}
+              aoSelecionar={(item) => atualizarCfop(idx, item)}
+              aoLimpar={() => limparCfop(idx)}
+              disabled={disabled}
+            />
+            {!disabled && (
+              <button
+                type="button"
+                onClick={() => remover(idx)}
+                className="mb-0.5 shrink-0 text-xs text-destructive hover:underline"
+              >
+                Remover
+              </button>
+            )}
+          </div>
+        )
+      })}
       {!disabled && (
         <button type="button" onClick={adicionar} className="text-sm text-primary underline">
           + Adicionar par padrão

@@ -25,6 +25,18 @@ import { achatarPlanosComNivel } from '@/components/planos-financeiros/util-arvo
 
 type AbaId = 'receitas' | 'despesas' | 'resultado'
 
+const TITULO_POR_ABA: Record<AbaId, string> = {
+  receitas: 'Receitas',
+  despesas: 'Despesas',
+  resultado: 'Resultado',
+}
+
+const TIPO_POR_ABA: Record<AbaId, TipoPlanoAba> = {
+  receitas: 'receita',
+  despesas: 'despesa',
+  resultado: 'resultado',
+}
+
 function ConteudoDaPagina() {
   const { estaAutenticado, carregando: carregandoSessao } = useSessaoDoUsuario()
   const podeCriar = usePermissao('financeiro:create')
@@ -34,6 +46,7 @@ function ConteudoDaPagina() {
   const [abaAtiva, setAbaAtiva] = useState<AbaId>('receitas')
   const [arvoreReceitas, setArvoreReceitas] = useState<PlanoFinanceiroNo[]>([])
   const [arvoreDespesas, setArvoreDespesas] = useState<PlanoFinanceiroNo[]>([])
+  const [arvoreResultado, setArvoreResultado] = useState<PlanoFinanceiroNo[]>([])
   const [busca, setBusca] = useState('')
   const [filtroSituacao, setFiltroSituacao] = useState<'todos' | 'ativos' | 'inativos'>('todos')
   const [filtrosAbertos, setFiltrosAbertos] = useState(false)
@@ -47,19 +60,24 @@ function ConteudoDaPagina() {
   const [paiPreSelecionadoId, setPaiPreSelecionadoId] = useState<string | null>(null)
   const [idsParaExpandir, setIdsParaExpandir] = useState<string[]>([])
 
-  const tipoAtual: TipoPlanoAba = abaAtiva === 'despesas' ? 'despesa' : 'receita'
-  const arvoreAtual = abaAtiva === 'despesas' ? arvoreDespesas : arvoreReceitas
-  const tituloSecao =
-    abaAtiva === 'receitas' ? 'Receitas' : abaAtiva === 'despesas' ? 'Despesas' : 'Resultado'
+  const tipoAtual = TIPO_POR_ABA[abaAtiva]
+  const arvoreAtual =
+    abaAtiva === 'despesas'
+      ? arvoreDespesas
+      : abaAtiva === 'resultado'
+        ? arvoreResultado
+        : arvoreReceitas
 
   const carregarPlanos = useCallback(async () => {
     try {
-      const [resReceitas, resDespesas] = await Promise.all([
+      const [resReceitas, resDespesas, resResultado] = await Promise.all([
         clienteHttp.get('/planos-financeiros?incluirInativos=true&tipo=receita'),
         clienteHttp.get('/planos-financeiros?incluirInativos=true&tipo=despesa'),
+        clienteHttp.get('/planos-financeiros?incluirInativos=true&tipo=resultado'),
       ])
       setArvoreReceitas(resReceitas.data.arvore ?? [])
       setArvoreDespesas(resDespesas.data.arvore ?? [])
+      setArvoreResultado(resResultado.data.arvore ?? [])
     } catch {
       setErro('Erro ao carregar planos financeiros.')
     }
@@ -84,7 +102,7 @@ function ConteudoDaPagina() {
   }, [filtrosAbertos])
 
   const planosParaPai = useMemo(
-    () => achatarPlanosComNivel(arvoreAtual),
+    () => achatarPlanosComNivel(arvoreAtual).filter((p) => p.nivel === 0),
     [arvoreAtual]
   )
 
@@ -151,26 +169,6 @@ function ConteudoDaPagina() {
     }
   }
 
-  const totaisResultado = useMemo(() => {
-    const contar = (nos: PlanoFinanceiroNo[]): { ativos: number; inativos: number } => {
-      let ativos = 0
-      let inativos = 0
-      for (const no of nos) {
-        if (no.ativo) ativos++
-        else inativos++
-        if (no.filhos?.length) {
-          const sub = contar(no.filhos)
-          ativos += sub.ativos
-          inativos += sub.inativos
-        }
-      }
-      return { ativos, inativos }
-    }
-    const rec = contar(arvoreReceitas)
-    const desp = contar(arvoreDespesas)
-    return { rec, desp }
-  }, [arvoreReceitas, arvoreDespesas])
-
   return (
     <div className="space-y-6">
       <div>
@@ -198,94 +196,74 @@ function ConteudoDaPagina() {
         aoMudar={(id) => setAbaAtiva(id as AbaId)}
       />
 
-      {abaAtiva === 'resultado' ? (
-        <CardPadrao titulo="Resultado" descricao="Resumo dos planos cadastrados">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="rounded-lg border border-border p-4">
-              <p className="text-sm font-medium text-muted-foreground">Receitas</p>
-              <p className="mt-2 text-2xl font-bold">{totaisResultado.rec.ativos + totaisResultado.rec.inativos}</p>
-              <p className="text-xs text-muted-foreground">
-                {totaisResultado.rec.ativos} habilitados · {totaisResultado.rec.inativos} desabilitados
-              </p>
-            </div>
-            <div className="rounded-lg border border-border p-4">
-              <p className="text-sm font-medium text-muted-foreground">Despesas</p>
-              <p className="mt-2 text-2xl font-bold">{totaisResultado.desp.ativos + totaisResultado.desp.inativos}</p>
-              <p className="text-xs text-muted-foreground">
-                {totaisResultado.desp.ativos} habilitados · {totaisResultado.desp.inativos} desabilitados
-              </p>
-            </div>
-          </div>
-        </CardPadrao>
-      ) : (
-        <CardPadrao
-          titulo={tituloSecao}
-          permitirOverflow
-          acoes={
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative" ref={refFiltros}>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setFiltrosAbertos((v) => !v)}
-                >
-                  <Filter className="mr-1 size-4" />
-                  Filtros
-                  <ChevronDown className="ml-1 size-4" />
-                </Button>
-                {filtrosAbertos && (
-                  <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-md border border-border bg-card p-3 shadow-lg">
-                    <p className="mb-1.5 text-xs font-medium text-muted-foreground">Buscar</p>
-                    <Input
-                      value={busca}
-                      onChange={(e) => setBusca(e.target.value)}
-                      placeholder="Código ou nome..."
-                    />
-                    <Separator className="my-3" />
-                    <p className="mb-1.5 text-xs font-medium text-muted-foreground">Situação</p>
-                    <div className="space-y-0.5">
-                      {(['todos', 'ativos', 'inativos'] as const).map((op) => (
-                        <button
-                          key={op}
-                          type="button"
-                          className={`block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-muted ${
-                            filtroSituacao === op ? 'bg-muted font-medium' : ''
-                          }`}
-                          onClick={() => setFiltroSituacao(op)}
-                        >
-                          {op === 'todos' ? 'Todos' : op === 'ativos' ? 'Habilitados' : 'Desabilitados'}
-                        </button>
-                      ))}
-                    </div>
+      <CardPadrao
+        titulo={TITULO_POR_ABA[abaAtiva]}
+        descricao="Estrutura hierárquica de contas com flags visíveis no grid."
+        permitirOverflow
+        acoes={
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative" ref={refFiltros}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setFiltrosAbertos((v) => !v)}
+              >
+                <Filter className="mr-1 size-4" />
+                Filtros
+                <ChevronDown className="ml-1 size-4" />
+              </Button>
+              {filtrosAbertos && (
+                <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-md border border-border bg-card p-3 shadow-lg">
+                  <p className="mb-1.5 text-xs font-medium text-muted-foreground">Buscar</p>
+                  <Input
+                    value={busca}
+                    onChange={(e) => setBusca(e.target.value)}
+                    placeholder="Código ou nome..."
+                  />
+                  <Separator className="my-3" />
+                  <p className="mb-1.5 text-xs font-medium text-muted-foreground">Situação</p>
+                  <div className="space-y-0.5">
+                    {(['todos', 'ativos', 'inativos'] as const).map((op) => (
+                      <button
+                        key={op}
+                        type="button"
+                        className={`block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-muted ${
+                          filtroSituacao === op ? 'bg-muted font-medium' : ''
+                        }`}
+                        onClick={() => setFiltroSituacao(op)}
+                      >
+                        {op === 'todos' ? 'Todos' : op === 'ativos' ? 'Habilitados' : 'Desabilitados'}
+                      </button>
+                    ))}
                   </div>
-                )}
-              </div>
-              {podeCriar && (
-                <BotaoPrimario type="button" onClick={abrirNovo}>
-                  <Plus className="mr-1 size-4 inline" />
-                  Adicionar plano
-                </BotaoPrimario>
+                </div>
               )}
             </div>
-          }
-        >
-          <ArvorePlanosFinanceiros
-            arvore={arvoreAtual}
-            busca={busca}
-            filtroSituacao={filtroSituacao}
-            podeEditar={podeEditar}
-            podeDesativar={podeDesativar}
-            podeCriar={podeCriar}
-            movendoId={movendoId}
-            idsParaExpandir={idsParaExpandir}
-            aoEditar={abrirEdicao}
-            aoAlternarAtivo={alternarAtivo}
-            aoAdicionarSubgrupo={podeCriar ? abrirSubgrupo : undefined}
-            aoMover={podeEditar ? moverPlano : undefined}
-          />
-        </CardPadrao>
-      )}
+            {podeCriar && (
+              <BotaoPrimario type="button" onClick={abrirNovo}>
+                <Plus className="mr-1 size-4 inline" />
+                Adicionar plano
+              </BotaoPrimario>
+            )}
+          </div>
+        }
+      >
+        <ArvorePlanosFinanceiros
+          arvore={arvoreAtual}
+          busca={busca}
+          filtroSituacao={filtroSituacao}
+          podeEditar={podeEditar}
+          podeDesativar={podeDesativar}
+          podeCriar={podeCriar}
+          movendoId={movendoId}
+          idsParaExpandir={idsParaExpandir}
+          aoEditar={abrirEdicao}
+          aoAlternarAtivo={alternarAtivo}
+          aoAdicionarSubgrupo={podeCriar ? abrirSubgrupo : undefined}
+          aoMover={podeEditar ? moverPlano : undefined}
+        />
+      </CardPadrao>
 
       <ModalPlanoFinanceiro
         aberto={modalAberto}

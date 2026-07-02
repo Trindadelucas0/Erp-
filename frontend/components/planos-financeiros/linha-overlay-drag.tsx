@@ -1,11 +1,8 @@
 import { ChevronDown, ChevronRight, GripVertical } from 'lucide-react'
 import { BadgeStatus } from '@/components/ui/badge-status'
 import { cn } from '@/lib/utils'
-import {
-  classesBadgeTipoNivel,
-  classesNomePorNivel,
-  rotuloTipoNivel,
-} from './estilos-hierarquia-plano'
+import { classesNomePorNivel } from './estilos-hierarquia-plano'
+import { COLUNAS_FLAGS_PLANO, textoFlagSim } from './flags-plano-financeiro'
 import type { LinhaPlanaBase } from './logica-preview-drag'
 
 type Props = {
@@ -15,8 +12,6 @@ type Props = {
 }
 
 export function LinhaOverlayDrag({ linha, largura, expandidos }: Props) {
-  const rotuloTipo = rotuloTipoNivel(linha.nivel)
-
   return (
     <div
       style={{ width: largura }}
@@ -25,10 +20,12 @@ export function LinhaOverlayDrag({ linha, largura, expandidos }: Props) {
       <table className="w-full table-fixed text-sm">
         <colgroup>
           <col className="w-[4%]" />
-          <col className="w-[34%]" />
-          <col className="w-[22%]" />
-          <col className="w-[14%]" />
-          <col className="w-[18%]" />
+          <col className="w-[32%]" />
+          <col className="w-[9%]" />
+          <col className="w-[9%]" />
+          <col className="w-[9%]" />
+          <col className="w-[9%]" />
+          <col className="w-[20%]" />
           <col className="w-[8%]" />
         </colgroup>
         <tbody>
@@ -52,9 +49,6 @@ export function LinhaOverlayDrag({ linha, largura, expandidos }: Props) {
                 ) : (
                   <span className="inline-block w-5 shrink-0" />
                 )}
-                {rotuloTipo && (
-                  <span className={classesBadgeTipoNivel(linha.nivel)}>{rotuloTipo}</span>
-                )}
                 <span
                   className={cn('truncate', classesNomePorNivel(linha.nivel, linha.temFilhos))}
                   title={`${linha.codigo} - ${linha.nome}`}
@@ -63,14 +57,11 @@ export function LinhaOverlayDrag({ linha, largura, expandidos }: Props) {
                 </span>
               </div>
             </td>
-            <td className="max-w-0 px-4 py-3 text-muted-foreground">
-              <span className="block truncate" title={linha.classificacao ?? undefined}>
-                {linha.classificacao || '—'}
-              </span>
-            </td>
-            <td className="px-4 py-3 text-muted-foreground">
-              {linha.mostrarNaDre ? 'Sim' : ''}
-            </td>
+            {COLUNAS_FLAGS_PLANO.map((coluna) => (
+              <td key={coluna.chave} className="px-2 py-3 text-center text-muted-foreground">
+                {textoFlagSim(linha[coluna.chave])}
+              </td>
+            ))}
             <td className="px-4 py-3">
               <BadgeStatus variante={linha.ativo ? 'ativo' : 'reprovado'}>
                 {linha.ativo ? 'Habilitado' : 'Desabilitado'}

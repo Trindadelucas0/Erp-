@@ -326,6 +326,10 @@ model Cfop {
   nome                  String
   descricao             String   @default("")
   tipoCfop              String   @default("01")
+  natureza              String   @default("entrada")
+  abrangencia           String?
+  subtipoCfop           String?
+  aproveitarCreditoIcms Boolean  @default(false)
   tipo                  String   @default("entrada")
   companyId             String
   company               Company  @relation(fields: [companyId], references: [id])

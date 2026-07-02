@@ -6,6 +6,11 @@ import {
   substituirPrefixoCodigo,
   type TipoPlanoFinanceiro,
 } from './codigo-plano-financeiro.js'
+import {
+  codigoProfundidadeValido,
+  paiEhGrupo,
+  validarProfundidadeEstado,
+} from './profundidade-plano-financeiro.js'
 
 export type EstadoPlanoMover = {
   id: string
@@ -121,7 +126,33 @@ export function executarMovimentoEmMemoria(
   let novoParentId: string | null
   let indiceInsercao: number
 
+  const movidoEhGrupo = movido.parentId === null
+  const alvoEhGrupo = alvo.parentId === null
+
+  if (movidoEhGrupo) {
+    if (posicao === 'dentro') {
+      throw new ErroMovimentoPlano('Grupo só pode ser reordenado entre outros grupos')
+    }
+    if (!alvoEhGrupo) {
+      throw new ErroMovimentoPlano('Grupo só pode ser movido em relação a outros grupos')
+    }
+  } else if (posicao === 'dentro') {
+    if (!alvoEhGrupo) {
+      throw new ErroMovimentoPlano(
+        'Não é permitido criar subgrupo dentro de outro subgrupo'
+      )
+    }
+  } else if (alvoEhGrupo) {
+    throw new ErroMovimentoPlano('Subgrupo não pode ser movido para o nível de grupo')
+  }
+
   if (posicao === 'dentro') {
+    const movidoTemFilhos = estadoInicial.some((p) => p.parentId === planoId)
+    if (movidoTemFilhos) {
+      throw new ErroMovimentoPlano(
+        'Um grupo com subgrupos não pode ser aninhado dentro de outro grupo'
+      )
+    }
     novoParentId = alvoId
     indiceInsercao = irmaosSemSubarvore(novoParentId).length
   } else {
@@ -143,12 +174,29 @@ export function executarMovimentoEmMemoria(
 
   renumerarListaFilhos(novoParentId, listaDestino, estado, tipo)
 
+  if (novoParentId && !paiEhGrupo(novoParentId, estado)) {
+    throw new ErroMovimentoPlano('Só grupos de 1º nível podem ter subgrupos')
+  }
+
+  try {
+    validarProfundidadeEstado(estado)
+  } catch (erro) {
+    throw new ErroMovimentoPlano(
+      erro instanceof Error ? erro.message : 'Profundidade máxima excedida'
+    )
+  }
+
   const updates: { id: string; codigo: string; parentId?: string | null }[] = []
   for (const [id, atual] of estado) {
     const orig = original.get(id)!
     if (atual.codigo !== orig.codigo || atual.parentId !== orig.parentId) {
       if (!codigoCompativelComTipo(atual.codigo, tipo)) {
         throw new ErroMovimentoPlano('Código resultante incompatível com o tipo do plano')
+      }
+      if (!codigoProfundidadeValido(atual.codigo)) {
+        throw new ErroMovimentoPlano(
+          'Código excede a profundidade máxima permitida (grupo + subgrupo)'
+        )
       }
       updates.push({
         id,

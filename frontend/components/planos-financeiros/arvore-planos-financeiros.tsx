@@ -24,6 +24,7 @@ import { LinhaPlaceholderDrag } from './linha-placeholder-drag'
 import {
   calcularPosicaoDrop,
   calcularPreviewInsercao,
+  resolverDropPlano,
   descricaoPreviewDrop,
   montarLinhasComPreview,
   type DicaDrop,
@@ -31,11 +32,11 @@ import {
   type PosicaoMoverPlano,
 } from './logica-preview-drag'
 import {
-  classesBadgeTipoNivel,
   classesLinhaPorNivel,
   classesNomePorNivel,
-  rotuloTipoNivel,
 } from './estilos-hierarquia-plano'
+import { COLUNAS_FLAGS_PLANO, textoFlagSim } from './flags-plano-financeiro'
+import { NIVEL_MAXIMO_PLANO } from './util-arvore-planos'
 
 export type PlanoFinanceiroNo = {
   id: string
@@ -64,9 +65,9 @@ function achatarArvore(
   const linhas: LinhaPlana[] = []
   for (const no of nos) {
     const filhos = no.filhos ?? []
-    const temFilhos = filhos.length > 0
-    linhas.push({ ...no, nivel, temFilhos })
-    if (temFilhos && expandidos.has(no.id)) {
+    const podeExpandir = nivel < NIVEL_MAXIMO_PLANO && filhos.length > 0
+    linhas.push({ ...no, nivel, temFilhos: podeExpandir })
+    if (podeExpandir && expandidos.has(no.id)) {
       linhas.push(...achatarArvore(filhos, expandidos, nivel + 1))
     }
   }
@@ -132,7 +133,6 @@ function LinhaPlanoFinanceiro({
   const mostraAntes = dicaDrop?.alvoId === linha.id && dicaDrop.posicao === 'antes'
   const mostraDepois = dicaDrop?.alvoId === linha.id && dicaDrop.posicao === 'depois'
   const mostraDentro = dicaDrop?.alvoId === linha.id && dicaDrop.posicao === 'dentro'
-  const rotuloTipo = rotuloTipoNivel(linha.nivel)
 
   if (arrastandoId === linha.id) {
     return (
@@ -140,7 +140,7 @@ function LinhaPlanoFinanceiro({
         <td className="h-0 p-0">
           <button ref={setDragRef} type="button" className="sr-only" {...listeners} {...attributes} />
         </td>
-        <td colSpan={5} className="h-0 p-0" />
+        <td colSpan={7} className="h-0 p-0" />
       </tr>
     )
   }
@@ -196,9 +196,6 @@ function LinhaPlanoFinanceiro({
             ) : (
               <span className="inline-block w-5 shrink-0" />
             )}
-            {rotuloTipo && (
-              <span className={classesBadgeTipoNivel(linha.nivel)}>{rotuloTipo}</span>
-            )}
             <span
               className={cn('truncate', classesNomePorNivel(linha.nivel, linha.temFilhos))}
               title={`${linha.codigo} - ${linha.nome}`}
@@ -223,12 +220,11 @@ function LinhaPlanoFinanceiro({
           )}
         </div>
       </td>
-      <td className="max-w-0 px-4 py-3 text-muted-foreground">
-        <span className="block truncate" title={linha.classificacao ?? undefined}>
-          {linha.classificacao || '—'}
-        </span>
-      </td>
-      <td className="px-4 py-3 text-muted-foreground">{linha.mostrarNaDre ? 'Sim' : ''}</td>
+      {COLUNAS_FLAGS_PLANO.map((coluna) => (
+        <td key={coluna.chave} className="px-2 py-3 text-center text-muted-foreground">
+          {textoFlagSim(linha[coluna.chave])}
+        </td>
+      ))}
       <td className="px-4 py-3">
         <BadgeStatus variante={linha.ativo ? 'ativo' : 'reprovado'}>
           {linha.ativo ? 'Habilitado' : 'Desabilitado'}
@@ -243,7 +239,7 @@ function LinhaPlanoFinanceiro({
                 rotulo: 'Adicionar subgrupo',
                 icone: Plus,
                 onClick: () => aoAdicionarSubgrupo?.(linha),
-                oculto: !podeCriar || !aoAdicionarSubgrupo,
+                oculto: !podeCriar || !aoAdicionarSubgrupo || linha.nivel !== 0,
               },
               {
                 rotulo: 'Editar',
@@ -285,7 +281,7 @@ function renderizarItemLista(
         linhaArrastada={previewMeta.linhaArrastada}
         titulo={previewMeta.titulo}
         detalhe={previewMeta.detalhe}
-        colSpan={6}
+        colSpan={8}
       />
     )
   }
@@ -422,15 +418,26 @@ export function ArvorePlanosFinanceiros({
       return
     }
 
-    const posicao = calcularPosicaoDrop(evento)
+    const alvo = linhaPorId.get(alvoId)
+    const arrastando = linhaPorId.get(String(evento.active.id))
+    if (!alvo || !arrastando) {
+      setDicaDrop(null)
+      return
+    }
 
-    setDicaDrop({ alvoId, posicao })
+    const resolvido = resolverDropPlano(calcularPosicaoDrop(evento), alvo, arrastando)
+    if (!resolvido) {
+      setDicaDrop(null)
+      return
+    }
 
-    if (posicao === 'dentro') {
+    setDicaDrop(resolvido)
+
+    if (resolvido.posicao === 'dentro') {
       setExpandidos((prev) => {
-        if (prev.has(alvoId)) return prev
+        if (prev.has(resolvido.alvoId)) return prev
         const prox = new Set(prev)
-        prox.add(alvoId)
+        prox.add(resolvido.alvoId)
         return prox
       })
     }
@@ -447,11 +454,17 @@ export function ArvorePlanosFinanceiros({
     const alvoId = overId.replace('drop-', '')
     if (alvoId === planoId) return
 
-    const posicao = calcularPosicaoDrop(evento)
-    await aoMover(planoId, alvoId, posicao)
+    const alvo = linhaPorId.get(alvoId)
+    const arrastando = linhaPorId.get(planoId)
+    if (!alvo || !arrastando) return
 
-    if (posicao === 'dentro') {
-      setExpandidos((prev) => new Set(prev).add(alvoId))
+    const resolvido = resolverDropPlano(calcularPosicaoDrop(evento), alvo, arrastando)
+    if (!resolvido) return
+
+    await aoMover(planoId, resolvido.alvoId, resolvido.posicao)
+
+    if (resolvido.posicao === 'dentro') {
+      setExpandidos((prev) => new Set(prev).add(resolvido.alvoId))
     }
   }
 
@@ -488,18 +501,22 @@ export function ArvorePlanosFinanceiros({
   const colunas = arrastarHabilitado ? (
     <>
       <col className="w-[4%]" />
-      <col className="w-[34%]" />
-      <col className="w-[22%]" />
-      <col className="w-[14%]" />
-      <col className="w-[18%]" />
+      <col className="w-[32%]" />
+      <col className="w-[9%]" />
+      <col className="w-[9%]" />
+      <col className="w-[9%]" />
+      <col className="w-[9%]" />
+      <col className="w-[20%]" />
       <col className="w-[8%]" />
     </>
   ) : (
     <>
-      <col className="w-[38%]" />
-      <col className="w-[22%]" />
-      <col className="w-[14%]" />
-      <col className="w-[18%]" />
+      <col className="w-[36%]" />
+      <col className="w-[9%]" />
+      <col className="w-[9%]" />
+      <col className="w-[9%]" />
+      <col className="w-[9%]" />
+      <col className="w-[20%]" />
       <col className="w-[8%]" />
     </>
   )
@@ -528,8 +545,15 @@ export function ArvorePlanosFinanceiros({
         <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
           {arrastarHabilitado && <th className="px-1 py-3" />}
           <th className="px-4 py-3 font-medium">Nome</th>
-          <th className="px-4 py-3 font-medium">Classificação</th>
-          <th className="px-4 py-3 font-medium">Mostrar no DRE</th>
+          {COLUNAS_FLAGS_PLANO.map((coluna) => (
+            <th
+              key={coluna.chave}
+              className="px-2 py-3 text-center text-xs font-medium"
+              title={coluna.titulo}
+            >
+              {coluna.rotulo}
+            </th>
+          ))}
           <th className="px-4 py-3 font-medium">Situação</th>
           <th className="px-2 py-3" />
         </tr>
@@ -566,12 +590,6 @@ export function ArvorePlanosFinanceiros({
         ref={refAreaDrag}
         className="relative overflow-hidden rounded-lg border border-border bg-card select-none"
       >
-        {arrastandoId && dicaDrop && previewDescricao && (
-          <div className="border-b border-primary/30 bg-primary/5 px-4 py-2 text-sm">
-            <span className="font-semibold">{previewDescricao.titulo}</span>
-            <span className="text-muted-foreground"> — {previewDescricao.detalhe}</span>
-          </div>
-        )}
         {tabela}
       </div>
       <DragOverlay

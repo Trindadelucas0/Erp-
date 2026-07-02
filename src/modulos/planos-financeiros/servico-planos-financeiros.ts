@@ -8,6 +8,10 @@ import {
   type TipoPlanoFinanceiro,
 } from './codigo-plano-financeiro.js'
 import {
+  codigoProfundidadeValido,
+  sanitizarProfundidadeEmMemoria,
+} from './profundidade-plano-financeiro.js'
+import {
   ErroMovimentoPlano,
   executarMovimentoEmMemoria,
 } from './logica-mover-plano-financeiro.js'
@@ -30,6 +34,7 @@ function montarArvore(
 ) {
   const mapa = new Map<string, ReturnType<typeof paraRespostaApi> & { filhos: unknown[] }>()
   const raizes: (ReturnType<typeof paraRespostaApi> & { filhos: unknown[] })[] = []
+  const parentPorId = new Map(planos.map((p) => [p.id, p.parentId]))
 
   for (const plano of planos) {
     mapa.set(plano.id, { ...paraRespostaApi(repositorioDePlanosFinanceiros.mapear(plano)), filhos: [] })
@@ -38,7 +43,12 @@ function montarArvore(
   for (const plano of planos) {
     const no = mapa.get(plano.id)!
     if (plano.parentId && mapa.has(plano.parentId)) {
-      mapa.get(plano.parentId)!.filhos.push(no)
+      const paiParentId = parentPorId.get(plano.parentId)
+      if (paiParentId === null || paiParentId === undefined) {
+        mapa.get(plano.parentId)!.filhos.push(no)
+      } else {
+        raizes.push(no)
+      }
     } else {
       raizes.push(no)
     }
@@ -47,29 +57,67 @@ function montarArvore(
   return raizes
 }
 
+async function sanitizarPlanosSeNecessario(
+  companyId: string,
+  planos: Awaited<ReturnType<typeof repositorioDePlanosFinanceiros.listarPorEmpresa>>,
+  tipo: TipoPlanoFinanceiro
+) {
+  const estadoInicial = planos.map((p) => ({
+    id: p.id,
+    codigo: p.codigo,
+    parentId: p.parentId,
+  }))
+
+  const updates = sanitizarProfundidadeEmMemoria(estadoInicial, tipo)
+  if (updates.length === 0) return planos
+
+  await repositorioDePlanosFinanceiros.atualizarPosicaoEmLote(updates)
+
+  const atualizadosPorId = new Map(updates.map((u) => [u.id, u]))
+  return planos.map((plano) => {
+    const patch = atualizadosPorId.get(plano.id)
+    if (!patch) return plano
+    return {
+      ...plano,
+      codigo: patch.codigo,
+      parentId: patch.parentId !== undefined ? patch.parentId : plano.parentId,
+    }
+  })
+}
+
 async function listarParaGestao(
   companyId: string,
   tipo?: TipoPlanoFinanceiro,
   incluirInativos = true,
   q?: string
 ) {
-  const planos = await repositorioDePlanosFinanceiros.listarPorEmpresa(companyId, {
+  let planos = await repositorioDePlanosFinanceiros.listarPorEmpresa(companyId, {
     tipo,
     incluirInativos,
     q,
   })
+
+  if (tipo) {
+    planos = await sanitizarPlanosSeNecessario(companyId, planos, tipo)
+  }
+
   return {
     planos: planos.map((p) => paraRespostaApi(repositorioDePlanosFinanceiros.mapear(p))),
     arvore: montarArvore(planos),
   }
 }
 
-async function listarParaCatalogo(companyId: string, q?: string) {
-  const folhas = await repositorioDePlanosFinanceiros.listarFolhasAtivas(companyId, q)
+async function listarParaCatalogo(
+  companyId: string,
+  q?: string,
+  tipo?: TipoPlanoFinanceiro
+) {
+  const folhas = await repositorioDePlanosFinanceiros.listarFolhasAtivas(companyId, q, tipo)
   return folhas.map((p) => ({
     id: p.id,
     codigo: p.codigo,
     descricao: p.nome,
+    tipo: p.tipo,
   }))
 }
 
@@ -103,6 +151,12 @@ async function validarPai(companyId: string, tipo: TipoPlanoFinanceiro, parentId
   if (!pai) throw new ErroDaAplicacao('Plano pai não encontrado', 404)
   if (pai.tipo !== tipo) throw new ErroDaAplicacao('Plano pai deve ser do mesmo tipo', 400)
   if (!pai.ativo) throw new ErroDaAplicacao('Plano pai está inativo', 400)
+  if (pai.parentId) {
+    throw new ErroDaAplicacao(
+      'Só é permitido criar subgrupo dentro de um grupo de 1º nível',
+      400
+    )
+  }
 }
 
 async function criarPlano(
@@ -119,6 +173,13 @@ async function criarPlano(
   if (!codigoCompativelComTipo(codigo, dados.tipo)) {
     throw new ErroDaAplicacao(
       `Código deve começar com ${raizDoTipo(dados.tipo)} para ${dados.tipo}`,
+      400
+    )
+  }
+
+  if (!codigoProfundidadeValido(codigo)) {
+    throw new ErroDaAplicacao(
+      'Código excede a profundidade máxima permitida (grupo + subgrupo)',
       400
     )
   }

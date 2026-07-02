@@ -10,19 +10,18 @@ import {
   ModalSecao,
 } from '@/components/ui/modal-layout'
 import { InputPadrao } from '@/components/ui/input-padrao'
-import { SelectPadrao } from '@/components/ui/select-padrao'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { SelectGrupoPlanoFinanceiro } from './select-grupo-plano-financeiro'
+import { COLUNAS_FLAGS_PLANO } from './flags-plano-financeiro'
 import { buscarGrupoPai, type PlanoComNivel } from './util-arvore-planos'
 import type { PlanoFinanceiroNo } from './arvore-planos-financeiros'
 
-export type TipoPlanoAba = 'receita' | 'despesa'
+export type TipoPlanoAba = 'receita' | 'despesa' | 'resultado'
 
 export type FormPlanoFinanceiro = {
   nome: string
-  classificacao: string
   parentId: string
   mostrarNaDre: boolean
   permiteLancamentoManual: boolean
@@ -32,24 +31,12 @@ export type FormPlanoFinanceiro = {
 
 const formVazio: FormPlanoFinanceiro = {
   nome: '',
-  classificacao: '',
   parentId: '',
   mostrarNaDre: true,
   permiteLancamentoManual: false,
   exigeAnexoLancamento: false,
   permiteUsoConsumo: false,
 }
-
-const OPCOES_CLASSIFICACAO = [
-  { value: '', label: 'Selecione a classificação da conta' },
-  { value: 'Custo Fixo', label: 'Custo Fixo' },
-  { value: 'Custo Variável', label: 'Custo Variável' },
-  { value: 'Despesa Fixa', label: 'Despesa Fixa' },
-  { value: 'Despesa Variável', label: 'Despesa Variável' },
-  { value: 'Contas de ativo', label: 'Contas de ativo' },
-  { value: 'Receita operacional', label: 'Receita operacional' },
-  { value: 'Receita financeira', label: 'Receita financeira' },
-]
 
 type Props = {
   aberto: boolean
@@ -65,7 +52,6 @@ type Props = {
 function planoParaForm(plano: PlanoFinanceiroNo): FormPlanoFinanceiro {
   return {
     nome: plano.nome,
-    classificacao: plano.classificacao ?? '',
     parentId: plano.parentId ?? '',
     mostrarNaDre: plano.mostrarNaDre,
     permiteLancamentoManual: plano.permiteLancamentoManual ?? false,
@@ -204,7 +190,6 @@ export function ModalPlanoFinanceiro({
     try {
       const corpoBase = {
         nome: form.nome,
-        classificacao: form.classificacao || undefined,
         mostrarNaDre: form.mostrarNaDre,
         permiteLancamentoManual: form.permiteLancamentoManual,
         exigeAnexoLancamento: form.exigeAnexoLancamento,
@@ -234,7 +219,8 @@ export function ModalPlanoFinanceiro({
     }
   }
 
-  const tituloTipo = tipo === 'receita' ? 'receita' : 'despesa'
+  const tituloTipo =
+    tipo === 'receita' ? 'receita' : tipo === 'despesa' ? 'despesa' : 'resultado'
 
   const descricaoModal = modoEdicao
     ? 'Altere o nome e as opções. Para mudar de grupo, arraste na lista.'
@@ -318,7 +304,7 @@ export function ModalPlanoFinanceiro({
         <ModalSecao
           numero={1}
           titulo="Identifique a conta"
-          descricao="Nome e classificação usados na DRE e nos relatórios."
+          descricao="Nome exibido na árvore de contas e nos relatórios."
         >
           <InputPadrao
             rotulo="Nome da conta"
@@ -326,13 +312,6 @@ export function ModalPlanoFinanceiro({
             onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))}
             placeholder="Ex.: Materiais de escritório"
             required
-          />
-
-          <SelectPadrao
-            rotulo="Tipo de classificação"
-            valor={form.classificacao}
-            aoMudar={(v) => setForm((f) => ({ ...f, classificacao: v }))}
-            opcoes={OPCOES_CLASSIFICACAO}
           />
         </ModalSecao>
 
@@ -364,30 +343,15 @@ export function ModalPlanoFinanceiro({
 
         <ModalSecao numero={3} titulo="Opções do plano">
           <ModalConfiguracoesAvancadas abertoPorPadrao={opcoesAvancadasAbertas}>
-            <CampoCheckbox
-              id={`${idBase}-dre`}
-              rotulo="Mostrar na DRE"
-              valor={form.mostrarNaDre}
-              aoMudar={(v) => setForm((f) => ({ ...f, mostrarNaDre: v }))}
-            />
-            <CampoCheckbox
-              id={`${idBase}-manual`}
-              rotulo="Permite lançamento manual"
-              valor={form.permiteLancamentoManual}
-              aoMudar={(v) => setForm((f) => ({ ...f, permiteLancamentoManual: v }))}
-            />
-            <CampoCheckbox
-              id={`${idBase}-anexo`}
-              rotulo="Exige anexo no lançamento financeiro"
-              valor={form.exigeAnexoLancamento}
-              aoMudar={(v) => setForm((f) => ({ ...f, exigeAnexoLancamento: v }))}
-            />
-            <CampoCheckbox
-              id={`${idBase}-consumo`}
-              rotulo="Permite utilização para uso e consumo"
-              valor={form.permiteUsoConsumo}
-              aoMudar={(v) => setForm((f) => ({ ...f, permiteUsoConsumo: v }))}
-            />
+            {COLUNAS_FLAGS_PLANO.map((coluna) => (
+              <CampoCheckbox
+                key={coluna.chave}
+                id={`${idBase}-${coluna.chave}`}
+                rotulo={coluna.rotulo}
+                valor={form[coluna.chave]}
+                aoMudar={(v) => setForm((f) => ({ ...f, [coluna.chave]: v }))}
+              />
+            ))}
           </ModalConfiguracoesAvancadas>
         </ModalSecao>
       </form>

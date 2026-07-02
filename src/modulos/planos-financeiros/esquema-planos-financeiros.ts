@@ -3,7 +3,7 @@
  */
 import { z } from 'zod'
 
-const tipoPlano = z.enum(['receita', 'despesa'])
+const tipoPlano = z.enum(['receita', 'despesa', 'resultado'])
 
 export const esquemaDeCriacaoDePlanoFinanceiro = z.object({
   nome: z.string().trim().min(2, 'Nome deve ter pelo menos 2 caracteres').max(200),

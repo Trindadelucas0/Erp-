@@ -148,16 +148,6 @@ export function SelectGrupoPlanoFinanceiro({
           onClick={() => selecionar(plano.id)}
           title={`${plano.codigo} - ${plano.nome}`}
         >
-          <span
-            className={cn(
-              'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide',
-              plano.nivel === 0
-                ? 'bg-primary/15 text-primary'
-                : 'bg-muted text-muted-foreground'
-            )}
-          >
-            {plano.nivel === 0 ? 'Grupo' : 'Subgrupo'}
-          </span>
           <span className="min-w-0 flex-1 truncate">
             <span
               className={cn(

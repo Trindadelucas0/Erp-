@@ -2,10 +2,12 @@
  * Utilitários para códigos hierárquicos de planos financeiros (1.1, 2.3.1).
  */
 
-export type TipoPlanoFinanceiro = 'receita' | 'despesa'
+export type TipoPlanoFinanceiro = 'receita' | 'despesa' | 'resultado'
 
 export function raizDoTipo(tipo: TipoPlanoFinanceiro): string {
-  return tipo === 'receita' ? '1' : '2'
+  if (tipo === 'receita') return '1'
+  if (tipo === 'despesa') return '2'
+  return '3'
 }
 
 export function nivelDoCodigo(codigo: string): number {
