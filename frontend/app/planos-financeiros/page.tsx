@@ -113,8 +113,8 @@ function ConteudoDaPagina() {
     [planosAchatados]
   )
 
-  const codigosExistentes = useMemo(
-    () => planosAchatados.map((p) => p.codigo),
+  const planosParaValidacao = useMemo(
+    () => planosAchatados.map((p) => ({ codigo: p.codigo, nome: p.nome })),
     [planosAchatados]
   )
 
@@ -281,7 +281,7 @@ function ConteudoDaPagina() {
         modoEdicao={modoEdicao}
         planoEmEdicao={planoEmEdicao}
         planosDisponiveis={planosParaPai}
-        codigosExistentes={codigosExistentes}
+        planosParaValidacao={planosParaValidacao}
         paiPreSelecionadoId={paiPreSelecionadoId}
         aoFechar={fecharModal}
         aoSalvo={async (parentIdCriado) => {

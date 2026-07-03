@@ -55,12 +55,40 @@ export function validarSufixoInformado(valor: string): string | null {
   return null
 }
 
-export function codigoPlanoJaExiste(codigo: string, codigosExistentes: string[]): boolean {
-  return codigosExistentes.includes(codigo)
+const LIMITE_NOME_EXIBICAO = 60
+
+function truncarNomeExibicao(nome: string): string {
+  const texto = nome.trim()
+  if (texto.length <= LIMITE_NOME_EXIBICAO) return texto
+  return `${texto.slice(0, LIMITE_NOME_EXIBICAO)}…`
 }
 
-export function mensagemCodigoDuplicado(codigo: string): string {
-  return `O código ${codigo} já está em uso nesta empresa`
+export type PlanoCodigoNome = { codigo: string; nome: string }
+
+export function buscarPlanoPorCodigo(
+  codigo: string,
+  planos: PlanoCodigoNome[]
+): PlanoCodigoNome | undefined {
+  return planos.find((p) => p.codigo === codigo)
+}
+
+export function codigoPlanoJaExiste(codigo: string, planos: PlanoCodigoNome[]): boolean {
+  return planos.some((p) => p.codigo === codigo)
+}
+
+export function mensagemCodigoDuplicado(
+  codigo: string,
+  nomeContaExistente: string,
+  nomeEmpresa?: string
+): string {
+  const conta = truncarNomeExibicao(nomeContaExistente)
+  const empresa = nomeEmpresa?.trim() ? truncarNomeExibicao(nomeEmpresa) : ''
+
+  if (empresa) {
+    return `Na empresa ${empresa}, o código ${codigo} já pertence à conta «${conta}». Escolha outro número.`
+  }
+
+  return `O código ${codigo} já pertence à conta «${conta}». Escolha outro número.`
 }
 
 export function planoEhSubgrupo(plano: PlanoCatalogo): boolean {

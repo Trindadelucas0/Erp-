@@ -17,15 +17,18 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { SelectGrupoPlanoFinanceiro } from './select-grupo-plano-financeiro'
 import { COLUNAS_FLAGS_PLANO } from './flags-plano-financeiro'
+import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { buscarGrupoPai, type PlanoComNivel } from './util-arvore-planos'
 import type { PlanoFinanceiroNo } from './arvore-planos-financeiros'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import {
+  buscarPlanoPorCodigo,
   codigoPlanoJaExiste,
   mensagemCodigoDuplicado,
   montarCodigoComSufixo,
   sufixoCodigoValido,
   validarSufixoInformado,
+  type PlanoCodigoNome,
 } from '@/lib/plano-financeiro'
 
 export type TipoPlanoAba = 'receita' | 'despesa' | 'resultado'
@@ -54,7 +57,7 @@ type Props = {
   modoEdicao: boolean
   planoEmEdicao: PlanoFinanceiroNo | null
   planosDisponiveis: PlanoComNivel[]
-  codigosExistentes?: string[]
+  planosParaValidacao?: PlanoCodigoNome[]
   paiPreSelecionadoId?: string | null
   aoFechar: () => void
   aoSalvo: (parentIdCriado?: string | null) => void
@@ -111,11 +114,12 @@ export function ModalPlanoFinanceiro({
   modoEdicao,
   planoEmEdicao,
   planosDisponiveis,
-  codigosExistentes = [],
+  planosParaValidacao = [],
   paiPreSelecionadoId,
   aoFechar,
   aoSalvo,
 }: Props) {
+  const { perfil } = useSessaoDoUsuario()
   const [form, setForm] = useState<FormPlanoFinanceiro>(formVazio)
   const [prefixoCodigo, setPrefixoCodigo] = useState('')
   const [sufixoCodigo, setSufixoCodigo] = useState('')
@@ -125,6 +129,12 @@ export function ModalPlanoFinanceiro({
   const [erro, setErro] = useState('')
   const idBase = useId()
   const parentIdRequisicaoRef = useRef<string | null>(null)
+
+  const nomeEmpresaAtiva = useMemo(() => {
+    if (typeof window === 'undefined' || !perfil) return undefined
+    const empresaAtivaId = localStorage.getItem('empresaAtivaId')
+    return perfil.empresas.find((e) => e.company.id === empresaAtivaId)?.company.name
+  }, [perfil])
 
   useEffect(() => {
     if (!aberto) return
@@ -210,8 +220,13 @@ export function ModalPlanoFinanceiro({
     if (!prefixo) return ''
 
     const codigo = montarCodigoComSufixo(prefixo, Number(digitos))
-    if (codigoPlanoJaExiste(codigo, codigosExistentes)) {
-      return mensagemCodigoDuplicado(codigo)
+    if (codigoPlanoJaExiste(codigo, planosParaValidacao)) {
+      const planoExistente = buscarPlanoPorCodigo(codigo, planosParaValidacao)
+      return mensagemCodigoDuplicado(
+        codigo,
+        planoExistente?.nome ?? codigo,
+        nomeEmpresaAtiva
+      )
     }
     return ''
   }

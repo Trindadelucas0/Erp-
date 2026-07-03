@@ -20,6 +20,7 @@ import {
   executarMovimentoEmMemoria,
 } from './logica-mover-plano-financeiro.js'
 import { repositorioDePlanosFinanceiros } from './repositorio-planos-financeiros.js'
+import { repositorioDeEmpresas } from '../empresas/repositorio-empresas.js'
 import type {
   DadosParaCriarPlanoFinanceiro,
   DadosParaEditarPlanoFinanceiro,
@@ -245,7 +246,12 @@ async function criarPlano(
 
   const duplicado = await repositorioDePlanosFinanceiros.buscarPorCodigo(companyId, codigo)
   if (duplicado) {
-    throw new ErroDaAplicacao(`O código ${codigo} já está cadastrado nesta empresa`, 400)
+    const empresa = await repositorioDeEmpresas.buscarPorId(companyId)
+    const nomeConta = duplicado.nome
+    const mensagem = empresa?.name
+      ? `Na empresa ${empresa.name}, o código ${codigo} já pertence à conta «${nomeConta}». Escolha outro número.`
+      : `O código ${codigo} já pertence à conta «${nomeConta}». Escolha outro número.`
+    throw new ErroDaAplicacao(mensagem, 400)
   }
 
   const plano = await repositorioDePlanosFinanceiros.criar(companyId, { ...dados, codigo })
