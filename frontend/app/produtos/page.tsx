@@ -1,0 +1,934 @@
+'use client'
+
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { Plus } from 'lucide-react'
+import { clienteHttp } from '@/services/api'
+import { resolverUrlUpload } from '@/lib/resolver-url-upload'
+import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
+import { RodapeModalVisualizacao } from '@/components/compartilhado/rodape-modal-visualizacao'
+import { usePermissao } from '@/hooks/use-permissao'
+import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
+import { useValidacaoDeAbas, type ConfigDeAba } from '@/hooks/use-validacao-de-abas'
+import { CardPadrao } from '@/components/ui/card-padrao'
+import { Abas } from '@/components/ui/abas'
+import { BadgeStatus } from '@/components/ui/badge-status'
+import { BotaoPrimario } from '@/components/ui/botao-primario'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Modal } from '@/components/ui/modal'
+import { InputPadrao } from '@/components/ui/input-padrao'
+import { SelectPadrao } from '@/components/ui/select-padrao'
+import { CampoFotoProduto } from '@/components/produtos/campo-foto-produto'
+import {
+  ListaEmbalagensMaster,
+  type EmbalagemMasterForm,
+} from '@/components/produtos/lista-embalagens-master'
+import {
+  ListaEnderecosEstoque,
+  type EnderecoEstoqueForm,
+} from '@/components/produtos/lista-enderecos-estoque'
+import {
+  SelecaoProdutosSimilares,
+  type ProdutoSimilarItem,
+} from '@/components/produtos/selecao-produtos-similares'
+import {
+  ListaFornecedoresProduto,
+  type FornecedorProdutoForm,
+} from '@/components/produtos/lista-fornecedores-produto'
+import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
+import type { ResultadoCompressaoProduto } from '@/lib/comprimir-imagem-produto'
+
+type FornecedorOpcao = { id: string; nome: string }
+
+const ORDEM_ABAS = ['principal', 'logistica', 'compras', 'fiscal'] as const
+
+const ORIGENS_FISCAIS = [
+  { value: '0', label: '0 - Nacional' },
+  { value: '1', label: '1 - Estrangeira (Importação direta)' },
+  { value: '2', label: '2 - Estrangeira (Adquirida no mercado interno)' },
+  { value: '3', label: '3 - Nacional (Conteúdo de importação superior a 40%)' },
+  { value: '4', label: '4 - Nacional (Processos produtivos básicos)' },
+  { value: '5', label: '5 - Nacional (Conteúdo de importação inferior ou igual a 40%)' },
+  { value: '6', label: '6 - Estrangeira (Importação direta, sem similar nacional)' },
+  { value: '7', label: '7 - Estrangeira (Adquirida no mercado interno, sem similar nacional)' },
+  { value: '8', label: '8 - Nacional (Conteúdo de importação superior a 70%)' },
+] as const
+
+const ROTULO_PROXIMA_ABA: Record<(typeof ORDEM_ABAS)[number], string | null> = {
+  principal: 'Logística',
+  logistica: 'Compras',
+  compras: 'Fiscal',
+  fiscal: null,
+}
+
+type FormProduto = {
+  sku: string
+  ativo: boolean
+  nomeVenda: string
+  marca: string
+  unidade: string
+  caracteristicas: string
+  entregaNoAto: boolean
+  entregaARetirar: boolean
+  entregar: boolean
+  entregaPorEncomenda: boolean
+  flagDevolucao: boolean
+  controlaEstoque: boolean
+  flagComissao: boolean
+  permiteEstoqueNegativo: boolean
+  bloqueadoCompra: boolean
+  bloqueadoVenda: boolean
+  desativarAoZerarEstoque: boolean
+  codigoBarras: string
+  pesoKg: string
+  alturaCm: string
+  larguraCm: string
+  comprimentoCm: string
+  capacidadeEmpilhamento: string
+  normaPalete: string
+  embalagensMaster: EmbalagemMasterForm[]
+  enderecosEstoque: EnderecoEstoqueForm[]
+  nomeCompra: string
+  fornecedores: FornecedorProdutoForm[]
+  similares: ProdutoSimilarItem[]
+  ncm: string
+  codigoOrigem: string
+}
+
+const formVazio: FormProduto = {
+  sku: '',
+  ativo: true,
+  nomeVenda: '',
+  marca: '',
+  unidade: 'UN',
+  caracteristicas: '',
+  entregaNoAto: false,
+  entregaARetirar: false,
+  entregar: false,
+  entregaPorEncomenda: false,
+  flagDevolucao: false,
+  controlaEstoque: true,
+  flagComissao: false,
+  permiteEstoqueNegativo: false,
+  bloqueadoCompra: false,
+  bloqueadoVenda: false,
+  desativarAoZerarEstoque: false,
+  codigoBarras: '',
+  pesoKg: '',
+  alturaCm: '',
+  larguraCm: '',
+  comprimentoCm: '',
+  capacidadeEmpilhamento: '',
+  normaPalete: '',
+  embalagensMaster: [],
+  enderecosEstoque: [],
+  nomeCompra: '',
+  fornecedores: [],
+  similares: [],
+  ncm: '',
+  codigoOrigem: '',
+}
+
+function urlFoto(caminho?: string | null) {
+  return resolverUrlUpload(caminho)
+}
+
+function num(v: string): number | undefined {
+  if (!v.trim()) return undefined
+  const n = Number(v.replace(',', '.'))
+  return Number.isFinite(n) ? n : undefined
+}
+
+function int(v: string): number | undefined {
+  if (!v.trim()) return undefined
+  const n = Number(v.replace(/\D/g, ''))
+  return Number.isFinite(n) ? Math.round(n) : undefined
+}
+
+/** Remove null/NaN do payload antes do POST para evitar "Invalid input" no Zod. */
+function sanitizarPayload<T>(valor: T): T {
+  if (valor === null || valor === undefined) return undefined as T
+  if (typeof valor === 'number') {
+    return (Number.isFinite(valor) ? valor : undefined) as T
+  }
+  if (Array.isArray(valor)) {
+    return valor.map(sanitizarPayload).filter((item) => item !== undefined) as T
+  }
+  if (typeof valor === 'object') {
+    const resultado: Record<string, unknown> = {}
+    for (const [chave, item] of Object.entries(valor)) {
+      const limpo = sanitizarPayload(item)
+      if (limpo !== undefined) resultado[chave] = limpo
+    }
+    return resultado as T
+  }
+  return valor
+}
+
+function ConteudoDaPagina() {
+  const { estaAutenticado, carregando: carregandoSessao } = useSessaoDoUsuario()
+  const podeCriar = usePermissao('produtos:create')
+  const podeEditar = usePermissao('produtos:edit')
+  const podeDesativar = usePermissao('produtos:delete')
+
+  const [lista, setLista] = useState<
+    (FormProduto & { id: string; urlFotoMiniatura?: string | null })[]
+  >([])
+  const [fornecedores, setFornecedores] = useState<FornecedorOpcao[]>([])
+  const [busca, setBusca] = useState('')
+  const [modalAberto, setModalAberto] = useState(false)
+  const [modoEdicao, setModoEdicao] = useState(false)
+  const [modoVisualizacao, setModoVisualizacao] = useState(false)
+  const [idEmEdicao, setIdEmEdicao] = useState('')
+  const [form, setForm] = useState<FormProduto>(formVazio)
+  const [abaAtiva, setAbaAtiva] = useState('principal')
+  const [salvando, setSalvando] = useState(false)
+  const [mensagem, setMensagem] = useState('')
+  const [erro, setErro] = useState('')
+  const [fotoComprimida, setFotoComprimida] = useState<ResultadoCompressaoProduto | null>(null)
+  const [removerFoto, setRemoverFoto] = useState(false)
+  const [urlFotoAtual, setUrlFotoAtual] = useState<string | null>(null)
+
+  const configAbas: ConfigDeAba[] = useMemo(
+    () => [
+      {
+        id: 'principal',
+        validar: () =>
+          form.nomeVenda.trim().length >= 2 &&
+          form.marca.trim().length >= 1 &&
+          form.unidade.trim().length >= 1,
+      },
+      {
+        id: 'logistica',
+        validar: () =>
+          form.embalagensMaster.every((e) => {
+            if (!e.quantidade.trim()) return true
+            const qtd = num(e.quantidade)
+            return qtd !== undefined && qtd > 0
+          }) &&
+          form.enderecosEstoque.every((e) => !e.endereco.trim() || e.endereco.trim().length >= 1),
+      },
+      { id: 'compras', validar: () => form.fornecedores.every((f) => f.fornecedorPessoaId.trim().length > 0) },
+      { id: 'fiscal', validar: () => !form.ncm || /^\d{8}$/.test(form.ncm.replace(/\D/g, '')) },
+    ],
+    [form]
+  )
+
+  const {
+    statusDasAbas,
+    validarTodasAsAbas,
+    validarAba,
+    irParaAbaComErro,
+    marcarAbaVisitada,
+    resetarStatus,
+  } = useValidacaoDeAbas(configAbas)
+
+  const carregar = useCallback(async () => {
+    try {
+      const params = new URLSearchParams({ incluirInativos: 'true' })
+      if (busca.trim()) params.set('q', busca.trim())
+      const { data } = await clienteHttp.get(`/produtos?${params}`)
+      setLista(data.produtos ?? [])
+    } catch {
+      setErro('Erro ao carregar produtos.')
+    }
+  }, [busca])
+
+  const carregarFornecedores = useCallback(async () => {
+    try {
+      const { data } = await clienteHttp.get('/fornecedores')
+      setFornecedores(
+        (data.fornecedores ?? [])
+          .filter((f: { ativo: boolean }) => f.ativo)
+          .map((f: { id: string; nome: string }) => ({ id: f.id, nome: f.nome }))
+      )
+    } catch {
+      setFornecedores([])
+    }
+  }, [])
+
+  useEffect(() => {
+    if (carregandoSessao || !estaAutenticado) return
+    carregar()
+    carregarFornecedores()
+  }, [carregandoSessao, estaAutenticado, carregar, carregarFornecedores])
+
+  function abrirNovo() {
+    setForm(formVazio)
+    setModoEdicao(false)
+    setModoVisualizacao(false)
+    setIdEmEdicao('')
+    setAbaAtiva('principal')
+    setFotoComprimida(null)
+    setRemoverFoto(false)
+    setUrlFotoAtual(null)
+    setErro('')
+    resetarStatus()
+    setModalAberto(true)
+  }
+
+  function fecharModal() {
+    setModalAberto(false)
+    setModoVisualizacao(false)
+    setErro('')
+  }
+
+  function produtoApiParaForm(p: Record<string, unknown>): FormProduto {
+    return {
+      sku: (p.sku as string | null) ?? '',
+      ativo: p.ativo as boolean,
+      nomeVenda: p.nomeVenda as string,
+      marca: (p.marca as string | null) ?? '',
+      unidade: p.unidade as string,
+      caracteristicas: (p.caracteristicas as string | null) ?? '',
+      entregaNoAto: (p.entregaNoAto as boolean) ?? false,
+      entregaARetirar: (p.entregaARetirar as boolean) ?? false,
+      entregar: (p.entregar as boolean) ?? false,
+      entregaPorEncomenda: (p.entregaPorEncomenda as boolean) ?? false,
+      flagDevolucao: p.flagDevolucao as boolean,
+      controlaEstoque: p.controlaEstoque as boolean,
+      flagComissao: p.flagComissao as boolean,
+      permiteEstoqueNegativo: p.permiteEstoqueNegativo as boolean,
+      bloqueadoCompra: (p.bloqueadoCompra as boolean) ?? false,
+      bloqueadoVenda: (p.bloqueadoVenda as boolean) ?? false,
+      desativarAoZerarEstoque: (p.desativarAoZerarEstoque as boolean) ?? false,
+      codigoBarras: (p.codigoBarras as string | null) ?? '',
+      pesoKg: p.pesoKg != null ? String(p.pesoKg) : '',
+      alturaCm: p.alturaCm != null ? String(p.alturaCm) : '',
+      larguraCm: p.larguraCm != null ? String(p.larguraCm) : '',
+      comprimentoCm: p.comprimentoCm != null ? String(p.comprimentoCm) : '',
+      capacidadeEmpilhamento:
+        p.capacidadeEmpilhamento != null ? String(p.capacidadeEmpilhamento) : '',
+      normaPalete: (p.normaPalete as string | null) ?? '',
+      embalagensMaster: ((p.embalagensMaster as Array<{
+        quantidade: number
+        codigoBarras: string | null
+        descricao: string | null
+      }>) ?? []).map((e) => ({
+        quantidade: String(e.quantidade),
+        codigoBarras: e.codigoBarras ?? '',
+        descricao: e.descricao ?? '',
+      })),
+      enderecosEstoque: ((p.enderecosEstoque as Array<{
+        apelido: string | null
+        endereco: string
+      }>) ?? []).map((e) => ({
+        apelido: e.apelido ?? '',
+        endereco: e.endereco,
+      })),
+      nomeCompra: (p.nomeCompra as string | null) ?? '',
+      fornecedores: ((p.fornecedores as Array<{
+        fornecedorPessoaId: string
+        codigoFornecedor: string | null
+        multiploEntrada: number | null
+        multiplicadorEntrada: number | null
+        unidadeEntrada: string | null
+      }>) ?? []).map((f) => ({
+        fornecedorPessoaId: f.fornecedorPessoaId,
+        codigoFornecedor: f.codigoFornecedor ?? '',
+        multiploEntrada: f.multiploEntrada != null ? String(f.multiploEntrada) : '',
+        multiplicadorEntrada:
+          f.multiplicadorEntrada != null ? String(f.multiplicadorEntrada) : '',
+        unidadeEntrada: f.unidadeEntrada ?? '',
+      })),
+      similares: (p.similares as ProdutoSimilarItem[]) ?? [],
+      ncm: (p.ncm as string | null) ?? '',
+      codigoOrigem: (p.codigoOrigem as string | null) ?? '',
+    }
+  }
+
+  async function carregarProdutoNoForm(produtoId: string) {
+    const { data } = await clienteHttp.get(`/produtos/${produtoId}`)
+    const p = data.produto
+    setForm(produtoApiParaForm(p))
+    setIdEmEdicao(p.id)
+    setAbaAtiva('principal')
+    setFotoComprimida(null)
+    setRemoverFoto(false)
+    setUrlFotoAtual(p.urlFotoPrincipal ?? null)
+    setErro('')
+    resetarStatus()
+    return p
+  }
+
+  async function abrirVisualizacao(produto: { id: string }) {
+    try {
+      await carregarProdutoNoForm(produto.id)
+      setModoEdicao(false)
+      setModoVisualizacao(true)
+      setModalAberto(true)
+    } catch {
+      setErro('Erro ao carregar produto.')
+    }
+  }
+
+  function alternarParaEdicao() {
+    if (!podeEditar) return
+    setModoVisualizacao(false)
+    setModoEdicao(true)
+    setErro('')
+  }
+
+  function montarPayload() {
+    return {
+      sku: form.sku.trim() || undefined,
+      ativo: form.ativo,
+      nomeVenda: form.nomeVenda.trim(),
+      marca: form.marca.trim(),
+      unidade: form.unidade.trim(),
+      caracteristicas: form.caracteristicas.trim() || undefined,
+      entregaNoAto: form.entregaNoAto,
+      entregaARetirar: form.entregaARetirar,
+      entregar: form.entregar,
+      entregaPorEncomenda: form.entregaPorEncomenda,
+      flagDevolucao: form.flagDevolucao,
+      controlaEstoque: form.controlaEstoque,
+      flagComissao: form.flagComissao,
+      permiteEstoqueNegativo: form.permiteEstoqueNegativo,
+      bloqueadoCompra: form.bloqueadoCompra,
+      bloqueadoVenda: form.bloqueadoVenda,
+      desativarAoZerarEstoque: form.desativarAoZerarEstoque,
+      codigoBarras: form.codigoBarras.trim() || undefined,
+      pesoKg: num(form.pesoKg),
+      alturaCm: num(form.alturaCm),
+      larguraCm: num(form.larguraCm),
+      comprimentoCm: num(form.comprimentoCm),
+      capacidadeEmpilhamento: int(form.capacidadeEmpilhamento),
+      normaPalete: form.normaPalete.trim() || undefined,
+      embalagensMaster: form.embalagensMaster
+        .map((e, ordem) => {
+          const quantidade = num(e.quantidade)
+          if (quantidade === undefined || quantidade <= 0) return null
+          return {
+            quantidade,
+            codigoBarras: e.codigoBarras.trim() || undefined,
+            descricao: e.descricao.trim() || undefined,
+            ordem,
+          }
+        })
+        .filter((e): e is NonNullable<typeof e> => e !== null),
+      enderecosEstoque: form.enderecosEstoque
+        .filter((e) => e.endereco.trim())
+        .map((e, ordem) => ({
+          apelido: e.apelido.trim() || undefined,
+          endereco: e.endereco.trim(),
+          ordem,
+        })),
+      nomeCompra: form.nomeCompra.trim() || undefined,
+      fornecedores: form.fornecedores
+        .filter((f) => f.fornecedorPessoaId.trim())
+        .map((f, ordem) => ({
+          fornecedorPessoaId: f.fornecedorPessoaId,
+          codigoFornecedor: f.codigoFornecedor.trim() || undefined,
+          multiploEntrada: num(f.multiploEntrada),
+          multiplicadorEntrada: num(f.multiplicadorEntrada),
+          unidadeEntrada: f.unidadeEntrada.trim() || undefined,
+          ordem,
+        })),
+      similaresIds: form.similares.map((s) => s.id),
+      ncm: form.ncm.replace(/\D/g, '') || undefined,
+      codigoOrigem: form.codigoOrigem || undefined,
+    }
+  }
+
+  async function enviarFoto(produtoId: string) {
+    if (removerFoto) {
+      await clienteHttp.delete(`/produtos/${produtoId}/foto`)
+      return
+    }
+    if (!fotoComprimida) return
+    await clienteHttp.post(`/produtos/${produtoId}/foto`, {
+      principal: fotoComprimida.principal.dataUrl,
+      miniatura: fotoComprimida.miniatura.dataUrl,
+      larguraPrincipal: fotoComprimida.principal.largura,
+      alturaPrincipal: fotoComprimida.principal.altura,
+      larguraMiniatura: fotoComprimida.miniatura.largura,
+      alturaMiniatura: fotoComprimida.miniatura.altura,
+    })
+  }
+
+  async function aoSalvar(e?: FormEvent) {
+    e?.preventDefault()
+    if (modoVisualizacao) return
+    marcarAbaVisitada(abaAtiva)
+
+    if (!validarAba(abaAtiva)) {
+      setErro(
+        abaAtiva === 'principal'
+          ? 'Preencha nome para venda, marca e unidade na aba Principal.'
+          : abaAtiva === 'compras'
+            ? 'Selecione o fornecedor em todas as linhas da aba Compras.'
+            : abaAtiva === 'fiscal'
+            ? 'NCM deve ter 8 dígitos.'
+            : 'Revise os campos desta aba.'
+      )
+      return
+    }
+
+    const indiceAtual = ORDEM_ABAS.indexOf(abaAtiva as (typeof ORDEM_ABAS)[number])
+    const proximaAba = ORDEM_ABAS[indiceAtual + 1]
+
+    if (proximaAba) {
+      setErro('')
+      setAbaAtiva(proximaAba)
+      return
+    }
+
+    if (!validarTodasAsAbas()) {
+      const abaErro = irParaAbaComErro()
+      if (abaErro) setAbaAtiva(abaErro)
+      return
+    }
+
+    setSalvando(true)
+    setErro('')
+    try {
+      const payload = sanitizarPayload(montarPayload())
+      let produtoId = idEmEdicao
+
+      if (modoEdicao) {
+        await clienteHttp.put(`/produtos/${idEmEdicao}`, payload)
+        setMensagem('Produto atualizado.')
+      } else {
+        const { data } = await clienteHttp.post('/produtos', payload)
+        produtoId = data.produto.id
+        setMensagem('Produto criado.')
+      }
+
+      if (fotoComprimida || removerFoto) {
+        await enviarFoto(produtoId)
+      }
+
+      setModalAberto(false)
+      setModoVisualizacao(false)
+      await carregar()
+    } catch (err: unknown) {
+      setErro(extrairMensagemApi(err, 'Erro ao salvar produto'))
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  async function alternarAtivo(produto: { id: string; ativo: boolean }) {
+    try {
+      await clienteHttp.patch(`/produtos/${produto.id}/ativo`, { ativo: !produto.ativo })
+      if (modalAberto && idEmEdicao === produto.id) {
+        setForm((f) => ({ ...f, ativo: !produto.ativo }))
+      }
+      await carregar()
+    } catch (err: unknown) {
+      setErro(extrairMensagemApi(err, 'Erro ao alterar status'))
+    }
+  }
+
+  async function alternarAtivoVisualizacao() {
+    if (!idEmEdicao) return
+    try {
+      const novoAtivo = !form.ativo
+      await clienteHttp.patch(`/produtos/${idEmEdicao}/ativo`, { ativo: novoAtivo })
+      setForm((f) => ({ ...f, ativo: novoAtivo }))
+      setMensagem(novoAtivo ? 'Produto reativado.' : 'Produto desativado.')
+      await carregar()
+    } catch (err: unknown) {
+      setErro(extrairMensagemApi(err, 'Erro ao alterar status'))
+    }
+  }
+
+  const somenteLeitura = modoVisualizacao
+  const podeSalvar = !somenteLeitura && (modoEdicao ? podeEditar : podeCriar)
+  const camposDesabilitados = somenteLeitura || !podeSalvar
+
+  const indiceAba = ORDEM_ABAS.indexOf(abaAtiva as (typeof ORDEM_ABAS)[number])
+  const ehPrimeiraAba = indiceAba <= 0
+  const ehUltimaAba = indiceAba >= ORDEM_ABAS.length - 1
+
+  function irParaAbaAnterior() {
+    if (!ehPrimeiraAba) setAbaAtiva(ORDEM_ABAS[indiceAba - 1])
+  }
+
+  function irParaProximaAba() {
+    if (!ehUltimaAba) setAbaAtiva(ORDEM_ABAS[indiceAba + 1])
+  }
+
+  const tituloModal = modoVisualizacao
+    ? `Visualizar produto: ${form.nomeVenda || '—'}`
+    : modoEdicao
+      ? `Editar produto: ${form.nomeVenda || '—'}`
+      : 'Novo produto'
+  const proximaAbaLabel = ROTULO_PROXIMA_ABA[abaAtiva as (typeof ORDEM_ABAS)[number]]
+  const rotuloBotaoSalvar = salvando
+    ? 'Salvando...'
+    : proximaAbaLabel
+      ? `Salvar e próximo → ${proximaAbaLabel}`
+      : 'Salvar'
+
+  const abas = [
+    { id: 'principal', rotulo: 'Principal', status: statusDasAbas.principal },
+    { id: 'logistica', rotulo: 'Logística', status: statusDasAbas.logistica },
+    { id: 'compras', rotulo: 'Compras', status: statusDasAbas.compras },
+    { id: 'fiscal', rotulo: 'Fiscal', status: statusDasAbas.fiscal },
+  ]
+
+  const flagsPrincipal: { campo: keyof FormProduto; rotulo: string }[] = [
+    { campo: 'entregaNoAto', rotulo: 'Entrega no ato' },
+    { campo: 'entregaARetirar', rotulo: 'A retirar' },
+    { campo: 'entregar', rotulo: 'Entregar' },
+    { campo: 'entregaPorEncomenda', rotulo: 'Por encomenda' },
+    { campo: 'flagDevolucao', rotulo: 'Aceita devolução' },
+    { campo: 'permiteEstoqueNegativo', rotulo: 'Estoque negativo' },
+    { campo: 'bloqueadoCompra', rotulo: 'Bloqueado para compra' },
+    { campo: 'bloqueadoVenda', rotulo: 'Bloqueado para venda' },
+    { campo: 'desativarAoZerarEstoque', rotulo: 'Desativar ao zerar estoque' },
+    { campo: 'controlaEstoque', rotulo: 'Controla estoque' },
+    { campo: 'flagComissao', rotulo: 'Sujeito a comissão' },
+  ]
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <p className="text-sm text-muted-foreground">Cadastros &gt; Produtos</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight">Cadastro de Produtos</h1>
+      </div>
+
+      {mensagem && (
+        <p className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">{mensagem}</p>
+      )}
+      {erro && !modalAberto && (
+        <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{erro}</p>
+      )}
+
+      <CardPadrao
+        titulo="Produtos"
+        acoes={
+          podeCriar && (
+            <BotaoPrimario type="button" onClick={abrirNovo}>
+              <Plus className="mr-1 size-4 inline" />
+              Novo produto
+            </BotaoPrimario>
+          )
+        }
+      >
+        <div className="mb-4 max-w-sm">
+          <InputPadrao
+            rotulo="Buscar"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Nome, SKU, marca ou código de barras..."
+          />
+        </div>
+
+        <div className="overflow-x-auto rounded-lg border border-border bg-card">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead>
+              <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
+                <th className="px-4 py-3 font-medium w-16">Foto</th>
+                <th className="px-4 py-3 font-medium">SKU</th>
+                <th className="px-4 py-3 font-medium">Nome</th>
+                <th className="px-4 py-3 font-medium">Marca</th>
+                <th className="px-4 py-3 font-medium">Unidade</th>
+                <th className="px-4 py-3 font-medium">Situação</th>
+                <th className="px-2 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {lista.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                    Nenhum produto encontrado.
+                  </td>
+                </tr>
+              )}
+              {lista.map((p: {
+                id: string
+                sku: string | null
+                nomeVenda: string
+                marca: string | null
+                unidade: string
+                ativo: boolean
+                urlFotoMiniatura?: string | null
+              }) => (
+                <tr
+                  key={p.id}
+                  className="cursor-pointer border-b border-border hover:bg-muted/30"
+                  onClick={() => abrirVisualizacao(p)}
+                >
+                  <td className="px-4 py-2">
+                    {urlFoto(p.urlFotoMiniatura) ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={urlFoto(p.urlFotoMiniatura)!}
+                        alt=""
+                        className="size-10 rounded object-cover"
+                      />
+                    ) : (
+                      <div className="size-10 rounded bg-muted" />
+                    )}
+                  </td>
+                  <td className="px-4 py-2">{p.sku ?? '—'}</td>
+                  <td className="px-4 py-2 font-medium">{p.nomeVenda}</td>
+                  <td className="px-4 py-2">{p.marca ?? '—'}</td>
+                  <td className="px-4 py-2">{p.unidade}</td>
+                  <td className="px-4 py-2">
+                    <BadgeStatus variante={p.ativo ? 'ativo' : 'inativo'}>
+                      {p.ativo ? 'Ativo' : 'Inativo'}
+                    </BadgeStatus>
+                  </td>
+                  <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
+                    {podeDesativar && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => alternarAtivo(p)}
+                      >
+                        {p.ativo ? 'Desativar' : 'Reativar'}
+                      </Button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardPadrao>
+
+      <Modal
+        aberto={modalAberto}
+        aoFechar={fecharModal}
+        titulo={tituloModal}
+        descricao={
+          modoVisualizacao ? 'Consulta dos dados cadastrados (somente leitura)' : undefined
+        }
+        largura="4xl"
+        manterPosicao={!modoVisualizacao}
+        rodape={
+          modoVisualizacao ? (
+            <RodapeModalVisualizacao
+              aoFechar={fecharModal}
+              aoAnterior={irParaAbaAnterior}
+              aoProximo={irParaProximaAba}
+              mostrarAnterior={!ehPrimeiraAba}
+              mostrarProximo={!ehUltimaAba}
+              rotuloProximo="Próximo →"
+              aoEditar={alternarParaEdicao}
+              podeEditar={podeEditar}
+              aoAlternarStatus={alternarAtivoVisualizacao}
+              podeDesativar={podeDesativar}
+              registroAtivo={form.ativo}
+            />
+          ) : (
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={fecharModal}>
+                Cancelar
+              </Button>
+              {podeSalvar && (
+                <BotaoPrimario form="form-produto" type="submit" disabled={salvando}>
+                  {rotuloBotaoSalvar}
+                </BotaoPrimario>
+              )}
+            </div>
+          )
+        }
+      >
+        <form id="form-produto" onSubmit={aoSalvar} className="space-y-4">
+          <Abas
+            abas={abas}
+            abaAtiva={abaAtiva}
+            aoMudar={(id) => {
+              if (!modoVisualizacao) marcarAbaVisitada(abaAtiva)
+              setAbaAtiva(id)
+            }}
+          />
+
+          <fieldset disabled={somenteLeitura} className="m-0 min-w-0 space-y-4 border-0 p-0">
+          {abaAtiva === 'principal' && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <CampoFotoProduto
+                urlAtual={removerFoto ? null : urlFotoAtual}
+                disabled={camposDesabilitados}
+                aoComprimir={(r) => {
+                  setFotoComprimida(r)
+                  setRemoverFoto(false)
+                }}
+                aoRemover={() => {
+                  setFotoComprimida(null)
+                  setRemoverFoto(true)
+                  setUrlFotoAtual(null)
+                }}
+              />
+              <InputPadrao
+                rotulo="SKU"
+                value={form.sku}
+                onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
+                disabled={camposDesabilitados}
+              />
+              <InputPadrao
+                rotulo="Nome para venda *"
+                value={form.nomeVenda}
+                onChange={(e) => setForm((f) => ({ ...f, nomeVenda: e.target.value }))}
+                disabled={camposDesabilitados}
+                className="sm:col-span-2"
+              />
+              <InputPadrao
+                rotulo="Marca *"
+                value={form.marca}
+                onChange={(e) => setForm((f) => ({ ...f, marca: e.target.value }))}
+                disabled={camposDesabilitados}
+              />
+              <InputPadrao
+                rotulo="Unidade *"
+                value={form.unidade}
+                onChange={(e) => setForm((f) => ({ ...f, unidade: e.target.value.toUpperCase() }))}
+                disabled={camposDesabilitados}
+              />
+              <InputPadrao
+                rotulo="Características"
+                value={form.caracteristicas}
+                onChange={(e) => setForm((f) => ({ ...f, caracteristicas: e.target.value }))}
+                disabled={camposDesabilitados}
+                className="sm:col-span-2"
+              />
+              <div className="sm:col-span-2 flex flex-wrap gap-4">
+                {flagsPrincipal.map(({ campo, rotulo }) => (
+                  <label key={campo} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={form[campo] as boolean}
+                      onCheckedChange={(v) => setForm((f) => ({ ...f, [campo]: v === true }))}
+                      disabled={camposDesabilitados}
+                    />
+                    {rotulo}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {abaAtiva === 'logistica' && (
+            <div className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <InputPadrao
+                  rotulo="Código de barras (unidade)"
+                  value={form.codigoBarras}
+                  onChange={(e) => setForm((f) => ({ ...f, codigoBarras: e.target.value }))}
+                  disabled={camposDesabilitados}
+                />
+                <InputPadrao
+                  rotulo="Peso unitário (kg)"
+                  value={form.pesoKg}
+                  onChange={(e) => setForm((f) => ({ ...f, pesoKg: e.target.value }))}
+                  disabled={camposDesabilitados}
+                />
+                <InputPadrao
+                  rotulo="Altura (cm)"
+                  value={form.alturaCm}
+                  onChange={(e) => setForm((f) => ({ ...f, alturaCm: e.target.value }))}
+                  disabled={camposDesabilitados}
+                />
+                <InputPadrao
+                  rotulo="Largura (cm)"
+                  value={form.larguraCm}
+                  onChange={(e) => setForm((f) => ({ ...f, larguraCm: e.target.value }))}
+                  disabled={camposDesabilitados}
+                />
+                <InputPadrao
+                  rotulo="Comprimento (cm)"
+                  value={form.comprimentoCm}
+                  onChange={(e) => setForm((f) => ({ ...f, comprimentoCm: e.target.value }))}
+                  disabled={camposDesabilitados}
+                />
+                <InputPadrao
+                  rotulo="Capacidade empilhamento (pallet)"
+                  value={form.capacidadeEmpilhamento}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, capacidadeEmpilhamento: e.target.value }))
+                  }
+                  disabled={camposDesabilitados}
+                />
+                <InputPadrao
+                  rotulo="Norma de palete"
+                  value={form.normaPalete}
+                  onChange={(e) => setForm((f) => ({ ...f, normaPalete: e.target.value }))}
+                  disabled={camposDesabilitados}
+                  className="sm:col-span-2"
+                />
+              </div>
+              <ListaEmbalagensMaster
+                itens={form.embalagensMaster}
+                aoMudar={(itens) => setForm((f) => ({ ...f, embalagensMaster: itens }))}
+                disabled={camposDesabilitados}
+              />
+              <ListaEnderecosEstoque
+                itens={form.enderecosEstoque}
+                aoMudar={(itens) => setForm((f) => ({ ...f, enderecosEstoque: itens }))}
+                disabled={camposDesabilitados}
+              />
+            </div>
+          )}
+
+          {abaAtiva === 'compras' && (
+            <div className="space-y-4 pb-2">
+              <InputPadrao
+                rotulo="Nome para compra"
+                value={form.nomeCompra}
+                onChange={(e) => setForm((f) => ({ ...f, nomeCompra: e.target.value }))}
+                disabled={camposDesabilitados}
+                placeholder="Se vazio, usa o nome de venda"
+              />
+              <ListaFornecedoresProduto
+                itens={form.fornecedores}
+                opcoesFornecedores={fornecedores}
+                aoMudar={(fornecedoresItens) =>
+                  setForm((f) => ({ ...f, fornecedores: fornecedoresItens }))
+                }
+                disabled={camposDesabilitados}
+              />
+              <SelecaoProdutosSimilares
+                selecionados={form.similares}
+                aoMudar={(similares) => setForm((f) => ({ ...f, similares }))}
+                excluirId={idEmEdicao || undefined}
+                disabled={camposDesabilitados}
+              />
+            </div>
+          )}
+
+          {abaAtiva === 'fiscal' && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <InputPadrao
+                rotulo="NCM"
+                value={form.ncm}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, ncm: e.target.value.replace(/\D/g, '').slice(0, 8) }))
+                }
+                disabled={camposDesabilitados}
+                placeholder="8 dígitos"
+              />
+              <SelectPadrao
+                rotulo="Código de origem"
+                valor={form.codigoOrigem}
+                aoMudar={(v) => setForm((f) => ({ ...f, codigoOrigem: v }))}
+                opcoes={[
+                  { value: '', label: 'Selecione' },
+                  ...ORIGENS_FISCAIS.map((o) => ({ value: o.value, label: o.label })),
+                ]}
+                disabled={camposDesabilitados}
+              />
+            </div>
+          )}
+          </fieldset>
+
+          {!modoVisualizacao && erro && modalAberto && (
+            <p className="text-sm text-destructive">{erro}</p>
+          )}
+        </form>
+      </Modal>
+    </div>
+  )
+}
+
+export default function PaginaProdutos() {
+  return (
+    <ProtegerRota chaveDaPagina="produtos">
+      <ConteudoDaPagina />
+    </ProtegerRota>
+  )
+}
