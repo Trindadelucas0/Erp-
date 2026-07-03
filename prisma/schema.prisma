@@ -30,6 +30,10 @@ model Company {
   cfops                Cfop[]
   configuracaoZapsign  ConfiguracaoZapsign?
   documentosZapsign    ZapsignDocumento[]
+  produtos             Produto[]
+  pedidosCompra        PedidoCompra[]
+  creditosFornecedor   CreditoFornecedor[]
+  pendenciasFornecedor PendenciaFornecedor[]
   createdAt            DateTime      @default(now())
 }
 
@@ -105,6 +109,11 @@ model Pessoa {
   dadosBancarios    PessoaDadosBancario[]
   cnaes             PessoaCnae[]
   documentosZapsign ZapsignDocumento[]
+  produtosFornecedor           ProdutoFornecedor[]
+  pedidosCompraFornecedor      PedidoCompra[]   @relation("FornecedorPO")
+  pedidosCompraTransportadora  PedidoCompra[]   @relation("TransportadoraPO")
+  creditosFornecedor           CreditoFornecedor[]
+  pendenciasFornecedor         PendenciaFornecedor[]
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -454,4 +463,200 @@ model AtalhoTeclado {
   tecla     String
   ativo     Boolean  @default(true)
   updatedAt DateTime @updatedAt
+}
+
+// ─── Produtos ────────────────────────────────────────────────────────────────
+
+model Produto {
+  id                     String   @id @default(uuid())
+  companyId              String
+  company                Company  @relation(fields: [companyId], references: [id])
+  sku                    String?
+  ativo                  Boolean  @default(true)
+
+  nomeVenda              String
+  marca                  String
+  unidade                String   @default("UN")
+  caracteristicas        String?
+
+  entregaNoAto           Boolean  @default(false)
+  entregaARetirar        Boolean  @default(false)
+  entregar               Boolean  @default(false)
+  entregaPorEncomenda    Boolean  @default(false)
+  flagDevolucao          Boolean  @default(false)
+  controlaEstoque        Boolean  @default(true)
+  flagComissao           Boolean  @default(false)
+  permiteEstoqueNegativo Boolean  @default(false)
+  bloqueadoCompra        Boolean  @default(false)
+  bloqueadoVenda         Boolean  @default(false)
+  desativarAoZerarEstoque Boolean @default(false)
+
+  codigoBarras           String?
+  pesoKg                 Decimal? @db.Decimal(15, 4)
+  alturaCm               Decimal? @db.Decimal(10, 2)
+  larguraCm              Decimal? @db.Decimal(10, 2)
+  comprimentoCm          Decimal? @db.Decimal(10, 2)
+  capacidadeEmpilhamento Int?
+  normaPalete            String?
+
+  nomeCompra             String?
+
+  ncm                    String?
+  codigoOrigem           String?
+
+  fotos                  ProdutoFoto[]
+  fornecedores           ProdutoFornecedor[]
+  embalagensMaster       ProdutoEmbalagemMaster[]
+  enderecosEstoque       ProdutoEnderecoEstoque[]
+  similares              ProdutoSimilar[] @relation("ProdutoOrigem")
+  similaresDe            ProdutoSimilar[] @relation("ProdutoSimilar")
+  itensPedidoCompra      PedidoCompraItem[]
+  pendencias             PendenciaFornecedor[]
+
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@unique([sku, companyId])
+  @@index([companyId, ativo])
+  @@index([companyId, nomeVenda])
+}
+
+model ProdutoFornecedor {
+  id                   String   @id @default(uuid())
+  produtoId            String
+  produto              Produto  @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  fornecedorPessoaId   String
+  fornecedor           Pessoa   @relation(fields: [fornecedorPessoaId], references: [id])
+  codigoFornecedor     String?
+  multiploEntrada      Decimal? @db.Decimal(15, 4)
+  multiplicadorEntrada Decimal? @db.Decimal(15, 4)
+  unidadeEntrada       String?
+  ordem                Int      @default(0)
+  createdAt            DateTime @default(now())
+
+  @@unique([produtoId, fornecedorPessoaId])
+}
+
+model ProdutoEmbalagemMaster {
+  id           String   @id @default(uuid())
+  produtoId    String
+  produto      Produto  @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  quantidade   Decimal  @db.Decimal(15, 4)
+  codigoBarras String?
+  descricao    String?
+  ordem        Int      @default(0)
+  createdAt    DateTime @default(now())
+}
+
+model ProdutoEnderecoEstoque {
+  id        String  @id @default(uuid())
+  produtoId String
+  produto   Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  apelido   String?
+  endereco  String
+  ordem     Int     @default(0)
+}
+
+model ProdutoSimilar {
+  id               String  @id @default(uuid())
+  produtoId        String
+  produto          Produto @relation("ProdutoOrigem", fields: [produtoId], references: [id], onDelete: Cascade)
+  similarProdutoId String
+  similarProduto   Produto @relation("ProdutoSimilar", fields: [similarProdutoId], references: [id], onDelete: Cascade)
+
+  @@unique([produtoId, similarProdutoId])
+}
+
+model ProdutoFoto {
+  id           String   @id @default(uuid())
+  produtoId    String
+  produto      Produto  @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  tipo         String   // principal | miniatura
+  arquivo      String
+  tamanhoBytes Int
+  larguraPx    Int?
+  alturaPx     Int?
+  ordem        Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@unique([produtoId, tipo])
+}
+
+// ─── Pedido de Compra (tabelas base — UI na Fase 02) ─────────────────────────
+
+model PedidoCompra {
+  id                     String   @id @default(uuid())
+  companyId              String
+  company                Company  @relation(fields: [companyId], references: [id])
+  numero                 Int
+  fornecedorPessoaId     String
+  fornecedor             Pessoa   @relation("FornecedorPO", fields: [fornecedorPessoaId], references: [id])
+  transportadoraPessoaId String?
+  transportadora         Pessoa?  @relation("TransportadoraPO", fields: [transportadoraPessoaId], references: [id])
+  modalidadeTransporte   String?
+  condicaoPagamento      String?
+  status                 String   @default("rascunho")
+  observacoes            String?
+  copiadoDeId            String?
+  copiadoDe              PedidoCompra?  @relation("CopiaPedido", fields: [copiadoDeId], references: [id])
+  copias                 PedidoCompra[] @relation("CopiaPedido")
+  pedidoVendaId          String?
+  creditoFornecedorId    String?
+  creditoFornecedor      CreditoFornecedor? @relation(fields: [creditoFornecedorId], references: [id])
+  creditoAplicado        Decimal? @db.Decimal(15, 2)
+
+  itens                  PedidoCompraItem[]
+
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@unique([companyId, numero])
+  @@index([companyId, fornecedorPessoaId, status])
+}
+
+model PedidoCompraItem {
+  id                 String       @id @default(uuid())
+  pedidoCompraId     String
+  pedidoCompra       PedidoCompra @relation(fields: [pedidoCompraId], references: [id], onDelete: Cascade)
+  produtoId          String
+  produto            Produto      @relation(fields: [produtoId], references: [id])
+  quantidade         Decimal      @db.Decimal(15, 4)
+  unidade            String
+  precoUnitario      Decimal      @db.Decimal(15, 4)
+  total              Decimal      @db.Decimal(15, 2)
+  ordem              Int          @default(0)
+}
+
+model CreditoFornecedor {
+  id                 String    @id @default(uuid())
+  companyId          String
+  company            Company   @relation(fields: [companyId], references: [id])
+  fornecedorPessoaId String
+  fornecedor         Pessoa    @relation(fields: [fornecedorPessoaId], references: [id])
+  valor              Decimal   @db.Decimal(15, 2)
+  saldo              Decimal   @db.Decimal(15, 2)
+  origem             String?
+  vencimento         DateTime?
+  pedidosCompra      PedidoCompra[]
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([companyId, fornecedorPessoaId])
+}
+
+model PendenciaFornecedor {
+  id                 String   @id @default(uuid())
+  companyId          String
+  company            Company  @relation(fields: [companyId], references: [id])
+  fornecedorPessoaId String
+  fornecedor         Pessoa   @relation(fields: [fornecedorPessoaId], references: [id])
+  tipo               String
+  descricao          String
+  produtoId          String?
+  produto            Produto? @relation(fields: [produtoId], references: [id])
+  resolvido          Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([companyId, fornecedorPessoaId, resolvido])
 }

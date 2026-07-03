@@ -37,6 +37,12 @@ export const PAGINAS_VINCULAVEIS: readonly PaginaDoSistema[] = [
     modulo: 'transportadoras',
   },
   {
+    chave: 'produtos',
+    caminho: '/produtos',
+    rotulo: 'Produtos',
+    modulo: 'produtos',
+  },
+  {
     chave: 'planos-financeiros',
     caminho: '/planos-financeiros',
     rotulo: 'Planos Financeiros',
