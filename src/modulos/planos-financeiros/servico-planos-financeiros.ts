@@ -3,11 +3,14 @@ import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-audi
 import {
   codigoCompativelComTipo,
   codigoInicialSemPai,
+  extrairSegmentosSugeridos,
   extrairSufixoDeCodigo,
   montarCodigoComSufixo,
+  montarCodigoPorSegmentos,
   prefixoParaNovoPlano,
   proximoCodigoFilho,
   raizDoTipo,
+  segmentoGrupoDeCodigoPai,
   sufixoCodigoValido,
   type TipoPlanoFinanceiro,
 } from './codigo-plano-financeiro.js'
@@ -161,20 +164,43 @@ async function sugerirProximoCodigo(companyId: string, tipo: TipoPlanoFinanceiro
       irmaos.map((i) => i.codigo)
     )
     const prefixo = prefixoParaNovoPlano(tipo, codigoPai)
+    const segmentos = extrairSegmentosSugeridos(codigo, tipo, true)
     return {
       codigo,
       prefixo,
       sufixo: extrairSufixoDeCodigo(codigo, prefixo),
+      segmentoGrupo: segmentos.segmentoGrupo,
+      segmentoSubgrupo: segmentos.segmentoSubgrupo,
     }
   }
 
   const codigos = await repositorioDePlanosFinanceiros.listarCodigosPorEmpresa(companyId, tipo)
   const codigo = codigoInicialSemPai(tipo, codigos)
   const prefixo = prefixoParaNovoPlano(tipo)
+  const segmentos = extrairSegmentosSugeridos(codigo, tipo, false)
   return {
     codigo,
     prefixo,
     sufixo: extrairSufixoDeCodigo(codigo, prefixo),
+    segmentoGrupo: segmentos.segmentoGrupo,
+    segmentoSubgrupo: segmentos.segmentoSubgrupo,
+  }
+}
+
+async function validarSegmentosComPai(
+  companyId: string,
+  parentId: string,
+  segmentoGrupo: number
+): Promise<void> {
+  const pai = await repositorioDePlanosFinanceiros.buscarPorId(companyId, parentId)
+  if (!pai) throw new ErroDaAplicacao('Plano pai não encontrado', 404)
+
+  const grupoEsperado = segmentoGrupoDeCodigoPai(pai.codigo)
+  if (segmentoGrupo !== grupoEsperado) {
+    throw new ErroDaAplicacao(
+      'O número do grupo não corresponde ao grupo pai selecionado',
+      400
+    )
   }
 }
 
@@ -182,6 +208,36 @@ async function resolverCodigoCriacao(
   companyId: string,
   dados: DadosParaCriarPlanoFinanceiro
 ): Promise<string> {
+  if (dados.segmentoGrupoCodigo !== undefined) {
+    if (!sufixoCodigoValido(dados.segmentoGrupoCodigo)) {
+      throw new ErroDaAplicacao('Segmento do grupo deve ser entre 0 e 99', 400)
+    }
+
+    if (dados.parentId) {
+      if (dados.segmentoSubgrupoCodigo === undefined) {
+        throw new ErroDaAplicacao('Segmento do subgrupo é obrigatório', 400)
+      }
+      if (!sufixoCodigoValido(dados.segmentoSubgrupoCodigo)) {
+        throw new ErroDaAplicacao('Segmento do subgrupo deve ser entre 0 e 99', 400)
+      }
+      await validarSegmentosComPai(companyId, dados.parentId, dados.segmentoGrupoCodigo)
+      return montarCodigoPorSegmentos(
+        dados.tipo,
+        dados.segmentoGrupoCodigo,
+        dados.segmentoSubgrupoCodigo
+      )
+    }
+
+    if (dados.segmentoSubgrupoCodigo !== undefined) {
+      throw new ErroDaAplicacao(
+        'Segmento do subgrupo só é permitido ao criar dentro de um grupo pai',
+        400
+      )
+    }
+
+    return montarCodigoPorSegmentos(dados.tipo, dados.segmentoGrupoCodigo)
+  }
+
   if (dados.sufixoCodigo !== undefined) {
     if (!sufixoCodigoValido(dados.sufixoCodigo)) {
       throw new ErroDaAplicacao('Sufixo deve ser entre 0 e 99', 400)

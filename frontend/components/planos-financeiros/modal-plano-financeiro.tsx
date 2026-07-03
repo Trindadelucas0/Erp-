@@ -22,12 +22,11 @@ import { buscarGrupoPai, type PlanoComNivel } from './util-arvore-planos'
 import type { PlanoFinanceiroNo } from './arvore-planos-financeiros'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import {
-  buscarPlanoPorCodigo,
-  codigoPlanoJaExiste,
-  mensagemCodigoDuplicado,
-  montarCodigoComSufixo,
+  montarCodigoPorSegmentos,
+  raizDoTipoPlano,
   sufixoCodigoValido,
-  validarSufixoInformado,
+  validarSegmentoInformado,
+  validarSegmentosCodigo,
   type PlanoCodigoNome,
 } from '@/lib/plano-financeiro'
 
@@ -83,6 +82,37 @@ function temOpcoesNaoPadrao(form: FormPlanoFinanceiro): boolean {
   )
 }
 
+function InputSegmentoCodigo({
+  id,
+  valor,
+  aoMudar,
+  invalido,
+  desabilitado,
+}: {
+  id: string
+  valor: string
+  aoMudar: (valor: string) => void
+  invalido?: boolean
+  desabilitado?: boolean
+}) {
+  return (
+    <Input
+      id={id}
+      inputMode="numeric"
+      min={0}
+      max={99}
+      maxLength={2}
+      value={valor}
+      onChange={(e) => aoMudar(e.target.value.replace(/\D/g, '').slice(0, 2))}
+      placeholder="0–99"
+      className={`w-16 text-center ${invalido ? 'border-destructive' : ''}`}
+      aria-invalid={invalido}
+      required
+      disabled={desabilitado}
+    />
+  )
+}
+
 function CampoCheckbox({
   id,
   rotulo,
@@ -121,9 +151,9 @@ export function ModalPlanoFinanceiro({
 }: Props) {
   const { perfil } = useSessaoDoUsuario()
   const [form, setForm] = useState<FormPlanoFinanceiro>(formVazio)
-  const [prefixoCodigo, setPrefixoCodigo] = useState('')
-  const [sufixoCodigo, setSufixoCodigo] = useState('')
-  const [erroSufixo, setErroSufixo] = useState('')
+  const [segmentoGrupo, setSegmentoGrupo] = useState('')
+  const [segmentoSubgrupo, setSegmentoSubgrupo] = useState('')
+  const [erroCodigo, setErroCodigo] = useState('')
   const [carregandoCodigo, setCarregandoCodigo] = useState(false)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
@@ -152,9 +182,9 @@ export function ModalPlanoFinanceiro({
           ...formVazio,
           parentId: paiPreSelecionadoId ?? '',
         })
-        setPrefixoCodigo('')
-        setSufixoCodigo('')
-        setErroSufixo('')
+        setSegmentoGrupo('')
+        setSegmentoSubgrupo('')
+        setErroCodigo('')
       }
       setCarregandoCodigo(!modoEdicao)
       setErro('')
@@ -178,14 +208,20 @@ export function ModalPlanoFinanceiro({
 
         if (parentIdRequisicaoRef.current !== parentIdAtual) return
 
-        setPrefixoCodigo(data.prefixo ?? '')
-        const novoSufixo = String(data.sufixo ?? '')
-        setSufixoCodigo(novoSufixo)
-        setErroSufixo(validarSufixoAtual(novoSufixo, data.prefixo ?? ''))
+        const novoGrupo = String(data.segmentoGrupo ?? '')
+        const novoSubgrupo =
+          data.segmentoSubgrupo !== null && data.segmentoSubgrupo !== undefined
+            ? String(data.segmentoSubgrupo)
+            : ''
+        setSegmentoGrupo(novoGrupo)
+        setSegmentoSubgrupo(novoSubgrupo)
+        setErroCodigo(
+          validarCodigoAtual(novoGrupo, novoSubgrupo, Boolean(parentIdAtual))
+        )
       } catch {
         if (parentIdRequisicaoRef.current === parentIdAtual) {
-          setPrefixoCodigo('')
-          setSufixoCodigo('')
+          setSegmentoGrupo('')
+          setSegmentoSubgrupo('')
         }
       } finally {
         if (parentIdRequisicaoRef.current === parentIdAtual) {
@@ -208,42 +244,47 @@ export function ModalPlanoFinanceiro({
     return buscarGrupoPai(planosDisponiveis, parentId)
   }, [modoEdicao, form.parentId, planoEmEdicao?.parentId, planosDisponiveis])
 
+  const temPai = Boolean(form.parentId)
+  const raizTipo = raizDoTipoPlano(tipo)
+
   const codigoCompleto = useMemo(() => {
-    const numero = Number(sufixoCodigo)
-    if (!prefixoCodigo || !sufixoCodigoValido(numero)) return ''
-    return montarCodigoComSufixo(prefixoCodigo, numero)
-  }, [prefixoCodigo, sufixoCodigo])
-
-  function validarSufixoAtual(digitos: string, prefixo: string): string {
-    const erroFormato = validarSufixoInformado(digitos)
-    if (erroFormato) return erroFormato
-    if (!prefixo) return ''
-
-    const codigo = montarCodigoComSufixo(prefixo, Number(digitos))
-    if (codigoPlanoJaExiste(codigo, planosParaValidacao)) {
-      const planoExistente = buscarPlanoPorCodigo(codigo, planosParaValidacao)
-      return mensagemCodigoDuplicado(
-        codigo,
-        planoExistente?.nome ?? codigo,
-        nomeEmpresaAtiva
-      )
+    if (!sufixoCodigoValido(Number(segmentoGrupo))) return ''
+    if (temPai) {
+      if (!sufixoCodigoValido(Number(segmentoSubgrupo))) return ''
+      return montarCodigoPorSegmentos(tipo, Number(segmentoGrupo), Number(segmentoSubgrupo))
     }
-    return ''
+    return montarCodigoPorSegmentos(tipo, Number(segmentoGrupo))
+  }, [tipo, segmentoGrupo, segmentoSubgrupo, temPai])
+
+  function validarCodigoAtual(grupo: string, subgrupo: string, comPai: boolean): string {
+    return validarSegmentosCodigo({
+      tipo,
+      segmentoGrupo: grupo,
+      segmentoSubgrupo: subgrupo,
+      temPai: comPai,
+      codigoPai: grupoPaiSelecionado?.codigo ?? null,
+      planosParaValidacao,
+      nomeEmpresa: nomeEmpresaAtiva,
+    })
   }
 
-  function aoMudarSufixo(valor: string) {
-    const apenasDigitos = valor.replace(/\D/g, '').slice(0, 2)
-    setSufixoCodigo(apenasDigitos)
-    setErroSufixo(validarSufixoAtual(apenasDigitos, prefixoCodigo))
+  function aoMudarSegmentoGrupo(valor: string) {
+    setSegmentoGrupo(valor)
+    setErroCodigo(validarCodigoAtual(valor, segmentoSubgrupo, temPai))
+  }
+
+  function aoMudarSegmentoSubgrupo(valor: string) {
+    setSegmentoSubgrupo(valor)
+    setErroCodigo(validarCodigoAtual(segmentoGrupo, valor, temPai))
   }
 
   async function aoSalvar(evento: FormEvent) {
     evento.preventDefault()
 
     if (!modoEdicao) {
-      const erroValidacao = validarSufixoAtual(sufixoCodigo, prefixoCodigo)
+      const erroValidacao = validarCodigoAtual(segmentoGrupo, segmentoSubgrupo, temPai)
       if (erroValidacao) {
-        setErroSufixo(erroValidacao)
+        setErroCodigo(erroValidacao)
         return
       }
     }
@@ -270,7 +311,10 @@ export function ModalPlanoFinanceiro({
           ...corpoBase,
           tipo,
           parentId: parentIdSalvo,
-          sufixoCodigo: Number(sufixoCodigo),
+          segmentoGrupoCodigo: Number(segmentoGrupo),
+          ...(parentIdSalvo
+            ? { segmentoSubgrupoCodigo: Number(segmentoSubgrupo) }
+            : {}),
         })
         aoSalvo(parentIdSalvo)
       }
@@ -290,9 +334,12 @@ export function ModalPlanoFinanceiro({
     : 'Informe o nome, escolha o grupo e defina o número da sequência. A ordem na lista pode renumerar os códigos ao arrastar.'
 
   const opcoesAvancadasAbertas = modoEdicao && temOpcoesNaoPadrao(form)
-  const sufixoInvalido =
+  const codigoInvalido =
     !modoEdicao &&
-    (carregandoCodigo || Boolean(erroSufixo) || Boolean(validarSufixoInformado(sufixoCodigo)))
+    (carregandoCodigo ||
+      Boolean(erroCodigo) ||
+      Boolean(validarSegmentoInformado(segmentoGrupo)) ||
+      (temPai && Boolean(validarSegmentoInformado(segmentoSubgrupo))))
 
   const conteudoPainelResumoCriacao =
     codigoCompleto || !carregandoCodigo ? (
@@ -361,7 +408,7 @@ export function ModalPlanoFinanceiro({
           <BotaoPrimario
             type="submit"
             form="form-plano-financeiro"
-            disabled={salvando || sufixoInvalido}
+            disabled={salvando || codigoInvalido}
           >
             {salvando ? 'Salvando...' : 'Salvar plano'}
           </BotaoPrimario>
@@ -386,34 +433,46 @@ export function ModalPlanoFinanceiro({
 
           {!modoEdicao && (
             <div className="space-y-2">
-              <Label htmlFor={`${idBase}-sufixo-codigo`}>Código da conta</Label>
-              <div className="flex items-center gap-2">
-                <span
-                  className="inline-flex h-10 min-w-[3.5rem] items-center justify-center rounded-md border bg-muted px-3 text-sm font-medium text-foreground"
-                  aria-hidden
-                >
-                  {carregandoCodigo && !prefixoCodigo ? '...' : prefixoCodigo || '—'}
-                </span>
-                <Input
-                  id={`${idBase}-sufixo-codigo`}
-                  inputMode="numeric"
-                  min={0}
-                  max={99}
-                  maxLength={2}
-                  value={sufixoCodigo}
-                  onChange={(e) => aoMudarSufixo(e.target.value)}
-                  placeholder="0–99"
-                  className={erroSufixo ? 'border-destructive' : undefined}
-                  aria-invalid={!!erroSufixo}
-                  required
-                  disabled={carregandoCodigo && !prefixoCodigo}
+              <Label>Código da conta</Label>
+              <div className="flex flex-wrap items-center gap-2">
+                {temPai ? (
+                  <span className="inline-flex h-10 min-w-[2rem] items-center justify-center text-sm font-medium text-foreground">
+                    {raizTipo}
+                  </span>
+                ) : (
+                  <Input
+                    value={raizTipo}
+                    readOnly
+                    disabled
+                    className="w-16 text-center bg-muted"
+                    aria-label="Raiz do tipo"
+                  />
+                )}
+                <span className="text-muted-foreground">.</span>
+                <InputSegmentoCodigo
+                  id={`${idBase}-segmento-grupo`}
+                  valor={segmentoGrupo}
+                  aoMudar={aoMudarSegmentoGrupo}
+                  invalido={Boolean(erroCodigo)}
+                  desabilitado={carregandoCodigo && !segmentoGrupo}
                 />
+                {temPai && (
+                  <>
+                    <span className="text-muted-foreground">.</span>
+                    <InputSegmentoCodigo
+                      id={`${idBase}-segmento-subgrupo`}
+                      valor={segmentoSubgrupo}
+                      aoMudar={aoMudarSegmentoSubgrupo}
+                      invalido={Boolean(erroCodigo)}
+                      desabilitado={carregandoCodigo && !segmentoSubgrupo}
+                    />
+                  </>
+                )}
               </div>
               <p className="text-xs text-muted-foreground">
-                Informe o número da sequência (0 a 99). O prefixo é definido pelo tipo e pelo
-                grupo pai.
+                Informe os números da sequência (0 a 99) em cada parte do código.
               </p>
-              {erroSufixo && <p className="text-sm text-destructive">{erroSufixo}</p>}
+              {erroCodigo && <p className="text-sm text-destructive">{erroCodigo}</p>}
             </div>
           )}
         </ModalSecao>

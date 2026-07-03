@@ -5,6 +5,8 @@ export const MSG_PLANO_SOMENTE_SUBGRUPO =
 export const SUFIXO_CODIGO_MIN = 0
 export const SUFIXO_CODIGO_MAX = 99
 export const MSG_SUFIXO_INVALIDO = 'Informe um número de 0 a 99'
+export const MSG_GRUPO_PAI_INCOERENTE =
+  'O número do grupo não corresponde ao grupo pai selecionado'
 
 export type TipoPlanoFinanceiro = 'receita' | 'despesa' | 'resultado'
 
@@ -17,6 +19,10 @@ function raizDoTipo(tipo: TipoPlanoFinanceiro): string {
   if (tipo === 'receita') return '1'
   if (tipo === 'despesa') return '2'
   return '3'
+}
+
+export function raizDoTipoPlano(tipo: TipoPlanoFinanceiro): string {
+  return raizDoTipo(tipo)
 }
 
 export function raizCodigoPlano(codigo: string): string | null {
@@ -37,6 +43,23 @@ export function montarCodigoComSufixo(prefixo: string, sufixo: number): string {
   return `${base}.${sufixo}`
 }
 
+export function montarCodigoPorSegmentos(
+  tipo: TipoPlanoFinanceiro,
+  segmentoGrupo: number,
+  segmentoSubgrupo?: number | null
+): string {
+  const raiz = raizDoTipo(tipo)
+  if (segmentoSubgrupo === undefined || segmentoSubgrupo === null) {
+    return `${raiz}.${segmentoGrupo}`
+  }
+  return `${raiz}.${segmentoGrupo}.${segmentoSubgrupo}`
+}
+
+export function segmentoGrupoDeCodigoPai(codigoPai: string): number {
+  const partes = codigoPai.split('.')
+  return parseInt(partes[partes.length - 1], 10)
+}
+
 export function sufixoCodigoValido(sufixo: number): boolean {
   return (
     Number.isInteger(sufixo) &&
@@ -46,6 +69,10 @@ export function sufixoCodigoValido(sufixo: number): boolean {
 }
 
 export function validarSufixoInformado(valor: string): string | null {
+  return validarSegmentoInformado(valor)
+}
+
+export function validarSegmentoInformado(valor: string): string | null {
   const texto = valor.trim()
   if (!texto) return MSG_SUFIXO_INVALIDO
 
@@ -53,6 +80,67 @@ export function validarSufixoInformado(valor: string): string | null {
   if (!sufixoCodigoValido(numero)) return MSG_SUFIXO_INVALIDO
 
   return null
+}
+
+type ValidarSegmentosCodigoParams = {
+  tipo: TipoPlanoFinanceiro
+  segmentoGrupo: string
+  segmentoSubgrupo: string
+  temPai: boolean
+  codigoPai?: string | null
+  planosParaValidacao: PlanoCodigoNome[]
+  nomeEmpresa?: string
+}
+
+export function validarSegmentosCodigo({
+  tipo,
+  segmentoGrupo,
+  segmentoSubgrupo,
+  temPai,
+  codigoPai,
+  planosParaValidacao,
+  nomeEmpresa,
+}: ValidarSegmentosCodigoParams): string {
+  const erroGrupo = validarSegmentoInformado(segmentoGrupo)
+  if (erroGrupo) return erroGrupo
+
+  if (temPai) {
+    const erroSubgrupo = validarSegmentoInformado(segmentoSubgrupo)
+    if (erroSubgrupo) return erroSubgrupo
+
+    if (codigoPai) {
+      const grupoEsperado = segmentoGrupoDeCodigoPai(codigoPai)
+      if (Number(segmentoGrupo) !== grupoEsperado) {
+        return MSG_GRUPO_PAI_INCOERENTE
+      }
+    }
+
+    const codigo = montarCodigoPorSegmentos(
+      tipo,
+      Number(segmentoGrupo),
+      Number(segmentoSubgrupo)
+    )
+    if (codigoPlanoJaExiste(codigo, planosParaValidacao)) {
+      const planoExistente = buscarPlanoPorCodigo(codigo, planosParaValidacao)
+      return mensagemCodigoDuplicado(
+        codigo,
+        planoExistente?.nome ?? codigo,
+        nomeEmpresa
+      )
+    }
+    return ''
+  }
+
+  const codigo = montarCodigoPorSegmentos(tipo, Number(segmentoGrupo))
+  if (codigoPlanoJaExiste(codigo, planosParaValidacao)) {
+    const planoExistente = buscarPlanoPorCodigo(codigo, planosParaValidacao)
+    return mensagemCodigoDuplicado(
+      codigo,
+      planoExistente?.nome ?? codigo,
+      nomeEmpresa
+    )
+  }
+  return ''
 }
 
 const LIMITE_NOME_EXIBICAO = 60

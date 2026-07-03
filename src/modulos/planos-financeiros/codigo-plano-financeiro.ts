@@ -81,6 +81,41 @@ export function montarCodigoComSufixo(prefixo: string, sufixo: number): string {
   return `${base}.${sufixo}`
 }
 
+export function montarCodigoPorSegmentos(
+  tipo: TipoPlanoFinanceiro,
+  segmentoGrupo: number,
+  segmentoSubgrupo?: number | null
+): string {
+  const raiz = raizDoTipo(tipo)
+  if (segmentoSubgrupo === undefined || segmentoSubgrupo === null) {
+    return `${raiz}.${segmentoGrupo}`
+  }
+  return `${raiz}.${segmentoGrupo}.${segmentoSubgrupo}`
+}
+
+export function extrairSegmentosSugeridos(
+  codigo: string,
+  _tipo: TipoPlanoFinanceiro,
+  temPai: boolean
+): { segmentoGrupo: number; segmentoSubgrupo: number | null } {
+  const partes = codigo.split('.')
+  if (!temPai) {
+    return {
+      segmentoGrupo: parseInt(partes[1], 10),
+      segmentoSubgrupo: null,
+    }
+  }
+  return {
+    segmentoGrupo: parseInt(partes[1], 10),
+    segmentoSubgrupo: parseInt(partes[2], 10),
+  }
+}
+
+export function segmentoGrupoDeCodigoPai(codigoPai: string): number {
+  const partes = codigoPai.split('.')
+  return parseInt(partes[partes.length - 1], 10)
+}
+
 export function extrairSufixoDeCodigo(codigo: string, prefixoEsperado?: string): number {
   if (prefixoEsperado) {
     const base = prefixoEsperado.endsWith('.') ? prefixoEsperado.slice(0, -1) : prefixoEsperado

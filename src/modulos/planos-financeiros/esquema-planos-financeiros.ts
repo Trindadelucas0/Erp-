@@ -12,6 +12,8 @@ export const esquemaDeCriacaoDePlanoFinanceiro = z.object({
   parentId: z.string().uuid().optional().nullable(),
   codigo: z.string().trim().max(50).optional(),
   sufixoCodigo: z.coerce.number().int().min(0).max(99).optional(),
+  segmentoGrupoCodigo: z.coerce.number().int().min(0).max(99).optional(),
+  segmentoSubgrupoCodigo: z.coerce.number().int().min(0).max(99).optional(),
   mostrarNaDre: z.boolean().optional().default(true),
   permiteLancamentoManual: z.boolean().optional().default(false),
   exigeAnexoLancamento: z.boolean().optional().default(false),

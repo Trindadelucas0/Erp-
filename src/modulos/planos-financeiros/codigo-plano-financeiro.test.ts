@@ -4,9 +4,12 @@ import {
   codigoRaizPorIndice,
   coletarDescendentes,
   ehDescendente,
+  extrairSegmentosSugeridos,
   extrairSufixoDeCodigo,
   montarCodigoComSufixo,
+  montarCodigoPorSegmentos,
   prefixoParaNovoPlano,
+  segmentoGrupoDeCodigoPai,
   substituirPrefixoCodigo,
   sufixoCodigoValido,
 } from './codigo-plano-financeiro.js'
@@ -37,6 +40,29 @@ describe('codigo-plano-financeiro', () => {
     expect(montarCodigoComSufixo('1.', 7)).toBe('1.7')
     expect(montarCodigoComSufixo('1.5.', 3)).toBe('1.5.3')
     expect(montarCodigoComSufixo('2.', 4)).toBe('2.4')
+  })
+
+  it('montarCodigoPorSegmentos monta código por segmentos editáveis', () => {
+    expect(montarCodigoPorSegmentos('receita', 7)).toBe('1.7')
+    expect(montarCodigoPorSegmentos('despesa', 4)).toBe('2.4')
+    expect(montarCodigoPorSegmentos('receita', 5, 3)).toBe('1.5.3')
+    expect(montarCodigoPorSegmentos('resultado', 1, null)).toBe('3.1')
+  })
+
+  it('extrairSegmentosSugeridos retorna segmentos para pré-preencher modal', () => {
+    expect(extrairSegmentosSugeridos('1.7', 'receita', false)).toEqual({
+      segmentoGrupo: 7,
+      segmentoSubgrupo: null,
+    })
+    expect(extrairSegmentosSugeridos('1.5.3', 'receita', true)).toEqual({
+      segmentoGrupo: 5,
+      segmentoSubgrupo: 3,
+    })
+  })
+
+  it('segmentoGrupoDeCodigoPai retorna último segmento do código pai', () => {
+    expect(segmentoGrupoDeCodigoPai('1.5')).toBe(5)
+    expect(segmentoGrupoDeCodigoPai('2.12')).toBe(12)
   })
 
   it('extrairSufixoDeCodigo retorna último segmento', () => {
