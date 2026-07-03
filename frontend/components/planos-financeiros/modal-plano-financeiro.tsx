@@ -397,12 +397,12 @@ export function ModalPlanoFinanceiro({
                 <Input
                   id={`${idBase}-sufixo-codigo`}
                   inputMode="numeric"
-                  min={1}
+                  min={0}
                   max={99}
                   maxLength={2}
                   value={sufixoCodigo}
                   onChange={(e) => aoMudarSufixo(e.target.value)}
-                  placeholder="1–99"
+                  placeholder="0–99"
                   className={erroSufixo ? 'border-destructive' : undefined}
                   aria-invalid={!!erroSufixo}
                   required
@@ -410,7 +410,7 @@ export function ModalPlanoFinanceiro({
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                Informe o número da sequência (1 a 99). O prefixo é definido pelo tipo e pelo
+                Informe o número da sequência (0 a 99). O prefixo é definido pelo tipo e pelo
                 grupo pai.
               </p>
               {erroSufixo && <p className="text-sm text-destructive">{erroSufixo}</p>}

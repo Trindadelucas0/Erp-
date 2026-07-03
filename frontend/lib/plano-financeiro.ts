@@ -2,9 +2,9 @@ export const MSG_PLANO_SOMENTE_DESPESA = 'Só é permitido plano da aba Despesas
 export const MSG_PLANO_SOMENTE_SUBGRUPO =
   'Só é permitido subgrupo de Despesas (ex.: 2.1.1)'
 
-export const SUFIXO_CODIGO_MIN = 1
+export const SUFIXO_CODIGO_MIN = 0
 export const SUFIXO_CODIGO_MAX = 99
-export const MSG_SUFIXO_INVALIDO = 'Informe um número de 1 a 99'
+export const MSG_SUFIXO_INVALIDO = 'Informe um número de 0 a 99'
 
 export type TipoPlanoFinanceiro = 'receita' | 'despesa' | 'resultado'
 

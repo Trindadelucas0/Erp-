@@ -4,7 +4,7 @@
 
 export type TipoPlanoFinanceiro = 'receita' | 'despesa' | 'resultado'
 
-export const SUFIXO_CODIGO_MIN = 1
+export const SUFIXO_CODIGO_MIN = 0
 export const SUFIXO_CODIGO_MAX = 99
 
 export function raizDoTipo(tipo: TipoPlanoFinanceiro): string {

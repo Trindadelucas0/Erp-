@@ -46,10 +46,11 @@ describe('codigo-plano-financeiro', () => {
     expect(extrairSufixoDeCodigo('1.3', '1.')).toBe(3)
   })
 
-  it('sufixoCodigoValido aceita 1 a 99', () => {
+  it('sufixoCodigoValido aceita 0 a 99', () => {
+    expect(sufixoCodigoValido(0)).toBe(true)
     expect(sufixoCodigoValido(1)).toBe(true)
     expect(sufixoCodigoValido(99)).toBe(true)
-    expect(sufixoCodigoValido(0)).toBe(false)
+    expect(sufixoCodigoValido(-1)).toBe(false)
     expect(sufixoCodigoValido(100)).toBe(false)
     expect(sufixoCodigoValido(1.5)).toBe(false)
   })

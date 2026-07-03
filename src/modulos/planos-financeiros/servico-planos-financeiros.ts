@@ -184,7 +184,7 @@ async function resolverCodigoCriacao(
 ): Promise<string> {
   if (dados.sufixoCodigo !== undefined) {
     if (!sufixoCodigoValido(dados.sufixoCodigo)) {
-      throw new ErroDaAplicacao('Sufixo deve ser entre 1 e 99', 400)
+      throw new ErroDaAplicacao('Sufixo deve ser entre 0 e 99', 400)
     }
 
     let codigoPai: string | null = null
