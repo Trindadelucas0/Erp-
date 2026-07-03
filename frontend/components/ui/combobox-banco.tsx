@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Label } from '@/components/ui/label'
+import { useFecharAoSairComMouse } from '@/lib/dropdown-catalogo'
 import { cn } from '@/lib/utils'
 import { BANCOS_BRASILEIROS } from '@/lib/bancos-brasileiros'
 
@@ -19,6 +20,13 @@ export function ComboboxBanco({ valor, aoMudar, disabled, mensagemDeErro }: Prop
   const [busca, setBusca] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const fechar = useCallback(() => {
+    setAberto(false)
+    setBusca('')
+  }, [])
+
+  const zonaHover = useFecharAoSairComMouse(fechar)
 
   const termoBusca = busca.toLowerCase().trim()
   const filtrados = termoBusca
@@ -42,24 +50,23 @@ export function ComboboxBanco({ valor, aoMudar, disabled, mensagemDeErro }: Prop
     inputRef.current?.focus()
   }
 
-  // Fechar ao clicar fora
+  // Fechar ao clicar fora (fallback para touch)
   useEffect(() => {
     function aoClicarFora(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setAberto(false)
-        setBusca('')
+        fechar()
       }
     }
     document.addEventListener('mousedown', aoClicarFora)
     return () => document.removeEventListener('mousedown', aoClicarFora)
-  }, [])
+  }, [fechar])
 
   const labelExibido = valor || ''
 
   return (
     <div className="space-y-2" ref={containerRef}>
       <Label htmlFor="banco-combobox">Banco</Label>
-      <div className="relative">
+      <div className="relative" {...zonaHover}>
         {aberto ? (
           <input
             ref={inputRef}

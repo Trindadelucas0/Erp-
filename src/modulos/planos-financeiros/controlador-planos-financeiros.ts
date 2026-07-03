@@ -57,7 +57,7 @@ async function sugerirProximoCodigo(requisicao: FastifyRequest, resposta: Fastif
     tipo,
     query.parentId || null
   )
-  return resposta.send({ codigo })
+  return resposta.send(codigo)
 }
 
 async function buscarPlanoFinanceiro(requisicao: FastifyRequest, resposta: FastifyReply) {

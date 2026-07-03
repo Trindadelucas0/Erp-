@@ -4,6 +4,9 @@
 
 export type TipoPlanoFinanceiro = 'receita' | 'despesa' | 'resultado'
 
+export const SUFIXO_CODIGO_MIN = 1
+export const SUFIXO_CODIGO_MAX = 99
+
 export function raizDoTipo(tipo: TipoPlanoFinanceiro): string {
   if (tipo === 'receita') return '1'
   if (tipo === 'despesa') return '2'
@@ -55,6 +58,42 @@ export function codigoFilhoPorIndice(codigoPai: string, indice: number): string 
 
 export function codigoRaizPorIndice(tipo: TipoPlanoFinanceiro, indice: number): string {
   return `${raizDoTipo(tipo)}.${indice}`
+}
+
+export function sufixoCodigoValido(sufixo: number): boolean {
+  return (
+    Number.isInteger(sufixo) &&
+    sufixo >= SUFIXO_CODIGO_MIN &&
+    sufixo <= SUFIXO_CODIGO_MAX
+  )
+}
+
+export function prefixoParaNovoPlano(
+  tipo: TipoPlanoFinanceiro,
+  codigoPai?: string | null
+): string {
+  if (codigoPai) return `${codigoPai}.`
+  return `${raizDoTipo(tipo)}.`
+}
+
+export function montarCodigoComSufixo(prefixo: string, sufixo: number): string {
+  const base = prefixo.endsWith('.') ? prefixo.slice(0, -1) : prefixo
+  return `${base}.${sufixo}`
+}
+
+export function extrairSufixoDeCodigo(codigo: string, prefixoEsperado?: string): number {
+  if (prefixoEsperado) {
+    const base = prefixoEsperado.endsWith('.') ? prefixoEsperado.slice(0, -1) : prefixoEsperado
+    if (!codigo.startsWith(`${base}.`)) {
+      throw new Error(`Código ${codigo} não pertence ao prefixo ${prefixoEsperado}`)
+    }
+    const sufixo = codigo.slice(base.length + 1)
+    const primeiraParte = sufixo.split('.')[0]
+    return parseInt(primeiraParte, 10)
+  }
+
+  const partes = codigo.split('.')
+  return parseInt(partes[partes.length - 1], 10)
 }
 
 export function substituirPrefixoCodigo(

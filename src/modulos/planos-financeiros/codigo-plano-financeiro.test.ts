@@ -4,7 +4,11 @@ import {
   codigoRaizPorIndice,
   coletarDescendentes,
   ehDescendente,
+  extrairSufixoDeCodigo,
+  montarCodigoComSufixo,
+  prefixoParaNovoPlano,
   substituirPrefixoCodigo,
+  sufixoCodigoValido,
 } from './codigo-plano-financeiro.js'
 import {
   ErroMovimentoPlano,
@@ -20,6 +24,34 @@ describe('codigo-plano-financeiro', () => {
     expect(codigoRaizPorIndice('receita', 3)).toBe('1.3')
     expect(codigoRaizPorIndice('despesa', 2)).toBe('2.2')
     expect(codigoRaizPorIndice('resultado', 1)).toBe('3.1')
+  })
+
+  it('prefixoParaNovoPlano retorna prefixo por tipo ou pai', () => {
+    expect(prefixoParaNovoPlano('receita')).toBe('1.')
+    expect(prefixoParaNovoPlano('despesa')).toBe('2.')
+    expect(prefixoParaNovoPlano('resultado')).toBe('3.')
+    expect(prefixoParaNovoPlano('receita', '1.5')).toBe('1.5.')
+  })
+
+  it('montarCodigoComSufixo monta código completo', () => {
+    expect(montarCodigoComSufixo('1.', 7)).toBe('1.7')
+    expect(montarCodigoComSufixo('1.5.', 3)).toBe('1.5.3')
+    expect(montarCodigoComSufixo('2.', 4)).toBe('2.4')
+  })
+
+  it('extrairSufixoDeCodigo retorna último segmento', () => {
+    expect(extrairSufixoDeCodigo('1.3')).toBe(3)
+    expect(extrairSufixoDeCodigo('1.5.2')).toBe(2)
+    expect(extrairSufixoDeCodigo('1.5.2', '1.5.')).toBe(2)
+    expect(extrairSufixoDeCodigo('1.3', '1.')).toBe(3)
+  })
+
+  it('sufixoCodigoValido aceita 1 a 99', () => {
+    expect(sufixoCodigoValido(1)).toBe(true)
+    expect(sufixoCodigoValido(99)).toBe(true)
+    expect(sufixoCodigoValido(0)).toBe(false)
+    expect(sufixoCodigoValido(100)).toBe(false)
+    expect(sufixoCodigoValido(1.5)).toBe(false)
   })
 
   it('substituirPrefixoCodigo atualiza nó e prefixo de descendentes', () => {

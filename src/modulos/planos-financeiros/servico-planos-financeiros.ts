@@ -3,8 +3,12 @@ import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-audi
 import {
   codigoCompativelComTipo,
   codigoInicialSemPai,
+  extrairSufixoDeCodigo,
+  montarCodigoComSufixo,
+  prefixoParaNovoPlano,
   proximoCodigoFilho,
   raizDoTipo,
+  sufixoCodigoValido,
   type TipoPlanoFinanceiro,
 } from './codigo-plano-financeiro.js'
 import {
@@ -142,20 +146,63 @@ async function buscarPorId(companyId: string, id: string) {
 }
 
 async function sugerirProximoCodigo(companyId: string, tipo: TipoPlanoFinanceiro, parentId?: string | null) {
+  let codigoPai: string | null = null
+
   if (parentId) {
     const pai = await repositorioDePlanosFinanceiros.buscarPorId(companyId, parentId)
     if (!pai) throw new ErroDaAplicacao('Plano pai não encontrado', 404)
     if (pai.tipo !== tipo) throw new ErroDaAplicacao('Plano pai deve ser do mesmo tipo', 400)
 
+    codigoPai = pai.codigo
     const irmaos = await repositorioDePlanosFinanceiros.listarFilhosDiretos(companyId, parentId)
-    return proximoCodigoFilho(
+    const codigo = proximoCodigoFilho(
       pai.codigo,
       irmaos.map((i) => i.codigo)
     )
+    const prefixo = prefixoParaNovoPlano(tipo, codigoPai)
+    return {
+      codigo,
+      prefixo,
+      sufixo: extrairSufixoDeCodigo(codigo, prefixo),
+    }
   }
 
   const codigos = await repositorioDePlanosFinanceiros.listarCodigosPorEmpresa(companyId, tipo)
-  return codigoInicialSemPai(tipo, codigos)
+  const codigo = codigoInicialSemPai(tipo, codigos)
+  const prefixo = prefixoParaNovoPlano(tipo)
+  return {
+    codigo,
+    prefixo,
+    sufixo: extrairSufixoDeCodigo(codigo, prefixo),
+  }
+}
+
+async function resolverCodigoCriacao(
+  companyId: string,
+  dados: DadosParaCriarPlanoFinanceiro
+): Promise<string> {
+  if (dados.sufixoCodigo !== undefined) {
+    if (!sufixoCodigoValido(dados.sufixoCodigo)) {
+      throw new ErroDaAplicacao('Sufixo deve ser entre 1 e 99', 400)
+    }
+
+    let codigoPai: string | null = null
+    if (dados.parentId) {
+      const pai = await repositorioDePlanosFinanceiros.buscarPorId(companyId, dados.parentId)
+      if (!pai) throw new ErroDaAplicacao('Plano pai não encontrado', 404)
+      codigoPai = pai.codigo
+    }
+
+    const prefixo = prefixoParaNovoPlano(dados.tipo, codigoPai)
+    return montarCodigoComSufixo(prefixo, dados.sufixoCodigo)
+  }
+
+  if (dados.codigo?.trim()) {
+    return dados.codigo.trim()
+  }
+
+  const sugestao = await sugerirProximoCodigo(companyId, dados.tipo, dados.parentId)
+  return sugestao.codigo
 }
 
 async function validarPai(companyId: string, tipo: TipoPlanoFinanceiro, parentId?: string | null) {
@@ -180,9 +227,7 @@ async function criarPlano(
 ) {
   await validarPai(companyId, dados.tipo, dados.parentId)
 
-  const codigo =
-    dados.codigo?.trim() ||
-    (await sugerirProximoCodigo(companyId, dados.tipo, dados.parentId))
+  const codigo = await resolverCodigoCriacao(companyId, dados)
 
   if (!codigoCompativelComTipo(codigo, dados.tipo)) {
     throw new ErroDaAplicacao(
@@ -199,7 +244,9 @@ async function criarPlano(
   }
 
   const duplicado = await repositorioDePlanosFinanceiros.buscarPorCodigo(companyId, codigo)
-  if (duplicado) throw new ErroDaAplicacao('Código já cadastrado nesta empresa', 400)
+  if (duplicado) {
+    throw new ErroDaAplicacao(`O código ${codigo} já está cadastrado nesta empresa`, 400)
+  }
 
   const plano = await repositorioDePlanosFinanceiros.criar(companyId, { ...dados, codigo })
 

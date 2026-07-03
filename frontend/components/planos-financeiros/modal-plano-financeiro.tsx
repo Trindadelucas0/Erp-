@@ -13,10 +13,20 @@ import { InputPadrao } from '@/components/ui/input-padrao'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { SelectGrupoPlanoFinanceiro } from './select-grupo-plano-financeiro'
 import { COLUNAS_FLAGS_PLANO } from './flags-plano-financeiro'
 import { buscarGrupoPai, type PlanoComNivel } from './util-arvore-planos'
 import type { PlanoFinanceiroNo } from './arvore-planos-financeiros'
+import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
+import {
+  codigoPlanoJaExiste,
+  mensagemCodigoDuplicado,
+  montarCodigoComSufixo,
+  sufixoCodigoValido,
+  validarSufixoInformado,
+} from '@/lib/plano-financeiro'
 
 export type TipoPlanoAba = 'receita' | 'despesa' | 'resultado'
 
@@ -44,6 +54,7 @@ type Props = {
   modoEdicao: boolean
   planoEmEdicao: PlanoFinanceiroNo | null
   planosDisponiveis: PlanoComNivel[]
+  codigosExistentes?: string[]
   paiPreSelecionadoId?: string | null
   aoFechar: () => void
   aoSalvo: (parentIdCriado?: string | null) => void
@@ -100,12 +111,15 @@ export function ModalPlanoFinanceiro({
   modoEdicao,
   planoEmEdicao,
   planosDisponiveis,
+  codigosExistentes = [],
   paiPreSelecionadoId,
   aoFechar,
   aoSalvo,
 }: Props) {
   const [form, setForm] = useState<FormPlanoFinanceiro>(formVazio)
-  const [codigoSugerido, setCodigoSugerido] = useState('')
+  const [prefixoCodigo, setPrefixoCodigo] = useState('')
+  const [sufixoCodigo, setSufixoCodigo] = useState('')
+  const [erroSufixo, setErroSufixo] = useState('')
   const [carregandoCodigo, setCarregandoCodigo] = useState(false)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
@@ -120,17 +134,17 @@ export function ModalPlanoFinanceiro({
         try {
           const { data } = await clienteHttp.get(`/planos-financeiros/${planoEmEdicao.id}`)
           setForm(planoParaForm(data.plano))
-          setCodigoSugerido(data.plano.codigo)
         } catch {
           setForm(planoParaForm(planoEmEdicao))
-          setCodigoSugerido(planoEmEdicao.codigo)
         }
       } else {
         setForm({
           ...formVazio,
           parentId: paiPreSelecionadoId ?? '',
         })
-        setCodigoSugerido('')
+        setPrefixoCodigo('')
+        setSufixoCodigo('')
+        setErroSufixo('')
       }
       setCarregandoCodigo(!modoEdicao)
       setErro('')
@@ -154,10 +168,14 @@ export function ModalPlanoFinanceiro({
 
         if (parentIdRequisicaoRef.current !== parentIdAtual) return
 
-        setCodigoSugerido(data.codigo)
+        setPrefixoCodigo(data.prefixo ?? '')
+        const novoSufixo = String(data.sufixo ?? '')
+        setSufixoCodigo(novoSufixo)
+        setErroSufixo(validarSufixoAtual(novoSufixo, data.prefixo ?? ''))
       } catch {
         if (parentIdRequisicaoRef.current === parentIdAtual) {
-          setCodigoSugerido('')
+          setPrefixoCodigo('')
+          setSufixoCodigo('')
         }
       } finally {
         if (parentIdRequisicaoRef.current === parentIdAtual) {
@@ -180,8 +198,41 @@ export function ModalPlanoFinanceiro({
     return buscarGrupoPai(planosDisponiveis, parentId)
   }, [modoEdicao, form.parentId, planoEmEdicao?.parentId, planosDisponiveis])
 
+  const codigoCompleto = useMemo(() => {
+    const numero = Number(sufixoCodigo)
+    if (!prefixoCodigo || !sufixoCodigoValido(numero)) return ''
+    return montarCodigoComSufixo(prefixoCodigo, numero)
+  }, [prefixoCodigo, sufixoCodigo])
+
+  function validarSufixoAtual(digitos: string, prefixo: string): string {
+    const erroFormato = validarSufixoInformado(digitos)
+    if (erroFormato) return erroFormato
+    if (!prefixo) return ''
+
+    const codigo = montarCodigoComSufixo(prefixo, Number(digitos))
+    if (codigoPlanoJaExiste(codigo, codigosExistentes)) {
+      return mensagemCodigoDuplicado(codigo)
+    }
+    return ''
+  }
+
+  function aoMudarSufixo(valor: string) {
+    const apenasDigitos = valor.replace(/\D/g, '').slice(0, 2)
+    setSufixoCodigo(apenasDigitos)
+    setErroSufixo(validarSufixoAtual(apenasDigitos, prefixoCodigo))
+  }
+
   async function aoSalvar(evento: FormEvent) {
     evento.preventDefault()
+
+    if (!modoEdicao) {
+      const erroValidacao = validarSufixoAtual(sufixoCodigo, prefixoCodigo)
+      if (erroValidacao) {
+        setErroSufixo(erroValidacao)
+        return
+      }
+    }
+
     setSalvando(true)
     setErro('')
 
@@ -204,16 +255,13 @@ export function ModalPlanoFinanceiro({
           ...corpoBase,
           tipo,
           parentId: parentIdSalvo,
-          codigo: codigoSugerido || undefined,
+          sufixoCodigo: Number(sufixoCodigo),
         })
         aoSalvo(parentIdSalvo)
       }
       aoFechar()
     } catch (e: unknown) {
-      const msg =
-        (e as { response?: { data?: { mensagem?: string } } })?.response?.data?.mensagem ||
-        'Erro ao salvar plano financeiro'
-      setErro(msg)
+      setErro(extrairMensagemApi(e, 'Erro ao salvar plano financeiro'))
     } finally {
       setSalvando(false)
     }
@@ -224,32 +272,35 @@ export function ModalPlanoFinanceiro({
 
   const descricaoModal = modoEdicao
     ? 'Altere o nome e as opções. Para mudar de grupo, arraste na lista.'
-    : 'Preencha o nome e escolha em qual grupo a conta ficará. O código é gerado automaticamente.'
+    : 'Informe o nome, escolha o grupo e defina o número da sequência. A ordem na lista pode renumerar os códigos ao arrastar.'
 
   const opcoesAvancadasAbertas = modoEdicao && temOpcoesNaoPadrao(form)
+  const sufixoInvalido =
+    !modoEdicao &&
+    (carregandoCodigo || Boolean(erroSufixo) || Boolean(validarSufixoInformado(sufixoCodigo)))
 
   const conteudoPainelResumoCriacao =
-    codigoSugerido || !carregandoCodigo ? (
+    codigoCompleto || !carregandoCodigo ? (
       grupoPaiSelecionado ? (
         <p className="text-muted-foreground">
           Ficará em:{' '}
           <strong className="text-foreground">
             {grupoPaiSelecionado.codigo} - {grupoPaiSelecionado.nome}
           </strong>
-          {codigoSugerido && (
+          {codigoCompleto && (
             <>
               {' → código '}
-              <strong className="text-foreground">{codigoSugerido}</strong>
+              <strong className="text-foreground">{codigoCompleto}</strong>
             </>
           )}
         </p>
       ) : (
         <p className="text-muted-foreground">
           Ficará no <strong className="text-foreground">1º nível</strong>
-          {codigoSugerido && (
+          {codigoCompleto && (
             <>
               {' → código '}
-              <strong className="text-foreground">{codigoSugerido}</strong>
+              <strong className="text-foreground">{codigoCompleto}</strong>
             </>
           )}
         </p>
@@ -292,7 +343,11 @@ export function ModalPlanoFinanceiro({
           <Button type="button" variant="outline" onClick={aoFechar} disabled={salvando}>
             Cancelar
           </Button>
-          <BotaoPrimario type="submit" form="form-plano-financeiro" disabled={salvando}>
+          <BotaoPrimario
+            type="submit"
+            form="form-plano-financeiro"
+            disabled={salvando || sufixoInvalido}
+          >
             {salvando ? 'Salvando...' : 'Salvar plano'}
           </BotaoPrimario>
         </div>
@@ -313,6 +368,39 @@ export function ModalPlanoFinanceiro({
             placeholder="Ex.: Materiais de escritório"
             required
           />
+
+          {!modoEdicao && (
+            <div className="space-y-2">
+              <Label htmlFor={`${idBase}-sufixo-codigo`}>Código da conta</Label>
+              <div className="flex items-center gap-2">
+                <span
+                  className="inline-flex h-10 min-w-[3.5rem] items-center justify-center rounded-md border bg-muted px-3 text-sm font-medium text-foreground"
+                  aria-hidden
+                >
+                  {carregandoCodigo && !prefixoCodigo ? '...' : prefixoCodigo || '—'}
+                </span>
+                <Input
+                  id={`${idBase}-sufixo-codigo`}
+                  inputMode="numeric"
+                  min={1}
+                  max={99}
+                  maxLength={2}
+                  value={sufixoCodigo}
+                  onChange={(e) => aoMudarSufixo(e.target.value)}
+                  placeholder="1–99"
+                  className={erroSufixo ? 'border-destructive' : undefined}
+                  aria-invalid={!!erroSufixo}
+                  required
+                  disabled={carregandoCodigo && !prefixoCodigo}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Informe o número da sequência (1 a 99). O prefixo é definido pelo tipo e pelo
+                grupo pai.
+              </p>
+              {erroSufixo && <p className="text-sm text-destructive">{erroSufixo}</p>}
+            </div>
+          )}
         </ModalSecao>
 
         <ModalSecao
@@ -334,8 +422,8 @@ export function ModalPlanoFinanceiro({
           )}
 
           <ModalPainelResumo
-            carregando={!modoEdicao && carregandoCodigo && !codigoSugerido}
-            opaco={!modoEdicao && carregandoCodigo && Boolean(codigoSugerido)}
+            carregando={!modoEdicao && carregandoCodigo && !codigoCompleto}
+            opaco={!modoEdicao && carregandoCodigo && Boolean(codigoCompleto)}
           >
             {modoEdicao ? conteudoPainelResumoEdicao : conteudoPainelResumoCriacao}
           </ModalPainelResumo>

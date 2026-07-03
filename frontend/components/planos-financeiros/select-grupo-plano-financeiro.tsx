@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { ChevronDown } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { classesSelect } from '@/components/ui/select'
+import { useFecharAoSairComMouse } from '@/lib/dropdown-catalogo'
 import { cn } from '@/lib/utils'
 import type { PlanoComNivel } from './util-arvore-planos'
 
@@ -47,6 +48,8 @@ export function SelectGrupoPlanoFinanceiro({
   const botaoRef = useRef<HTMLButtonElement>(null)
   const listaRef = useRef<HTMLDivElement>(null)
   const idCampo = useId()
+
+  const zonaHover = useFecharAoSairComMouse(() => setAberto(false))
 
   useEffect(() => {
     setMontado(true)
@@ -113,6 +116,7 @@ export function SelectGrupoPlanoFinanceiro({
     <div
       ref={listaRef}
       role="listbox"
+      {...zonaHover}
       className="fixed z-[60] max-h-60 overflow-y-auto rounded-md border border-border bg-card py-1 shadow-lg"
       style={{
         top: posicao.top,
@@ -165,7 +169,7 @@ export function SelectGrupoPlanoFinanceiro({
   )
 
   return (
-    <div className="space-y-2" ref={containerRef}>
+    <div className="space-y-2" ref={containerRef} {...zonaHover}>
       <Label htmlFor={idCampo}>{rotulo}</Label>
       <div className="relative">
         <button

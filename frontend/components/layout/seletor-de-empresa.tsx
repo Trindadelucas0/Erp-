@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Building2, ChevronDown } from 'lucide-react'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
+import { useFecharAoSairComMouse } from '@/lib/dropdown-catalogo'
 import type { EmpresaDaSessao } from '@/types/sessao'
 
 export function SeletorDeEmpresa() {
@@ -11,6 +12,9 @@ export function SeletorDeEmpresa() {
   const [aberto, setAberto] = useState(false)
 
   const empresas = perfil?.empresas ?? []
+
+  const fechar = useCallback(() => setAberto(false), [])
+  const zonaHover = useFecharAoSairComMouse(fechar)
 
   useEffect(() => {
     if (empresas.length === 0) return
@@ -37,7 +41,7 @@ export function SeletorDeEmpresa() {
   }
 
   return (
-    <div className="relative">
+    <div className="relative" {...zonaHover}>
       <button
         type="button"
         onClick={() => setAberto((v) => !v)}
@@ -51,29 +55,23 @@ export function SeletorDeEmpresa() {
       </button>
 
       {aberto && (
-        <>
-          <div
-            className="fixed inset-0 z-10"
-            onClick={() => setAberto(false)}
-          />
-          <div className="absolute right-0 top-full z-20 mt-1 min-w-[200px] rounded-md border border-border bg-popover py-1 shadow-md">
-            {empresas.map((e) => (
-              <button
-                key={e.company.id}
-                type="button"
-                onClick={() => selecionarEmpresa(e)}
-                className={`w-full px-3 py-2 text-left text-sm transition-colors hover:bg-accent ${
-                  empresaAtiva?.company.id === e.company.id
-                    ? 'text-primary font-medium'
-                    : 'text-foreground'
-                }`}
-              >
-                <div className="font-medium">{e.company.name}</div>
-                <div className="text-xs text-muted-foreground">{e.company.cnpj}</div>
-              </button>
-            ))}
-          </div>
-        </>
+        <div className="absolute right-0 top-full z-20 mt-1 min-w-[200px] rounded-md border border-border bg-popover py-1 shadow-md">
+          {empresas.map((e) => (
+            <button
+              key={e.company.id}
+              type="button"
+              onClick={() => selecionarEmpresa(e)}
+              className={`w-full px-3 py-2 text-left text-sm transition-colors hover:bg-accent ${
+                empresaAtiva?.company.id === e.company.id
+                  ? 'text-primary font-medium'
+                  : 'text-foreground'
+              }`}
+            >
+              <div className="font-medium">{e.company.name}</div>
+              <div className="text-xs text-muted-foreground">{e.company.cnpj}</div>
+            </button>
+          ))}
+        </div>
       )}
     </div>
   )

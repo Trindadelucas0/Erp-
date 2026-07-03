@@ -22,6 +22,7 @@ import {
   type TipoPlanoAba,
 } from '@/components/planos-financeiros/modal-plano-financeiro'
 import { achatarPlanosComNivel } from '@/components/planos-financeiros/util-arvore-planos'
+import { useFecharAoSairComMouse } from '@/lib/dropdown-catalogo'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 
 type AbaId = 'receitas' | 'despesas' | 'resultado'
@@ -51,6 +52,7 @@ function ConteudoDaPagina() {
   const [filtroSituacao, setFiltroSituacao] = useState<'todos' | 'ativos' | 'inativos'>('todos')
   const [filtrosAbertos, setFiltrosAbertos] = useState(false)
   const refFiltros = useRef<HTMLDivElement>(null)
+  const zonaHoverFiltros = useFecharAoSairComMouse(() => setFiltrosAbertos(false))
   const [modalAberto, setModalAberto] = useState(false)
   const [modoEdicao, setModoEdicao] = useState(false)
   const [planoEmEdicao, setPlanoEmEdicao] = useState<PlanoFinanceiroNo | null>(null)
@@ -104,9 +106,16 @@ function ConteudoDaPagina() {
     return () => document.removeEventListener('mousedown', aoClicarFora)
   }, [filtrosAbertos])
 
+  const planosAchatados = useMemo(() => achatarPlanosComNivel(arvoreAtual), [arvoreAtual])
+
   const planosParaPai = useMemo(
-    () => achatarPlanosComNivel(arvoreAtual).filter((p) => p.nivel === 0),
-    [arvoreAtual]
+    () => planosAchatados.filter((p) => p.nivel === 0),
+    [planosAchatados]
+  )
+
+  const codigosExistentes = useMemo(
+    () => planosAchatados.map((p) => p.codigo),
+    [planosAchatados]
   )
 
   function abrirNovo() {
@@ -199,7 +208,7 @@ function ConteudoDaPagina() {
         permitirOverflow
         acoes={
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative" ref={refFiltros}>
+            <div className="relative" ref={refFiltros} {...zonaHoverFiltros}>
               <Button
                 type="button"
                 variant="outline"
@@ -272,6 +281,7 @@ function ConteudoDaPagina() {
         modoEdicao={modoEdicao}
         planoEmEdicao={planoEmEdicao}
         planosDisponiveis={planosParaPai}
+        codigosExistentes={codigosExistentes}
         paiPreSelecionadoId={paiPreSelecionadoId}
         aoFechar={fecharModal}
         aoSalvo={async (parentIdCriado) => {
