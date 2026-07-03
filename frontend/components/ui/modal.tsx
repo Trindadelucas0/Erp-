@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type Largura = 'sm' | 'md' | 'lg' | 'xl' | '2xl'
+type Largura = 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl'
 type AlturaMinimaConteudo = 'sm' | 'md' | 'lg'
 
 const larguras: Record<Largura, string> = {
@@ -14,6 +14,9 @@ const larguras: Record<Largura, string> = {
   lg: 'max-w-lg',
   xl: 'max-w-xl',
   '2xl': 'max-w-2xl',
+  '3xl': 'max-w-3xl',
+  '4xl': 'max-w-4xl',
+  '5xl': 'max-w-5xl',
 }
 
 const alturasMinimasConteudo: Record<AlturaMinimaConteudo, string> = {
