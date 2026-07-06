@@ -102,6 +102,7 @@ type PessoaOpcao = { id: string; nome: string }
 type EntradaFornecedor = {
   id: string
   numero: number
+  descricao: string | null
   status: string
   totalLiquido: number
   data: string
