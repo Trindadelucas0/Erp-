@@ -58,7 +58,9 @@ export const esquemaEmbalagemMaster = z.object({
       })
   ),
   codigoBarras: codigoBarrasOpcional,
-  descricao: textoOpcionalNulavel(100),
+  alturaCm: decimalOpcional,
+  larguraCm: decimalOpcional,
+  comprimentoCm: decimalOpcional,
   ordem: z.number().int().optional(),
 })
 
@@ -82,8 +84,27 @@ const camposProduto = {
   ativo: z.boolean().optional().default(true),
   nomeVenda: textoCadastroObrigatorio(2),
   marca: textoCadastroObrigatorio(1, 100),
-  unidade: textoCadastroObrigatorio(1).default('UN'),
+  unidade: textoCadastroObrigatorio(1).transform((v) => v.toUpperCase()).default('UN'),
   caracteristicas: textoOpcionalNulavel(2000),
+  tipoEntrega: z.preprocess(
+    nulParaUndefined,
+    z
+      .enum(['pronta_entrega', 'sob_encomenda'])
+      .optional()
+  ),
+  diasParaEntrega: inteiroOpcional,
+  dataValidadePreco: z.preprocess(
+    nulParaUndefined,
+    z
+      .union([z.string(), z.date()])
+      .optional()
+      .transform((v) => {
+        if (v === undefined) return undefined
+        if (v instanceof Date) return v
+        const d = new Date(v)
+        return Number.isNaN(d.getTime()) ? undefined : d
+      })
+  ),
   entregaNoAto: z.boolean().optional().default(false),
   entregaARetirar: z.boolean().optional().default(false),
   entregar: z.boolean().optional().default(false),
@@ -104,6 +125,7 @@ const camposProduto = {
   normaPalete: textoOpcionalNulavel(100),
   nomeCompra: textoOpcionalNulavel(200),
   precoCusto: decimalOpcional,
+  agruparSimilaresRuptura: z.boolean().optional().default(false),
   fornecedores: z.array(esquemaProdutoFornecedor).optional().default([]),
   ncm: z.preprocess(
     nulParaUndefined,

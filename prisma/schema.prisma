@@ -36,6 +36,7 @@ model Company {
   creditosFornecedor   CreditoFornecedor[]
   pendenciasFornecedor PendenciaFornecedor[]
   movimentosCreditoFornecedor CreditoFornecedorMovimento[]
+  unidadesMedida       UnidadeMedida[]
   createdAt            DateTime      @default(now())
 }
 
@@ -469,6 +470,20 @@ model AtalhoTeclado {
 
 // ─── Produtos ────────────────────────────────────────────────────────────────
 
+model UnidadeMedida {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  sigla     String
+  nome      String
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, sigla])
+  @@index([companyId, ativo])
+}
+
 model Produto {
   id                     String   @id @default(uuid())
   companyId              String
@@ -481,6 +496,9 @@ model Produto {
   unidade                String   @default("UN")
   caracteristicas        String?
 
+  tipoEntrega            String?  // pronta_entrega | sob_encomenda
+  diasParaEntrega        Int?
+  dataValidadePreco      DateTime?
   entregaNoAto           Boolean  @default(false)
   entregaARetirar        Boolean  @default(false)
   entregar               Boolean  @default(false)
@@ -502,6 +520,8 @@ model Produto {
   normaPalete            String?
 
   nomeCompra             String?
+  precoCusto             Decimal? @db.Decimal(15, 4)
+  agruparSimilaresRuptura Boolean @default(false)
 
   ncm                    String?
   codigoOrigem           String?
@@ -540,14 +560,17 @@ model ProdutoFornecedor {
 }
 
 model ProdutoEmbalagemMaster {
-  id           String   @id @default(uuid())
-  produtoId    String
-  produto      Produto  @relation(fields: [produtoId], references: [id], onDelete: Cascade)
-  quantidade   Decimal  @db.Decimal(15, 4)
-  codigoBarras String?
-  descricao    String?
-  ordem        Int      @default(0)
-  createdAt    DateTime @default(now())
+  id             String   @id @default(uuid())
+  produtoId      String
+  produto        Produto  @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  quantidade     Decimal  @db.Decimal(15, 4)
+  codigoBarras   String?
+  alturaCm       Decimal? @db.Decimal(10, 2)
+  larguraCm      Decimal? @db.Decimal(10, 2)
+  comprimentoCm  Decimal? @db.Decimal(10, 2)
+  descricao      String?
+  ordem          Int      @default(0)
+  createdAt      DateTime @default(now())
 }
 
 model ProdutoEnderecoEstoque {

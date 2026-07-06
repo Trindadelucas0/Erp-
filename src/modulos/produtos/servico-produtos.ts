@@ -5,6 +5,7 @@ import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-auditoria.js'
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import { repositorioDeProdutos } from './repositorio-produtos.js'
+import { servicoDeUnidadesMedida } from './servico-unidades-medida.js'
 import {
   salvarFotosProduto,
   removerPastaFotosProduto,
@@ -22,7 +23,7 @@ function normalizarNomeCompra(dados: DadosParaCriarProduto | DadosParaEditarProd
 }
 
 async function validarFornecedores(
-  fornecedores: { fornecedorPessoaId: string }[] | undefined,
+  fornecedores: { fornecedorPessoaId: string; unidadeEntrada?: string | null }[] | undefined,
   companyId: string
 ) {
   if (!fornecedores?.length) return
@@ -33,16 +34,19 @@ async function validarFornecedores(
     throw new ErroDaAplicacao('Fornecedor duplicado no cadastro do produto', 400)
   }
 
-  for (const fornecedorPessoaId of ids) {
+  for (const fornecedor of fornecedores) {
     const pessoa = await clientePrisma.pessoa.findFirst({
       where: {
-        id: fornecedorPessoaId,
+        id: fornecedor.fornecedorPessoaId,
         companyId,
         papeis: { some: { papel: 'fornecedor', ativo: true } },
       },
     })
     if (!pessoa) {
       throw new ErroDaAplicacao('Fornecedor inválido ou inativo', 400)
+    }
+    if (fornecedor.unidadeEntrada?.trim()) {
+      await servicoDeUnidadesMedida.validarUnidade(fornecedor.unidadeEntrada.trim(), companyId)
     }
   }
 }
@@ -89,6 +93,7 @@ async function criarProduto(
   }
 
   normalizarNomeCompra(dados)
+  await servicoDeUnidadesMedida.validarUnidade(dados.unidade, companyId)
   await validarFornecedores(dados.fornecedores, companyId)
   await validarSimilares(dados.similaresIds, null, companyId)
 
@@ -124,6 +129,7 @@ async function editarProduto(
   }
 
   normalizarNomeCompra(dados)
+  await servicoDeUnidadesMedida.validarUnidade(dados.unidade, companyId)
   await validarFornecedores(dados.fornecedores, companyId)
   await validarSimilares(dados.similaresIds, id, companyId)
 

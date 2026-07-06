@@ -17,6 +17,18 @@ export async function rotasDeProdutos(aplicacao: FastifyInstance): Promise<void>
   )
 
   aplicacao.get(
+    '/unidades-medida',
+    { preHandler: [...auth, middlewareDeAutorizacao('produtos:view')] },
+    controladorDeProdutos.listarUnidadesMedida
+  )
+
+  aplicacao.post(
+    '/unidades-medida',
+    { preHandler: [...auth, middlewareDeAutorizacao('produtos:create')] },
+    controladorDeProdutos.criarUnidadeMedida
+  )
+
+  aplicacao.get(
     '/:id',
     { preHandler: [...auth, middlewareDeAutorizacao('produtos:view')] },
     controladorDeProdutos.buscarProduto

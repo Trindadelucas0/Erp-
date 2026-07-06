@@ -4,6 +4,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { SelectPadrao } from '@/components/ui/select-padrao'
+import { SelecaoUnidadeMedida } from '@/components/produtos/selecao-unidade-medida'
 
 export type FornecedorProdutoForm = {
   fornecedorPessoaId: string
@@ -112,11 +113,11 @@ export function ListaFornecedoresProduto({
               disabled={disabled}
             />
           </div>
-          <div className="min-w-0">
-            <InputPadrao
+          <div className="min-w-0 sm:col-span-2">
+            <SelecaoUnidadeMedida
               rotulo="Unidade na entrada"
-              value={item.unidadeEntrada}
-              onChange={(e) => atualizar(index, 'unidadeEntrada', e.target.value)}
+              valor={item.unidadeEntrada}
+              aoMudar={(sigla) => atualizar(index, 'unidadeEntrada', sigla)}
               disabled={disabled}
             />
           </div>

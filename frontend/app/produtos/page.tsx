@@ -35,6 +35,7 @@ import {
   ListaFornecedoresProduto,
   type FornecedorProdutoForm,
 } from '@/components/produtos/lista-fornecedores-produto'
+import { SelecaoUnidadeMedida } from '@/components/produtos/selecao-unidade-medida'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import type { ResultadoCompressaoProduto } from '@/lib/comprimir-imagem-produto'
 
@@ -68,6 +69,9 @@ type FormProduto = {
   marca: string
   unidade: string
   caracteristicas: string
+  tipoEntrega: '' | 'pronta_entrega' | 'sob_encomenda'
+  diasParaEntrega: string
+  dataValidadePreco: string
   entregaNoAto: boolean
   entregaARetirar: boolean
   entregar: boolean
@@ -92,6 +96,7 @@ type FormProduto = {
   precoCusto: string
   fornecedores: FornecedorProdutoForm[]
   similares: ProdutoSimilarItem[]
+  agruparSimilaresRuptura: boolean
   ncm: string
   codigoOrigem: string
 }
@@ -103,6 +108,9 @@ const formVazio: FormProduto = {
   marca: '',
   unidade: 'UN',
   caracteristicas: '',
+  tipoEntrega: '',
+  diasParaEntrega: '',
+  dataValidadePreco: '',
   entregaNoAto: false,
   entregaARetirar: false,
   entregar: false,
@@ -127,8 +135,16 @@ const formVazio: FormProduto = {
   precoCusto: '',
   fornecedores: [],
   similares: [],
+  agruparSimilaresRuptura: false,
   ncm: '',
   codigoOrigem: '',
+}
+
+function formatarDataIso(iso: string | Date | null | undefined): string {
+  if (!iso) return ''
+  const d = typeof iso === 'string' ? new Date(iso) : iso
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toISOString().slice(0, 10)
 }
 
 function urlFoto(caminho?: string | null) {
@@ -283,6 +299,9 @@ function ConteudoDaPagina() {
       marca: (p.marca as string | null) ?? '',
       unidade: p.unidade as string,
       caracteristicas: (p.caracteristicas as string | null) ?? '',
+      tipoEntrega: (p.tipoEntrega as FormProduto['tipoEntrega']) ?? '',
+      diasParaEntrega: p.diasParaEntrega != null ? String(p.diasParaEntrega) : '',
+      dataValidadePreco: formatarDataIso(p.dataValidadePreco as string | null),
       entregaNoAto: (p.entregaNoAto as boolean) ?? false,
       entregaARetirar: (p.entregaARetirar as boolean) ?? false,
       entregar: (p.entregar as boolean) ?? false,
@@ -305,11 +324,15 @@ function ConteudoDaPagina() {
       embalagensMaster: ((p.embalagensMaster as Array<{
         quantidade: number
         codigoBarras: string | null
-        descricao: string | null
+        alturaCm: number | null
+        larguraCm: number | null
+        comprimentoCm: number | null
       }>) ?? []).map((e) => ({
         quantidade: String(e.quantidade),
         codigoBarras: e.codigoBarras ?? '',
-        descricao: e.descricao ?? '',
+        alturaCm: e.alturaCm != null ? String(e.alturaCm) : '',
+        larguraCm: e.larguraCm != null ? String(e.larguraCm) : '',
+        comprimentoCm: e.comprimentoCm != null ? String(e.comprimentoCm) : '',
       })),
       enderecosEstoque: ((p.enderecosEstoque as Array<{
         apelido: string | null
@@ -335,6 +358,7 @@ function ConteudoDaPagina() {
         unidadeEntrada: f.unidadeEntrada ?? '',
       })),
       similares: (p.similares as ProdutoSimilarItem[]) ?? [],
+      agruparSimilaresRuptura: (p.agruparSimilaresRuptura as boolean) ?? false,
       ncm: (p.ncm as string | null) ?? '',
       codigoOrigem: (p.codigoOrigem as string | null) ?? '',
     }
@@ -380,12 +404,15 @@ function ConteudoDaPagina() {
       marca: form.marca.trim(),
       unidade: form.unidade.trim(),
       caracteristicas: form.caracteristicas.trim() || undefined,
+      tipoEntrega: form.tipoEntrega || undefined,
+      diasParaEntrega: int(form.diasParaEntrega),
+      dataValidadePreco: form.dataValidadePreco || undefined,
       entregaNoAto: form.entregaNoAto,
       entregaARetirar: form.entregaARetirar,
       entregar: form.entregar,
       entregaPorEncomenda: form.entregaPorEncomenda,
       flagDevolucao: form.flagDevolucao,
-      controlaEstoque: form.controlaEstoque,
+      controlaEstoque: true,
       flagComissao: form.flagComissao,
       permiteEstoqueNegativo: form.permiteEstoqueNegativo,
       bloqueadoCompra: form.bloqueadoCompra,
@@ -405,7 +432,9 @@ function ConteudoDaPagina() {
           return {
             quantidade,
             codigoBarras: e.codigoBarras.trim() || undefined,
-            descricao: e.descricao.trim() || undefined,
+            alturaCm: num(e.alturaCm),
+            larguraCm: num(e.larguraCm),
+            comprimentoCm: num(e.comprimentoCm),
             ordem,
           }
         })
@@ -430,6 +459,7 @@ function ConteudoDaPagina() {
           ordem,
         })),
       similaresIds: form.similares.map((s) => s.id),
+      agruparSimilaresRuptura: form.agruparSimilaresRuptura,
       ncm: form.ncm.replace(/\D/g, '') || undefined,
       codigoOrigem: form.codigoOrigem || undefined,
     }
@@ -459,7 +489,7 @@ function ConteudoDaPagina() {
     if (!validarAba(abaAtiva)) {
       setErro(
         abaAtiva === 'principal'
-          ? 'Preencha nome para venda, marca e unidade na aba Principal.'
+          ? 'Preencha nome de venda, marca e unidade na aba Principal.'
           : abaAtiva === 'compras'
             ? 'Selecione o fornecedor em todas as linhas da aba Compras.'
             : abaAtiva === 'fiscal'
@@ -573,18 +603,19 @@ function ConteudoDaPagina() {
     { id: 'fiscal', rotulo: 'Fiscal', status: statusDasAbas.fiscal },
   ]
 
-  const flagsPrincipal: { campo: keyof FormProduto; rotulo: string }[] = [
-    { campo: 'entregaNoAto', rotulo: 'Entrega no ato' },
+  const flagsEntregaPermitida: { campo: keyof FormProduto; rotulo: string }[] = [
+    { campo: 'entregaNoAto', rotulo: 'No ato' },
     { campo: 'entregaARetirar', rotulo: 'A retirar' },
     { campo: 'entregar', rotulo: 'Entregar' },
     { campo: 'entregaPorEncomenda', rotulo: 'Por encomenda' },
-    { campo: 'flagDevolucao', rotulo: 'Aceita devolução' },
-    { campo: 'permiteEstoqueNegativo', rotulo: 'Estoque negativo' },
-    { campo: 'bloqueadoCompra', rotulo: 'Bloqueado para compra' },
-    { campo: 'bloqueadoVenda', rotulo: 'Bloqueado para venda' },
-    { campo: 'desativarAoZerarEstoque', rotulo: 'Desativar ao zerar estoque' },
-    { campo: 'controlaEstoque', rotulo: 'Controla estoque' },
-    { campo: 'flagComissao', rotulo: 'Sujeito a comissão' },
+  ]
+
+  const flagsBooleanos: { campo: keyof FormProduto; rotulo: string }[] = [
+    { campo: 'flagDevolucao', rotulo: 'Aceita devolução?' },
+    { campo: 'permiteEstoqueNegativo', rotulo: 'Permitir estoque negativo?' },
+    { campo: 'bloqueadoCompra', rotulo: 'Bloqueado para compra?' },
+    { campo: 'desativarAoZerarEstoque', rotulo: 'Desativar ao zerar o estoque?' },
+    { campo: 'bloqueadoVenda', rotulo: 'Bloqueado para venda?' },
   ]
 
   return (
@@ -767,7 +798,7 @@ function ConteudoDaPagina() {
                 disabled={camposDesabilitados}
               />
               <InputPadrao
-                rotulo="Nome para venda *"
+                rotulo="Nome de venda *"
                 value={form.nomeVenda}
                 onChange={(e) => setForm((f) => ({ ...f, nomeVenda: e.target.value }))}
                 disabled={camposDesabilitados}
@@ -779,12 +810,13 @@ function ConteudoDaPagina() {
                 onChange={(e) => setForm((f) => ({ ...f, marca: e.target.value }))}
                 disabled={camposDesabilitados}
               />
-              <InputPadrao
-                rotulo="Unidade *"
-                value={form.unidade}
-                onChange={(e) => setForm((f) => ({ ...f, unidade: e.target.value.toUpperCase() }))}
-                disabled={camposDesabilitados}
-              />
+              <div className="sm:col-span-2">
+                <SelecaoUnidadeMedida
+                  valor={form.unidade}
+                  aoMudar={(sigla) => setForm((f) => ({ ...f, unidade: sigla }))}
+                  disabled={camposDesabilitados}
+                />
+              </div>
               <InputPadrao
                 rotulo="Características"
                 value={form.caracteristicas}
@@ -792,8 +824,75 @@ function ConteudoDaPagina() {
                 disabled={camposDesabilitados}
                 className="sm:col-span-2"
               />
+              <div className="sm:col-span-2 space-y-3 rounded-lg border border-border p-4">
+                <p className="text-sm font-medium">Tipo de entrega</p>
+                <div className="flex flex-wrap gap-6">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="tipoEntrega"
+                      checked={form.tipoEntrega === 'pronta_entrega'}
+                      onChange={() => setForm((f) => ({ ...f, tipoEntrega: 'pronta_entrega' }))}
+                      disabled={camposDesabilitados}
+                      className="size-4"
+                    />
+                    Pronta entrega
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="tipoEntrega"
+                      checked={form.tipoEntrega === 'sob_encomenda'}
+                      onChange={() => setForm((f) => ({ ...f, tipoEntrega: 'sob_encomenda' }))}
+                      disabled={camposDesabilitados}
+                      className="size-4"
+                    />
+                    Sob encomenda
+                  </label>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <InputPadrao
+                    rotulo="Dias p/ entrega"
+                    value={form.diasParaEntrega}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, diasParaEntrega: e.target.value.replace(/\D/g, '') }))
+                    }
+                    disabled={camposDesabilitados}
+                    placeholder="Ex.: 7"
+                  />
+                  <InputPadrao
+                    rotulo="Dt. validade do preço"
+                    type="date"
+                    value={form.dataValidadePreco}
+                    onChange={(e) => setForm((f) => ({ ...f, dataValidadePreco: e.target.value }))}
+                    disabled={camposDesabilitados}
+                  />
+                </div>
+              </div>
+
+              <div className="sm:col-span-2 space-y-2">
+                <p className="text-sm font-medium">
+                  Tipo de entrega permitido
+                  <span className="ml-1 font-normal text-muted-foreground">
+                    (no ato; a retirar; entregar; por encomenda)
+                  </span>
+                </p>
+                <div className="flex flex-wrap gap-4">
+                  {flagsEntregaPermitida.map(({ campo, rotulo }) => (
+                    <label key={campo} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={form[campo] as boolean}
+                        onCheckedChange={(v) => setForm((f) => ({ ...f, [campo]: v === true }))}
+                        disabled={camposDesabilitados}
+                      />
+                      {rotulo}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
               <div className="sm:col-span-2 flex flex-wrap gap-4">
-                {flagsPrincipal.map(({ campo, rotulo }) => (
+                {flagsBooleanos.map(({ campo, rotulo }) => (
                   <label key={campo} className="flex items-center gap-2 text-sm">
                     <Checkbox
                       checked={form[campo] as boolean}
@@ -804,6 +903,18 @@ function ConteudoDaPagina() {
                   </label>
                 ))}
               </div>
+
+              <div className="sm:col-span-2">
+                <p className="mb-2 text-sm font-medium">Sujeito a comissão?</p>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={form.flagComissao}
+                    onCheckedChange={(v) => setForm((f) => ({ ...f, flagComissao: v === true }))}
+                    disabled={camposDesabilitados}
+                  />
+                  01 - Sujeito à comissão
+                </label>
+              </div>
             </div>
           )}
 
@@ -811,37 +922,37 @@ function ConteudoDaPagina() {
             <div className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <InputPadrao
-                  rotulo="Código de barras (unidade)"
+                  rotulo="Código de barras unidade"
                   value={form.codigoBarras}
                   onChange={(e) => setForm((f) => ({ ...f, codigoBarras: e.target.value }))}
                   disabled={camposDesabilitados}
                 />
                 <InputPadrao
-                  rotulo="Peso unitário (kg)"
+                  rotulo="Peso unitário"
                   value={form.pesoKg}
                   onChange={(e) => setForm((f) => ({ ...f, pesoKg: e.target.value }))}
                   disabled={camposDesabilitados}
                 />
                 <InputPadrao
-                  rotulo="Altura (cm)"
+                  rotulo="Altura unitária (cm)"
                   value={form.alturaCm}
                   onChange={(e) => setForm((f) => ({ ...f, alturaCm: e.target.value }))}
                   disabled={camposDesabilitados}
                 />
                 <InputPadrao
-                  rotulo="Largura (cm)"
+                  rotulo="Largura unitária (cm)"
                   value={form.larguraCm}
                   onChange={(e) => setForm((f) => ({ ...f, larguraCm: e.target.value }))}
                   disabled={camposDesabilitados}
                 />
                 <InputPadrao
-                  rotulo="Comprimento (cm)"
+                  rotulo="Comprimento unitário (cm)"
                   value={form.comprimentoCm}
                   onChange={(e) => setForm((f) => ({ ...f, comprimentoCm: e.target.value }))}
                   disabled={camposDesabilitados}
                 />
                 <InputPadrao
-                  rotulo="Capacidade empilhamento (pallet)"
+                  rotulo="Capacidade de empilhamento em pallet"
                   value={form.capacidadeEmpilhamento}
                   onChange={(e) =>
                     setForm((f) => ({ ...f, capacidadeEmpilhamento: e.target.value }))
@@ -872,11 +983,11 @@ function ConteudoDaPagina() {
           {abaAtiva === 'compras' && (
             <div className="space-y-4 pb-2">
               <InputPadrao
-                rotulo="Nome para compra"
+                rotulo="Nome de compra"
                 value={form.nomeCompra}
                 onChange={(e) => setForm((f) => ({ ...f, nomeCompra: e.target.value }))}
                 disabled={camposDesabilitados}
-                placeholder="Se vazio, usa o nome de venda"
+                placeholder="Se não preencher, copia o nome de venda"
               />
               <InputPadrao
                 rotulo="Preço de custo (estoque)"
@@ -899,6 +1010,19 @@ function ConteudoDaPagina() {
                 excluirId={idEmEdicao || undefined}
                 disabled={camposDesabilitados}
               />
+              <div className="space-y-2 rounded-lg border border-border p-4">
+                <p className="text-sm font-medium">Análise de rupturas</p>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={form.agruparSimilaresRuptura}
+                    onCheckedChange={(v) =>
+                      setForm((f) => ({ ...f, agruparSimilaresRuptura: v === true }))
+                    }
+                    disabled={camposDesabilitados}
+                  />
+                  Permitir agrupar similares nas verificações de ruptura de estoque
+                </label>
+              </div>
             </div>
           )}
 

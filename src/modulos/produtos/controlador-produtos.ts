@@ -4,6 +4,7 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { servicoDeProdutos } from './servico-produtos.js'
+import { servicoDeUnidadesMedida } from './servico-unidades-medida.js'
 import {
   esquemaDeAtivarProduto,
   esquemaDeCriacaoDeProduto,
@@ -107,6 +108,21 @@ async function removerFotoDoProduto(requisicao: FastifyRequest, resposta: Fastif
   return resposta.send({ produto })
 }
 
+async function listarUnidadesMedida(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const companyId = requisicao.empresaAtivaId || ''
+  const unidades = await servicoDeUnidadesMedida.listarUnidades(companyId)
+  return resposta.send({ unidades })
+}
+
+async function criarUnidadeMedida(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const companyId = requisicao.empresaAtivaId || ''
+  const unidade = await servicoDeUnidadesMedida.criarUnidade(
+    requisicao.body,
+    companyId
+  )
+  return resposta.status(201).send({ unidade })
+}
+
 export const controladorDeProdutos = {
   listarProdutos,
   buscarProduto,
@@ -115,4 +131,6 @@ export const controladorDeProdutos = {
   alterarStatusDoProduto,
   salvarFotoDoProduto,
   removerFotoDoProduto,
+  listarUnidadesMedida,
+  criarUnidadeMedida,
 }
