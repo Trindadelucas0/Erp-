@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import { clienteHttp } from '@/services/api'
 import { Button } from '@/components/ui/button'
+import { useFecharAoSairComMouse } from '@/lib/dropdown-catalogo'
 import { cn } from '@/lib/utils'
 
 export type ProdutoSimilarItem = {
@@ -24,6 +25,9 @@ export function SelecaoProdutosSimilares({ selecionados, aoMudar, excluirId, dis
   const [resultados, setResultados] = useState<ProdutoSimilarItem[]>([])
   const [aberto, setAberto] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+
+  const fechar = useCallback(() => setAberto(false), [])
+  const zonaHover = useFecharAoSairComMouse(fechar)
 
   const buscar = useCallback(async () => {
     try {
@@ -52,11 +56,11 @@ export function SelecaoProdutosSimilares({ selecionados, aoMudar, excluirId, dis
   useEffect(() => {
     if (!aberto) return
     function fora(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false)
+      if (ref.current && !ref.current.contains(e.target as Node)) fechar()
     }
     document.addEventListener('mousedown', fora)
     return () => document.removeEventListener('mousedown', fora)
-  }, [aberto])
+  }, [aberto, fechar])
 
   function adicionar(item: ProdutoSimilarItem) {
     if (selecionados.some((s) => s.id === item.id)) return
@@ -96,7 +100,7 @@ export function SelecaoProdutosSimilares({ selecionados, aoMudar, excluirId, dis
       )}
 
       {!disabled && (
-        <div ref={ref} className="relative max-w-md">
+        <div ref={ref} className="relative max-w-md" {...zonaHover}>
           <div className="relative">
             <Search className="absolute left-2 top-2.5 size-4 text-muted-foreground" />
             <input
