@@ -36,3 +36,19 @@ gerar-cronograma-word.py
 cronograma_implantacao_erp_v2.docx
 cronograma_implantacao_erp.docx
 uploads/
+
+# Planos do Cursor / notas de implementação
+*.plan.md
+**/*.plan.md
+03-07/
+
+# Snapshots e backups de desenvolvimento (não usados em runtime)
+**/*.full.bak.*
+**/*fase*.ts
+**/*fase*.tsx
+**/schema.fase*.prisma
+**/*.uploads-only.ts
+
+# Artefatos locais de Git / notas soltas
+.git-rewrite/
+gitpull.txt
