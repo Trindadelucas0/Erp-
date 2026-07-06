@@ -201,26 +201,24 @@ async function editarPedidoCompra(
     throw new ErroDaAplicacao('Pedido não pode ser editado neste status', 400)
   }
 
-  if (dados.status === 'cancelado') {
-    throw new ErroDaAplicacao('Use a ação Cancelar pedido com motivo', 400)
+  const { concluir, ...dadosSemConcluir } = dados
+
+  if (dadosSemConcluir.fornecedorPessoaId) {
+    await validarFornecedor(dadosSemConcluir.fornecedorPessoaId, companyId)
+  }
+  await validarTransportadora(dadosSemConcluir.transportadoraPessoaId, companyId)
+  await validarPedidoVenda(dadosSemConcluir.pedidoVendaId, companyId)
+  if (dadosSemConcluir.itens) {
+    await validarItens(dadosSemConcluir.itens, companyId)
   }
 
-  if (dados.fornecedorPessoaId) {
-    await validarFornecedor(dados.fornecedorPessoaId, companyId)
-  }
-  await validarTransportadora(dados.transportadoraPessoaId, companyId)
-  await validarPedidoVenda(dados.pedidoVendaId, companyId)
-  if (dados.itens) {
-    await validarItens(dados.itens, companyId)
-  }
-
-  const fornecedorId = dados.fornecedorPessoaId ?? existente.fornecedorPessoaId
+  const fornecedorId = dadosSemConcluir.fornecedorPessoaId ?? existente.fornecedorPessoaId
   const creditoValidado = await servicoCreditosPendencias.validarCreditoNoPedido(
-    dados.creditoFornecedorId !== undefined
-      ? dados.creditoFornecedorId
+    dadosSemConcluir.creditoFornecedorId !== undefined
+      ? dadosSemConcluir.creditoFornecedorId
       : existente.creditoFornecedorId,
-    dados.creditoAplicado !== undefined
-      ? dados.creditoAplicado ?? undefined
+    dadosSemConcluir.creditoAplicado !== undefined
+      ? dadosSemConcluir.creditoAplicado ?? undefined
       : existente.creditoAplicado
         ? Number(existente.creditoAplicado)
         : undefined,
@@ -231,11 +229,11 @@ async function editarPedidoCompra(
 
   const dadosComCredito = creditoValidado
     ? {
-        ...dados,
+        ...dadosSemConcluir,
         creditoFornecedorId: creditoValidado.creditoFornecedorId,
         creditoAplicado: creditoValidado.creditoAplicado,
       }
-    : dados
+    : dadosSemConcluir
 
   const itensParaTotal =
     dadosComCredito.itens ??
@@ -273,7 +271,10 @@ async function editarPedidoCompra(
     itensParaTotal as DadosParaCriarPedidoCompra['itens']
   )
 
-  const pedido = await repositorioDePedidosCompra.atualizar(id, dadosFinais)
+  const pedido = await repositorioDePedidosCompra.atualizar(id, {
+    ...dadosFinais,
+    ...(concluir && existente.status === 'rascunho' ? { status: 'enviado' } : {}),
+  })
 
   await registrarAuditoria({
     usuarioId: idDoAutor,

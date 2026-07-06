@@ -14,18 +14,19 @@ import {
 
 async function listarPedidosCompra(requisicao: FastifyRequest, resposta: FastifyReply) {
   const companyId = requisicao.empresaAtivaId || ''
-  const { fornecedorId, status, statusAberto, numero, dataInicio, dataFim } =
+  const { fornecedorId, status, statusAberto, numero, busca, dataInicio, dataFim } =
     requisicao.query as {
       fornecedorId?: string
       status?: string
       statusAberto?: string
       numero?: string
+      busca?: string
       dataInicio?: string
       dataFim?: string
     }
 
   let numeroFiltro: number | undefined
-  if (numero != null && numero.trim() !== '') {
+  if (numero != null && numero.trim() !== '' && !busca?.trim()) {
     const n = Number(numero.replace(/^#/, '').trim())
     if (!Number.isInteger(n) || n <= 0) {
       throw new ErroDaAplicacao('Número do pedido inválido', 400)
@@ -53,6 +54,7 @@ async function listarPedidosCompra(requisicao: FastifyRequest, resposta: Fastify
     status,
     statusAberto: statusAberto === 'true',
     numero: numeroFiltro,
+    busca: busca?.trim() || undefined,
     dataInicio: inicio,
     dataFim: fim,
   })

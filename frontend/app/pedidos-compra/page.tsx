@@ -22,15 +22,15 @@ import {
   montarPrazosParaPayload,
   validarSomaParcelasManual,
 } from '@/lib/parcelas-pagamento-pedido'
+import {
+  formatarPedido,
+  podeConcluirPedido,
+  rotuloStatusUi,
+  tituloModalPedido,
+  varianteStatusUi,
+} from '@/lib/status-pedido-compra'
 
-type FiltroStatus =
-  | 'todos'
-  | 'aberto'
-  | 'rascunho'
-  | 'enviado'
-  | 'parcial'
-  | 'recebido'
-  | 'cancelado'
+type FiltroStatus = 'todos' | 'aberto' | 'rascunho' | 'feito' | 'cancelado'
 
 type ItemPedido = {
   id?: string
@@ -52,6 +52,7 @@ type ItemPedido = {
 type PedidoCompra = {
   id: string
   numero: number
+  descricao: string | null
   fornecedorPessoaId: string
   fornecedorNome: string
   transportadoraPessoaId: string | null
@@ -76,6 +77,7 @@ type PessoaOpcao = { id: string; nome: string }
 type EntradaFornecedor = {
   id: string
   numero: number
+  descricao: string | null
   status: string
   totalLiquido: number
   data: string
@@ -107,23 +109,11 @@ type ContextoFornecedor = {
   historicoComprasProduto: HistoricoCompra[]
 }
 
-const STATUS_OPCOES = [
-  { value: 'rascunho', label: 'Rascunho' },
-  { value: 'enviado', label: 'Enviado' },
-  { value: 'parcial', label: 'Parcial' },
-  { value: 'recebido', label: 'Recebido' },
-  { value: 'cancelado', label: 'Cancelado' },
-]
-
-const STATUS_OPCOES_FORM = STATUS_OPCOES.filter((s) => s.value !== 'cancelado')
-
 const FILTRO_STATUS_OPCOES: { value: FiltroStatus; label: string }[] = [
   { value: 'todos', label: 'Todos os status' },
   { value: 'aberto', label: 'Em aberto' },
   { value: 'rascunho', label: 'Rascunho' },
-  { value: 'enviado', label: 'Enviado' },
-  { value: 'parcial', label: 'Parcial' },
-  { value: 'recebido', label: 'Recebido' },
+  { value: 'feito', label: 'Feito' },
   { value: 'cancelado', label: 'Cancelado' },
 ]
 
@@ -167,6 +157,7 @@ const TIPOS_PENDENCIA = [
 
 const formVazio = {
   fornecedorPessoaId: '',
+  descricao: '',
   transportadoraPessoaId: '',
   modalidadeTransporte: '',
   condicaoPagamento: '',
@@ -197,10 +188,6 @@ const creditoVazio = {
   valor: '',
   origem: '',
   vencimento: '',
-}
-
-function rotuloStatus(status: string) {
-  return STATUS_OPCOES.find((s) => s.value === status)?.label ?? status
 }
 
 function parseNum(s: string): number {
@@ -237,25 +224,6 @@ function formatarData(iso: string) {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
   return d.toLocaleDateString('pt-BR')
-}
-
-function varianteStatusPo(
-  status: string
-): 'ativo' | 'inativo' | 'info' | 'pendente' | 'reprovado' | 'aguardando' {
-  switch (status) {
-    case 'rascunho':
-      return 'inativo'
-    case 'enviado':
-      return 'aguardando'
-    case 'parcial':
-      return 'pendente'
-    case 'recebido':
-      return 'ativo'
-    case 'cancelado':
-      return 'reprovado'
-    default:
-      return 'info'
-  }
 }
 
 const FILTROS_VAZIOS = {
@@ -329,9 +297,9 @@ function ConteudoDaPagina() {
       } else if (filtrosAtuais.status !== 'todos') {
         params.set('status', filtrosAtuais.status)
       }
-      const numero = filtrosAtuais.buscaNumero.trim().replace(/^#/, '')
-      if (numero) {
-        params.set('numero', numero)
+      const busca = filtrosAtuais.buscaNumero.trim()
+      if (busca) {
+        params.set('busca', busca)
       }
       if (filtrosAtuais.dataInicio) {
         params.set('dataInicio', filtrosAtuais.dataInicio)
@@ -458,6 +426,7 @@ function ConteudoDaPagina() {
     const p = data.pedido
     setForm({
       fornecedorPessoaId: p.fornecedorPessoaId,
+      descricao: p.descricao ?? '',
       transportadoraPessoaId: p.transportadoraPessoaId ?? '',
       modalidadeTransporte: p.modalidadeTransporte ?? '',
       condicaoPagamento: p.condicaoPagamento ?? '',
@@ -536,7 +505,7 @@ function ConteudoDaPagina() {
     setErro('')
     try {
       const { data } = await clienteHttp.post(`/pedidos-compra/${pedidoId}/copiar`)
-      setMensagem(`Pedido #${data.pedido.numero} criado como cópia.`)
+      setMensagem(`${formatarPedido(data.pedido.numero, data.pedido.descricao)} criado como cópia.`)
       await carregar(filtros)
       await carregarPedidoNoForm(data.pedido.id)
       setModoVisualizacao(false)
@@ -628,7 +597,7 @@ function ConteudoDaPagina() {
     (Number.isFinite(creditoNum) && creditoNum > 0 && creditoNum <= saldoMaxCredito)
   const totalLiquidoForm = totalComFrete - (Number.isFinite(creditoNum) && creditoValido ? creditoNum : 0)
 
-  function montarPayload() {
+  function montarPayload(concluir: boolean) {
     const creditoAplicadoNum = form.creditoAplicado
       ? Number(form.creditoAplicado.replace(',', '.'))
       : null
@@ -653,13 +622,14 @@ function ConteudoDaPagina() {
       rateioParcelas: form.rateioParcelas,
       observacoes: form.observacoes || undefined,
       observacoesInternas: form.observacoesInternas || undefined,
+      descricao: form.descricao.trim() || undefined,
+      concluir,
       pedidoVendaId: form.pedidoVendaId || null,
       creditoFornecedorId: form.creditoFornecedorId || null,
       creditoAplicado:
         form.creditoFornecedorId && creditoAplicadoNum != null && Number.isFinite(creditoAplicadoNum)
           ? creditoAplicadoNum
           : null,
-      ...(modoEdicao ? { status: form.status } : {}),
       itens: form.itens.map((item, ordem) => ({
         produtoId: item.produtoId,
         codigoOriginal: item.codigoOriginal || null,
@@ -675,7 +645,7 @@ function ConteudoDaPagina() {
     }
   }
 
-  async function aoSalvar(e?: FormEvent) {
+  async function aoSalvar(e?: FormEvent, concluir = false) {
     e?.preventDefault()
     if (!form.fornecedorPessoaId) {
       setErro('Selecione o fornecedor.')
@@ -701,13 +671,16 @@ function ConteudoDaPagina() {
     setSalvando(true)
     setErro('')
     try {
-      const payload = montarPayload()
+      const payload = montarPayload(concluir)
       if (modoEdicao) {
         await clienteHttp.put(`/pedidos-compra/${idEmEdicao}`, payload)
-        setMensagem(`Pedido #${lista.find((p) => p.id === idEmEdicao)?.numero ?? ''} atualizado.`)
+        const pedido = lista.find((p) => p.id === idEmEdicao)
+        setMensagem(
+          `${formatarPedido(pedido?.numero ?? 0, form.descricao || pedido?.descricao)} atualizado.`
+        )
       } else {
         const { data } = await clienteHttp.post('/pedidos-compra', payload)
-        setMensagem(`Pedido #${data.pedido.numero} criado.`)
+        setMensagem(`${formatarPedido(data.pedido.numero, data.pedido.descricao)} criado.`)
       }
       fecharModal()
       await carregar(filtros)
@@ -806,8 +779,8 @@ function ConteudoDaPagina() {
     setErroMotivoCancelamento('')
     try {
       await clienteHttp.patch(`/pedidos-compra/${idPedidoCancelando}/cancelar`, { motivo })
-      const numero = lista.find((p) => p.id === idPedidoCancelando)?.numero
-      setMensagem(`Pedido #${numero ?? ''} cancelado.`)
+      const pedido = lista.find((p) => p.id === idPedidoCancelando)
+      setMensagem(`${formatarPedido(pedido?.numero ?? 0, pedido?.descricao)} cancelado.`)
       setModalCancelarAberto(false)
       fecharModal()
       await carregar(filtros)
@@ -889,9 +862,25 @@ function ConteudoDaPagina() {
             Fechar
           </Button>
           {!somenteLeitura && podeSalvar && (
-            <BotaoPrimario form="form-pedido-compra" type="submit" disabled={salvando}>
-              {salvando ? 'Salvando...' : 'Salvar'}
-            </BotaoPrimario>
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void aoSalvar(undefined, false)}
+                disabled={salvando}
+              >
+                {salvando ? 'Salvando...' : podeConcluirPedido(form.status) ? 'Salvar rascunho' : 'Salvar'}
+              </Button>
+              {podeConcluirPedido(form.status) && (
+                <BotaoPrimario
+                  type="button"
+                  onClick={() => void aoSalvar(undefined, true)}
+                  disabled={salvando}
+                >
+                  {salvando ? 'Salvando...' : 'Concluir pedido'}
+                </BotaoPrimario>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -926,7 +915,7 @@ function ConteudoDaPagina() {
         <div className="mb-3 flex flex-wrap items-end gap-3">
           <input
             className="flex h-9 w-full max-w-[10rem] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            placeholder="Nº pedido"
+            placeholder="Nº ou descrição"
             value={filtros.buscaNumero}
             onChange={(e) => setFiltros((f) => ({ ...f, buscaNumero: e.target.value }))}
           />
@@ -1020,19 +1009,19 @@ function ConteudoDaPagina() {
                   className="cursor-pointer border-b border-border hover:bg-muted/30"
                   onClick={() => abrirVisualizacao(p)}
                 >
-                  <td className="px-4 py-2 font-medium">#{p.numero}</td>
+                  <td className="px-4 py-2 font-medium">{formatarPedido(p.numero, p.descricao)}</td>
                   <td className="px-4 py-2">{formatarData(p.createdAt)}</td>
                   <td className="px-4 py-2">{p.fornecedorNome}</td>
                   <td className="px-4 py-2">
                     <BadgeStatus
-                      variante={varianteStatusPo(p.status)}
+                      variante={varianteStatusUi(p.status)}
                       title={
                         p.status === 'cancelado' && p.motivoCancelamento
                           ? p.motivoCancelamento
                           : undefined
                       }
                     >
-                      {rotuloStatus(p.status)}
+                      {rotuloStatusUi(p.status)}
                     </BadgeStatus>
                   </td>
                   <td className="px-4 py-2">{formatarMoeda(p.totalLiquido)}</td>
@@ -1086,21 +1075,30 @@ function ConteudoDaPagina() {
         aoFechar={fecharModal}
         titulo={
           modoEdicao
-            ? `Pedido #${lista.find((p) => p.id === idEmEdicao)?.numero ?? ''}`
-            : 'Novo pedido de compra'
+            ? tituloModalPedido(
+                lista.find((p) => p.id === idEmEdicao)?.numero,
+                form.descricao || lista.find((p) => p.id === idEmEdicao)?.descricao
+              )
+            : tituloModalPedido(undefined, undefined, true)
         }
         descricao={
           modoVisualizacao ? 'Consulta dos dados do pedido (somente leitura)' : undefined
         }
         cabecalhoExtra={
-          <BadgeStatus variante={varianteStatusPo(statusExibido)} className="mt-2">
-            {rotuloStatus(statusExibido)}
+          <BadgeStatus variante={varianteStatusUi(statusExibido)} className="mt-2">
+            {rotuloStatusUi(statusExibido)}
           </BadgeStatus>
         }
         largura="5xl"
         rodape={rodapeModal}
       >
-        <form id="form-pedido-compra" onSubmit={aoSalvar}>
+        <form
+          id="form-pedido-compra"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void aoSalvar(e, false)
+          }}
+        >
           {contexto && contexto.pendencias.length > 0 && (
             <div className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
               <p className="text-sm font-medium text-amber-700">Pendências abertas do fornecedor</p>
@@ -1137,6 +1135,15 @@ function ConteudoDaPagina() {
                     ...fornecedores.map((f) => ({ value: f.id, label: f.nome })),
                   ]}
                   disabled={camposDesabilitados}
+                />
+                <InputPadrao
+                  rotulo="Descrição"
+                  className="sm:col-span-2"
+                  value={form.descricao}
+                  onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))}
+                  disabled={camposDesabilitados}
+                  placeholder="Ex.: Compra reposição estoque"
+                  maxLength={120}
                 />
                 <SelectPadrao
                   rotulo="Transportadora"
@@ -1188,18 +1195,6 @@ function ConteudoDaPagina() {
                   onChange={(e) => setForm((f) => ({ ...f, valorFreteSugerido: e.target.value }))}
                   disabled={camposDesabilitados}
                 />
-                {modoEdicao && form.status === 'cancelado' && (
-                  <InputPadrao rotulo="Status" value={rotuloStatus(form.status)} disabled />
-                )}
-                {modoEdicao && form.status !== 'cancelado' && (
-                  <SelectPadrao
-                    rotulo="Status"
-                    valor={form.status}
-                    aoMudar={(v) => setForm((f) => ({ ...f, status: v }))}
-                    opcoes={STATUS_OPCOES_FORM}
-                    disabled={somenteLeitura || !podeEditar}
-                  />
-                )}
                 <div className="sm:col-span-2 space-y-2">
                   <InputPadrao
                     rotulo="Buscar pedido venda (encomenda)"
@@ -1661,7 +1656,7 @@ function ConteudoDaPagina() {
             {contexto.ultimasEntradas.map((e) => (
               <li key={e.id} className="rounded-md border border-border p-3">
                 <p className="font-medium">
-                  Pedido #{e.numero} — {rotuloStatus(e.status)}
+                  {formatarPedido(e.numero, e.descricao)} — {rotuloStatusUi(e.status)}
                 </p>
                 <p className="text-muted-foreground">
                   {formatarData(e.data)} — {e.itens} item(ns) — {formatarMoeda(e.totalLiquido)}
@@ -1696,7 +1691,7 @@ function ConteudoDaPagina() {
                     }}
                   >
                     <p className="font-medium">
-                      #{p.numero} — {rotuloStatus(p.status)}
+                      {formatarPedido(p.numero, p.descricao)}
                     </p>
                     <p className="text-muted-foreground">{formatarMoeda(p.totalLiquido)}</p>
                   </button>
