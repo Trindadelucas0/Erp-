@@ -1,0 +1,21 @@
+# Deploy na VPS — executar na pasta do projeto (ex.: ~/PROJETOS/Erp-)
+# Ordem importa: migração ANTES do build.
+
+cd ~/PROJETOS/Erp-
+
+git pull
+
+npm install
+cd frontend && npm install && cd ..
+
+npm run db:migrate:deploy
+npm run db:generate
+
+npm run build
+
+pm2 restart ecosystem.config.cjs
+
+# --- Conferir (opcional) ---
+# npx tsx scripts/executar-prisma.ts migrate status
+# pm2 status
+# pm2 logs erp-api --lines 30

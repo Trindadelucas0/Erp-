@@ -32,10 +32,8 @@ model Company {
   documentosZapsign    ZapsignDocumento[]
   produtos             Produto[]
   pedidosCompra        PedidoCompra[]
-  pedidosVenda         PedidoVenda[]
   creditosFornecedor   CreditoFornecedor[]
   pendenciasFornecedor PendenciaFornecedor[]
-  movimentosCreditoFornecedor CreditoFornecedorMovimento[]
   createdAt            DateTime      @default(now())
 }
 
@@ -584,25 +582,7 @@ model ProdutoFoto {
   @@unique([produtoId, tipo])
 }
 
-// ─── Pedido de Venda (mínimo para encomenda) ─────────────────────────────────
-
-model PedidoVenda {
-  id           String   @id @default(uuid())
-  companyId    String
-  company      Company  @relation(fields: [companyId], references: [id])
-  numero       Int
-  clienteNome  String
-  status       String   @default("aberto")
-  sobEncomenda Boolean  @default(false)
-  pedidosCompra PedidoCompra[]
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  @@unique([companyId, numero])
-  @@index([companyId, sobEncomenda])
-}
-
-// ─── Pedido de Compra ────────────────────────────────────────────────────────
+// ─── Pedido de Compra (tabelas base — UI na Fase 02) ─────────────────────────
 
 model PedidoCompra {
   id                     String   @id @default(uuid())
@@ -615,27 +595,15 @@ model PedidoCompra {
   transportadora         Pessoa?  @relation("TransportadoraPO", fields: [transportadoraPessoaId], references: [id])
   modalidadeTransporte   String?
   condicaoPagamento      String?
-  tipoCompra             String   @default("revenda")
-  dataFaturamento        DateTime?
-  previsaoEntrega        DateTime?
-  valorFrete             Decimal? @db.Decimal(15, 2)
-  valorFreteSugerido     Decimal? @db.Decimal(15, 2)
-  prazosPagamento        Json?
-  rateioParcelas         String   @default("igual")
   status                 String   @default("rascunho")
-  motivoCancelamento     String?
   observacoes            String?
-  observacoesInternas    String?
   copiadoDeId            String?
   copiadoDe              PedidoCompra?  @relation("CopiaPedido", fields: [copiadoDeId], references: [id])
   copias                 PedidoCompra[] @relation("CopiaPedido")
   pedidoVendaId          String?
-  pedidoVenda            PedidoVenda?   @relation(fields: [pedidoVendaId], references: [id])
   creditoFornecedorId    String?
   creditoFornecedor      CreditoFornecedor? @relation(fields: [creditoFornecedorId], references: [id])
   creditoAplicado        Decimal? @db.Decimal(15, 2)
-  creditoReserva         CreditoReservaPedido?
-  movimentosCredito      CreditoFornecedorMovimento[]
 
   itens                  PedidoCompraItem[]
 
@@ -652,16 +620,10 @@ model PedidoCompraItem {
   pedidoCompra       PedidoCompra @relation(fields: [pedidoCompraId], references: [id], onDelete: Cascade)
   produtoId          String
   produto            Produto      @relation(fields: [produtoId], references: [id])
-  codigoOriginal     String?
   quantidade         Decimal      @db.Decimal(15, 4)
   unidade            String
   precoUnitario      Decimal      @db.Decimal(15, 4)
-  percentualDesconto Decimal?     @db.Decimal(15, 4)
-  valorDesconto      Decimal?     @db.Decimal(15, 2)
-  outrasDespesas     Decimal?     @db.Decimal(15, 4)
   total              Decimal      @db.Decimal(15, 2)
-  totalLiquido       Decimal?     @db.Decimal(15, 2)
-  previsaoEntrega    DateTime?
   ordem              Int          @default(0)
 }
 
@@ -676,45 +638,10 @@ model CreditoFornecedor {
   origem             String?
   vencimento         DateTime?
   pedidosCompra      PedidoCompra[]
-  reservas           CreditoReservaPedido[]
-  movimentos         CreditoFornecedorMovimento[]
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
   @@index([companyId, fornecedorPessoaId])
-}
-
-model CreditoFornecedorMovimento {
-  id                  String   @id @default(uuid())
-  companyId           String
-  company             Company  @relation(fields: [companyId], references: [id])
-  creditoFornecedorId String
-  creditoFornecedor   CreditoFornecedor @relation(fields: [creditoFornecedorId], references: [id], onDelete: Cascade)
-  tipo                String
-  valor               Decimal  @db.Decimal(15, 2)
-  saldoAnterior       Decimal  @db.Decimal(15, 2)
-  saldoDepois         Decimal  @db.Decimal(15, 2)
-  motivo              String?
-  pedidoCompraId      String?
-  pedidoCompra        PedidoCompra? @relation(fields: [pedidoCompraId], references: [id], onDelete: SetNull)
-  createdAt           DateTime @default(now())
-
-  @@index([creditoFornecedorId, createdAt])
-  @@index([companyId, pedidoCompraId])
-}
-
-model CreditoReservaPedido {
-  id                  String       @id @default(uuid())
-  creditoFornecedorId String
-  creditoFornecedor   CreditoFornecedor @relation(fields: [creditoFornecedorId], references: [id], onDelete: Cascade)
-  pedidoCompraId      String       @unique
-  pedidoCompra        PedidoCompra @relation(fields: [pedidoCompraId], references: [id], onDelete: Cascade)
-  valor               Decimal      @db.Decimal(15, 2)
-  status              String       @default("ativa")
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
-
-  @@index([creditoFornecedorId, status])
 }
 
 model PendenciaFornecedor {

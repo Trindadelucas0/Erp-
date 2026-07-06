@@ -144,9 +144,6 @@ const TIPOS_COMPRA = [
   { value: 'uso_consumo', label: 'Uso e consumo' },
 ]
 
-const AVISO_BAIXA_CREDITO_NF =
-  'O valor será reservado do saldo ao salvar o pedido. A baixa definitiva ocorre na entrada da nota fiscal.'
-
 const itemVazio = (): ItemPedido => ({
   produtoId: '',
   codigoOriginal: '',
@@ -180,8 +177,6 @@ const formVazio = {
   observacoes: '',
   observacoesInternas: '',
   pedidoVendaId: '',
-  creditoFornecedorId: '',
-  creditoAplicado: '',
   status: 'rascunho',
   motivoCancelamento: '',
   itens: [itemVazio()],
@@ -191,12 +186,6 @@ const pendenciaVazia = {
   tipo: 'produto_quebrado',
   descricao: '',
   produtoId: '',
-}
-
-const creditoVazio = {
-  valor: '',
-  origem: '',
-  vencimento: '',
 }
 
 function rotuloStatus(status: string) {
@@ -283,7 +272,6 @@ function ConteudoDaPagina() {
   const [contexto, setContexto] = useState<ContextoFornecedor | null>(null)
   const [modalAberto, setModalAberto] = useState(false)
   const [modalPendenciaAberto, setModalPendenciaAberto] = useState(false)
-  const [modalCreditoAberto, setModalCreditoAberto] = useState(false)
   const [modalCancelarAberto, setModalCancelarAberto] = useState(false)
   const [modalEntradasAberto, setModalEntradasAberto] = useState(false)
   const [modalPedidosAbertosAberto, setModalPedidosAbertosAberto] = useState(false)
@@ -298,9 +286,7 @@ function ConteudoDaPagina() {
   const [erroMotivoCancelamento, setErroMotivoCancelamento] = useState('')
   const [cancelandoPedido, setCancelandoPedido] = useState(false)
   const [formPendencia, setFormPendencia] = useState(pendenciaVazia)
-  const [formCredito, setFormCredito] = useState(creditoVazio)
   const [salvandoPendencia, setSalvandoPendencia] = useState(false)
-  const [salvandoCredito, setSalvandoCredito] = useState(false)
   const [modoEdicao, setModoEdicao] = useState(false)
   const [modoVisualizacao, setModoVisualizacao] = useState(false)
   const [idEmEdicao, setIdEmEdicao] = useState('')
@@ -477,8 +463,6 @@ function ConteudoDaPagina() {
       observacoes: p.observacoes ?? '',
       observacoesInternas: p.observacoesInternas ?? '',
       pedidoVendaId: p.pedidoVendaId ?? '',
-      creditoFornecedorId: p.creditoFornecedorId ?? '',
-      creditoAplicado: p.creditoAplicado != null ? String(p.creditoAplicado) : '',
       status: p.status,
       motivoCancelamento: p.motivoCancelamento ?? '',
       itens: p.itens.map((i: ItemPedido & { produtoNome: string; produtoSku: string | null }) => ({
@@ -602,37 +586,9 @@ function ConteudoDaPagina() {
   const totalForm = form.itens.reduce((s, i) => s + calcularTotalItem(i).liquido, 0)
   const freteForm = parseNum(form.valorFrete)
   const totalComFrete = totalForm + freteForm
-  function aoSelecionarCredito(creditoId: string) {
-    setForm((f) => {
-      const credito = contexto?.creditos.find((c) => c.id === creditoId)
-      return {
-        ...f,
-        creditoFornecedorId: creditoId,
-        creditoAplicado: credito ? String(credito.saldo) : '',
-      }
-    })
-  }
-
-  function limparCredito() {
-    setForm((f) => ({ ...f, creditoFornecedorId: '', creditoAplicado: '' }))
-  }
-
-  const creditoSelecionado = contexto?.creditos.find((c) => c.id === form.creditoFornecedorId)
-  const saldoMaxCredito = creditoSelecionado?.saldo ?? 0
-
-  const creditoNum = form.creditoAplicado
-    ? Number(form.creditoAplicado.replace(',', '.'))
-    : 0
-  const creditoValido =
-    !form.creditoFornecedorId ||
-    (Number.isFinite(creditoNum) && creditoNum > 0 && creditoNum <= saldoMaxCredito)
-  const totalLiquidoForm = totalComFrete - (Number.isFinite(creditoNum) && creditoValido ? creditoNum : 0)
+  const totalLiquidoForm = totalComFrete
 
   function montarPayload() {
-    const creditoAplicadoNum = form.creditoAplicado
-      ? Number(form.creditoAplicado.replace(',', '.'))
-      : null
-
     const prazosValidos = montarPrazosParaPayload(
       form.prazos,
       form.rateioParcelas,
@@ -654,11 +610,8 @@ function ConteudoDaPagina() {
       observacoes: form.observacoes || undefined,
       observacoesInternas: form.observacoesInternas || undefined,
       pedidoVendaId: form.pedidoVendaId || null,
-      creditoFornecedorId: form.creditoFornecedorId || null,
-      creditoAplicado:
-        form.creditoFornecedorId && creditoAplicadoNum != null && Number.isFinite(creditoAplicadoNum)
-          ? creditoAplicadoNum
-          : null,
+      creditoFornecedorId: null,
+      creditoAplicado: null,
       ...(modoEdicao ? { status: form.status } : {}),
       itens: form.itens.map((item, ordem) => ({
         produtoId: item.produtoId,
@@ -683,10 +636,6 @@ function ConteudoDaPagina() {
     }
     if (form.itens.some((i) => !i.produtoId)) {
       setErro('Todos os itens precisam de um produto.')
-      return
-    }
-    if (form.creditoFornecedorId && !creditoValido) {
-      setErro('Valor do crédito inválido ou excede o saldo disponível.')
       return
     }
 
@@ -741,36 +690,6 @@ function ConteudoDaPagina() {
       setErro(extrairMensagemApi(err, 'Erro ao registrar pendência'))
     } finally {
       setSalvandoPendencia(false)
-    }
-  }
-
-  async function registrarCredito(e: FormEvent) {
-    e.preventDefault()
-    if (!form.fornecedorPessoaId) return
-    const valor = Number(formCredito.valor.replace(',', '.'))
-    if (!Number.isFinite(valor) || valor <= 0) {
-      setErro('Informe um valor de crédito válido.')
-      return
-    }
-    setSalvandoCredito(true)
-    setErro('')
-    try {
-      await clienteHttp.post('/pedidos-compra/creditos-fornecedor', {
-        fornecedorPessoaId: form.fornecedorPessoaId,
-        valor,
-        origem: formCredito.origem || undefined,
-        vencimento: formCredito.vencimento
-          ? new Date(formCredito.vencimento).toISOString()
-          : undefined,
-      })
-      setModalCreditoAberto(false)
-      setFormCredito(creditoVazio)
-      setMensagem('Crédito cadastrado.')
-      await carregarContexto(form.fornecedorPessoaId)
-    } catch (err: unknown) {
-      setErro(extrairMensagemApi(err, 'Erro ao cadastrar crédito'))
-    } finally {
-      setSalvandoCredito(false)
     }
   }
 
@@ -835,14 +754,6 @@ function ConteudoDaPagina() {
         <span>
           Frete: <strong>{formatarMoeda(freteForm)}</strong>
         </span>
-      )}
-      {creditoNum > 0 && creditoValido && (
-        <span>
-          Crédito: <strong>-{formatarMoeda(creditoNum)}</strong>
-        </span>
-      )}
-      {form.creditoFornecedorId && !creditoValido && (
-        <span className="text-destructive">Crédito excede saldo</span>
       )}
       <span>
         Líquido: <strong>{formatarMoeda(totalLiquidoForm)}</strong>
@@ -1409,20 +1320,11 @@ function ConteudoDaPagina() {
                 rateioParcelas={form.rateioParcelas}
                 prazos={form.prazos}
                 totalLiquido={totalLiquidoForm}
-                creditoFornecedorId={form.creditoFornecedorId}
-                creditoAplicado={form.creditoAplicado}
-                creditos={contexto?.creditos ?? []}
-                saldoMaxCredito={saldoMaxCredito}
-                creditoValido={creditoValido}
-                avisoBaixaCredito={AVISO_BAIXA_CREDITO_NF}
                 disabled={camposDesabilitados}
                 formatarMoeda={formatarMoeda}
                 onCondicaoChange={(v) => setForm((f) => ({ ...f, condicaoPagamento: v }))}
                 onRateioChange={(v) => setForm((f) => ({ ...f, rateioParcelas: v }))}
                 onPrazosChange={(prazos) => setForm((f) => ({ ...f, prazos }))}
-                onSelecionarCredito={aoSelecionarCredito}
-                onCreditoAplicadoChange={(v) => setForm((f) => ({ ...f, creditoAplicado: v }))}
-                onLimparCredito={limparCredito}
                 onAdicionarPrazo={adicionarPrazo}
               />
             </div>
@@ -1432,17 +1334,6 @@ function ConteudoDaPagina() {
                 <p className="text-sm font-medium">Painel do fornecedor</p>
                 {form.fornecedorPessoaId && podeCriar && !somenteLeitura && (
                   <div className="flex shrink-0 flex-wrap gap-1">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setFormCredito(creditoVazio)
-                        setModalCreditoAberto(true)
-                      }}
-                    >
-                      Crédito
-                    </Button>
                     <Button
                       type="button"
                       variant="outline"
@@ -1608,41 +1499,6 @@ function ConteudoDaPagina() {
             </Button>
             <BotaoPrimario type="submit" disabled={salvandoPendencia}>
               {salvandoPendencia ? 'Salvando...' : 'Registrar'}
-            </BotaoPrimario>
-          </div>
-        </form>
-      </Modal>
-
-      <Modal
-        aberto={modalCreditoAberto}
-        aoFechar={() => setModalCreditoAberto(false)}
-        titulo="Cadastrar crédito"
-        largura="md"
-      >
-        <form onSubmit={registrarCredito} className="space-y-4">
-          <InputPadrao
-            rotulo="Valor (R$) *"
-            value={formCredito.valor}
-            onChange={(e) => setFormCredito((f) => ({ ...f, valor: e.target.value }))}
-          />
-          <InputPadrao
-            rotulo="Origem"
-            value={formCredito.origem}
-            onChange={(e) => setFormCredito((f) => ({ ...f, origem: e.target.value }))}
-            placeholder="Ex.: devolução NF 123"
-          />
-          <InputPadrao
-            rotulo="Vencimento"
-            type="date"
-            value={formCredito.vencimento}
-            onChange={(e) => setFormCredito((f) => ({ ...f, vencimento: e.target.value }))}
-          />
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setModalCreditoAberto(false)}>
-              Cancelar
-            </Button>
-            <BotaoPrimario type="submit" disabled={salvandoCredito}>
-              {salvandoCredito ? 'Salvando...' : 'Cadastrar'}
             </BotaoPrimario>
           </div>
         </form>

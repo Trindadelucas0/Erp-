@@ -66,6 +66,10 @@ import {
   FornecedoresRelacionadosField,
   type FornecedorRelacionadoItem,
 } from '@/components/fornecedores/fornecedores-relacionados-field'
+import {
+  ListaCreditosFornecedor,
+  type CreditoFornecedorComMovimentos,
+} from '@/components/fornecedores/lista-creditos-fornecedor'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -610,6 +614,8 @@ function ConteudoDaPaginaDeFornecedores() {
   const ehUltimaAba = indiceAbaAtiva === idsAbas.length - 1
 
   const [salvando, setSalvando] = useState(false)
+  const [creditosFornecedor, setCreditosFornecedor] = useState<CreditoFornecedorComMovimentos[]>([])
+  const [carregandoCreditos, setCarregandoCreditos] = useState(false)
 
   const [form, setForm] = useState<FormFornecedor>(FORM_VAZIO)
   const [formInicial, setFormInicial] = useState<FormFornecedor>(() => clonarFormulario(FORM_VAZIO))
@@ -874,6 +880,36 @@ function ConteudoDaPaginaDeFornecedores() {
     if (carregandoSessao || !estaAutenticado) return
     carregarFornecedores()
   }, [carregandoSessao, estaAutenticado])
+
+  useEffect(() => {
+    if (!modoVisualizacao || !idEmEdicao || !modalAberto) {
+      setCreditosFornecedor([])
+      return
+    }
+
+    let cancelado = false
+    setCarregandoCreditos(true)
+
+    clienteHttp
+      .get('/pedidos-compra/creditos-fornecedor', {
+        params: { fornecedorId: idEmEdicao, comMovimentos: true },
+      })
+      .then(({ data }) => {
+        if (!cancelado) {
+          setCreditosFornecedor(data.creditos ?? [])
+        }
+      })
+      .catch(() => {
+        if (!cancelado) setCreditosFornecedor([])
+      })
+      .finally(() => {
+        if (!cancelado) setCarregandoCreditos(false)
+      })
+
+    return () => {
+      cancelado = true
+    }
+  }, [modoVisualizacao, idEmEdicao, modalAberto])
 
   async function carregarFornecedores() {
     setCarregandoLista(true)
@@ -1734,6 +1770,15 @@ function ConteudoDaPaginaDeFornecedores() {
             </div>
             </fieldset>
           </form>
+
+          {modoVisualizacao && idEmEdicao && (
+            <div className="mt-6">
+              <ListaCreditosFornecedor
+                creditos={creditosFornecedor}
+                carregando={carregandoCreditos}
+              />
+            </div>
+          )}
         </div>
       </Modal>
 

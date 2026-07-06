@@ -1,5 +1,5 @@
 /**
- * Popula o banco com permissões, papéis, empresas e usuário admin.
+ * Popula o banco com permissões, papéis, usuário admin e atalhos padrão.
  */
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcrypt'
@@ -10,26 +10,6 @@ const prisma = new PrismaClient()
 async function main() {
   console.log('Sincronizando permissões e papéis...')
   await sincronizarPermissoes()
-
-  console.log('Criando empresas de exemplo...')
-
-  const empresa1 = await prisma.company.upsert({
-    where: { cnpj: '11111111000191' },
-    update: {},
-    create: {
-      name: 'Empresa Alpha Ltda',
-      cnpj: '11111111000191',
-    },
-  })
-
-  const empresa2 = await prisma.company.upsert({
-    where: { cnpj: '22222222000182' },
-    update: {},
-    create: {
-      name: 'Empresa Beta Ltda',
-      cnpj: '22222222000182',
-    },
-  })
 
   console.log('Criando usuário admin...')
 
@@ -56,27 +36,12 @@ async function main() {
       roles: {
         create: [{ roleId: papelAdmin.id }],
       },
-      companies: {
-        create: [
-          { companyId: empresa1.id },
-          { companyId: empresa2.id },
-        ],
-      },
     },
   })
 
   await prisma.userRole.deleteMany({ where: { userId: admin.id } })
-  await prisma.userCompany.deleteMany({ where: { userId: admin.id } })
-
   await prisma.userRole.create({
     data: { userId: admin.id, roleId: papelAdmin.id },
-  })
-
-  await prisma.userCompany.createMany({
-    data: [
-      { userId: admin.id, companyId: empresa1.id },
-      { userId: admin.id, companyId: empresa2.id },
-    ],
   })
 
   console.log('Sincronizando atalhos de teclado padrão...')

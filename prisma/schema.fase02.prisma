@@ -35,7 +35,6 @@ model Company {
   pedidosVenda         PedidoVenda[]
   creditosFornecedor   CreditoFornecedor[]
   pendenciasFornecedor PendenciaFornecedor[]
-  movimentosCreditoFornecedor CreditoFornecedorMovimento[]
   createdAt            DateTime      @default(now())
 }
 
@@ -634,8 +633,6 @@ model PedidoCompra {
   creditoFornecedorId    String?
   creditoFornecedor      CreditoFornecedor? @relation(fields: [creditoFornecedorId], references: [id])
   creditoAplicado        Decimal? @db.Decimal(15, 2)
-  creditoReserva         CreditoReservaPedido?
-  movimentosCredito      CreditoFornecedorMovimento[]
 
   itens                  PedidoCompraItem[]
 
@@ -676,45 +673,10 @@ model CreditoFornecedor {
   origem             String?
   vencimento         DateTime?
   pedidosCompra      PedidoCompra[]
-  reservas           CreditoReservaPedido[]
-  movimentos         CreditoFornecedorMovimento[]
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
   @@index([companyId, fornecedorPessoaId])
-}
-
-model CreditoFornecedorMovimento {
-  id                  String   @id @default(uuid())
-  companyId           String
-  company             Company  @relation(fields: [companyId], references: [id])
-  creditoFornecedorId String
-  creditoFornecedor   CreditoFornecedor @relation(fields: [creditoFornecedorId], references: [id], onDelete: Cascade)
-  tipo                String
-  valor               Decimal  @db.Decimal(15, 2)
-  saldoAnterior       Decimal  @db.Decimal(15, 2)
-  saldoDepois         Decimal  @db.Decimal(15, 2)
-  motivo              String?
-  pedidoCompraId      String?
-  pedidoCompra        PedidoCompra? @relation(fields: [pedidoCompraId], references: [id], onDelete: SetNull)
-  createdAt           DateTime @default(now())
-
-  @@index([creditoFornecedorId, createdAt])
-  @@index([companyId, pedidoCompraId])
-}
-
-model CreditoReservaPedido {
-  id                  String       @id @default(uuid())
-  creditoFornecedorId String
-  creditoFornecedor   CreditoFornecedor @relation(fields: [creditoFornecedorId], references: [id], onDelete: Cascade)
-  pedidoCompraId      String       @unique
-  pedidoCompra        PedidoCompra @relation(fields: [pedidoCompraId], references: [id], onDelete: Cascade)
-  valor               Decimal      @db.Decimal(15, 2)
-  status              String       @default("ativa")
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
-
-  @@index([creditoFornecedorId, status])
 }
 
 model PendenciaFornecedor {

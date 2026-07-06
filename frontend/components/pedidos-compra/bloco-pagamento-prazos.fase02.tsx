@@ -11,27 +11,16 @@ export type PrazoPagamento = {
   valor?: number | string | null
 }
 
-type CreditoOpcao = { id: string; saldo: number; origem: string | null }
-
 type Props = {
   condicaoPagamento: string
   rateioParcelas: string
   prazos: PrazoPagamento[]
   totalLiquido: number
-  creditoFornecedorId: string
-  creditoAplicado: string
-  creditos: CreditoOpcao[]
-  saldoMaxCredito: number
-  creditoValido: boolean
-  avisoBaixaCredito: string
   disabled: boolean
   formatarMoeda: (v: number) => string
   onCondicaoChange: (v: string) => void
   onRateioChange: (v: string) => void
   onPrazosChange: (prazos: PrazoPagamento[]) => void
-  onSelecionarCredito: (id: string) => void
-  onCreditoAplicadoChange: (v: string) => void
-  onLimparCredito: () => void
   onAdicionarPrazo: () => void
 }
 
@@ -61,20 +50,11 @@ export function BlocoPagamentoPrazos({
   rateioParcelas,
   prazos,
   totalLiquido,
-  creditoFornecedorId,
-  creditoAplicado,
-  creditos,
-  saldoMaxCredito,
-  creditoValido,
-  avisoBaixaCredito,
   disabled,
   formatarMoeda,
   onCondicaoChange,
   onRateioChange,
   onPrazosChange,
-  onSelecionarCredito,
-  onCreditoAplicadoChange,
-  onLimparCredito,
   onAdicionarPrazo,
 }: Props) {
   const rateioIgual = rateioParcelas === 'igual'
@@ -210,58 +190,6 @@ export function BlocoPagamentoPrazos({
           </p>
         </>
       )}
-
-      <div className="border-t border-border pt-4">
-        <p className="mb-2 text-sm font-medium">Crédito do fornecedor</p>
-        {creditos.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Nenhum crédito disponível para este fornecedor.</p>
-        ) : (
-          <ul className="mb-3 space-y-1 text-xs">
-            {creditos.map((c) => {
-              const selecionado = creditoFornecedorId === c.id
-              return (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    disabled={disabled}
-                    className={`w-full rounded px-2 py-1 text-left transition-colors ${
-                      selecionado
-                        ? 'bg-primary/15 font-medium text-primary'
-                        : 'text-primary hover:bg-muted/50 hover:underline'
-                    }`}
-                    onClick={() => onSelecionarCredito(c.id)}
-                  >
-                    {formatarMoeda(c.saldo)}
-                    {c.origem ? ` — ${c.origem}` : ''}
-                    {selecionado ? ' (aplicado)' : ''}
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-
-        {creditoFornecedorId && (
-          <div className="space-y-2">
-            <InputPadrao
-              rotulo="Valor a aplicar (R$)"
-              value={creditoAplicado}
-              onChange={(e) => onCreditoAplicadoChange(e.target.value)}
-              disabled={disabled}
-              placeholder={`Máx. ${formatarMoeda(saldoMaxCredito)}`}
-            />
-            {!creditoValido && (
-              <p className="text-xs text-destructive">Crédito excede saldo disponível</p>
-            )}
-            <p className="text-xs text-muted-foreground">{avisoBaixaCredito}</p>
-            {!disabled && (
-              <Button type="button" variant="ghost" size="sm" onClick={onLimparCredito}>
-                Remover crédito
-              </Button>
-            )}
-          </div>
-        )}
-      </div>
     </div>
   )
 }

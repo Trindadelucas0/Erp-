@@ -57,11 +57,12 @@ async function buscarPerfilDoUsuarioLogado(idDoUsuario: string) {
     await repositorioDePermissoes.buscarChavesExtrasPorIdDoUsuario(idDoUsuario)
   const permissoesEfetivas =
     await repositorioDePermissoes.buscarChavesPorIdDoUsuario(idDoUsuario)
-  const empresasRaw =
-    await repositorioDeEmpresas.buscarPorIdDoUsuario(idDoUsuario)
+  const ehAdmin = usuarioEhAdmin(usuario.roles)
+  const empresasRaw = ehAdmin
+    ? await repositorioDeEmpresas.listarTodasAtivas()
+    : await repositorioDeEmpresas.buscarPorIdDoUsuario(idDoUsuario)
   const empresas = empresasRaw.map((empresa) => ({ company: empresa }))
 
-  const ehAdmin = usuarioEhAdmin(usuario.roles)
   const chavesDasPaginas = usuario.paginasPermitidas.map(
     (item) => item.pageKey
   )
