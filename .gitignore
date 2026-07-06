@@ -52,3 +52,6 @@ uploads/
 # Artefatos locais de Git / notas soltas
 .git-rewrite/
 gitpull.txt
+# Google Drive (sincronização local)
+.tmp.driveupload/
+.tmp.drivedownload/
