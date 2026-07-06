@@ -609,6 +609,7 @@ model PedidoCompra {
   companyId              String
   company                Company  @relation(fields: [companyId], references: [id])
   numero                 Int
+  descricao              String?
   fornecedorPessoaId     String
   fornecedor             Pessoa   @relation("FornecedorPO", fields: [fornecedorPessoaId], references: [id])
   transportadoraPessoaId String?

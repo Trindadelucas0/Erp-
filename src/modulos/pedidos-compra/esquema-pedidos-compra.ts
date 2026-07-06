@@ -79,6 +79,7 @@ const camposComunsPedido = {
   rateioParcelas: z.enum(['igual', 'manual']).optional(),
   observacoes: textoCadastroOpcional(2000),
   observacoesInternas: textoCadastroOpcional(2000),
+  descricao: textoCadastroOpcional(120),
   pedidoVendaId: z.string().uuid().optional().nullable(),
   creditoFornecedorId: z.string().uuid().optional().nullable(),
   creditoAplicado: decimalObrigatorio.optional().nullable(),
@@ -87,13 +88,14 @@ const camposComunsPedido = {
 export const esquemaDeCriacaoDePedidoCompra = z.object({
   fornecedorPessoaId: z.string().uuid('Fornecedor obrigatório'),
   ...camposComunsPedido,
+  concluir: z.boolean().optional(),
   itens: z.array(esquemaItemPedidoCompra).min(1, 'Adicione ao menos um item'),
 })
 
 export const esquemaDeEdicaoDePedidoCompra = z.object({
   fornecedorPessoaId: z.string().uuid().optional(),
   ...camposComunsPedido,
-  status: z.enum(['rascunho', 'enviado', 'parcial', 'recebido']).optional(),
+  concluir: z.boolean().optional(),
   itens: z.array(esquemaItemPedidoCompra).min(1).optional(),
 })
 

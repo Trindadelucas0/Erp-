@@ -103,6 +103,7 @@ const camposProduto = {
   capacidadeEmpilhamento: inteiroOpcional,
   normaPalete: textoOpcionalNulavel(100),
   nomeCompra: textoOpcionalNulavel(200),
+  precoCusto: decimalOpcional,
   fornecedores: z.array(esquemaProdutoFornecedor).optional().default([]),
   ncm: z.preprocess(
     nulParaUndefined,

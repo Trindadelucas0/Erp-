@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import { Copy, FileSearch, History, Package, Pencil, Plus, Trash2, Truck } from 'lucide-react'
 import { BlocoPagamentoPrazos, type PrazoPagamento } from '@/components/pedidos-compra/bloco-pagamento-prazos'
+import { ComboboxProduto } from '@/components/pedidos-compra/combobox-produto'
 import { ModalCompararPdf } from '@/components/pedidos-compra/modal-comparar-pdf'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
@@ -22,6 +23,11 @@ import {
   montarPrazosParaPayload,
   validarSomaParcelasManual,
 } from '@/lib/parcelas-pagamento-pedido'
+import { calcularDiasEntreDatas, calcularVencimentoPorDias } from '@/lib/prazos-pagamento'
+import {
+  preencherItemComProduto,
+  rotuloOrigemPreco,
+} from '@/lib/preencher-item-pedido-compra'
 import {
   formatarPedido,
   podeConcluirPedido,
@@ -30,7 +36,12 @@ import {
   varianteStatusUi,
 } from '@/lib/status-pedido-compra'
 
-type FiltroStatus = 'todos' | 'aberto' | 'rascunho' | 'feito' | 'cancelado'
+type FiltroStatus =
+  | 'todos'
+  | 'aberto'
+  | 'rascunho'
+  | 'feito'
+  | 'cancelado'
 
 type ItemPedido = {
   id?: string
@@ -45,6 +56,7 @@ type ItemPedido = {
   valorDesconto: string
   outrasDespesas: string
   previsaoEntrega: string
+  origemPreco?: 'estoque' | 'historico' | ''
   total?: number
   totalLiquido?: number
 }
@@ -52,7 +64,6 @@ type ItemPedido = {
 type PedidoCompra = {
   id: string
   numero: number
-  descricao: string | null
   fornecedorPessoaId: string
   fornecedorNome: string
   transportadoraPessoaId: string | null
@@ -61,6 +72,7 @@ type PedidoCompra = {
   condicaoPagamento: string | null
   status: string
   motivoCancelamento: string | null
+  descricao: string | null
   observacoes: string | null
   pedidoVendaId: string | null
   creditoFornecedorId: string | null
@@ -71,13 +83,25 @@ type PedidoCompra = {
   itens: ItemPedido[]
 }
 
-type ProdutoOpcao = { id: string; nomeVenda: string; sku: string | null; unidade: string }
+type ProdutoOpcao = {
+  id: string
+  nomeVenda: string
+  sku: string | null
+  unidade: string
+  codigoOrigem: string | null
+  precoCusto: number | null
+  bloqueadoCompra: boolean
+  fornecedores: {
+    fornecedorPessoaId: string
+    codigoFornecedor: string | null
+    unidadeEntrada: string | null
+  }[]
+}
 type PessoaOpcao = { id: string; nome: string }
 
 type EntradaFornecedor = {
   id: string
   numero: number
-  descricao: string | null
   status: string
   totalLiquido: number
   data: string
@@ -147,6 +171,7 @@ const itemVazio = (): ItemPedido => ({
   valorDesconto: '0',
   outrasDespesas: '0',
   previsaoEntrega: '',
+  origemPreco: '',
 })
 
 const TIPOS_PENDENCIA = [
@@ -157,7 +182,6 @@ const TIPOS_PENDENCIA = [
 
 const formVazio = {
   fornecedorPessoaId: '',
-  descricao: '',
   transportadoraPessoaId: '',
   modalidadeTransporte: '',
   condicaoPagamento: '',
@@ -167,9 +191,10 @@ const formVazio = {
   valorFrete: '',
   valorFreteSugerido: '0',
   rateioParcelas: 'igual',
-  prazos: [{ numero: 1, vencimento: '', valor: '' }] as PrazoPagamento[],
+  prazos: [{ numero: 1, dias: '', vencimento: '', valor: '' }] as PrazoPagamento[],
   observacoes: '',
   observacoesInternas: '',
+  descricao: '',
   pedidoVendaId: '',
   creditoFornecedorId: '',
   creditoAplicado: '',
@@ -193,6 +218,18 @@ const creditoVazio = {
 function parseNum(s: string): number {
   const n = Number(s.replace(',', '.'))
   return Number.isFinite(n) ? n : 0
+}
+
+function mapearPrazosDoPedido(
+  prazos: PrazoPagamento[],
+  dataFaturamento: string
+): PrazoPagamento[] {
+  return prazos.map((pr) => ({
+    numero: pr.numero,
+    vencimento: pr.vencimento,
+    valor: pr.valor != null ? String(pr.valor) : '',
+    dias: pr.dias ?? calcularDiasEntreDatas(dataFaturamento, pr.vencimento),
+  }))
 }
 
 function calcularTotalItem(item: ItemPedido): { bruto: number; liquido: number } {
@@ -335,11 +372,32 @@ function ConteudoDaPagina() {
       setProdutos(
         (resProd.data.produtos ?? [])
           .filter((p: { ativo: boolean }) => p.ativo)
-          .map((p: ProdutoOpcao) => ({
+          .map((p: {
+            id: string
+            nomeVenda: string
+            sku: string | null
+            unidade: string
+            codigoOrigem: string | null
+            precoCusto: number | null
+            bloqueadoCompra: boolean
+            fornecedores: {
+              fornecedorPessoaId: string
+              codigoFornecedor: string | null
+              unidadeEntrada: string | null
+            }[]
+          }) => ({
             id: p.id,
             nomeVenda: p.nomeVenda,
             sku: p.sku,
             unidade: p.unidade,
+            codigoOrigem: p.codigoOrigem ?? null,
+            precoCusto: p.precoCusto ?? null,
+            bloqueadoCompra: p.bloqueadoCompra ?? false,
+            fornecedores: (p.fornecedores ?? []).map((f) => ({
+              fornecedorPessoaId: f.fornecedorPessoaId,
+              codigoFornecedor: f.codigoFornecedor ?? null,
+              unidadeEntrada: f.unidadeEntrada ?? null,
+            })),
           }))
       )
     } catch {
@@ -426,7 +484,6 @@ function ConteudoDaPagina() {
     const p = data.pedido
     setForm({
       fornecedorPessoaId: p.fornecedorPessoaId,
-      descricao: p.descricao ?? '',
       transportadoraPessoaId: p.transportadoraPessoaId ?? '',
       modalidadeTransporte: p.modalidadeTransporte ?? '',
       condicaoPagamento: p.condicaoPagamento ?? '',
@@ -437,14 +494,11 @@ function ConteudoDaPagina() {
       valorFreteSugerido: p.valorFreteSugerido != null ? String(p.valorFreteSugerido) : '0',
       rateioParcelas: p.rateioParcelas ?? 'igual',
       prazos: Array.isArray(p.prazosPagamento) && p.prazosPagamento.length > 0
-        ? (p.prazosPagamento as PrazoPagamento[]).map((pr) => ({
-            numero: pr.numero,
-            vencimento: pr.vencimento,
-            valor: pr.valor != null ? String(pr.valor) : '',
-          }))
-        : [{ numero: 1, vencimento: '', valor: '' }],
+        ? mapearPrazosDoPedido(p.prazosPagamento as PrazoPagamento[], formatarDataIso(p.dataFaturamento))
+        : [{ numero: 1, dias: '', vencimento: '', valor: '' }],
       observacoes: p.observacoes ?? '',
       observacoesInternas: p.observacoesInternas ?? '',
+      descricao: p.descricao ?? '',
       pedidoVendaId: p.pedidoVendaId ?? '',
       creditoFornecedorId: p.creditoFornecedorId ?? '',
       creditoAplicado: p.creditoAplicado != null ? String(p.creditoAplicado) : '',
@@ -531,8 +585,46 @@ function ConteudoDaPagina() {
   function adicionarPrazo() {
     setForm((f) => ({
       ...f,
-      prazos: [...f.prazos, { numero: f.prazos.length + 1, vencimento: '', valor: '' }],
+      prazos: [...f.prazos, { numero: f.prazos.length + 1, dias: '', vencimento: '', valor: '' }],
     }))
+  }
+
+  async function selecionarProdutoNoItem(index: number, produtoId: string) {
+    if (!produtoId) {
+      setForm((f) => {
+        const itens = [...f.itens]
+        itens[index] = itemVazio()
+        return { ...f, itens }
+      })
+      return
+    }
+
+    const produto = produtos.find((p) => p.id === produtoId)
+    if (!produto) return
+
+    let historico: HistoricoCompra[] = historicoProdutos[produtoId] ?? []
+    if (historicoProdutos[produtoId] === undefined) {
+      try {
+        const { data } = await clienteHttp.get(`/pedidos-compra/produto/${produtoId}/historico`)
+        historico = data.historico ?? []
+        setHistoricoProdutos((prev) => ({ ...prev, [produtoId]: historico }))
+      } catch {
+        historico = []
+        setHistoricoProdutos((prev) => ({ ...prev, [produtoId]: [] }))
+      }
+    }
+
+    setForm((f) => {
+      const itens = [...f.itens]
+      itens[index] = preencherItemComProduto(
+        itens[index],
+        produto,
+        f.fornecedorPessoaId,
+        f.previsaoEntrega,
+        historico
+      )
+      return { ...f, itens }
+    })
   }
 
   function atualizarItem(index: number, campo: keyof ItemPedido, valor: string) {
@@ -540,16 +632,8 @@ function ConteudoDaPagina() {
       const itens = [...f.itens]
       const item = { ...itens[index], [campo]: valor }
 
-      if (campo === 'produtoId') {
-        const produto = produtos.find((p) => p.id === valor)
-        if (produto) {
-          item.unidade = produto.unidade
-          item.produtoNome = produto.nomeVenda
-          item.produtoSku = produto.sku
-        }
-        if (valor) {
-          void carregarHistoricoProduto(valor)
-        }
+      if (campo === 'precoUnitario') {
+        item.origemPreco = ''
       }
 
       itens[index] = item
@@ -1102,6 +1186,9 @@ function ConteudoDaPagina() {
           {contexto && contexto.pendencias.length > 0 && (
             <div className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
               <p className="text-sm font-medium text-amber-700">Pendências abertas do fornecedor</p>
+              <p className="mt-1 text-xs text-amber-700/80">
+                Informativo — o pedido pode ser salvo mesmo com pendências abertas.
+              </p>
               <ul className="mt-2 space-y-1 text-sm">
                 {contexto.pendencias.map((p) => (
                   <li key={p.id} className="flex items-start justify-between gap-2">
@@ -1173,7 +1260,19 @@ function ConteudoDaPagina() {
                   rotulo="Data de faturamento"
                   type="date"
                   value={form.dataFaturamento}
-                  onChange={(e) => setForm((f) => ({ ...f, dataFaturamento: e.target.value }))}
+                  onChange={(e) => {
+                    const dataFaturamento = e.target.value
+                    setForm((f) => ({
+                      ...f,
+                      dataFaturamento,
+                      prazos: f.prazos.map((p) => ({
+                        ...p,
+                        vencimento: p.dias
+                          ? calcularVencimentoPorDias(dataFaturamento, p.dias)
+                          : p.vencimento,
+                      })),
+                    }))
+                  }}
                   disabled={camposDesabilitados}
                 />
                 <InputPadrao
@@ -1293,22 +1392,23 @@ function ConteudoDaPagina() {
                 </div>
 
                 <div className="space-y-3">
-                  {form.itens.map((item, index) => (
+                  {form.itens.map((item, index) => {
+                    const produtoItem = produtos.find((p) => p.id === item.produtoId)
+                    const origemPrecoLabel = rotuloOrigemPreco(item.origemPreco)
+                    return (
                     <div
                       key={index}
                       className="space-y-3 rounded-lg border border-border p-3"
                     >
-                      <SelectPadrao
-                        rotulo="Produto"
+                      {produtoItem?.bloqueadoCompra && (
+                        <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-700">
+                          Produto bloqueado para compra no cadastro.
+                        </p>
+                      )}
+                      <ComboboxProduto
+                        produtos={produtos}
                         valor={item.produtoId}
-                        aoMudar={(v) => atualizarItem(index, 'produtoId', v)}
-                        opcoes={[
-                          { value: '', label: 'Selecione' },
-                          ...produtos.map((p) => ({
-                            value: p.id,
-                            label: `${p.sku ? p.sku + ' — ' : ''}${p.nomeVenda}`,
-                          })),
-                        ]}
+                        aoMudar={(v) => void selecionarProdutoNoItem(index, v)}
                         disabled={camposDesabilitados}
                       />
                       <InputPadrao
@@ -1317,7 +1417,7 @@ function ConteudoDaPagina() {
                         onChange={(e) => atualizarItem(index, 'codigoOriginal', e.target.value)}
                         disabled={camposDesabilitados}
                       />
-                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                         <InputPadrao
                           rotulo="Quantidade"
                           value={item.quantidade}
@@ -1336,6 +1436,17 @@ function ConteudoDaPagina() {
                           onChange={(e) => atualizarItem(index, 'precoUnitario', e.target.value)}
                           disabled={camposDesabilitados}
                         />
+                        {origemPrecoLabel && (
+                          <p className="col-span-2 text-xs text-muted-foreground sm:col-span-3 lg:col-span-5">
+                            {origemPrecoLabel}
+                          </p>
+                        )}
+                        <div>
+                          <p className="text-xs text-muted-foreground">Total bruto</p>
+                          <p className="text-sm font-medium tabular-nums">
+                            {formatarMoeda(calcularTotalItem(item).bruto)}
+                          </p>
+                        </div>
                         <InputPadrao
                           rotulo="Prev. entrega"
                           type="date"
@@ -1395,7 +1506,8 @@ function ConteudoDaPagina() {
                         </Button>
                       )}
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
 
@@ -1403,6 +1515,7 @@ function ConteudoDaPagina() {
                 condicaoPagamento={form.condicaoPagamento}
                 rateioParcelas={form.rateioParcelas}
                 prazos={form.prazos}
+                dataFaturamento={form.dataFaturamento}
                 totalLiquido={totalLiquidoForm}
                 creditoFornecedorId={form.creditoFornecedorId}
                 creditoAplicado={form.creditoAplicado}
@@ -1656,7 +1769,7 @@ function ConteudoDaPagina() {
             {contexto.ultimasEntradas.map((e) => (
               <li key={e.id} className="rounded-md border border-border p-3">
                 <p className="font-medium">
-                  {formatarPedido(e.numero, e.descricao)} — {rotuloStatusUi(e.status)}
+                  {formatarPedido(e.numero, e.descricao ?? null)} — {rotuloStatusUi(e.status)}
                 </p>
                 <p className="text-muted-foreground">
                   {formatarData(e.data)} — {e.itens} item(ns) — {formatarMoeda(e.totalLiquido)}
@@ -1691,7 +1804,7 @@ function ConteudoDaPagina() {
                     }}
                   >
                     <p className="font-medium">
-                      {formatarPedido(p.numero, p.descricao)}
+                      {formatarPedido(p.numero, p.descricao ?? null)}
                     </p>
                     <p className="text-muted-foreground">{formatarMoeda(p.totalLiquido)}</p>
                   </button>

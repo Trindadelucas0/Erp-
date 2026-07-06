@@ -1408,6 +1408,7 @@ function ConteudoDaPagina() {
                 condicaoPagamento={form.condicaoPagamento}
                 rateioParcelas={form.rateioParcelas}
                 prazos={form.prazos}
+                dataFaturamento={form.dataFaturamento}
                 totalLiquido={totalLiquidoForm}
                 creditoFornecedorId={form.creditoFornecedorId}
                 creditoAplicado={form.creditoAplicado}

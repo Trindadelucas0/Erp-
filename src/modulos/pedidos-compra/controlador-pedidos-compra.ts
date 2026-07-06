@@ -26,7 +26,7 @@ async function listarPedidosCompra(requisicao: FastifyRequest, resposta: Fastify
     }
 
   let numeroFiltro: number | undefined
-  if (numero != null && numero.trim() !== '' && !busca?.trim()) {
+  if (numero != null && numero.trim() !== '') {
     const n = Number(numero.replace(/^#/, '').trim())
     if (!Number.isInteger(n) || n <= 0) {
       throw new ErroDaAplicacao('Número do pedido inválido', 400)

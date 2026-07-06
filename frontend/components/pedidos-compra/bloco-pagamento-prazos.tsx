@@ -1,12 +1,19 @@
 'use client'
 
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Label } from '@/components/ui/label'
 import { distribuirParcelasIguais } from '@/lib/parcelas-pagamento-pedido'
+import {
+  calcularDiasEntreDatas,
+  calcularVencimentoPorDias,
+  formatarDataBr,
+} from '@/lib/prazos-pagamento'
 
 export type PrazoPagamento = {
   numero: number
+  dias?: string
   vencimento: string
   valor?: number | string | null
 }
@@ -17,6 +24,7 @@ type Props = {
   condicaoPagamento: string
   rateioParcelas: string
   prazos: PrazoPagamento[]
+  dataFaturamento: string
   totalLiquido: number
   creditoFornecedorId: string
   creditoAplicado: string
@@ -60,6 +68,7 @@ export function BlocoPagamentoPrazos({
   condicaoPagamento,
   rateioParcelas,
   prazos,
+  dataFaturamento,
   totalLiquido,
   creditoFornecedorId,
   creditoAplicado,
@@ -78,15 +87,25 @@ export function BlocoPagamentoPrazos({
   onAdicionarPrazo,
 }: Props) {
   const rateioIgual = rateioParcelas === 'igual'
+  const [linhaSelecionada, setLinhaSelecionada] = useState<number | null>(null)
+
+  function atualizarPrazo(index: number, patch: Partial<PrazoPagamento>) {
+    onPrazosChange(prazos.map((p, i) => (i === index ? { ...p, ...patch } : p)))
+  }
+
+  function atualizarDias(index: number, dias: string) {
+    const diasLimpo = dias.replace(/\D/g, '')
+    const vencimento = calcularVencimentoPorDias(dataFaturamento, diasLimpo)
+    atualizarPrazo(index, { dias: diasLimpo, vencimento })
+  }
 
   function atualizarVencimento(index: number, vencimento: string) {
-    const novos = prazos.map((p, i) => (i === index ? { ...p, vencimento } : p))
-    onPrazosChange(novos)
+    const dias = calcularDiasEntreDatas(dataFaturamento, vencimento)
+    atualizarPrazo(index, { vencimento, dias })
   }
 
   function atualizarValor(index: number, valor: string) {
-    const novos = prazos.map((p, i) => (i === index ? { ...p, valor } : p))
-    onPrazosChange(novos)
+    atualizarPrazo(index, { valor })
   }
 
   function removerPrazo(index: number) {
@@ -94,6 +113,14 @@ export function BlocoPagamentoPrazos({
     onPrazosChange(
       prazos.filter((_, i) => i !== index).map((p, i) => ({ ...p, numero: i + 1 }))
     )
+    setLinhaSelecionada(null)
+  }
+
+  function aoTeclarLinha(e: React.KeyboardEvent, index: number) {
+    if (e.shiftKey && (e.key === 'Delete' || e.key === 'Del')) {
+      e.preventDefault()
+      removerPrazo(index)
+    }
   }
 
   return (
@@ -150,23 +177,49 @@ export function BlocoPagamentoPrazos({
               <thead>
                 <tr className="border-b bg-muted/40 text-left text-muted-foreground">
                   <th className="px-3 py-2 font-medium w-16">Prazo</th>
-                  <th className="px-3 py-2 font-medium">Dia vencimento</th>
+                  <th className="px-3 py-2 font-medium w-24">Dia</th>
+                  <th className="px-3 py-2 font-medium">Vencimento</th>
                   <th className="px-3 py-2 font-medium">Valor (R$)</th>
                   {!disabled && <th className="px-2 py-2" />}
                 </tr>
               </thead>
               <tbody>
                 {prazos.map((p, index) => (
-                  <tr key={p.numero} className="border-b border-border">
+                  <tr
+                    key={p.numero}
+                    tabIndex={disabled ? undefined : 0}
+                    className={`border-b border-border outline-none ${
+                      linhaSelecionada === index ? 'bg-muted/50 ring-1 ring-ring/30' : ''
+                    }`}
+                    onFocus={() => setLinhaSelecionada(index)}
+                    onBlur={() => setLinhaSelecionada((atual) => (atual === index ? null : atual))}
+                    onKeyDown={(e) => aoTeclarLinha(e, index)}
+                  >
                     <td className="px-3 py-2">{p.numero}</td>
                     <td className="px-3 py-2">
                       <input
-                        type="date"
-                        value={p.vencimento}
-                        onChange={(e) => atualizarVencimento(index, e.target.value)}
+                        type="text"
+                        inputMode="numeric"
+                        value={p.dias ?? ''}
+                        onChange={(e) => atualizarDias(index, e.target.value)}
                         disabled={disabled}
-                        className="flex h-8 rounded-md border border-input bg-transparent px-2 text-sm"
+                        placeholder="Dias"
+                        maxLength={4}
+                        className="flex h-8 w-full min-w-[4rem] rounded-md border border-input bg-transparent px-2 text-sm"
                       />
+                    </td>
+                    <td className="px-3 py-2">
+                      {disabled ? (
+                        <span className="text-sm tabular-nums">{formatarDataBr(p.vencimento)}</span>
+                      ) : (
+                        <input
+                          type="date"
+                          value={p.vencimento}
+                          onChange={(e) => atualizarVencimento(index, e.target.value)}
+                          disabled={disabled}
+                          className="flex h-8 rounded-md border border-input bg-transparent px-2 text-sm"
+                        />
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       {rateioIgual ? (
@@ -207,7 +260,13 @@ export function BlocoPagamentoPrazos({
             {rateioIgual
               ? 'Modo Igual: valores calculados automaticamente a partir do total líquido do pedido.'
               : 'Modo Manual: informe o valor (R$) de cada parcela. A soma deve igualar o total líquido.'}
+            {!disabled && ' Tecle [Shift + Del] para excluir um prazo.'}
           </p>
+          {!dataFaturamento && (
+            <p className="text-xs text-amber-600">
+              Informe a data de faturamento para calcular o vencimento a partir dos dias.
+            </p>
+          )}
         </>
       )}
 

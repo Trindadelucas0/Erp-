@@ -57,6 +57,7 @@ function mapearPedido(pedido: PedidoDb) {
   return {
     id: pedido.id,
     numero: pedido.numero,
+    descricao: pedido.descricao,
     fornecedorPessoaId: pedido.fornecedorPessoaId,
     fornecedorNome: pedido.fornecedor.nome,
     transportadoraPessoaId: pedido.transportadoraPessoaId,
@@ -153,6 +154,7 @@ function dadosCabecalhoParaCreate(dados: DadosParaCriarPedidoCompra) {
     rateioParcelas: dados.rateioParcelas || 'igual',
     observacoes: dados.observacoes || null,
     observacoesInternas: dados.observacoesInternas || null,
+    descricao: dados.descricao || null,
     pedidoVendaId: dados.pedidoVendaId || null,
     creditoFornecedorId: dados.creditoFornecedorId || null,
     creditoAplicado: dados.creditoAplicado ?? null,
@@ -166,6 +168,7 @@ async function listarPorEmpresa(
     status?: string
     statusAberto?: boolean
     numero?: number
+    busca?: string
     dataInicio?: Date
     dataFim?: Date
   }
@@ -176,7 +179,18 @@ async function listarPorEmpresa(
     where.fornecedorPessoaId = filtros.fornecedorId
   }
 
-  if (filtros?.numero != null) {
+  if (filtros?.busca?.trim()) {
+    const termo = filtros.busca.trim().replace(/^#/, '')
+    const numero = Number(termo)
+    if (Number.isInteger(numero) && numero > 0) {
+      where.OR = [
+        { numero: { equals: numero } },
+        { descricao: { contains: termo, mode: 'insensitive' } },
+      ]
+    } else {
+      where.descricao = { contains: termo, mode: 'insensitive' }
+    }
+  } else if (filtros?.numero != null) {
     where.numero = filtros.numero
   }
 
@@ -192,6 +206,8 @@ async function listarPorEmpresa(
 
   if (filtros?.statusAberto) {
     where.status = { in: ['rascunho', 'enviado', 'parcial'] }
+  } else if (filtros?.status === 'feito') {
+    where.status = { in: ['enviado', 'parcial', 'recebido'] }
   } else if (filtros?.status) {
     where.status = filtros.status
   }
@@ -213,6 +229,8 @@ async function buscarPorId(id: string) {
 }
 
 async function criar(dados: DadosParaCriarPedidoCompra, companyId: string) {
+  const { concluir, ...dadosPedido } = dados
+
   return clientePrisma.$transaction(async (tx) => {
     const numero = await proximoNumero(companyId, tx)
 
@@ -220,10 +238,10 @@ async function criar(dados: DadosParaCriarPedidoCompra, companyId: string) {
       data: {
         companyId,
         numero,
-        status: 'rascunho',
-        ...dadosCabecalhoParaCreate(dados),
+        status: concluir ? 'enviado' : 'rascunho',
+        ...dadosCabecalhoParaCreate(dadosPedido),
         itens: {
-          create: dados.itens.map(dadosItemParaCreate),
+          create: dadosPedido.itens.map(dadosItemParaCreate),
         },
       },
       include: includeCompleto,
@@ -273,6 +291,7 @@ async function copiar(origemId: string, companyId: string) {
         rateioParcelas: origem.rateioParcelas,
         observacoes: origem.observacoes,
         observacoesInternas: origem.observacoesInternas,
+        descricao: origem.descricao,
         pedidoVendaId: origem.pedidoVendaId,
         copiadoDeId: origemId,
         status: 'rascunho',
@@ -300,7 +319,10 @@ async function copiar(origemId: string, companyId: string) {
   })
 }
 
-async function atualizar(id: string, dados: DadosParaEditarPedidoCompra) {
+async function atualizar(
+  id: string,
+  dados: DadosParaEditarPedidoCompra & { status?: string }
+) {
   return clientePrisma.$transaction(async (tx) => {
     const existente = await tx.pedidoCompra.findUnique({ where: { id } })
     if (!existente) {
@@ -338,6 +360,7 @@ async function atualizar(id: string, dados: DadosParaEditarPedidoCompra) {
         ...(dados.observacoesInternas !== undefined
           ? { observacoesInternas: dados.observacoesInternas || null }
           : {}),
+        ...(dados.descricao !== undefined ? { descricao: dados.descricao || null } : {}),
         ...(dados.pedidoVendaId !== undefined ? { pedidoVendaId: dados.pedidoVendaId } : {}),
         ...(dados.creditoFornecedorId !== undefined
           ? { creditoFornecedorId: dados.creditoFornecedorId }
@@ -439,6 +462,7 @@ async function listarUltimasEntradasFornecedor(companyId: string, fornecedorPess
   return pedidos.map((p) => ({
     id: p.id,
     numero: p.numero,
+    descricao: p.descricao,
     status: p.status,
     totalLiquido: mapearPedido(p).totalLiquido,
     data: p.updatedAt,

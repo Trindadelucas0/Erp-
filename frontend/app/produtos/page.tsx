@@ -89,6 +89,7 @@ type FormProduto = {
   embalagensMaster: EmbalagemMasterForm[]
   enderecosEstoque: EnderecoEstoqueForm[]
   nomeCompra: string
+  precoCusto: string
   fornecedores: FornecedorProdutoForm[]
   similares: ProdutoSimilarItem[]
   ncm: string
@@ -123,6 +124,7 @@ const formVazio: FormProduto = {
   embalagensMaster: [],
   enderecosEstoque: [],
   nomeCompra: '',
+  precoCusto: '',
   fornecedores: [],
   similares: [],
   ncm: '',
@@ -317,6 +319,7 @@ function ConteudoDaPagina() {
         endereco: e.endereco,
       })),
       nomeCompra: (p.nomeCompra as string | null) ?? '',
+      precoCusto: p.precoCusto != null ? String(p.precoCusto) : '',
       fornecedores: ((p.fornecedores as Array<{
         fornecedorPessoaId: string
         codigoFornecedor: string | null
@@ -415,6 +418,7 @@ function ConteudoDaPagina() {
           ordem,
         })),
       nomeCompra: form.nomeCompra.trim() || undefined,
+      precoCusto: num(form.precoCusto),
       fornecedores: form.fornecedores
         .filter((f) => f.fornecedorPessoaId.trim())
         .map((f, ordem) => ({
@@ -873,6 +877,13 @@ function ConteudoDaPagina() {
                 onChange={(e) => setForm((f) => ({ ...f, nomeCompra: e.target.value }))}
                 disabled={camposDesabilitados}
                 placeholder="Se vazio, usa o nome de venda"
+              />
+              <InputPadrao
+                rotulo="Preço de custo (estoque)"
+                value={form.precoCusto}
+                onChange={(e) => setForm((f) => ({ ...f, precoCusto: e.target.value }))}
+                disabled={camposDesabilitados}
+                placeholder="0,00"
               />
               <ListaFornecedoresProduto
                 itens={form.fornecedores}

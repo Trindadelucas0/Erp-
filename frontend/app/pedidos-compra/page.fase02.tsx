@@ -1319,12 +1319,22 @@ function ConteudoDaPagina() {
                 condicaoPagamento={form.condicaoPagamento}
                 rateioParcelas={form.rateioParcelas}
                 prazos={form.prazos}
+                dataFaturamento={form.dataFaturamento}
                 totalLiquido={totalLiquidoForm}
+                creditoFornecedorId=""
+                creditoAplicado=""
+                creditos={[]}
+                saldoMaxCredito={0}
+                creditoValido
+                avisoBaixaCredito=""
                 disabled={camposDesabilitados}
                 formatarMoeda={formatarMoeda}
                 onCondicaoChange={(v) => setForm((f) => ({ ...f, condicaoPagamento: v }))}
                 onRateioChange={(v) => setForm((f) => ({ ...f, rateioParcelas: v }))}
                 onPrazosChange={(prazos) => setForm((f) => ({ ...f, prazos }))}
+                onSelecionarCredito={() => {}}
+                onCreditoAplicadoChange={() => {}}
+                onLimparCredito={() => {}}
                 onAdicionarPrazo={adicionarPrazo}
               />
             </div>
