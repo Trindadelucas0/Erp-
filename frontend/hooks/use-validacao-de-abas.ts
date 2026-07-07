@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
 export type StatusDaAba = 'idle' | 'valid' | 'error'
 
@@ -10,17 +10,22 @@ export type ConfigDeAba = {
   validar: () => boolean
 }
 
+export type ResultadoValidacaoAbas = {
+  todasValidas: boolean
+  primeiraAbaComErro: string | null
+}
+
 type RetornoDoHook = {
   /** Status atual de cada aba por id. */
   statusDasAbas: Record<string, StatusDaAba>
   /**
    * Roda os validadores de todas as abas e atualiza os status.
-   * Retorna true se todas passarem, false se alguma falhar.
+   * Retorna se todas passaram e o id da primeira aba inválida (síncrono).
    */
-  validarTodasAsAbas: () => boolean
+  validarTodasAsAbas: () => ResultadoValidacaoAbas
   /**
-   * Retorna o id da primeira aba com status 'error', ou null se não houver.
-   * Use para redirecionar o usuário automaticamente ao tentar salvar.
+   * Retorna o id da primeira aba inválida da última chamada a validarTodasAsAbas.
+   * Preferir usar o retorno síncrono de validarTodasAsAbas().
    */
   irParaAbaComErro: () => string | null
   /**
@@ -43,27 +48,30 @@ export function useValidacaoDeAbas(abas: ConfigDeAba[]): RetornoDoHook {
   )
 
   const [statusDasAbas, setStatusDasAbas] = useState<Record<string, StatusDaAba>>(statusInicial)
+  const primeiraAbaComErroRef = useRef<string | null>(null)
 
-  const validarTodasAsAbas = useCallback((): boolean => {
+  const validarTodasAsAbas = useCallback((): ResultadoValidacaoAbas => {
     const novosStatus: Record<string, StatusDaAba> = {}
     let todasValidas = true
+    let primeiraAbaComErro: string | null = null
 
     for (const aba of abas) {
       const valida = aba.validar()
       novosStatus[aba.id] = valida ? 'valid' : 'error'
-      if (!valida) todasValidas = false
+      if (!valida) {
+        todasValidas = false
+        if (!primeiraAbaComErro) primeiraAbaComErro = aba.id
+      }
     }
 
+    primeiraAbaComErroRef.current = primeiraAbaComErro
     setStatusDasAbas(novosStatus)
-    return todasValidas
+    return { todasValidas, primeiraAbaComErro }
   }, [abas])
 
   const irParaAbaComErro = useCallback((): string | null => {
-    for (const aba of abas) {
-      if (statusDasAbas[aba.id] === 'error') return aba.id
-    }
-    return null
-  }, [abas, statusDasAbas])
+    return primeiraAbaComErroRef.current
+  }, [])
 
   const marcarAbaVisitada = useCallback(
     (abaId: string) => {

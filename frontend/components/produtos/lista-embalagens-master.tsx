@@ -3,6 +3,7 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { InputPadrao } from '@/components/ui/input-padrao'
+import { filtrarEntradaCodigoBarras } from '@/lib/validar-codigo-barras-gtin'
 
 export type EmbalagemMasterForm = {
   quantidade: string
@@ -16,6 +17,7 @@ type Props = {
   itens: EmbalagemMasterForm[]
   aoMudar: (itens: EmbalagemMasterForm[]) => void
   disabled?: boolean
+  errosPorIndice?: Record<number, { codigoBarras?: string }>
 }
 
 const itemVazio = (): EmbalagemMasterForm => ({
@@ -26,7 +28,7 @@ const itemVazio = (): EmbalagemMasterForm => ({
   comprimentoCm: '',
 })
 
-export function ListaEmbalagensMaster({ itens, aoMudar, disabled }: Props) {
+export function ListaEmbalagensMaster({ itens, aoMudar, disabled, errosPorIndice }: Props) {
   function atualizar(index: number, campo: keyof EmbalagemMasterForm, valor: string) {
     const nova = [...itens]
     nova[index] = { ...nova[index], [campo]: valor }
@@ -77,8 +79,12 @@ export function ListaEmbalagensMaster({ itens, aoMudar, disabled }: Props) {
           <InputPadrao
             rotulo="Código de barras embalagem master"
             value={item.codigoBarras}
-            onChange={(e) => atualizar(index, 'codigoBarras', e.target.value)}
+            onChange={(e) =>
+              atualizar(index, 'codigoBarras', filtrarEntradaCodigoBarras(e.target.value))
+            }
             disabled={disabled}
+            mensagemDeErro={errosPorIndice?.[index]?.codigoBarras}
+            placeholder="EAN-13 ou DUN-14"
           />
           <InputPadrao
             rotulo="Altura master (cm)"

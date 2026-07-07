@@ -8,8 +8,11 @@ import {
 } from '../../compartilhado/normalizacao/esquema-texto-cadastro.js'
 import {
   codigoBarrasGtinValido,
+  coletarCodigosBarrasProduto,
+  MENSAGEM_CODIGO_BARRAS_DUPLICADO_NO_PRODUTO,
   MENSAGEM_CODIGO_BARRAS_INVALIDO,
   normalizarCodigoBarrasGtin,
+  validarCodigosBarrasInternos,
 } from '../../compartilhado/validacoes/codigo-barras-gtin.js'
 
 function nulParaUndefined(valor: unknown) {
@@ -43,11 +46,6 @@ const inteiroOpcional = z.preprocess(
 const textoOpcionalNulavel = (max: number) =>
   z.preprocess(nulParaUndefined, textoCadastroOpcional(max))
 
-const codigoBarrasEmbalagemOpcional = z.preprocess(
-  nulParaUndefined,
-  z.string().max(30).optional()
-)
-
 const codigoBarrasGtinOpcional = z.preprocess(
   nulParaUndefined,
   z
@@ -64,6 +62,23 @@ const codigoBarrasGtinOpcional = z.preprocess(
     )
 )
 
+function refinarCodigosBarrasProduto(
+  dados: {
+    codigoBarras?: string
+    embalagensMaster?: { codigoBarras?: string }[]
+  },
+  ctx: z.RefinementCtx
+) {
+  const codigos = coletarCodigosBarrasProduto(dados.codigoBarras, dados.embalagensMaster)
+  if (!validarCodigosBarrasInternos(codigos)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: MENSAGEM_CODIGO_BARRAS_DUPLICADO_NO_PRODUTO,
+      path: ['codigoBarras'],
+    })
+  }
+}
+
 export const esquemaEmbalagemMaster = z.object({
   quantidade: z.preprocess(
     nulParaUndefined,
@@ -78,7 +93,7 @@ export const esquemaEmbalagemMaster = z.object({
         return n
       })
   ),
-  codigoBarras: codigoBarrasEmbalagemOpcional,
+  codigoBarras: codigoBarrasGtinOpcional,
   alturaCm: decimalOpcional,
   larguraCm: decimalOpcional,
   comprimentoCm: decimalOpcional,
@@ -175,6 +190,7 @@ export const esquemaDeCriacaoDeProduto = z
     entregaARetirar: z.boolean().optional().default(true),
     entregar: z.boolean().optional().default(true),
     flagComissao: z.boolean().optional().default(true),
+    flagDevolucao: z.boolean().optional().default(true),
   })
   .superRefine((dados, ctx) => {
     if (dados.tipoEntrega !== 'sob_encomenda') {
@@ -193,6 +209,7 @@ export const esquemaDeCriacaoDeProduto = z
         })
       }
     }
+    refinarCodigosBarrasProduto(dados, ctx)
   })
 
 export const esquemaDeEdicaoDeProduto = z
@@ -214,6 +231,7 @@ export const esquemaDeEdicaoDeProduto = z
         })
       }
     }
+    refinarCodigosBarrasProduto(dados, ctx)
   })
 
 export const esquemaDeAtivarProduto = z.object({

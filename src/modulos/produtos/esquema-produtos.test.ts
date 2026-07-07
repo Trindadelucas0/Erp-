@@ -61,7 +61,7 @@ describe('esquemaDeCriacaoDeProduto', () => {
   it('rejeita quantidade null em embalagem (NaN do JSON)', () => {
     const r = esquemaDeCriacaoDeProduto.safeParse({
       ...payloadMinimo,
-      embalagensMaster: [{ quantidade: null, codigoBarras: '123' }],
+      embalagensMaster: [{ quantidade: null }],
     })
     expect(r.success).toBe(false)
     if (!r.success) {
@@ -72,7 +72,7 @@ describe('esquemaDeCriacaoDeProduto', () => {
   it('rejeita embalagem sem quantidade', () => {
     const r = esquemaDeCriacaoDeProduto.safeParse({
       ...payloadMinimo,
-      embalagensMaster: [{ codigoBarras: '123' }],
+      embalagensMaster: [{}],
     })
     expect(r.success).toBe(false)
     if (!r.success) console.log(mensagemErroZod(r.error))
@@ -121,6 +121,26 @@ describe('esquemaDeCriacaoDeProduto', () => {
     expect(r.success).toBe(true)
   })
 
+  it('aceita ncm com 8 digitos', () => {
+    const r = esquemaDeCriacaoDeProduto.safeParse({
+      ...payloadMinimo,
+      ncm: '84818019',
+    })
+    expect(r.success).toBe(true)
+    if (r.success) expect(r.data.ncm).toBe('84818019')
+  })
+
+  it('rejeita ncm com menos de 8 digitos', () => {
+    const r = esquemaDeCriacaoDeProduto.safeParse({
+      ...payloadMinimo,
+      ncm: '123',
+    })
+    expect(r.success).toBe(false)
+    if (!r.success) {
+      expect(mensagemErroZod(r.error)).toContain('NCM deve ter 8 dígitos')
+    }
+  })
+
   it('rejeita dias e data quando tipoEntrega nao e sob_encomenda', () => {
     const r = esquemaDeCriacaoDeProduto.safeParse({
       ...payloadMinimo,
@@ -136,6 +156,45 @@ describe('esquemaDeCriacaoDeProduto', () => {
     const r = esquemaDeCriacaoDeProduto.safeParse(semComissao)
     expect(r.success).toBe(true)
     if (r.success) expect(r.data.flagComissao).toBe(true)
+  })
+
+  it('aplica flagDevolucao true por padrao na criacao', () => {
+    const { flagDevolucao: _flagDevolucao, ...semDevolucao } = payloadMinimo
+    const r = esquemaDeCriacaoDeProduto.safeParse(semDevolucao)
+    expect(r.success).toBe(true)
+    if (r.success) expect(r.data.flagDevolucao).toBe(true)
+  })
+
+  it('rejeita codigoBarras GTIN invalido na embalagem master', () => {
+    const r = esquemaDeCriacaoDeProduto.safeParse({
+      ...payloadMinimo,
+      embalagensMaster: [{ quantidade: 12, codigoBarras: '84818019' }],
+    })
+    expect(r.success).toBe(false)
+    if (!r.success) {
+      expect(mensagemErroZod(r.error)).toContain('Código de barras inválido')
+    }
+  })
+
+  it('rejeita unidade e master com o mesmo codigo de barras', () => {
+    const r = esquemaDeCriacaoDeProduto.safeParse({
+      ...payloadMinimo,
+      codigoBarras: '7894900011517',
+      embalagensMaster: [{ quantidade: 12, codigoBarras: '7894900011517' }],
+    })
+    expect(r.success).toBe(false)
+    if (!r.success) {
+      expect(mensagemErroZod(r.error)).toContain('duplicado no cadastro do produto')
+    }
+  })
+
+  it('aceita unidade e master com codigos diferentes e validos', () => {
+    const r = esquemaDeCriacaoDeProduto.safeParse({
+      ...payloadMinimo,
+      codigoBarras: '7894900011517',
+      embalagensMaster: [{ quantidade: 12, codigoBarras: '10614141000415' }],
+    })
+    expect(r.success).toBe(true)
   })
 })
 

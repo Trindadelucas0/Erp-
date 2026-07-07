@@ -244,6 +244,68 @@ async function buscarPorSkuNaEmpresa(sku: string, companyId: string) {
   return clientePrisma.produto.findFirst({ where: { sku, companyId } })
 }
 
+export type ConflitoCodigoBarras = {
+  codigoBarras: string
+  produtoId: string
+  nomeVenda: string
+  origem: 'unidade' | 'master'
+}
+
+async function buscarConflitosCodigoBarras(
+  codigos: string[],
+  companyId: string,
+  produtoIdExcluir?: string
+): Promise<ConflitoCodigoBarras[]> {
+  if (!codigos.length) return []
+
+  const conflitos: ConflitoCodigoBarras[] = []
+
+  const produtos = await clientePrisma.produto.findMany({
+    where: {
+      companyId,
+      codigoBarras: { in: codigos },
+      ...(produtoIdExcluir ? { id: { not: produtoIdExcluir } } : {}),
+    },
+    select: { id: true, nomeVenda: true, codigoBarras: true },
+  })
+
+  for (const produto of produtos) {
+    if (!produto.codigoBarras) continue
+    conflitos.push({
+      codigoBarras: produto.codigoBarras,
+      produtoId: produto.id,
+      nomeVenda: produto.nomeVenda,
+      origem: 'unidade',
+    })
+  }
+
+  const embalagens = await clientePrisma.produtoEmbalagemMaster.findMany({
+    where: {
+      codigoBarras: { in: codigos },
+      produto: {
+        companyId,
+        ...(produtoIdExcluir ? { id: { not: produtoIdExcluir } } : {}),
+      },
+    },
+    select: {
+      codigoBarras: true,
+      produto: { select: { id: true, nomeVenda: true } },
+    },
+  })
+
+  for (const embalagem of embalagens) {
+    if (!embalagem.codigoBarras) continue
+    conflitos.push({
+      codigoBarras: embalagem.codigoBarras,
+      produtoId: embalagem.produto.id,
+      nomeVenda: embalagem.produto.nomeVenda,
+      origem: 'master',
+    })
+  }
+
+  return conflitos
+}
+
 async function criar(dados: DadosParaCriarProduto, companyId: string) {
   return clientePrisma.$transaction(async (tx) => {
     const sku = dados.sku?.trim() || (await proximoSkuNumerico(companyId, tx))
@@ -330,6 +392,7 @@ export const repositorioDeProdutos = {
   listarPorEmpresa,
   buscarPorId,
   buscarPorSkuNaEmpresa,
+  buscarConflitosCodigoBarras,
   criar,
   atualizar,
   alterarStatus,

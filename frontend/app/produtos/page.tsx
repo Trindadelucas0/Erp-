@@ -42,8 +42,12 @@ import { SelecaoUnidadeMedida } from '@/components/produtos/selecao-unidade-medi
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import {
   codigoBarrasGtinValido,
+  coletarCodigosBarrasProduto,
   filtrarEntradaCodigoBarras,
+  MENSAGEM_CODIGO_BARRAS_DUPLICADO_NO_PRODUTO,
   MENSAGEM_CODIGO_BARRAS_INVALIDO,
+  normalizarCodigoBarrasGtin,
+  validarCodigosBarrasInternos,
 } from '@/lib/validar-codigo-barras-gtin'
 import type { ResultadoCompressaoProduto } from '@/lib/comprimir-imagem-produto'
 
@@ -68,6 +72,24 @@ const ROTULO_PROXIMA_ABA: Record<(typeof ORDEM_ABAS)[number], string | null> = {
   logistica: 'Compras',
   compras: 'Fiscal',
   fiscal: null,
+}
+
+const MENSAGEM_NCM_INVALIDO = 'NCM deve ter 8 dígitos.'
+const MENSAGEM_ERRO_ABA_LOGISTICA = 'Revise os códigos de barras na aba Logística.'
+
+function mensagemErroDaAba(abaId: string): string {
+  switch (abaId) {
+    case 'principal':
+      return 'Preencha nome de venda, marca e unidade na aba Principal.'
+    case 'logistica':
+      return MENSAGEM_ERRO_ABA_LOGISTICA
+    case 'compras':
+      return 'Selecione o fornecedor em todas as linhas da aba Compras.'
+    case 'fiscal':
+      return MENSAGEM_NCM_INVALIDO
+    default:
+      return 'Revise os campos desta aba.'
+  }
 }
 
 type FormProduto = {
@@ -122,7 +144,7 @@ const formVazio: FormProduto = {
   entregaARetirar: true,
   entregar: true,
   entregaPorEncomenda: false,
-  flagDevolucao: false,
+  flagDevolucao: true,
   controlaEstoque: true,
   flagComissao: true,
   permiteEstoqueNegativo: false,
@@ -167,6 +189,39 @@ function int(v: string): number | undefined {
   if (!v.trim()) return undefined
   const n = Number(v.replace(/\D/g, ''))
   return Number.isFinite(n) ? Math.round(n) : undefined
+}
+
+function calcularErrosEmbalagensMaster(
+  codigoUnidade: string,
+  embalagens: EmbalagemMasterForm[]
+): Record<number, { codigoBarras?: string }> {
+  const erros: Record<number, { codigoBarras?: string }> = {}
+  const vistos = new Set<string>()
+
+  const codigoUnidadeNormalizado = codigoUnidade.trim()
+    ? normalizarCodigoBarrasGtin(codigoUnidade)
+    : ''
+  if (codigoUnidadeNormalizado) vistos.add(codigoUnidadeNormalizado)
+
+  embalagens.forEach((item, index) => {
+    const valor = item.codigoBarras.trim()
+    if (!valor) return
+
+    if (!codigoBarrasGtinValido(valor)) {
+      erros[index] = { codigoBarras: MENSAGEM_CODIGO_BARRAS_INVALIDO }
+      return
+    }
+
+    const normalizado = normalizarCodigoBarrasGtin(valor)
+    if (vistos.has(normalizado)) {
+      erros[index] = { codigoBarras: MENSAGEM_CODIGO_BARRAS_DUPLICADO_NO_PRODUTO }
+      return
+    }
+
+    vistos.add(normalizado)
+  })
+
+  return erros
 }
 
 /** Remove null/NaN do payload antes do POST para evitar "Invalid input" no Zod. */
@@ -225,10 +280,18 @@ function ConteudoDaPagina() {
       {
         id: 'logistica',
         validar: () => {
-          const codigoOk =
+          const codigoUnidadeOk =
             !form.codigoBarras.trim() || codigoBarrasGtinValido(form.codigoBarras)
+          const mastersOk = form.embalagensMaster.every(
+            (e) => !e.codigoBarras.trim() || codigoBarrasGtinValido(e.codigoBarras)
+          )
+          const codigosInternosOk = validarCodigosBarrasInternos(
+            coletarCodigosBarrasProduto(form.codigoBarras, form.embalagensMaster)
+          )
           return (
-            codigoOk &&
+            codigoUnidadeOk &&
+            mastersOk &&
+            codigosInternosOk &&
             form.embalagensMaster.every((e) => {
               if (!e.quantidade.trim()) return true
               const qtd = num(e.quantidade)
@@ -248,7 +311,6 @@ function ConteudoDaPagina() {
     statusDasAbas,
     validarTodasAsAbas,
     validarAba,
-    irParaAbaComErro,
     marcarAbaVisitada,
     resetarStatus,
   } = useValidacaoDeAbas(configAbas)
@@ -507,17 +569,7 @@ function ConteudoDaPagina() {
     marcarAbaVisitada(abaAtiva)
 
     if (!validarAba(abaAtiva)) {
-      setErro(
-        abaAtiva === 'principal'
-          ? 'Preencha nome de venda, marca e unidade na aba Principal.'
-          : abaAtiva === 'compras'
-            ? 'Selecione o fornecedor em todas as linhas da aba Compras.'
-            : abaAtiva === 'logistica'
-              ? 'Código de barras inválido. Informe EAN-13 ou DUN-14 válido.'
-              : abaAtiva === 'fiscal'
-            ? 'NCM deve ter 8 dígitos.'
-            : 'Revise os campos desta aba.'
-      )
+      setErro(mensagemErroDaAba(abaAtiva))
       return
     }
 
@@ -530,9 +582,12 @@ function ConteudoDaPagina() {
       return
     }
 
-    if (!validarTodasAsAbas()) {
-      const abaErro = irParaAbaComErro()
-      if (abaErro) setAbaAtiva(abaErro)
+    const { todasValidas, primeiraAbaComErro } = validarTodasAsAbas()
+    if (!todasValidas) {
+      if (primeiraAbaComErro) {
+        setAbaAtiva(primeiraAbaComErro)
+        setErro(mensagemErroDaAba(primeiraAbaComErro))
+      }
       return
     }
 
@@ -644,6 +699,19 @@ function ConteudoDaPagina() {
   const erroCodigoBarras =
     form.codigoBarras.trim() && !codigoBarrasGtinValido(form.codigoBarras)
       ? MENSAGEM_CODIGO_BARRAS_INVALIDO
+      : form.codigoBarras.trim() &&
+          !validarCodigosBarrasInternos(
+            coletarCodigosBarrasProduto(form.codigoBarras, form.embalagensMaster)
+          )
+        ? MENSAGEM_CODIGO_BARRAS_DUPLICADO_NO_PRODUTO
+        : undefined
+  const errosEmbalagensMaster = calcularErrosEmbalagensMaster(
+    form.codigoBarras,
+    form.embalagensMaster
+  )
+  const erroNcm =
+    form.ncm.trim() && !/^\d{8}$/.test(form.ncm.replace(/\D/g, ''))
+      ? MENSAGEM_NCM_INVALIDO
       : undefined
 
   return (
@@ -799,6 +867,7 @@ function ConteudoDaPagina() {
             abaAtiva={abaAtiva}
             aoMudar={(id) => {
               if (!modoVisualizacao) marcarAbaVisitada(abaAtiva)
+              setErro('')
               setAbaAtiva(id)
             }}
           />
@@ -1040,6 +1109,7 @@ function ConteudoDaPagina() {
                 itens={form.embalagensMaster}
                 aoMudar={(itens) => setForm((f) => ({ ...f, embalagensMaster: itens }))}
                 disabled={camposDesabilitados}
+                errosPorIndice={errosEmbalagensMaster}
               />
               <ListaEnderecosEstoque
                 itens={form.enderecosEstoque}
@@ -1097,6 +1167,7 @@ function ConteudoDaPagina() {
                   setForm((f) => ({ ...f, ncm: e.target.value.replace(/\D/g, '').slice(0, 8) }))
                 }
                 disabled={camposDesabilitados}
+                mensagemDeErro={erroNcm}
                 placeholder="8 dígitos"
               />
               <SelectPadrao

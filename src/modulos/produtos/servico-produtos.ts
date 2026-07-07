@@ -4,6 +4,11 @@
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-auditoria.js'
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
+import {
+  coletarCodigosBarrasProduto,
+  MENSAGEM_CODIGO_BARRAS_DUPLICADO_NO_PRODUTO,
+  validarCodigosBarrasInternos,
+} from '../../compartilhado/validacoes/codigo-barras-gtin.js'
 import { repositorioDeProdutos } from './repositorio-produtos.js'
 import { servicoDeUnidadesMedida } from './servico-unidades-medida.js'
 import { servicoDeMarcas } from './servico-marcas.js'
@@ -74,6 +79,31 @@ async function validarMarca(marca: string, companyId: string): Promise<string> {
   return servicoDeMarcas.validarMarca(marca, companyId)
 }
 
+async function validarCodigosBarras(
+  dados: DadosParaCriarProduto | DadosParaEditarProduto,
+  companyId: string,
+  produtoId?: string
+) {
+  const codigos = coletarCodigosBarrasProduto(dados.codigoBarras, dados.embalagensMaster)
+  if (!validarCodigosBarrasInternos(codigos)) {
+    throw new ErroDaAplicacao(MENSAGEM_CODIGO_BARRAS_DUPLICADO_NO_PRODUTO, 400)
+  }
+  if (!codigos.length) return
+
+  const conflitos = await repositorioDeProdutos.buscarConflitosCodigoBarras(
+    codigos,
+    companyId,
+    produtoId
+  )
+  if (conflitos.length) {
+    const conflito = conflitos[0]
+    throw new ErroDaAplicacao(
+      `Código de barras já cadastrado no produto "${conflito.nomeVenda}".`,
+      400
+    )
+  }
+}
+
 async function sugerirProximoSku(companyId: string) {
   if (!companyId) {
     throw new ErroDaAplicacao('Empresa ativa não informada.', 400)
@@ -111,6 +141,7 @@ async function criarProduto(
   await servicoDeUnidadesMedida.validarUnidade(dados.unidade, companyId)
   await validarFornecedores(dados.fornecedores, companyId)
   await validarSimilares(dados.similaresIds, null, companyId)
+  await validarCodigosBarras(dados, companyId)
 
   if (dados.sku) {
     const existente = await repositorioDeProdutos.buscarPorSkuNaEmpresa(dados.sku, companyId)
@@ -148,6 +179,7 @@ async function editarProduto(
   await servicoDeUnidadesMedida.validarUnidade(dados.unidade, companyId)
   await validarFornecedores(dados.fornecedores, companyId)
   await validarSimilares(dados.similaresIds, id, companyId)
+  await validarCodigosBarras(dados, companyId, id)
 
   if (dados.sku) {
     const outro = await repositorioDeProdutos.buscarPorSkuNaEmpresa(dados.sku, companyId)
