@@ -104,23 +104,24 @@ export function ListaFornecedoresProduto({
               disabled={disabled}
             />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 sm:col-span-2">
             <InputPadrao
               rotulo="Multiplo de compra"
               value={item.multiploEntrada}
               onChange={(e) => atualizar(index, 'multiploEntrada', filtrarDecimal(e.target.value))}
               disabled={disabled}
               inputMode="decimal"
+              placeholder="Quantidade mínima de embalagens master vendida pelo fornecedor"
             />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 sm:col-span-2">
             <InputPadrao
               rotulo="Quantidade por embalagem"
               value={item.multiplicadorEntrada}
               onChange={(e) => atualizar(index, 'multiplicadorEntrada', filtrarDecimal(e.target.value))}
               disabled={disabled}
               inputMode="decimal"
-              placeholder="Ex.: 0,1"
+              placeholder="Quantidade por embalagem master se NF não vier instrução"
             />
           </div>
           <div className="min-w-0 sm:col-span-2">

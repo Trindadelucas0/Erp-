@@ -1070,6 +1070,17 @@ function ConteudoDaPagina() {
           <fieldset disabled={somenteLeitura} className="m-0 min-w-0 space-y-4 border-0 p-0">
           {abaAtiva === 'principal' && (
             <div className="grid gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <InputPadrao
+                  rotulo="Nome de venda *"
+                  value={form.nomeVenda}
+                  maxLength={60}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, nomeVenda: e.target.value.toUpperCase() }))
+                  }
+                  disabled={camposDesabilitados}
+                />
+              </div>
               <CampoFotoProduto
                 urlAtual={removerFoto ? null : urlFotoAtual}
                 disabled={camposDesabilitados}
@@ -1083,59 +1094,48 @@ function ConteudoDaPagina() {
                   setUrlFotoAtual(null)
                 }}
               />
-              <div className="flex flex-wrap items-end gap-4">
-                <InputPadrao
-                  rotulo="SKU"
-                  value={form.sku}
-                  onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
-                  disabled={skuSomenteLeitura}
-                  className="min-w-[8rem] flex-1"
-                />
-                <div className="flex items-center gap-2 pb-2">
-                  <Checkbox
-                    id="produto-ativo"
-                    checked={form.ativo}
-                    onCheckedChange={(v) => setForm((f) => ({ ...f, ativo: v === true }))}
-                    disabled={camposDesabilitados}
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-wrap items-end gap-4">
+                  <InputPadrao
+                    rotulo="SKU"
+                    value={form.sku}
+                    onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
+                    disabled={skuSomenteLeitura}
+                    className="min-w-[8rem] flex-1"
                   />
-                  <Label htmlFor="produto-ativo" className="cursor-pointer text-sm font-normal">
-                    Ativo
-                  </Label>
+                  <div className="flex items-center gap-2 pb-2">
+                    <Checkbox
+                      id="produto-ativo"
+                      checked={form.ativo}
+                      onCheckedChange={(v) => setForm((f) => ({ ...f, ativo: v === true }))}
+                      disabled={camposDesabilitados}
+                    />
+                    <Label htmlFor="produto-ativo" className="cursor-pointer text-sm font-normal">
+                      Ativo
+                    </Label>
+                  </div>
                 </div>
-              </div>
-              <InputPadrao
-                rotulo="Nome de venda *"
-                value={form.nomeVenda}
-                maxLength={60}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, nomeVenda: e.target.value.toUpperCase() }))
-                }
-                disabled={camposDesabilitados}
-                className="sm:col-span-2"
-              />
-              <div className="sm:col-span-2">
                 <ComboboxMarca
                   valor={form.marca}
                   aoMudar={(marca) => setForm((f) => ({ ...f, marca: marca.toUpperCase() }))}
                   disabled={camposDesabilitados}
                 />
-              </div>
-              <div className="sm:col-span-2">
                 <SelecaoUnidadeMedida
                   valor={form.unidade}
                   aoMudar={(sigla) => setForm((f) => ({ ...f, unidade: sigla }))}
                   disabled={camposDesabilitados}
                 />
               </div>
-              <TextareaPadrao
-                rotulo="Características"
-                value={form.caracteristicas}
-                maxLength={2000}
-                onChange={(e) => setForm((f) => ({ ...f, caracteristicas: e.target.value }))}
-                disabled={camposDesabilitados}
-                rows={6}
-                className="sm:col-span-2"
-              />
+              <div className="sm:col-span-2">
+                <TextareaPadrao
+                  rotulo="Características"
+                  value={form.caracteristicas}
+                  maxLength={2000}
+                  onChange={(e) => setForm((f) => ({ ...f, caracteristicas: e.target.value }))}
+                  disabled={camposDesabilitados}
+                  rows={6}
+                />
+              </div>
               <div className="sm:col-span-2 space-y-3 rounded-lg border border-border p-4">
                 <p className="text-sm font-medium">Tipo de entrega</p>
                 <div className="flex flex-wrap gap-6">
