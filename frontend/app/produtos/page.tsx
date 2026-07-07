@@ -39,6 +39,7 @@ import {
   type FornecedorProdutoForm,
 } from '@/components/produtos/lista-fornecedores-produto'
 import { SelecaoUnidadeMedida } from '@/components/produtos/selecao-unidade-medida'
+import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import {
   nomeVendaParaCopia,
   prepararFormularioDuplicacaoProduto,
