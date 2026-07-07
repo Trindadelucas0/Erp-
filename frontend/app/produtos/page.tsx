@@ -1056,7 +1056,7 @@ function ConteudoDaPagina() {
                 value={form.nomeCompra}
                 onChange={(e) => setForm((f) => ({ ...f, nomeCompra: e.target.value }))}
                 disabled={camposDesabilitados}
-                placeholder="Se não preencher, copia o nome de venda"
+                placeholder="Opcional. Em branco, utiliza o nome de venda"
               />
               <ListaFornecedoresProduto
                 itens={form.fornecedores}
