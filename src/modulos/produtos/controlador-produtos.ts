@@ -5,6 +5,7 @@ import { FastifyReply, FastifyRequest } from 'fastify'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { servicoDeProdutos } from './servico-produtos.js'
 import { servicoDeUnidadesMedida } from './servico-unidades-medida.js'
+import { servicoDeMarcas } from './servico-marcas.js'
 import {
   esquemaDeAtivarProduto,
   esquemaDeCriacaoDeProduto,
@@ -16,8 +17,14 @@ import {
 async function listarMarcas(requisicao: FastifyRequest, resposta: FastifyReply) {
   const companyId = requisicao.empresaAtivaId || ''
   const { q } = requisicao.query as { q?: string }
-  const resultado = await servicoDeProdutos.listarMarcas(companyId, q)
+  const resultado = await servicoDeMarcas.listarMarcas(companyId, q)
   return resposta.send(resultado)
+}
+
+async function criarMarca(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const companyId = requisicao.empresaAtivaId || ''
+  const marca = await servicoDeMarcas.criarMarca(requisicao.body, companyId)
+  return resposta.status(201).send({ marca })
 }
 
 async function sugerirProximoSku(requisicao: FastifyRequest, resposta: FastifyReply) {
@@ -139,6 +146,7 @@ async function criarUnidadeMedida(requisicao: FastifyRequest, resposta: FastifyR
 export const controladorDeProdutos = {
   listarProdutos,
   listarMarcas,
+  criarMarca,
   sugerirProximoSku,
   buscarProduto,
   criarProduto,

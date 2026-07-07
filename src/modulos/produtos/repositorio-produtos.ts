@@ -6,7 +6,6 @@ import type { Prisma } from '@prisma/client'
 import type { DadosParaCriarProduto, DadosParaEditarProduto } from './esquema-produtos.js'
 import { urlPublicaFoto } from './armazenamento-foto-produto.js'
 import { proximoSkuNumerico } from './sku-sequencial.js'
-import { normalizarTextoCadastro } from '../../compartilhado/normalizacao/texto-cadastro.js'
 
 const includeCompleto = {
   fotos: { orderBy: { ordem: 'asc' as const } },
@@ -241,29 +240,6 @@ async function buscarPorId(id: string) {
   })
 }
 
-async function listarMarcasDistintas(companyId: string, busca?: string) {
-  const where: Prisma.ProdutoWhereInput = {
-    companyId,
-    ...(busca?.trim()
-      ? { marca: { contains: busca.trim(), mode: 'insensitive' } }
-      : {}),
-  }
-
-  const produtos = await clientePrisma.produto.findMany({
-    where,
-    select: { marca: true },
-    distinct: ['marca'],
-    orderBy: { marca: 'asc' },
-    take: 80,
-  })
-
-  const marcas = produtos
-    .map((p) => normalizarTextoCadastro(p.marca) ?? p.marca.trim())
-    .filter((m) => m.length > 0)
-
-  return [...new Set(marcas)]
-}
-
 async function buscarPorSkuNaEmpresa(sku: string, companyId: string) {
   return clientePrisma.produto.findFirst({ where: { sku, companyId } })
 }
@@ -352,7 +328,6 @@ async function removerFotosDoBanco(produtoId: string) {
 
 export const repositorioDeProdutos = {
   listarPorEmpresa,
-  listarMarcasDistintas,
   buscarPorId,
   buscarPorSkuNaEmpresa,
   criar,

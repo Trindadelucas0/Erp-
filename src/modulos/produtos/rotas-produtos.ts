@@ -40,6 +40,12 @@ export async function rotasDeProdutos(aplicacao: FastifyInstance): Promise<void>
     controladorDeProdutos.listarMarcas
   )
 
+  aplicacao.post(
+    '/marcas',
+    { preHandler: [...auth, middlewareDeAutorizacao('produtos:create')] },
+    controladorDeProdutos.criarMarca
+  )
+
   aplicacao.get(
     '/:id',
     { preHandler: [...auth, middlewareDeAutorizacao('produtos:view')] },

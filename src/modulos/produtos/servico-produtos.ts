@@ -6,8 +6,8 @@ import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-audi
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import { repositorioDeProdutos } from './repositorio-produtos.js'
 import { servicoDeUnidadesMedida } from './servico-unidades-medida.js'
+import { servicoDeMarcas } from './servico-marcas.js'
 import { proximoSkuNumerico } from './sku-sequencial.js'
-import { normalizarTextoCadastro } from '../../compartilhado/normalizacao/texto-cadastro.js'
 import {
   salvarFotosProduto,
   removerPastaFotosProduto,
@@ -70,41 +70,8 @@ async function validarSimilares(
   }
 }
 
-async function validarMarca(
-  marca: string,
-  companyId: string,
-  marcaAtual?: string | null
-): Promise<string> {
-  const normalizada = normalizarTextoCadastro(marca)
-  if (!normalizada) {
-    throw new ErroDaAplicacao('Marca obrigatória', 400)
-  }
-
-  const marcas = await repositorioDeProdutos.listarMarcasDistintas(companyId)
-  const normalizadaLower = normalizada.toLowerCase()
-
-  if (marcas.some((m) => m.toLowerCase() === normalizadaLower)) {
-    return marcas.find((m) => m.toLowerCase() === normalizadaLower) ?? normalizada
-  }
-
-  if (marcas.length === 0) {
-    return normalizada
-  }
-
-  const atualNormalizada = marcaAtual ? normalizarTextoCadastro(marcaAtual) : null
-  if (atualNormalizada && atualNormalizada.toLowerCase() === normalizadaLower) {
-    return normalizada
-  }
-
-  throw new ErroDaAplicacao('Marca inválida. Selecione uma marca já cadastrada.', 400)
-}
-
-async function listarMarcas(companyId: string, busca?: string) {
-  if (!companyId) {
-    throw new ErroDaAplicacao('Empresa ativa não informada.', 400)
-  }
-  const marcas = await repositorioDeProdutos.listarMarcasDistintas(companyId, busca)
-  return { marcas }
+async function validarMarca(marca: string, companyId: string): Promise<string> {
+  return servicoDeMarcas.validarMarca(marca, companyId)
 }
 
 async function sugerirProximoSku(companyId: string) {
@@ -177,7 +144,7 @@ async function editarProduto(
   }
 
   normalizarNomeCompra(dados)
-  dados.marca = await validarMarca(dados.marca, companyId, existente.marca)
+  dados.marca = await validarMarca(dados.marca, companyId)
   await servicoDeUnidadesMedida.validarUnidade(dados.unidade, companyId)
   await validarFornecedores(dados.fornecedores, companyId)
   await validarSimilares(dados.similaresIds, id, companyId)
@@ -282,7 +249,6 @@ async function removerFotoDoProduto(id: string, companyId: string, idDoAutor: st
 
 export const servicoDeProdutos = {
   listarProdutos,
-  listarMarcas,
   sugerirProximoSku,
   buscarProduto,
   criarProduto,

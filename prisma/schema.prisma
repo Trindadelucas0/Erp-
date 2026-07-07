@@ -37,6 +37,7 @@ model Company {
   pendenciasFornecedor PendenciaFornecedor[]
   movimentosCreditoFornecedor CreditoFornecedorMovimento[]
   unidadesMedida       UnidadeMedida[]
+  marcas               Marca[]
   createdAt            DateTime      @default(now())
 }
 
@@ -481,6 +482,19 @@ model UnidadeMedida {
   updatedAt DateTime @updatedAt
 
   @@unique([companyId, sigla])
+  @@index([companyId, ativo])
+}
+
+model Marca {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  nome      String
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, nome])
   @@index([companyId, ativo])
 }
 
