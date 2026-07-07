@@ -174,6 +174,7 @@ export const esquemaDeCriacaoDeProduto = z
     entregaNoAto: z.boolean().optional().default(true),
     entregaARetirar: z.boolean().optional().default(true),
     entregar: z.boolean().optional().default(true),
+    flagComissao: z.boolean().optional().default(true),
   })
   .superRefine((dados, ctx) => {
     if (dados.tipoEntrega !== 'sob_encomenda') {

@@ -124,7 +124,7 @@ const formVazio: FormProduto = {
   entregaPorEncomenda: false,
   flagDevolucao: false,
   controlaEstoque: true,
-  flagComissao: false,
+  flagComissao: true,
   permiteEstoqueNegativo: false,
   bloqueadoCompra: false,
   bloqueadoVenda: false,
@@ -948,29 +948,33 @@ function ConteudoDaPagina() {
                 </div>
               </div>
 
-              <div className="sm:col-span-2 flex flex-wrap gap-4">
-                {flagsBooleanos.map(({ campo, rotulo }) => (
-                  <label key={campo} className="flex items-center gap-2 text-sm">
+              <div className="sm:col-span-2 space-y-3">
+                <p className="text-sm font-medium">Outros parâmetros</p>
+
+                <div className="flex flex-wrap gap-4">
+                  {flagsBooleanos.map(({ campo, rotulo }) => (
+                    <label key={campo} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={form[campo] as boolean}
+                        onCheckedChange={(v) => setForm((f) => ({ ...f, [campo]: v === true }))}
+                        disabled={camposDesabilitados}
+                      />
+                      {rotulo}
+                    </label>
+                  ))}
+                </div>
+
+                <div>
+                  <p className="mb-2 text-sm font-medium">Sujeito a comissão</p>
+                  <label className="flex items-center gap-2 text-sm">
                     <Checkbox
-                      checked={form[campo] as boolean}
-                      onCheckedChange={(v) => setForm((f) => ({ ...f, [campo]: v === true }))}
+                      checked={form.flagComissao}
+                      onCheckedChange={(v) => setForm((f) => ({ ...f, flagComissao: v === true }))}
                       disabled={camposDesabilitados}
                     />
-                    {rotulo}
+                    01 - Sujeito à comissão
                   </label>
-                ))}
-              </div>
-
-              <div className="sm:col-span-2">
-                <p className="mb-2 text-sm font-medium">Sujeito a comissão</p>
-                <label className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={form.flagComissao}
-                    onCheckedChange={(v) => setForm((f) => ({ ...f, flagComissao: v === true }))}
-                    disabled={camposDesabilitados}
-                  />
-                  01 - Sujeito à comissão
-                </label>
+                </div>
               </div>
             </div>
           )}

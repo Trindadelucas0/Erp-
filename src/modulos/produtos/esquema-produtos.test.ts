@@ -130,5 +130,12 @@ describe('esquemaDeCriacaoDeProduto', () => {
     })
     expect(r.success).toBe(false)
   })
+
+  it('aplica flagComissao true por padrao na criacao', () => {
+    const { flagComissao: _flagComissao, ...semComissao } = payloadMinimo
+    const r = esquemaDeCriacaoDeProduto.safeParse(semComissao)
+    expect(r.success).toBe(true)
+    if (r.success) expect(r.data.flagComissao).toBe(true)
+  })
 })
 
