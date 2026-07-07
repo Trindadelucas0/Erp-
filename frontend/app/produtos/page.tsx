@@ -39,7 +39,10 @@ import {
   type FornecedorProdutoForm,
 } from '@/components/produtos/lista-fornecedores-produto'
 import { SelecaoUnidadeMedida } from '@/components/produtos/selecao-unidade-medida'
-import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
+import {
+  nomeVendaParaCopia,
+  prepararFormularioDuplicacaoProduto,
+} from '@/lib/preparar-formulario-duplicacao-produto'
 import {
   codigoBarrasGtinValido,
   coletarCodigosBarrasProduto,
@@ -267,6 +270,11 @@ function ConteudoDaPagina() {
   const [fotoComprimida, setFotoComprimida] = useState<ResultadoCompressaoProduto | null>(null)
   const [removerFoto, setRemoverFoto] = useState(false)
   const [urlFotoAtual, setUrlFotoAtual] = useState<string | null>(null)
+  const [veioDeDuplicacao, setVeioDeDuplicacao] = useState(false)
+  const [modalDuplicarAberto, setModalDuplicarAberto] = useState(false)
+  const [produtoIdParaDuplicar, setProdutoIdParaDuplicar] = useState('')
+  const [nomeDuplicacao, setNomeDuplicacao] = useState('')
+  const [duplicando, setDuplicando] = useState(false)
 
   const configAbas: ConfigDeAba[] = useMemo(
     () => [
@@ -349,6 +357,7 @@ function ConteudoDaPagina() {
     setForm(formVazio)
     setModoEdicao(false)
     setModoVisualizacao(false)
+    setVeioDeDuplicacao(false)
     setIdEmEdicao('')
     setAbaAtiva('principal')
     setFotoComprimida(null)
@@ -370,7 +379,64 @@ function ConteudoDaPagina() {
   function fecharModal() {
     setModalAberto(false)
     setModoVisualizacao(false)
+    setVeioDeDuplicacao(false)
     setErro('')
+  }
+
+  function abrirModalDuplicar(produto: { id: string; nomeVenda: string }) {
+    if (!podeCriar) return
+    setProdutoIdParaDuplicar(produto.id)
+    setNomeDuplicacao(nomeVendaParaCopia(produto.nomeVenda))
+    setModalDuplicarAberto(true)
+    setErro('')
+  }
+
+  function fecharModalDuplicar() {
+    setModalDuplicarAberto(false)
+    setProdutoIdParaDuplicar('')
+    setNomeDuplicacao('')
+  }
+
+  async function confirmarDuplicacao(e?: FormEvent) {
+    e?.preventDefault()
+    if (!produtoIdParaDuplicar || !nomeDuplicacao.trim()) return
+
+    setDuplicando(true)
+    setErro('')
+    try {
+      const { data } = await clienteHttp.get(`/produtos/${produtoIdParaDuplicar}`)
+      const formOrigem = produtoApiParaForm(data.produto)
+      const formDuplicado = prepararFormularioDuplicacaoProduto(
+        formOrigem,
+        produtoIdParaDuplicar,
+        nomeDuplicacao
+      )
+
+      fecharModalDuplicar()
+
+      setForm(formDuplicado)
+      setModoEdicao(false)
+      setModoVisualizacao(false)
+      setVeioDeDuplicacao(true)
+      setIdEmEdicao('')
+      setAbaAtiva('principal')
+      setFotoComprimida(null)
+      setRemoverFoto(false)
+      setUrlFotoAtual(null)
+      resetarStatus()
+      setModalAberto(true)
+
+      const { data: skuData } = await clienteHttp.get('/produtos/proximo-sku')
+      setForm((f) => ({ ...f, sku: skuData.sku as string }))
+
+      setMensagem(
+        'Produto duplicado como rascunho. Informe códigos de barras se necessário.'
+      )
+    } catch (err: unknown) {
+      setErro(extrairMensagemApi(err, 'Erro ao duplicar produto'))
+    } finally {
+      setDuplicando(false)
+    }
   }
 
   function produtoApiParaForm(p: Record<string, unknown>): FormProduto {
@@ -612,6 +678,7 @@ function ConteudoDaPagina() {
 
       setModalAberto(false)
       setModoVisualizacao(false)
+      setVeioDeDuplicacao(false)
       await carregar()
     } catch (err: unknown) {
       setErro(extrairMensagemApi(err, 'Erro ao salvar produto'))
@@ -654,18 +721,26 @@ function ConteudoDaPagina() {
   const ehUltimaAba = indiceAba >= ORDEM_ABAS.length - 1
 
   function irParaAbaAnterior() {
-    if (!ehPrimeiraAba) setAbaAtiva(ORDEM_ABAS[indiceAba - 1])
+    if (!ehPrimeiraAba) {
+      setErro('')
+      setAbaAtiva(ORDEM_ABAS[indiceAba - 1])
+    }
   }
 
   function irParaProximaAba() {
-    if (!ehUltimaAba) setAbaAtiva(ORDEM_ABAS[indiceAba + 1])
+    if (!ehUltimaAba) {
+      setErro('')
+      setAbaAtiva(ORDEM_ABAS[indiceAba + 1])
+    }
   }
 
   const tituloModal = modoVisualizacao
     ? `Visualizar produto: ${form.nomeVenda || '—'}`
     : modoEdicao
       ? `Editar produto: ${form.nomeVenda || '—'}`
-      : 'Novo produto'
+      : veioDeDuplicacao
+        ? 'Duplicar produto'
+        : 'Novo produto'
   const proximaAbaLabel = ROTULO_PROXIMA_ABA[abaAtiva as (typeof ORDEM_ABAS)[number]]
   const rotuloBotaoSalvar = salvando
     ? 'Salvando...'
@@ -689,6 +764,7 @@ function ConteudoDaPagina() {
 
   const flagsBooleanos: { campo: keyof FormProduto; rotulo: string }[] = [
     { campo: 'flagDevolucao', rotulo: 'Aceita devolução' },
+    { campo: 'flagComissao', rotulo: 'Sujeito à comissão' },
     { campo: 'permiteEstoqueNegativo', rotulo: 'Permite estoque negativo' },
     { campo: 'bloqueadoCompra', rotulo: 'Bloqueado para compra' },
     { campo: 'desativarAoZerarEstoque', rotulo: 'Desativar ao zerar o estoque' },
@@ -805,16 +881,28 @@ function ConteudoDaPagina() {
                     </BadgeStatus>
                   </td>
                   <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
-                    {podeDesativar && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => alternarAtivo(p)}
-                      >
-                        {p.ativo ? 'Desativar' : 'Reativar'}
-                      </Button>
-                    )}
+                    <div className="flex flex-wrap justify-end gap-1">
+                      {podeCriar && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => abrirModalDuplicar(p)}
+                        >
+                          Duplicar
+                        </Button>
+                      )}
+                      {podeDesativar && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => alternarAtivo(p)}
+                        >
+                          {p.ativo ? 'Desativar' : 'Reativar'}
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -822,6 +910,40 @@ function ConteudoDaPagina() {
           </table>
         </div>
       </CardPadrao>
+
+      <Modal
+        aberto={modalDuplicarAberto}
+        aoFechar={fecharModalDuplicar}
+        titulo="Duplicar produto"
+        descricao="Informe o nome do novo produto. SKU e códigos de barras serão gerados ou preenchidos depois."
+        largura="md"
+        rodape={
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={fecharModalDuplicar}>
+              Cancelar
+            </Button>
+            <BotaoPrimario
+              type="submit"
+              form="form-duplicar-produto"
+              disabled={duplicando || !nomeDuplicacao.trim()}
+            >
+              {duplicando ? 'Carregando...' : 'Continuar'}
+            </BotaoPrimario>
+          </div>
+        }
+      >
+        <form id="form-duplicar-produto" onSubmit={confirmarDuplicacao}>
+          <InputPadrao
+            rotulo="Nome de venda *"
+            value={nomeDuplicacao}
+            maxLength={60}
+            onChange={(e) =>
+              setNomeDuplicacao(e.target.value.toUpperCase())
+            }
+            placeholder="Nome do novo produto"
+          />
+        </form>
+      </Modal>
 
       <Modal
         aberto={modalAberto}
@@ -1031,18 +1153,6 @@ function ConteudoDaPagina() {
                       {rotulo}
                     </label>
                   ))}
-                </div>
-
-                <div>
-                  <p className="mb-2 text-sm font-medium">Sujeito a comissão</p>
-                  <label className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={form.flagComissao}
-                      onCheckedChange={(v) => setForm((f) => ({ ...f, flagComissao: v === true }))}
-                      disabled={camposDesabilitados}
-                    />
-                    01 - Sujeito à comissão
-                  </label>
                 </div>
               </div>
             </div>
