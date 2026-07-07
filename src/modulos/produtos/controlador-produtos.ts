@@ -117,6 +117,18 @@ async function salvarFotoDoProduto(requisicao: FastifyRequest, resposta: Fastify
   return resposta.send({ produto })
 }
 
+async function copiarFotoDeProduto(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id, origemId } = requisicao.params as { id: string; origemId: string }
+  const companyId = requisicao.empresaAtivaId || ''
+  const produto = await servicoDeProdutos.copiarFotoDeProduto(
+    id,
+    origemId,
+    companyId,
+    requisicao.idDoUsuario!
+  )
+  return resposta.send({ produto })
+}
+
 async function removerFotoDoProduto(requisicao: FastifyRequest, resposta: FastifyReply) {
   const { id } = requisicao.params as { id: string }
   const companyId = requisicao.empresaAtivaId || ''
@@ -153,6 +165,7 @@ export const controladorDeProdutos = {
   editarProduto,
   alterarStatusDoProduto,
   salvarFotoDoProduto,
+  copiarFotoDeProduto,
   removerFotoDoProduto,
   listarUnidadesMedida,
   criarUnidadeMedida,

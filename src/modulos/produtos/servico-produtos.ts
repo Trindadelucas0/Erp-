@@ -14,6 +14,7 @@ import { servicoDeUnidadesMedida } from './servico-unidades-medida.js'
 import { servicoDeMarcas } from './servico-marcas.js'
 import { proximoSkuNumerico } from './sku-sequencial.js'
 import {
+  copiarFotosDeProduto,
   salvarFotosProduto,
   removerPastaFotosProduto,
 } from './armazenamento-foto-produto.js'
@@ -260,6 +261,60 @@ async function salvarFotoDoProduto(
   return buscarProduto(id, companyId)
 }
 
+async function copiarFotoDeProduto(
+  destinoId: string,
+  origemId: string,
+  companyId: string,
+  idDoAutor: string
+) {
+  if (destinoId === origemId) {
+    throw new ErroDaAplicacao('Não é possível copiar a foto do próprio produto', 400)
+  }
+
+  const destino = await repositorioDeProdutos.buscarPorId(destinoId)
+  if (!destino || destino.companyId !== companyId) {
+    throw new ErroDaAplicacao('Produto de destino não encontrado', 404)
+  }
+
+  const origem = await repositorioDeProdutos.buscarPorId(origemId)
+  if (!origem || origem.companyId !== companyId) {
+    throw new ErroDaAplicacao('Produto de origem não encontrado', 404)
+  }
+
+  const principal = origem.fotos.find((f) => f.tipo === 'principal')
+  const miniatura = origem.fotos.find((f) => f.tipo === 'miniatura')
+
+  if (!principal || !miniatura) {
+    throw new ErroDaAplicacao('Produto de origem não possui foto', 400)
+  }
+
+  const tamanhos = await copiarFotosDeProduto(companyId, origemId, destinoId, {
+    principal: principal.arquivo,
+    miniatura: miniatura.arquivo,
+  })
+
+  await repositorioDeProdutos.sincronizarFotos(destinoId, {
+    principal: principal.arquivo,
+    miniatura: miniatura.arquivo,
+    tamanhoPrincipal: tamanhos.tamanhoPrincipal,
+    tamanhoMiniatura: tamanhos.tamanhoMiniatura,
+    larguraPrincipal: principal.larguraPx ?? undefined,
+    alturaPrincipal: principal.alturaPx ?? undefined,
+    larguraMiniatura: miniatura.larguraPx ?? undefined,
+    alturaMiniatura: miniatura.alturaPx ?? undefined,
+  })
+
+  await registrarAuditoria({
+    usuarioId: idDoAutor,
+    acao: 'copiar_foto',
+    entidade: 'produto',
+    entidadeId: destinoId,
+    valoresDepois: { origemId },
+  })
+
+  return buscarProduto(destinoId, companyId)
+}
+
 async function removerFotoDoProduto(id: string, companyId: string, idDoAutor: string) {
   const existente = await repositorioDeProdutos.buscarPorId(id)
   if (!existente || existente.companyId !== companyId) {
@@ -287,5 +342,6 @@ export const servicoDeProdutos = {
   editarProduto,
   alterarStatusDoProduto,
   salvarFotoDoProduto,
+  copiarFotoDeProduto,
   removerFotoDoProduto,
 }

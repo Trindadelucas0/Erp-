@@ -3,12 +3,11 @@ import type { EnderecoEstoqueForm } from '@/components/produtos/lista-enderecos-
 import type { FornecedorProdutoForm } from '@/components/produtos/lista-fornecedores-produto'
 import type { ProdutoSimilarItem } from '@/components/produtos/selecao-produtos-similares'
 
-/** Campos que não são copiados na duplicação (identificadores únicos ou ligados ao produto origem). */
+/** Campos que não são copiados no form (identificadores únicos). Foto é copiada via endpoint após salvar. */
 export const CAMPOS_NAO_DUPLICADOS_PRODUTO = [
   'sku',
   'codigoBarras',
   'embalagensMaster.codigoBarras',
-  'foto',
 ] as const
 
 const SUFIXO_COPIA = ' (CÓPIA)'

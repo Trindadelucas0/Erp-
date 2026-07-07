@@ -1,7 +1,11 @@
 'use client'
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Copy, Plus } from 'lucide-react'
+import {
+  ComboboxProduto,
+  type ProdutoOpcao,
+} from '@/components/pedidos-compra/combobox-produto'
 import { clienteHttp } from '@/services/api'
 import { resolverUrlUpload } from '@/lib/resolver-url-upload'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
@@ -276,6 +280,9 @@ function ConteudoDaPagina() {
   const [produtoIdParaDuplicar, setProdutoIdParaDuplicar] = useState('')
   const [nomeDuplicacao, setNomeDuplicacao] = useState('')
   const [duplicando, setDuplicando] = useState(false)
+  const [produtosParaDuplicar, setProdutosParaDuplicar] = useState<ProdutoOpcao[]>([])
+  const [carregandoCatalogoDuplicar, setCarregandoCatalogoDuplicar] = useState(false)
+  const [produtoIdFotoOrigem, setProdutoIdFotoOrigem] = useState('')
 
   const configAbas: ConfigDeAba[] = useMemo(
     () => [
@@ -359,6 +366,7 @@ function ConteudoDaPagina() {
     setModoEdicao(false)
     setModoVisualizacao(false)
     setVeioDeDuplicacao(false)
+    setProdutoIdFotoOrigem('')
     setIdEmEdicao('')
     setAbaAtiva('principal')
     setFotoComprimida(null)
@@ -381,37 +389,80 @@ function ConteudoDaPagina() {
     setModalAberto(false)
     setModoVisualizacao(false)
     setVeioDeDuplicacao(false)
+    setProdutoIdFotoOrigem('')
     setErro('')
   }
 
-  function abrirModalDuplicar(produto: { id: string; nomeVenda: string }) {
+  async function abrirModalDuplicarDoHeader() {
     if (!podeCriar) return
-    setProdutoIdParaDuplicar(produto.id)
-    setNomeDuplicacao(nomeVendaParaCopia(produto.nomeVenda))
+    setProdutoIdParaDuplicar('')
+    setNomeDuplicacao('')
     setModalDuplicarAberto(true)
     setErro('')
+    setCarregandoCatalogoDuplicar(true)
+    try {
+      const { data } = await clienteHttp.get('/produtos', {
+        params: { incluirInativos: true },
+      })
+      setProdutosParaDuplicar(
+        (data.produtos ?? []).map(
+          (p: {
+            id: string
+            nomeVenda: string
+            sku: string | null
+            unidade: string
+          }) => ({
+            id: p.id,
+            nomeVenda: p.nomeVenda,
+            sku: p.sku,
+            unidade: p.unidade,
+          })
+        )
+      )
+    } catch {
+      setErro('Erro ao carregar produtos.')
+    } finally {
+      setCarregandoCatalogoDuplicar(false)
+    }
+  }
+
+  function aoSelecionarProdutoOrigem(produtoId: string) {
+    setProdutoIdParaDuplicar(produtoId)
+    if (!produtoId) {
+      setNomeDuplicacao('')
+      return
+    }
+    const produto = produtosParaDuplicar.find((p) => p.id === produtoId)
+    if (produto) {
+      setNomeDuplicacao(nomeVendaParaCopia(produto.nomeVenda))
+    }
   }
 
   function fecharModalDuplicar() {
     setModalDuplicarAberto(false)
     setProdutoIdParaDuplicar('')
     setNomeDuplicacao('')
+    setProdutosParaDuplicar([])
   }
 
   async function confirmarDuplicacao(e?: FormEvent) {
     e?.preventDefault()
     if (!produtoIdParaDuplicar || !nomeDuplicacao.trim()) return
 
+    const origemId = produtoIdParaDuplicar
+
     setDuplicando(true)
     setErro('')
     try {
-      const { data } = await clienteHttp.get(`/produtos/${produtoIdParaDuplicar}`)
-      const formOrigem = produtoApiParaForm(data.produto)
+      const { data } = await clienteHttp.get(`/produtos/${origemId}`)
+      const produtoOrigem = data.produto as Record<string, unknown>
+      const formOrigem = produtoApiParaForm(produtoOrigem)
       const formDuplicado = prepararFormularioDuplicacaoProduto(
         formOrigem,
-        produtoIdParaDuplicar,
+        origemId,
         nomeDuplicacao
       )
+      const urlFotoOrigem = (produtoOrigem.urlFotoPrincipal as string | null) ?? null
 
       fecharModalDuplicar()
 
@@ -419,20 +470,19 @@ function ConteudoDaPagina() {
       setModoEdicao(false)
       setModoVisualizacao(false)
       setVeioDeDuplicacao(true)
+      setProdutoIdFotoOrigem(urlFotoOrigem ? origemId : '')
       setIdEmEdicao('')
       setAbaAtiva('principal')
       setFotoComprimida(null)
       setRemoverFoto(false)
-      setUrlFotoAtual(null)
+      setUrlFotoAtual(urlFotoOrigem)
       resetarStatus()
       setModalAberto(true)
 
       const { data: skuData } = await clienteHttp.get('/produtos/proximo-sku')
       setForm((f) => ({ ...f, sku: skuData.sku as string }))
 
-      setMensagem(
-        'Produto duplicado como rascunho. Informe códigos de barras se necessário.'
-      )
+      setMensagem('Produto duplicado como rascunho. Revise o nome e salve.')
     } catch (err: unknown) {
       setErro(extrairMensagemApi(err, 'Erro ao duplicar produto'))
     } finally {
@@ -675,11 +725,21 @@ function ConteudoDaPagina() {
 
       if (fotoComprimida || removerFoto) {
         await enviarFoto(produtoId)
+      } else if (
+        veioDeDuplicacao &&
+        produtoIdFotoOrigem &&
+        urlFotoAtual &&
+        !modoEdicao
+      ) {
+        await clienteHttp.post(
+          `/produtos/${produtoId}/foto/copiar-de/${produtoIdFotoOrigem}`
+        )
       }
 
       setModalAberto(false)
       setModoVisualizacao(false)
       setVeioDeDuplicacao(false)
+      setProdutoIdFotoOrigem('')
       await carregar()
     } catch (err: unknown) {
       setErro(extrairMensagemApi(err, 'Erro ao salvar produto'))
@@ -809,10 +869,16 @@ function ConteudoDaPagina() {
         titulo="Produtos"
         acoes={
           podeCriar && (
-            <BotaoPrimario type="button" onClick={abrirNovo}>
-              <Plus className="mr-1 size-4 inline" />
-              Novo produto
-            </BotaoPrimario>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" onClick={abrirModalDuplicarDoHeader}>
+                <Copy className="mr-1 size-4" />
+                Duplicar
+              </Button>
+              <BotaoPrimario type="button" onClick={abrirNovo}>
+                <Plus className="mr-1 size-4 inline" />
+                Novo produto
+              </BotaoPrimario>
+            </div>
           )
         }
       >
@@ -883,16 +949,6 @@ function ConteudoDaPagina() {
                   </td>
                   <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
                     <div className="flex flex-wrap justify-end gap-1">
-                      {podeCriar && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => abrirModalDuplicar(p)}
-                        >
-                          Duplicar
-                        </Button>
-                      )}
                       {podeDesativar && (
                         <Button
                           type="button"
@@ -916,7 +972,7 @@ function ConteudoDaPagina() {
         aberto={modalDuplicarAberto}
         aoFechar={fecharModalDuplicar}
         titulo="Duplicar produto"
-        descricao="Informe o nome do novo produto. SKU e códigos de barras serão gerados ou preenchidos depois."
+        descricao="Escolha o produto origem e informe o nome do novo. Configurações e foto serão copiadas; SKU e códigos de barras serão gerados depois."
         largura="md"
         rodape={
           <div className="flex justify-end gap-2">
@@ -926,14 +982,29 @@ function ConteudoDaPagina() {
             <BotaoPrimario
               type="submit"
               form="form-duplicar-produto"
-              disabled={duplicando || !nomeDuplicacao.trim()}
+              disabled={
+                duplicando ||
+                carregandoCatalogoDuplicar ||
+                !produtoIdParaDuplicar ||
+                !nomeDuplicacao.trim()
+              }
             >
               {duplicando ? 'Carregando...' : 'Continuar'}
             </BotaoPrimario>
           </div>
         }
       >
-        <form id="form-duplicar-produto" onSubmit={confirmarDuplicacao}>
+        <form id="form-duplicar-produto" onSubmit={confirmarDuplicacao} className="space-y-4">
+          <ComboboxProduto
+            rotulo="Produto a duplicar *"
+            produtos={produtosParaDuplicar}
+            valor={produtoIdParaDuplicar}
+            aoMudar={aoSelecionarProdutoOrigem}
+            disabled={carregandoCatalogoDuplicar || duplicando}
+          />
+          {carregandoCatalogoDuplicar && (
+            <p className="text-sm text-muted-foreground">Carregando produtos...</p>
+          )}
           <InputPadrao
             rotulo="Nome de venda *"
             value={nomeDuplicacao}
@@ -942,6 +1013,7 @@ function ConteudoDaPagina() {
               setNomeDuplicacao(e.target.value.toUpperCase())
             }
             placeholder="Nome do novo produto"
+            disabled={duplicando}
           />
         </form>
       </Modal>

@@ -71,6 +71,12 @@ export async function rotasDeProdutos(aplicacao: FastifyInstance): Promise<void>
   )
 
   aplicacao.post(
+    '/:id/foto/copiar-de/:origemId',
+    { preHandler: [...auth, middlewareDeAutorizacao('produtos:edit')] },
+    controladorDeProdutos.copiarFotoDeProduto
+  )
+
+  aplicacao.post(
     '/:id/foto',
     { preHandler: [...auth, middlewareDeAutorizacao('produtos:edit')] },
     controladorDeProdutos.salvarFotoDoProduto

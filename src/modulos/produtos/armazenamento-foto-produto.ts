@@ -1,7 +1,7 @@
 /**
  * Salva e remove fotos de produto no disco.
  */
-import { mkdir, writeFile, rm } from 'node:fs/promises'
+import { copyFile, mkdir, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 const PASTA_UPLOADS = path.join(process.cwd(), 'uploads', 'produtos')
@@ -66,4 +66,31 @@ export function caminhoAbsolutoFoto(
   arquivo: string
 ): string {
   return path.join(pastaDoProduto(companyId, produtoId), arquivo)
+}
+
+export async function copiarFotosDeProduto(
+  companyId: string,
+  origemId: string,
+  destinoId: string,
+  arquivos: { principal: string; miniatura: string }
+): Promise<{ tamanhoPrincipal: number; tamanhoMiniatura: number }> {
+  const pastaOrigem = pastaDoProduto(companyId, origemId)
+  const pastaDestino = pastaDoProduto(companyId, destinoId)
+  await mkdir(pastaDestino, { recursive: true })
+
+  const caminhoPrincipalOrigem = path.join(pastaOrigem, arquivos.principal)
+  const caminhoMiniaturaOrigem = path.join(pastaOrigem, arquivos.miniatura)
+  const caminhoPrincipalDestino = path.join(pastaDestino, arquivos.principal)
+  const caminhoMiniaturaDestino = path.join(pastaDestino, arquivos.miniatura)
+
+  await copyFile(caminhoPrincipalOrigem, caminhoPrincipalDestino)
+  await copyFile(caminhoMiniaturaOrigem, caminhoMiniaturaDestino)
+
+  const statPrincipal = await stat(caminhoPrincipalDestino)
+  const statMiniatura = await stat(caminhoMiniaturaDestino)
+
+  return {
+    tamanhoPrincipal: statPrincipal.size,
+    tamanhoMiniatura: statMiniatura.size,
+  }
 }
