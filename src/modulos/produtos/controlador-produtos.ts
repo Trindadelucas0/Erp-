@@ -13,6 +13,19 @@ import {
   mensagemErroZod,
 } from './esquema-produtos.js'
 
+async function listarMarcas(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const companyId = requisicao.empresaAtivaId || ''
+  const { q } = requisicao.query as { q?: string }
+  const resultado = await servicoDeProdutos.listarMarcas(companyId, q)
+  return resposta.send(resultado)
+}
+
+async function sugerirProximoSku(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const companyId = requisicao.empresaAtivaId || ''
+  const resultado = await servicoDeProdutos.sugerirProximoSku(companyId)
+  return resposta.send(resultado)
+}
+
 async function listarProdutos(requisicao: FastifyRequest, resposta: FastifyReply) {
   const companyId = requisicao.empresaAtivaId || ''
   const { q, incluirInativos } = requisicao.query as { q?: string; incluirInativos?: string }
@@ -125,6 +138,8 @@ async function criarUnidadeMedida(requisicao: FastifyRequest, resposta: FastifyR
 
 export const controladorDeProdutos = {
   listarProdutos,
+  listarMarcas,
+  sugerirProximoSku,
   buscarProduto,
   criarProduto,
   editarProduto,

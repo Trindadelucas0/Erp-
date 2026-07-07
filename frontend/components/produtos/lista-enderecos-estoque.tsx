@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button'
 import { InputPadrao } from '@/components/ui/input-padrao'
 
 export type EnderecoEstoqueForm = {
-  apelido: string
   endereco: string
 }
 
@@ -15,12 +14,12 @@ type Props = {
   disabled?: boolean
 }
 
-const itemVazio = (): EnderecoEstoqueForm => ({ apelido: '', endereco: '' })
+const itemVazio = (): EnderecoEstoqueForm => ({ endereco: '' })
 
 export function ListaEnderecosEstoque({ itens, aoMudar, disabled }: Props) {
-  function atualizar(index: number, campo: keyof EnderecoEstoqueForm, valor: string) {
+  function atualizar(index: number, valor: string) {
     const nova = [...itens]
-    nova[index] = { ...nova[index], [campo]: valor }
+    nova[index] = { endereco: valor }
     aoMudar(nova)
   }
 
@@ -41,17 +40,11 @@ export function ListaEnderecosEstoque({ itens, aoMudar, disabled }: Props) {
       )}
 
       {itens.map((item, index) => (
-        <div key={index} className="grid gap-2 rounded-lg border border-border p-3 sm:grid-cols-[1fr_2fr_auto]">
-          <InputPadrao
-            rotulo="Apelido"
-            value={item.apelido}
-            onChange={(e) => atualizar(index, 'apelido', e.target.value)}
-            disabled={disabled}
-          />
+        <div key={index} className="grid gap-2 rounded-lg border border-border p-3 sm:grid-cols-[1fr_auto]">
           <InputPadrao
             rotulo="Endereço *"
             value={item.endereco}
-            onChange={(e) => atualizar(index, 'endereco', e.target.value)}
+            onChange={(e) => atualizar(index, e.target.value)}
             disabled={disabled}
           />
           {!disabled && (

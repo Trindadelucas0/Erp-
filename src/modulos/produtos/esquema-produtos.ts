@@ -6,6 +6,11 @@ import {
   textoCadastroObrigatorio,
   textoCadastroOpcional,
 } from '../../compartilhado/normalizacao/esquema-texto-cadastro.js'
+import {
+  codigoBarrasGtinValido,
+  MENSAGEM_CODIGO_BARRAS_INVALIDO,
+  normalizarCodigoBarrasGtin,
+} from '../../compartilhado/validacoes/codigo-barras-gtin.js'
 
 function nulParaUndefined(valor: unknown) {
   return valor === null || valor === '' ? undefined : valor
@@ -38,9 +43,25 @@ const inteiroOpcional = z.preprocess(
 const textoOpcionalNulavel = (max: number) =>
   z.preprocess(nulParaUndefined, textoCadastroOpcional(max))
 
-const codigoBarrasOpcional = z.preprocess(
+const codigoBarrasEmbalagemOpcional = z.preprocess(
   nulParaUndefined,
   z.string().max(30).optional()
+)
+
+const codigoBarrasGtinOpcional = z.preprocess(
+  nulParaUndefined,
+  z
+    .string()
+    .optional()
+    .transform((v) => {
+      if (!v) return undefined
+      const digitos = normalizarCodigoBarrasGtin(v)
+      return digitos || undefined
+    })
+    .refine(
+      (v) => v === undefined || codigoBarrasGtinValido(v),
+      MENSAGEM_CODIGO_BARRAS_INVALIDO
+    )
 )
 
 export const esquemaEmbalagemMaster = z.object({
@@ -57,7 +78,7 @@ export const esquemaEmbalagemMaster = z.object({
         return n
       })
   ),
-  codigoBarras: codigoBarrasOpcional,
+  codigoBarras: codigoBarrasEmbalagemOpcional,
   alturaCm: decimalOpcional,
   larguraCm: decimalOpcional,
   comprimentoCm: decimalOpcional,
@@ -82,7 +103,7 @@ export const esquemaProdutoFornecedor = z.object({
 const camposProduto = {
   sku: textoOpcionalNulavel(50),
   ativo: z.boolean().optional().default(true),
-  nomeVenda: textoCadastroObrigatorio(2),
+  nomeVenda: textoCadastroObrigatorio(2, 60),
   marca: textoCadastroObrigatorio(1, 100),
   unidade: textoCadastroObrigatorio(1).transform((v) => v.toUpperCase()).default('UN'),
   caracteristicas: textoOpcionalNulavel(2000),
@@ -116,7 +137,7 @@ const camposProduto = {
   bloqueadoCompra: z.boolean().optional().default(false),
   bloqueadoVenda: z.boolean().optional().default(false),
   desativarAoZerarEstoque: z.boolean().optional().default(false),
-  codigoBarras: codigoBarrasOpcional,
+  codigoBarras: codigoBarrasGtinOpcional,
   pesoKg: decimalOpcional,
   alturaCm: decimalOpcional,
   larguraCm: decimalOpcional,
@@ -147,8 +168,52 @@ const camposProduto = {
   similaresIds: z.array(z.string().uuid()).optional().default([]),
 }
 
-export const esquemaDeCriacaoDeProduto = z.object(camposProduto)
-export const esquemaDeEdicaoDeProduto = z.object(camposProduto)
+export const esquemaDeCriacaoDeProduto = z
+  .object({
+    ...camposProduto,
+    entregaNoAto: z.boolean().optional().default(true),
+    entregaARetirar: z.boolean().optional().default(true),
+    entregar: z.boolean().optional().default(true),
+  })
+  .superRefine((dados, ctx) => {
+    if (dados.tipoEntrega !== 'sob_encomenda') {
+      if (dados.diasParaEntrega !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Dias para entrega só se aplica a sob encomenda',
+          path: ['diasParaEntrega'],
+        })
+      }
+      if (dados.dataValidadePreco !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Data de validade do preço só se aplica a sob encomenda',
+          path: ['dataValidadePreco'],
+        })
+      }
+    }
+  })
+
+export const esquemaDeEdicaoDeProduto = z
+  .object(camposProduto)
+  .superRefine((dados, ctx) => {
+    if (dados.tipoEntrega !== 'sob_encomenda') {
+      if (dados.diasParaEntrega !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Dias para entrega só se aplica a sob encomenda',
+          path: ['diasParaEntrega'],
+        })
+      }
+      if (dados.dataValidadePreco !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Data de validade do preço só se aplica a sob encomenda',
+          path: ['dataValidadePreco'],
+        })
+      }
+    }
+  })
 
 export const esquemaDeAtivarProduto = z.object({
   ativo: z.boolean(),

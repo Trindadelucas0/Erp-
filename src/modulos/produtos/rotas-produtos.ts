@@ -29,6 +29,18 @@ export async function rotasDeProdutos(aplicacao: FastifyInstance): Promise<void>
   )
 
   aplicacao.get(
+    '/proximo-sku',
+    { preHandler: [...auth, middlewareDeAutorizacao('produtos:view')] },
+    controladorDeProdutos.sugerirProximoSku
+  )
+
+  aplicacao.get(
+    '/marcas',
+    { preHandler: [...auth, middlewareDeAutorizacao('produtos:view')] },
+    controladorDeProdutos.listarMarcas
+  )
+
+  aplicacao.get(
     '/:id',
     { preHandler: [...auth, middlewareDeAutorizacao('produtos:view')] },
     controladorDeProdutos.buscarProduto

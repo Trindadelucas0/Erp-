@@ -31,6 +31,13 @@ const itemVazio = (): FornecedorProdutoForm => ({
   unidadeEntrada: '',
 })
 
+function filtrarDecimal(valor: string): string {
+  const limpo = valor.replace(/[^\d,.]/g, '')
+  const partes = limpo.replace(/\./g, ',').split(',')
+  if (partes.length <= 1) return partes[0] ?? ''
+  return `${partes[0]},${partes.slice(1).join('')}`
+}
+
 export function ListaFornecedoresProduto({
   itens,
   opcoesFornecedores,
@@ -91,7 +98,7 @@ export function ListaFornecedoresProduto({
           </div>
           <div className="min-w-0">
             <InputPadrao
-              rotulo="Código original"
+              rotulo="Código Original"
               value={item.codigoFornecedor}
               onChange={(e) => atualizar(index, 'codigoFornecedor', e.target.value)}
               disabled={disabled}
@@ -99,18 +106,21 @@ export function ListaFornecedoresProduto({
           </div>
           <div className="min-w-0">
             <InputPadrao
-              rotulo="Múltiplo de compra"
+              rotulo="Multiplo de compra"
               value={item.multiploEntrada}
-              onChange={(e) => atualizar(index, 'multiploEntrada', e.target.value)}
+              onChange={(e) => atualizar(index, 'multiploEntrada', filtrarDecimal(e.target.value))}
               disabled={disabled}
+              inputMode="decimal"
             />
           </div>
           <div className="min-w-0">
             <InputPadrao
-              rotulo="Multiplicador na entrada"
+              rotulo="Quantidade por embalagem"
               value={item.multiplicadorEntrada}
-              onChange={(e) => atualizar(index, 'multiplicadorEntrada', e.target.value)}
+              onChange={(e) => atualizar(index, 'multiplicadorEntrada', filtrarDecimal(e.target.value))}
               disabled={disabled}
+              inputMode="decimal"
+              placeholder="Ex.: 0,1"
             />
           </div>
           <div className="min-w-0 sm:col-span-2">

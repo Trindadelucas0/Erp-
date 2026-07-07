@@ -15,10 +15,13 @@ import { BadgeStatus } from '@/components/ui/badge-status'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/ui/modal'
 import { InputPadrao } from '@/components/ui/input-padrao'
+import { TextareaPadrao } from '@/components/ui/textarea-padrao'
 import { SelectPadrao } from '@/components/ui/select-padrao'
 import { CampoFotoProduto } from '@/components/produtos/campo-foto-produto'
+import { ComboboxMarca } from '@/components/produtos/combobox-marca'
 import {
   ListaEmbalagensMaster,
   type EmbalagemMasterForm,
@@ -37,6 +40,11 @@ import {
 } from '@/components/produtos/lista-fornecedores-produto'
 import { SelecaoUnidadeMedida } from '@/components/produtos/selecao-unidade-medida'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
+import {
+  codigoBarrasGtinValido,
+  filtrarEntradaCodigoBarras,
+  MENSAGEM_CODIGO_BARRAS_INVALIDO,
+} from '@/lib/validar-codigo-barras-gtin'
 import type { ResultadoCompressaoProduto } from '@/lib/comprimir-imagem-produto'
 
 type FornecedorOpcao = { id: string; nome: string }
@@ -93,7 +101,6 @@ type FormProduto = {
   embalagensMaster: EmbalagemMasterForm[]
   enderecosEstoque: EnderecoEstoqueForm[]
   nomeCompra: string
-  precoCusto: string
   fornecedores: FornecedorProdutoForm[]
   similares: ProdutoSimilarItem[]
   agruparSimilaresRuptura: boolean
@@ -108,12 +115,12 @@ const formVazio: FormProduto = {
   marca: '',
   unidade: 'UN',
   caracteristicas: '',
-  tipoEntrega: '',
+  tipoEntrega: 'pronta_entrega',
   diasParaEntrega: '',
   dataValidadePreco: '',
-  entregaNoAto: false,
-  entregaARetirar: false,
-  entregar: false,
+  entregaNoAto: true,
+  entregaARetirar: true,
+  entregar: true,
   entregaPorEncomenda: false,
   flagDevolucao: false,
   controlaEstoque: true,
@@ -132,7 +139,6 @@ const formVazio: FormProduto = {
   embalagensMaster: [],
   enderecosEstoque: [],
   nomeCompra: '',
-  precoCusto: '',
   fornecedores: [],
   similares: [],
   agruparSimilaresRuptura: false,
@@ -218,13 +224,19 @@ function ConteudoDaPagina() {
       },
       {
         id: 'logistica',
-        validar: () =>
-          form.embalagensMaster.every((e) => {
-            if (!e.quantidade.trim()) return true
-            const qtd = num(e.quantidade)
-            return qtd !== undefined && qtd > 0
-          }) &&
-          form.enderecosEstoque.every((e) => !e.endereco.trim() || e.endereco.trim().length >= 1),
+        validar: () => {
+          const codigoOk =
+            !form.codigoBarras.trim() || codigoBarrasGtinValido(form.codigoBarras)
+          return (
+            codigoOk &&
+            form.embalagensMaster.every((e) => {
+              if (!e.quantidade.trim()) return true
+              const qtd = num(e.quantidade)
+              return qtd !== undefined && qtd > 0
+            }) &&
+            form.enderecosEstoque.every((e) => !e.endereco.trim() || e.endereco.trim().length >= 1)
+          )
+        },
       },
       { id: 'compras', validar: () => form.fornecedores.every((f) => f.fornecedorPessoaId.trim().length > 0) },
       { id: 'fiscal', validar: () => !form.ncm || /^\d{8}$/.test(form.ncm.replace(/\D/g, '')) },
@@ -283,6 +295,14 @@ function ConteudoDaPagina() {
     setErro('')
     resetarStatus()
     setModalAberto(true)
+    void clienteHttp
+      .get('/produtos/proximo-sku')
+      .then(({ data }) => {
+        setForm((f) => ({ ...f, sku: data.sku as string }))
+      })
+      .catch(() => {
+        setForm((f) => ({ ...f, sku: '1' }))
+      })
   }
 
   function fecharModal() {
@@ -295,11 +315,11 @@ function ConteudoDaPagina() {
     return {
       sku: (p.sku as string | null) ?? '',
       ativo: p.ativo as boolean,
-      nomeVenda: p.nomeVenda as string,
-      marca: (p.marca as string | null) ?? '',
+      nomeVenda: ((p.nomeVenda as string) ?? '').toUpperCase(),
+      marca: ((p.marca as string | null) ?? '').toUpperCase(),
       unidade: p.unidade as string,
       caracteristicas: (p.caracteristicas as string | null) ?? '',
-      tipoEntrega: (p.tipoEntrega as FormProduto['tipoEntrega']) ?? '',
+      tipoEntrega: (p.tipoEntrega as FormProduto['tipoEntrega']) ?? 'pronta_entrega',
       diasParaEntrega: p.diasParaEntrega != null ? String(p.diasParaEntrega) : '',
       dataValidadePreco: formatarDataIso(p.dataValidadePreco as string | null),
       entregaNoAto: (p.entregaNoAto as boolean) ?? false,
@@ -335,14 +355,11 @@ function ConteudoDaPagina() {
         comprimentoCm: e.comprimentoCm != null ? String(e.comprimentoCm) : '',
       })),
       enderecosEstoque: ((p.enderecosEstoque as Array<{
-        apelido: string | null
         endereco: string
       }>) ?? []).map((e) => ({
-        apelido: e.apelido ?? '',
         endereco: e.endereco,
       })),
       nomeCompra: (p.nomeCompra as string | null) ?? '',
-      precoCusto: p.precoCusto != null ? String(p.precoCusto) : '',
       fornecedores: ((p.fornecedores as Array<{
         fornecedorPessoaId: string
         codigoFornecedor: string | null
@@ -397,16 +414,21 @@ function ConteudoDaPagina() {
   }
 
   function montarPayload() {
+    const sobEncomenda = form.tipoEntrega === 'sob_encomenda'
     return {
-      sku: form.sku.trim() || undefined,
+      ...(modoEdicao ? { sku: form.sku.trim() || undefined } : {}),
       ativo: form.ativo,
       nomeVenda: form.nomeVenda.trim(),
       marca: form.marca.trim(),
       unidade: form.unidade.trim(),
       caracteristicas: form.caracteristicas.trim() || undefined,
       tipoEntrega: form.tipoEntrega || undefined,
-      diasParaEntrega: int(form.diasParaEntrega),
-      dataValidadePreco: form.dataValidadePreco || undefined,
+      ...(sobEncomenda
+        ? {
+            diasParaEntrega: int(form.diasParaEntrega),
+            dataValidadePreco: form.dataValidadePreco || undefined,
+          }
+        : {}),
       entregaNoAto: form.entregaNoAto,
       entregaARetirar: form.entregaARetirar,
       entregar: form.entregar,
@@ -442,12 +464,10 @@ function ConteudoDaPagina() {
       enderecosEstoque: form.enderecosEstoque
         .filter((e) => e.endereco.trim())
         .map((e, ordem) => ({
-          apelido: e.apelido.trim() || undefined,
           endereco: e.endereco.trim(),
           ordem,
         })),
       nomeCompra: form.nomeCompra.trim() || undefined,
-      precoCusto: num(form.precoCusto),
       fornecedores: form.fornecedores
         .filter((f) => f.fornecedorPessoaId.trim())
         .map((f, ordem) => ({
@@ -492,7 +512,9 @@ function ConteudoDaPagina() {
           ? 'Preencha nome de venda, marca e unidade na aba Principal.'
           : abaAtiva === 'compras'
             ? 'Selecione o fornecedor em todas as linhas da aba Compras.'
-            : abaAtiva === 'fiscal'
+            : abaAtiva === 'logistica'
+              ? 'Código de barras inválido. Informe EAN-13 ou DUN-14 válido.'
+              : abaAtiva === 'fiscal'
             ? 'NCM deve ter 8 dígitos.'
             : 'Revise os campos desta aba.'
       )
@@ -611,12 +633,18 @@ function ConteudoDaPagina() {
   ]
 
   const flagsBooleanos: { campo: keyof FormProduto; rotulo: string }[] = [
-    { campo: 'flagDevolucao', rotulo: 'Aceita devolução?' },
-    { campo: 'permiteEstoqueNegativo', rotulo: 'Permitir estoque negativo?' },
-    { campo: 'bloqueadoCompra', rotulo: 'Bloqueado para compra?' },
-    { campo: 'desativarAoZerarEstoque', rotulo: 'Desativar ao zerar o estoque?' },
-    { campo: 'bloqueadoVenda', rotulo: 'Bloqueado para venda?' },
+    { campo: 'flagDevolucao', rotulo: 'Aceita devolução' },
+    { campo: 'permiteEstoqueNegativo', rotulo: 'Permite estoque negativo' },
+    { campo: 'bloqueadoCompra', rotulo: 'Bloqueado para compra' },
+    { campo: 'desativarAoZerarEstoque', rotulo: 'Desativar ao zerar o estoque' },
+    { campo: 'bloqueadoVenda', rotulo: 'Bloqueado para venda' },
   ]
+
+  const skuSomenteLeitura = !modoEdicao || camposDesabilitados
+  const erroCodigoBarras =
+    form.codigoBarras.trim() && !codigoBarrasGtinValido(form.codigoBarras)
+      ? MENSAGEM_CODIGO_BARRAS_INVALIDO
+      : undefined
 
   return (
     <div className="space-y-6">
@@ -791,25 +819,43 @@ function ConteudoDaPagina() {
                   setUrlFotoAtual(null)
                 }}
               />
-              <InputPadrao
-                rotulo="SKU"
-                value={form.sku}
-                onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
-                disabled={camposDesabilitados}
-              />
+              <div className="flex flex-wrap items-end gap-4">
+                <InputPadrao
+                  rotulo="SKU"
+                  value={form.sku}
+                  onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
+                  disabled={skuSomenteLeitura}
+                  className="min-w-[8rem] flex-1"
+                />
+                <div className="flex items-center gap-2 pb-2">
+                  <Checkbox
+                    id="produto-ativo"
+                    checked={form.ativo}
+                    onCheckedChange={(v) => setForm((f) => ({ ...f, ativo: v === true }))}
+                    disabled={camposDesabilitados}
+                  />
+                  <Label htmlFor="produto-ativo" className="cursor-pointer text-sm font-normal">
+                    Ativo
+                  </Label>
+                </div>
+              </div>
               <InputPadrao
                 rotulo="Nome de venda *"
                 value={form.nomeVenda}
-                onChange={(e) => setForm((f) => ({ ...f, nomeVenda: e.target.value }))}
+                maxLength={60}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, nomeVenda: e.target.value.toUpperCase() }))
+                }
                 disabled={camposDesabilitados}
                 className="sm:col-span-2"
               />
-              <InputPadrao
-                rotulo="Marca *"
-                value={form.marca}
-                onChange={(e) => setForm((f) => ({ ...f, marca: e.target.value }))}
-                disabled={camposDesabilitados}
-              />
+              <div className="sm:col-span-2">
+                <ComboboxMarca
+                  valor={form.marca}
+                  aoMudar={(marca) => setForm((f) => ({ ...f, marca: marca.toUpperCase() }))}
+                  disabled={camposDesabilitados}
+                />
+              </div>
               <div className="sm:col-span-2">
                 <SelecaoUnidadeMedida
                   valor={form.unidade}
@@ -817,11 +863,13 @@ function ConteudoDaPagina() {
                   disabled={camposDesabilitados}
                 />
               </div>
-              <InputPadrao
+              <TextareaPadrao
                 rotulo="Características"
                 value={form.caracteristicas}
+                maxLength={2000}
                 onChange={(e) => setForm((f) => ({ ...f, caracteristicas: e.target.value }))}
                 disabled={camposDesabilitados}
+                rows={6}
                 className="sm:col-span-2"
               />
               <div className="sm:col-span-2 space-y-3 rounded-lg border border-border p-4">
@@ -832,7 +880,14 @@ function ConteudoDaPagina() {
                       type="radio"
                       name="tipoEntrega"
                       checked={form.tipoEntrega === 'pronta_entrega'}
-                      onChange={() => setForm((f) => ({ ...f, tipoEntrega: 'pronta_entrega' }))}
+                      onChange={() =>
+                        setForm((f) => ({
+                          ...f,
+                          tipoEntrega: 'pronta_entrega',
+                          diasParaEntrega: '',
+                          dataValidadePreco: '',
+                        }))
+                      }
                       disabled={camposDesabilitados}
                       className="size-4"
                     />
@@ -850,24 +905,26 @@ function ConteudoDaPagina() {
                     Sob encomenda
                   </label>
                 </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <InputPadrao
-                    rotulo="Dias p/ entrega"
-                    value={form.diasParaEntrega}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, diasParaEntrega: e.target.value.replace(/\D/g, '') }))
-                    }
-                    disabled={camposDesabilitados}
-                    placeholder="Ex.: 7"
-                  />
-                  <InputPadrao
-                    rotulo="Dt. validade do preço"
-                    type="date"
-                    value={form.dataValidadePreco}
-                    onChange={(e) => setForm((f) => ({ ...f, dataValidadePreco: e.target.value }))}
-                    disabled={camposDesabilitados}
-                  />
-                </div>
+                {form.tipoEntrega === 'sob_encomenda' && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <InputPadrao
+                      rotulo="Dias p/ entrega"
+                      value={form.diasParaEntrega}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, diasParaEntrega: e.target.value.replace(/\D/g, '') }))
+                      }
+                      disabled={camposDesabilitados}
+                      placeholder="Ex.: 7"
+                    />
+                    <InputPadrao
+                      rotulo="Dt. validade do preço"
+                      type="date"
+                      value={form.dataValidadePreco}
+                      onChange={(e) => setForm((f) => ({ ...f, dataValidadePreco: e.target.value }))}
+                      disabled={camposDesabilitados}
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="sm:col-span-2 space-y-2">
@@ -905,7 +962,7 @@ function ConteudoDaPagina() {
               </div>
 
               <div className="sm:col-span-2">
-                <p className="mb-2 text-sm font-medium">Sujeito a comissão?</p>
+                <p className="mb-2 text-sm font-medium">Sujeito a comissão</p>
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
                     checked={form.flagComissao}
@@ -924,14 +981,22 @@ function ConteudoDaPagina() {
                 <InputPadrao
                   rotulo="Código de barras unidade"
                   value={form.codigoBarras}
-                  onChange={(e) => setForm((f) => ({ ...f, codigoBarras: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      codigoBarras: filtrarEntradaCodigoBarras(e.target.value),
+                    }))
+                  }
                   disabled={camposDesabilitados}
+                  mensagemDeErro={erroCodigoBarras}
+                  placeholder="EAN-13 ou DUN-14"
                 />
                 <InputPadrao
                   rotulo="Peso unitário"
                   value={form.pesoKg}
                   onChange={(e) => setForm((f) => ({ ...f, pesoKg: e.target.value }))}
                   disabled={camposDesabilitados}
+                  placeholder="Peso unitário com embalagem"
                 />
                 <InputPadrao
                   rotulo="Altura unitária (cm)"
@@ -988,13 +1053,6 @@ function ConteudoDaPagina() {
                 onChange={(e) => setForm((f) => ({ ...f, nomeCompra: e.target.value }))}
                 disabled={camposDesabilitados}
                 placeholder="Se não preencher, copia o nome de venda"
-              />
-              <InputPadrao
-                rotulo="Preço de custo (estoque)"
-                value={form.precoCusto}
-                onChange={(e) => setForm((f) => ({ ...f, precoCusto: e.target.value }))}
-                disabled={camposDesabilitados}
-                placeholder="0,00"
               />
               <ListaFornecedoresProduto
                 itens={form.fornecedores}

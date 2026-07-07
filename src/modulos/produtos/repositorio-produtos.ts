@@ -5,6 +5,8 @@ import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js
 import type { Prisma } from '@prisma/client'
 import type { DadosParaCriarProduto, DadosParaEditarProduto } from './esquema-produtos.js'
 import { urlPublicaFoto } from './armazenamento-foto-produto.js'
+import { proximoSkuNumerico } from './sku-sequencial.js'
+import { normalizarTextoCadastro } from '../../compartilhado/normalizacao/texto-cadastro.js'
 
 const includeCompleto = {
   fotos: { orderBy: { ordem: 'asc' as const } },
@@ -120,8 +122,10 @@ function dadosEscalares(dados: DadosParaCriarProduto | DadosParaEditarProduto) {
     unidade: dados.unidade,
     caracteristicas: dados.caracteristicas || null,
     tipoEntrega: dados.tipoEntrega || null,
-    diasParaEntrega: dados.diasParaEntrega ?? null,
-    dataValidadePreco: dados.dataValidadePreco ?? null,
+    diasParaEntrega:
+      dados.tipoEntrega === 'sob_encomenda' ? (dados.diasParaEntrega ?? null) : null,
+    dataValidadePreco:
+      dados.tipoEntrega === 'sob_encomenda' ? (dados.dataValidadePreco ?? null) : null,
     entregaNoAto: dados.entregaNoAto ?? false,
     entregaARetirar: dados.entregaARetirar ?? false,
     entregar: dados.entregar ?? false,
@@ -237,14 +241,38 @@ async function buscarPorId(id: string) {
   })
 }
 
+async function listarMarcasDistintas(companyId: string, busca?: string) {
+  const where: Prisma.ProdutoWhereInput = {
+    companyId,
+    ...(busca?.trim()
+      ? { marca: { contains: busca.trim(), mode: 'insensitive' } }
+      : {}),
+  }
+
+  const produtos = await clientePrisma.produto.findMany({
+    where,
+    select: { marca: true },
+    distinct: ['marca'],
+    orderBy: { marca: 'asc' },
+    take: 80,
+  })
+
+  const marcas = produtos
+    .map((p) => normalizarTextoCadastro(p.marca) ?? p.marca.trim())
+    .filter((m) => m.length > 0)
+
+  return [...new Set(marcas)]
+}
+
 async function buscarPorSkuNaEmpresa(sku: string, companyId: string) {
   return clientePrisma.produto.findFirst({ where: { sku, companyId } })
 }
 
 async function criar(dados: DadosParaCriarProduto, companyId: string) {
   return clientePrisma.$transaction(async (tx) => {
+    const sku = dados.sku?.trim() || (await proximoSkuNumerico(companyId, tx))
     const produto = await tx.produto.create({
-      data: { ...dadosEscalares(dados), companyId },
+      data: { ...dadosEscalares({ ...dados, sku }), companyId },
       include: includeCompleto,
     })
     await sincronizarRelacoes(tx, produto.id, dados)
@@ -258,7 +286,11 @@ async function criar(dados: DadosParaCriarProduto, companyId: string) {
 
 async function atualizar(id: string, dados: DadosParaEditarProduto, companyId: string) {
   return clientePrisma.$transaction(async (tx) => {
-    await tx.produto.update({ where: { id }, data: dadosEscalares(dados) })
+    const escalares = { ...dadosEscalares(dados) } as Record<string, unknown>
+    if (dados.precoCusto === undefined) {
+      delete escalares.precoCusto
+    }
+    await tx.produto.update({ where: { id }, data: escalares })
     await sincronizarRelacoes(tx, id, dados)
     const completo = await tx.produto.findUniqueOrThrow({
       where: { id },
@@ -320,6 +352,7 @@ async function removerFotosDoBanco(produtoId: string) {
 
 export const repositorioDeProdutos = {
   listarPorEmpresa,
+  listarMarcasDistintas,
   buscarPorId,
   buscarPorSkuNaEmpresa,
   criar,
