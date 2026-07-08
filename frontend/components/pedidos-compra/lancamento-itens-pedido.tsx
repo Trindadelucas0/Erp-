@@ -107,7 +107,7 @@ function CabecalhoOrdenavel({
 }) {
   const ativo = ordenacao?.coluna === coluna
   return (
-    <th className="px-3 py-2 font-medium whitespace-nowrap">
+    <th className="px-2 py-1.5 font-medium whitespace-nowrap">
       <button
         type="button"
         className={cn(
@@ -242,7 +242,7 @@ export function LancamentoItensPedido({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
           {itensLancados.length} produto{itensLancados.length !== 1 ? 's' : ''} lançado
@@ -256,14 +256,16 @@ export function LancamentoItensPedido({
       </div>
 
       {!disabled && (
-        <div className="space-y-3 rounded-lg border border-border p-3">
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_5rem_6rem_7rem_7rem]">
-            <ComboboxProduto
-              produtos={produtos}
-              valor={rascunho.produtoId}
-              aoMudar={(v) => void aoSelecionarProduto(v)}
-              disabled={preenchendoProduto}
-            />
+        <div className="space-y-2 rounded-md bg-muted/20 p-2">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+            <div className="sm:col-span-2 lg:col-span-3 2xl:col-span-2">
+              <ComboboxProduto
+                produtos={produtos}
+                valor={rascunho.produtoId}
+                aoMudar={(v) => void aoSelecionarProduto(v)}
+                disabled={preenchendoProduto}
+              />
+            </div>
             <InputPadrao
               rotulo="Código original"
               value={rascunho.codigoOriginal}
@@ -301,35 +303,43 @@ export function LancamentoItensPedido({
             </p>
           )}
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[6rem_7rem_7rem_7rem_minmax(0,1fr)_auto]">
-            <InputPadrao
-              rotulo="% desconto"
-              value={rascunho.percentualDesconto}
-              onChange={(e) => atualizarRascunho('percentualDesconto', e.target.value)}
-            />
-            <InputPadrao
-              rotulo="R$ desconto"
-              value={rascunho.valorDesconto}
-              onChange={(e) => atualizarRascunho('valorDesconto', e.target.value)}
-            />
-            <InputPadrao
-              rotulo="Outras desp."
-              value={rascunho.outrasDespesas}
-              onChange={(e) => atualizarRascunho('outrasDespesas', e.target.value)}
-            />
-            <div>
-              <p className="mb-2 text-sm font-medium leading-none">Total líquido</p>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="min-w-[5rem] flex-1 sm:max-w-[6rem]">
+              <InputPadrao
+                rotulo="% desc."
+                value={rascunho.percentualDesconto}
+                onChange={(e) => atualizarRascunho('percentualDesconto', e.target.value)}
+              />
+            </div>
+            <div className="min-w-[5rem] flex-1 sm:max-w-[7rem]">
+              <InputPadrao
+                rotulo="R$ desc."
+                value={rascunho.valorDesconto}
+                onChange={(e) => atualizarRascunho('valorDesconto', e.target.value)}
+              />
+            </div>
+            <div className="min-w-[5rem] flex-1 sm:max-w-[7rem]">
+              <InputPadrao
+                rotulo="Outras"
+                value={rascunho.outrasDespesas}
+                onChange={(e) => atualizarRascunho('outrasDespesas', e.target.value)}
+              />
+            </div>
+            <div className="min-w-[5rem]">
+              <p className="mb-2 text-sm font-medium leading-none">Líquido</p>
               <p className="flex h-9 items-center text-sm font-medium tabular-nums">
                 {formatarMoeda(totaisRascunho.liquido)}
               </p>
             </div>
-            <InputPadrao
-              rotulo="Prev. entrega"
-              type="date"
-              value={rascunho.previsaoEntrega}
-              onChange={(e) => atualizarRascunho('previsaoEntrega', e.target.value)}
-            />
-            <div className="flex items-end">
+            <div className="min-w-[8rem] flex-1 sm:max-w-[10rem]">
+              <InputPadrao
+                rotulo="Prev. ent."
+                type="date"
+                value={rascunho.previsaoEntrega}
+                onChange={(e) => atualizarRascunho('previsaoEntrega', e.target.value)}
+              />
+            </div>
+            <div className="shrink-0">
               <BotaoPrimario
                 type="button"
                 disabled={preenchendoProduto}
@@ -351,8 +361,8 @@ export function LancamentoItensPedido({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full min-w-[1100px] text-sm">
+      <div className="min-w-0 overflow-x-auto md:overflow-x-visible rounded-md border border-border">
+        <table className="w-full min-w-0 table-fixed text-sm md:table-auto">
           <thead>
             <tr className="border-b border-border bg-muted/40 text-left">
               <CabecalhoOrdenavel
@@ -362,7 +372,7 @@ export function LancamentoItensPedido({
                 onOrdenar={alternarOrdenacao}
               />
               <CabecalhoOrdenavel
-                rotulo="Código original"
+                rotulo="Cód. orig."
                 coluna="codigoOriginal"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
@@ -374,7 +384,7 @@ export function LancamentoItensPedido({
                 onOrdenar={alternarOrdenacao}
               />
               <CabecalhoOrdenavel
-                rotulo="Quantidade"
+                rotulo="Qtd."
                 coluna="quantidade"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
@@ -386,42 +396,42 @@ export function LancamentoItensPedido({
                 onOrdenar={alternarOrdenacao}
               />
               <CabecalhoOrdenavel
-                rotulo="% desconto"
+                rotulo="% desc."
                 coluna="pctDesconto"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
               <CabecalhoOrdenavel
-                rotulo="R$ desconto"
+                rotulo="R$ desc."
                 coluna="valorDesconto"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
               <CabecalhoOrdenavel
-                rotulo="Outras desp."
+                rotulo="Outras"
                 coluna="outras"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
               <CabecalhoOrdenavel
-                rotulo="Total bruto"
+                rotulo="T. bruto"
                 coluna="totalBruto"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
               <CabecalhoOrdenavel
-                rotulo="Total líquido"
+                rotulo="T. líquido"
                 coluna="totalLiquido"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
               <CabecalhoOrdenavel
-                rotulo="Prev. entrega"
+                rotulo="Prev. ent."
                 coluna="previsaoEntrega"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
-              <th className="px-3 py-2 font-medium text-muted-foreground">Ações</th>
+              <th className="px-2 py-1.5 font-medium text-muted-foreground">Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -445,7 +455,7 @@ export function LancamentoItensPedido({
                     )}
                     onClick={() => carregarParaEdicao(linha)}
                   >
-                    <td className="px-3 py-2 font-medium">
+                    <td className="px-2 py-1.5 font-medium">
                       {nomeProduto(linha.item, produtos)}
                       {linha.item.produtoSku ? (
                         <span className="mt-0.5 block text-xs text-muted-foreground">
@@ -453,24 +463,24 @@ export function LancamentoItensPedido({
                         </span>
                       ) : null}
                     </td>
-                    <td className="px-3 py-2">{linha.item.codigoOriginal || '—'}</td>
-                    <td className="px-3 py-2">{linha.item.unidade || '—'}</td>
-                    <td className="px-3 py-2 tabular-nums">{linha.item.quantidade}</td>
-                    <td className="px-3 py-2 tabular-nums">
+                    <td className="px-2 py-1.5">{linha.item.codigoOriginal || '—'}</td>
+                    <td className="px-2 py-1.5">{linha.item.unidade || '—'}</td>
+                    <td className="px-2 py-1.5 tabular-nums">{linha.item.quantidade}</td>
+                    <td className="px-2 py-1.5 tabular-nums">
                       {formatarMoeda(parseNum(linha.item.precoUnitario))}
                     </td>
-                    <td className="px-3 py-2 tabular-nums">{linha.item.percentualDesconto || '0'}</td>
-                    <td className="px-3 py-2 tabular-nums">
+                    <td className="px-2 py-1.5 tabular-nums">{linha.item.percentualDesconto || '0'}</td>
+                    <td className="px-2 py-1.5 tabular-nums">
                       {formatarMoeda(parseNum(linha.item.valorDesconto))}
                     </td>
-                    <td className="px-3 py-2 tabular-nums">
+                    <td className="px-2 py-1.5 tabular-nums">
                       {formatarMoeda(parseNum(linha.item.outrasDespesas))}
                     </td>
-                    <td className="px-3 py-2 tabular-nums">{formatarMoeda(totais.bruto)}</td>
-                    <td className="px-3 py-2 font-medium tabular-nums">
+                    <td className="px-2 py-1.5 tabular-nums">{formatarMoeda(totais.bruto)}</td>
+                    <td className="px-2 py-1.5 font-medium tabular-nums">
                       {formatarMoeda(totais.liquido)}
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap">
+                    <td className="px-2 py-1.5 whitespace-nowrap">
                       {linha.item.previsaoEntrega
                         ? formatarData(
                             /^\d{4}-\d{2}-\d{2}$/.test(linha.item.previsaoEntrega)
@@ -479,7 +489,7 @@ export function LancamentoItensPedido({
                           )
                         : '—'}
                     </td>
-                    <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                    <td className="px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1">
                         <Button
                           type="button"

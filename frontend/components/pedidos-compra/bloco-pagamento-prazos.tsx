@@ -166,7 +166,7 @@ export function BlocoPagamentoPrazos({
   }
 
   return (
-    <div className="space-y-4 rounded-lg border border-border p-4">
+    <div className="min-w-0 space-y-3 rounded-lg border border-border p-3">
       <p className="text-sm font-medium">Condição de pagamento e prazos</p>
 
       <div className="space-y-1">
@@ -219,15 +219,15 @@ export function BlocoPagamentoPrazos({
 
       {prazos.length > 0 && (
         <>
-          <div className="overflow-x-auto rounded-md border border-border">
-            <table className="w-full text-sm">
+          <div className="min-w-0 max-w-full">
+            <table className="w-full table-fixed text-sm">
               <thead>
                 <tr className="border-b bg-muted/40 text-left text-muted-foreground">
-                  <th className="px-3 py-2 font-medium w-16">Prazo</th>
-                  <th className="px-3 py-2 font-medium w-24">Dia</th>
-                  <th className="px-3 py-2 font-medium">Vencimento</th>
-                  <th className="px-3 py-2 font-medium">Valor (R$)</th>
-                  {!disabled && <th className="px-2 py-2" />}
+                  <th className="w-[10%] px-2 py-1.5 font-medium">Prazo</th>
+                  <th className="w-[15%] px-2 py-1.5 font-medium">Dia</th>
+                  <th className="w-[35%] px-2 py-1.5 font-medium">Vencimento</th>
+                  <th className="w-[25%] px-2 py-1.5 font-medium">Valor (R$)</th>
+                  {!disabled && <th className="w-[15%] px-2 py-1.5 font-medium" />}
                 </tr>
               </thead>
               <tbody>
@@ -242,8 +242,8 @@ export function BlocoPagamentoPrazos({
                     onBlur={() => setLinhaSelecionada((atual) => (atual === index ? null : atual))}
                     onKeyDown={(e) => aoTeclarLinha(e, index)}
                   >
-                    <td className="px-3 py-2">{p.numero}</td>
-                    <td className="px-3 py-2">
+                    <td className="px-2 py-1.5">{p.numero}</td>
+                    <td className="px-2 py-1.5">
                       <input
                         type="text"
                         inputMode="numeric"
@@ -252,10 +252,10 @@ export function BlocoPagamentoPrazos({
                         disabled={disabled}
                         placeholder="Dias"
                         maxLength={4}
-                        className="flex h-8 w-full min-w-[4rem] rounded-md border border-input bg-transparent px-2 text-sm"
+                        className="box-border flex h-8 w-full min-w-0 max-w-full rounded-md border border-input bg-transparent px-2 text-sm"
                       />
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-2 py-1.5">
                       {disabled ? (
                         <span className="text-sm tabular-nums">{formatarDataBr(p.vencimento)}</span>
                       ) : (
@@ -264,11 +264,11 @@ export function BlocoPagamentoPrazos({
                           value={p.vencimento}
                           onChange={(e) => atualizarVencimento(index, e.target.value)}
                           disabled={disabled}
-                          className="flex h-8 rounded-md border border-input bg-transparent px-2 text-sm"
+                          className="box-border flex h-8 w-full min-w-0 max-w-full rounded-md border border-input bg-transparent px-2 text-sm"
                         />
                       )}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-2 py-1.5">
                       {rateioIgual ? (
                         <span className="text-sm tabular-nums">
                           {formatarMoeda(Number(valorExibido(p, index, prazos, rateioParcelas, totalLiquido)) || 0)}
@@ -281,16 +281,17 @@ export function BlocoPagamentoPrazos({
                           onChange={(e) => atualizarValor(index, e.target.value)}
                           disabled={disabled}
                           placeholder="0,00"
-                          className="flex h-8 w-full min-w-[7rem] rounded-md border border-input bg-transparent px-2 text-sm"
+                          className="box-border flex h-8 w-full min-w-0 max-w-full rounded-md border border-input bg-transparent px-2 text-sm"
                         />
                       )}
                     </td>
                     {!disabled && (
-                      <td className="px-2 py-2">
+                      <td className="px-2 py-1.5">
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
+                          className="h-8 whitespace-nowrap px-2 text-xs"
                           onClick={() => removerPrazo(index)}
                           disabled={prazos.length <= 1}
                         >
@@ -340,7 +341,7 @@ export function BlocoPagamentoPrazos({
         </>
       )}
 
-      <div className="border-t border-border pt-4">
+      <div className="border-t border-border pt-3">
         <p className="mb-2 text-sm font-medium">Crédito do fornecedor</p>
         {creditos.length === 0 ? (
           <p className="text-xs text-muted-foreground">Nenhum crédito disponível para este fornecedor.</p>

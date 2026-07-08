@@ -348,6 +348,11 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     roteador.push(`/pedidos-compra${qs}`)
   }
 
+  function avancarParaItens() {
+    setErro('')
+    setAbaAtiva('itens')
+  }
+
   function abrirHistoricoProduto(produtoId: string) {
     setProdutoHistoricoModal(produtoId)
     void carregarHistoricoProduto(produtoId)
@@ -701,7 +706,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <Button
@@ -733,7 +738,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{erro}</p>
       )}
 
-      <CardPadrao>
+      <CardPadrao compacto>
         <form
           id="form-pedido-compra"
           onSubmit={(e) => {
@@ -779,9 +784,9 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
           />
 
           {abaAtiva === 'dados-gerais' && (
-          <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]">
-            <div className="min-w-0 space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_18rem]">
+            <div className="min-w-0 space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <ComboboxPessoa
                     rotulo="Fornecedor"
@@ -886,7 +891,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <InputPadrao
                   rotulo="Observação"
                   value={form.observacoes}
@@ -940,7 +945,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
               />
             </div>
 
-            <aside className="min-w-0 space-y-4 rounded-lg border border-border bg-muted/20 p-4 xl:sticky xl:top-0 xl:self-start">
+            <aside className="min-w-0 space-y-3 rounded-lg border border-border bg-muted/20 p-3 xl:sticky xl:top-0 xl:self-start">
               <div className="space-y-2">
                 <p className="text-sm font-medium">Painel do fornecedor</p>
                 {!form.fornecedorPessoaId && (
@@ -1036,7 +1041,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
             />
           )}
 
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
             <div className="shrink-0">
               {podeCancelarPedido && (
                 <Button
@@ -1068,6 +1073,15 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
                 )}
                 {!somenteLeitura && podeSalvar && (
                   <>
+                    {abaAtiva === 'itens' && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setAbaAtiva('dados-gerais')}
+                      >
+                        Voltar
+                      </Button>
+                    )}
                     <Button
                       type="button"
                       variant="outline"
@@ -1076,14 +1090,20 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
                     >
                       {salvando ? 'Salvando...' : podeConcluirPedido(form.status) ? 'Salvar rascunho' : 'Salvar'}
                     </Button>
-                    {podeConcluirPedido(form.status) && (
-                      <BotaoPrimario
-                        type="button"
-                        onClick={() => void aoSalvar(undefined, true)}
-                        disabled={salvando}
-                      >
-                        {salvando ? 'Salvando...' : 'Concluir pedido'}
+                    {abaAtiva === 'dados-gerais' && podeConcluirPedido(form.status) ? (
+                      <BotaoPrimario type="button" onClick={avancarParaItens}>
+                        Avançar
                       </BotaoPrimario>
+                    ) : (
+                      podeConcluirPedido(form.status) && (
+                        <BotaoPrimario
+                          type="button"
+                          onClick={() => void aoSalvar(undefined, true)}
+                          disabled={salvando}
+                        >
+                          {salvando ? 'Salvando...' : 'Concluir pedido'}
+                        </BotaoPrimario>
+                      )
                     )}
                   </>
                 )}

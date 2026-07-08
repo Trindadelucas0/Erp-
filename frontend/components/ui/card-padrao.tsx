@@ -15,6 +15,8 @@ type Props = {
   className?: string
   /** Permite menus/dropdowns absolutos no header sem serem cortados pelo card */
   permitirOverflow?: boolean
+  /** Padding interno reduzido (spacing 4 em vez de 6) */
+  compacto?: boolean
 }
 
 export function CardPadrao({
@@ -24,9 +26,13 @@ export function CardPadrao({
   children,
   className,
   permitirOverflow,
+  compacto,
 }: Props) {
   return (
-    <Card className={cn(permitirOverflow && '!overflow-visible', className)}>
+    <Card
+      size={compacto ? 'sm' : 'default'}
+      className={cn(permitirOverflow && '!overflow-visible', className)}
+    >
       {(titulo || descricao || acoes) && (
         <CardHeader>
           <div className="flex items-start justify-between gap-4">
@@ -38,7 +44,11 @@ export function CardPadrao({
           </div>
         </CardHeader>
       )}
-      <CardContent className={!titulo && !descricao && !acoes ? 'pt-6' : undefined}>
+      <CardContent
+        className={
+          !titulo && !descricao && !acoes ? (compacto ? 'pt-4' : 'pt-6') : undefined
+        }
+      >
         {children}
       </CardContent>
     </Card>
