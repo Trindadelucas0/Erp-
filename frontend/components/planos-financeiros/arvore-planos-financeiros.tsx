@@ -556,7 +556,7 @@ export function ArvorePlanosFinanceiros({
       : undefined
 
   const tabela = (
-    <table ref={refTabela} className="w-full table-fixed text-sm">
+    <table ref={refTabela} className="w-full min-w-[720px] table-fixed text-sm">
       <colgroup>{colunas}</colgroup>
       <thead>
         <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
@@ -589,7 +589,7 @@ export function ArvorePlanosFinanceiros({
 
   if (!arrastarHabilitado) {
     return (
-      <div className="overflow-visible rounded-lg border border-border bg-card">{tabela}</div>
+      <div className="overflow-x-auto rounded-lg border border-border bg-card">{tabela}</div>
     )
   }
 
@@ -605,7 +605,7 @@ export function ArvorePlanosFinanceiros({
     >
       <div
         ref={refAreaDrag}
-        className="relative overflow-hidden rounded-lg border border-border bg-card select-none"
+        className="relative overflow-x-auto rounded-lg border border-border bg-card select-none"
       >
         {tabela}
       </div>

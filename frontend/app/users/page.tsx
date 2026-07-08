@@ -649,7 +649,7 @@ function ConteudoDaPaginaDeUsuarios() {
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <p>
         <Link
           href="/papeis"
@@ -905,7 +905,7 @@ function ConteudoDaPaginaDeUsuarios() {
 
           {/* Aba 2: Acesso */}
           {abaAtiva === 'acesso' && (
-            <div className="space-y-6">
+            <div className="min-w-0 space-y-6">
               <div className="space-y-3">
                 <TituloSecao className="mb-0">Papéis</TituloSecao>
                 <div className="grid gap-2 sm:grid-cols-2">
@@ -974,7 +974,7 @@ function ConteudoDaPaginaDeUsuarios() {
 
           {/* Aba 3: Permissões */}
           {abaAtiva === 'permissoes' && (
-            <div className="space-y-6">
+            <div className="min-w-0 space-y-6">
               <div className="space-y-3">
                 <TituloSecao className="mb-0">Páginas liberadas</TituloSecao>
                 <p className="text-xs text-muted-foreground">

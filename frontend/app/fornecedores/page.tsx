@@ -1262,7 +1262,7 @@ function ConteudoDaPaginaDeFornecedores() {
   // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       {mensagemDeErro && !modalAberto && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{mensagemDeErro}</p>
       )}
@@ -1671,7 +1671,7 @@ function ConteudoDaPaginaDeFornecedores() {
 
             {/* ── Aba 5: Outros ──────────────────────────────────────── */}
             {abaAtiva === 'outros' && (
-              <div className="space-y-6">
+              <div className="min-w-0 space-y-6">
                 <div className="space-y-2">
                   <label className="text-sm font-medium leading-none">Tipo de fornecedor</label>
                   <div className="flex flex-wrap gap-4">
@@ -1686,7 +1686,7 @@ function ConteudoDaPaginaDeFornecedores() {
 
                 <div>
                   <h3 className="mb-3 text-sm font-medium">Prazos</h3>
-                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-6">
                     {form.prazosPagamento.map((prazo, idx) => (
                       <CampoInput
                         key={idx}

@@ -80,21 +80,21 @@ export function Modal({
   return (
     <div
       className={cn(
-        'fixed inset-0 z-50 flex justify-center bg-black/60 p-4',
-        manterPosicao ? 'items-start pt-[8vh]' : 'items-center'
+        'fixed inset-0 z-50 flex justify-center bg-black/60 p-2 sm:p-4',
+        manterPosicao ? 'items-start pt-[6vh] sm:pt-[8vh]' : 'items-center'
       )}
     >
       <div
         className={cn(
-          'flex w-full flex-col',
+          'flex w-full min-w-0 flex-col',
           larguras[largura],
-          'max-h-[90vh] rounded-lg border border-border bg-card shadow-xl'
+          'max-h-[100dvh] max-h-[90vh] rounded-lg border border-border bg-card shadow-xl'
         )}
       >
         {/* Cabeçalho fixo */}
-        <div className="flex shrink-0 items-start justify-between border-b border-border px-6 py-4">
+        <div className="flex shrink-0 items-start justify-between border-b border-border px-4 py-3 sm:px-6 sm:py-4">
           <div className="min-w-0 flex-1 space-y-0.5">
-            <h2 className="text-lg font-semibold leading-none">{titulo}</h2>
+            <h2 className="text-base font-semibold leading-none sm:text-lg">{titulo}</h2>
             {descricao && (
               <p className="text-sm text-muted-foreground">{descricao}</p>
             )}
@@ -104,7 +104,7 @@ export function Modal({
             type="button"
             variant="ghost"
             size="sm"
-            className="ml-4 h-8 w-8 shrink-0 p-0"
+            className="ml-2 h-8 w-8 shrink-0 p-0 sm:ml-4"
             onClick={aoFechar}
           >
             <X className="h-4 w-4" />
@@ -115,7 +115,7 @@ export function Modal({
         {/* Conteúdo rolável */}
         <div
           className={cn(
-            'flex-1 overflow-x-hidden overflow-y-auto px-6 py-4',
+            'min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-3 sm:px-6 sm:py-4',
             alturaMinimaConteudo && classeAlturaMinima
           )}
         >
@@ -124,7 +124,7 @@ export function Modal({
 
         {/* Rodapé fixo (opcional) */}
         {rodape && (
-          <div className="shrink-0 border-t border-border px-6 py-4">{rodape}</div>
+          <div className="shrink-0 border-t border-border px-4 py-3 sm:px-6 sm:py-4">{rodape}</div>
         )}
       </div>
     </div>

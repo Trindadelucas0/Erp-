@@ -172,7 +172,7 @@ function ConteudoDaPagina() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <div>
         <p className="text-sm text-muted-foreground">Compras &gt; Pedidos de Compra</p>
         <h1 className="mt-1 text-2xl font-bold tracking-tight">Pedidos de Compra</h1>
@@ -198,13 +198,13 @@ function ConteudoDaPagina() {
       >
         <div className="mb-3 flex flex-wrap items-end gap-3">
           <input
-            className="flex h-9 w-full max-w-[10rem] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="flex h-9 w-full min-w-0 max-w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:max-w-[10rem]"
             placeholder="Nº ou descrição"
             value={filtros.buscaNumero}
             onChange={(e) => setFiltros((f) => ({ ...f, buscaNumero: e.target.value }))}
           />
           <select
-            className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:w-auto"
             value={filtros.status}
             onChange={(e) =>
               setFiltros((f) => ({ ...f, status: e.target.value as FiltroStatus }))
@@ -217,7 +217,7 @@ function ConteudoDaPagina() {
             ))}
           </select>
           <select
-            className="flex h-9 min-w-[12rem] max-w-xs rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:min-w-[12rem] sm:max-w-xs"
             value={filtros.fornecedorId}
             onChange={(e) => setFiltros((f) => ({ ...f, fornecedorId: e.target.value }))}
           >
@@ -230,14 +230,14 @@ function ConteudoDaPagina() {
           </select>
           <input
             type="date"
-            className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:w-auto"
             value={filtros.dataInicio}
             onChange={(e) => setFiltros((f) => ({ ...f, dataInicio: e.target.value }))}
             title="Data inicial"
           />
           <input
             type="date"
-            className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:w-auto"
             value={filtros.dataFim}
             onChange={(e) => setFiltros((f) => ({ ...f, dataFim: e.target.value }))}
             title="Data final"

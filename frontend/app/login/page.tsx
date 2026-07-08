@@ -81,7 +81,7 @@ export default function PaginaDeLogin() {
   }
 
   return (
-    <div className="mx-auto flex max-w-md flex-col items-center justify-center py-8">
+    <div className="mx-auto flex min-w-0 w-full max-w-md flex-col items-center justify-center px-4 py-8">
       <div className="mb-8 text-center">
         <h1 className="text-2xl font-bold tracking-tight text-primary">
           ERP 

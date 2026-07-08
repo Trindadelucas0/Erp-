@@ -19,22 +19,25 @@ export function LayoutPrincipal({ children }: Props) {
 
   return (
     <ProvedorDeAtalhos>
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen min-w-0 overflow-x-hidden bg-background">
       <div className="hidden md:flex">
         <BarraLateral className="fixed inset-y-0 left-0 z-30" />
       </div>
 
       <Sheet open={menuMobileAberto} onOpenChange={setMenuMobileAberto}>
-        <SheetContent side="left" className="w-64 p-0">
+        <SheetContent side="left" className="h-full w-64 max-w-[85vw] p-0 sm:max-w-sm">
           <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
-          <BarraLateral aoFecharMenuMobile={() => setMenuMobileAberto(false)} />
+          <BarraLateral
+            className="h-full"
+            aoFecharMenuMobile={() => setMenuMobileAberto(false)}
+          />
         </SheetContent>
       </Sheet>
 
-      <div className="flex min-h-screen flex-1 flex-col md:pl-64">
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col overflow-x-hidden md:pl-64">
         <Cabecalho aoAbrirMenuMobile={() => setMenuMobileAberto(true)} />
-        <main className="flex-1 p-4 md:p-6">
-          <div className="mx-auto max-w-7xl">{children}</div>
+        <main className="min-w-0 flex-1 p-4 md:p-6">
+          <div className="mx-auto w-full min-w-0 max-w-7xl">{children}</div>
         </main>
       </div>
     </div>

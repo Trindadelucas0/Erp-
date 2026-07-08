@@ -35,12 +35,14 @@ export function CardPadrao({
     >
       {(titulo || descricao || acoes) && (
         <CardHeader>
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex-1">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <div className="min-w-0 flex-1">
               {titulo && <CardTitle>{titulo}</CardTitle>}
               {descricao && <CardDescription>{descricao}</CardDescription>}
             </div>
-            {acoes && <div className="shrink-0">{acoes}</div>}
+            {acoes && (
+              <div className="flex shrink-0 flex-wrap items-center gap-2">{acoes}</div>
+            )}
           </div>
         </CardHeader>
       )}

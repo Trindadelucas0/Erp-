@@ -26,9 +26,9 @@ export function BarraLateral({ aoFecharMenuMobile, className }: Props) {
         className
       )}
     >
-      <div className="border-b border-border px-6 py-5">
+      <div className="border-b border-border px-6 py-5 pr-12">
         <h1 className="text-lg font-bold tracking-tight text-primary">
-          ERP 
+          ERP
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">Sistema de Gestão</p>
       </div>

@@ -861,7 +861,7 @@ function ConteudoDaPagina() {
       : undefined
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <div>
         <p className="text-sm text-muted-foreground">Cadastros &gt; Produtos</p>
         <h1 className="mt-1 text-2xl font-bold tracking-tight">Cadastro de Produtos</h1>

@@ -15,6 +15,7 @@ import {
   type ProdutoOpcao,
 } from '@/lib/pedido-compra-shared'
 import { rotuloOrigemPreco } from '@/lib/preencher-item-pedido-compra'
+import { resolverUrlUpload } from '@/lib/resolver-url-upload'
 
 type ColunaOrdenacao =
   | 'produto'
@@ -56,6 +57,11 @@ function nomeProduto(item: ItemPedido, produtos: ProdutoOpcao[]): string {
   if (item.produtoNome?.trim()) return item.produtoNome
   const produto = produtos.find((p) => p.id === item.produtoId)
   return produto?.nomeVenda ?? '—'
+}
+
+function urlFotoDoItem(item: ItemPedido, produtos: ProdutoOpcao[]): string | null {
+  const produto = produtos.find((p) => p.id === item.produtoId)
+  return resolverUrlUpload(produto?.urlFotoMiniatura)
 }
 
 function compararTexto(a: string, b: string): number {
@@ -445,6 +451,8 @@ export function LancamentoItensPedido({
               linhasExibidas.map((linha) => {
                 const totais = calcularTotalItem(linha.item)
                 const selecionada = indiceEdicao === linha.indiceOriginal
+                const nome = nomeProduto(linha.item, produtos)
+                const urlFoto = urlFotoDoItem(linha.item, produtos)
                 return (
                   <tr
                     key={linha.item.id ?? `item-${linha.indiceOriginal}`}
@@ -455,13 +463,27 @@ export function LancamentoItensPedido({
                     )}
                     onClick={() => carregarParaEdicao(linha)}
                   >
-                    <td className="px-2 py-1.5 font-medium">
-                      {nomeProduto(linha.item, produtos)}
-                      {linha.item.produtoSku ? (
-                        <span className="mt-0.5 block text-xs text-muted-foreground">
-                          SKU {linha.item.produtoSku}
-                        </span>
-                      ) : null}
+                    <td className="px-2 py-1.5">
+                      <div className="flex min-w-0 items-center gap-2">
+                        {urlFoto ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={urlFoto}
+                            alt={nome}
+                            className="size-10 shrink-0 rounded object-cover"
+                          />
+                        ) : (
+                          <div className="size-10 shrink-0 rounded bg-muted" />
+                        )}
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">{nome}</p>
+                          {linha.item.produtoSku ? (
+                            <span className="mt-0.5 block text-xs text-muted-foreground">
+                              SKU {linha.item.produtoSku}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
                     </td>
                     <td className="px-2 py-1.5">{linha.item.codigoOriginal || '—'}</td>
                     <td className="px-2 py-1.5">{linha.item.unidade || '—'}</td>

@@ -1205,7 +1205,7 @@ function ConteudoDaPaginaDeClientes() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       {mensagemDeErro && !modalAberto && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {mensagemDeErro}

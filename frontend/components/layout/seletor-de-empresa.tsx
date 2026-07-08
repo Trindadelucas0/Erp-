@@ -26,9 +26,11 @@ export function SeletorDeEmpresa() {
 
   if (empresas.length <= 1) {
     return empresaAtiva ? (
-      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+      <div className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
         <Building2 className="size-4 shrink-0" />
-        <span className="max-w-[160px] truncate">{empresaAtiva.company.name}</span>
+        <span className="max-w-[6rem] truncate sm:max-w-[160px]">
+          {empresaAtiva.company.name}
+        </span>
       </div>
     ) : null
   }
@@ -41,14 +43,14 @@ export function SeletorDeEmpresa() {
   }
 
   return (
-    <div className="relative" {...zonaHover}>
+    <div className="relative min-w-0" {...zonaHover}>
       <button
         type="button"
         onClick={() => setAberto((v) => !v)}
-        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        className="flex min-w-0 max-w-[8rem] items-center gap-1.5 rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:max-w-none"
       >
         <Building2 className="size-4 shrink-0" />
-        <span className="max-w-[140px] truncate">
+        <span className="min-w-0 truncate sm:max-w-[140px]">
           {empresaAtiva?.company.name ?? 'Selecionar empresa'}
         </span>
         <ChevronDown className="size-3 shrink-0" />

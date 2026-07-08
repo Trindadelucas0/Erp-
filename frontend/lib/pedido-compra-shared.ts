@@ -45,6 +45,7 @@ export type ProdutoOpcao = {
   id: string
   nomeVenda: string
   sku: string | null
+  urlFotoMiniatura?: string | null
   unidade: string
   codigoOrigem: string | null
   precoCusto: number | null

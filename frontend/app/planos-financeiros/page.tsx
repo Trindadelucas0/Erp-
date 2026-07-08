@@ -176,7 +176,7 @@ function ConteudoDaPagina() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <div>
         <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
           <DollarSign className="size-3.5 shrink-0" />

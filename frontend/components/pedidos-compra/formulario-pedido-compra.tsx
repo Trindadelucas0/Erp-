@@ -158,6 +158,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
             id: string
             nomeVenda: string
             sku: string | null
+            urlFotoMiniatura?: string | null
             unidade: string
             codigoOrigem: string | null
             precoCusto: number | null
@@ -171,6 +172,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
             id: p.id,
             nomeVenda: p.nomeVenda,
             sku: p.sku,
+            urlFotoMiniatura: p.urlFotoMiniatura ?? null,
             unidade: p.unidade,
             codigoOrigem: p.codigoOrigem ?? null,
             precoCusto: p.precoCusto ?? null,
@@ -706,7 +708,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <Button

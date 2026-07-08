@@ -115,7 +115,7 @@ function ConteudoDaPaginaDeAuditoria() {
   const totalPaginas = Math.max(1, Math.ceil(total / 50))
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Auditoria</h1>

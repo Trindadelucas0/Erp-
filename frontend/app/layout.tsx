@@ -1,3 +1,4 @@
+import type { Viewport } from 'next'
 import { Manrope } from 'next/font/google'
 import { cn } from '@/lib/utils'
 import { ProvedorSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
@@ -6,6 +7,12 @@ import { LayoutCondicional } from '@/components/layout/layout-condicional'
 import './globals.css'
 
 const manrope = Manrope({ subsets: ['latin'], variable: '--font-sans' })
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+}
 
 const scriptTemaInicial = `
 (function() {
@@ -28,7 +35,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: scriptTemaInicial }} />
       </head>
-      <body>
+      <body className="min-h-screen overflow-x-hidden">
         <ProvedorSessaoDoUsuario>
           <ProvedorDeTema>
             <LayoutCondicional>{children}</LayoutCondicional>

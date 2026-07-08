@@ -143,7 +143,7 @@ function ConteudoDaPaginaDePapeis() {
   const ehAdmin = papelSelecionado?.name === PAPEL_PROTEGIDO
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <p>
         <Link
           href="/users"
