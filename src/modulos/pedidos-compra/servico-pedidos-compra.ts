@@ -14,7 +14,7 @@ import {
   normalizarPrazosPagamento,
 } from './parcelas-pagamento.js'
 import { baixarReservaPedido } from './servico-movimentacao-credito.js'
-import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
+import { statusAposEdicao } from './resolver-status-edicao-pedido.js'
 import type {
   DadosParaCriarPedidoCompra,
   DadosParaEditarPedidoCompra,
@@ -238,8 +238,11 @@ async function editarPedidoCompra(
       }
     : dados
 
+  const { concluir, ...dadosSemConcluir } = dadosComCredito
+  const novoStatus = statusAposEdicao(existente.status, concluir)
+
   const itensParaTotal =
-    dadosComCredito.itens ??
+    dadosSemConcluir.itens ??
     existente.itens.map((i) => ({
       quantidade: Number(i.quantidade),
       precoUnitario: Number(i.precoUnitario),
@@ -250,25 +253,26 @@ async function editarPedidoCompra(
 
   const dadosFinais = prepararDadosComPrazos(
     {
-      ...dadosComCredito,
+      ...dadosSemConcluir,
+      ...(novoStatus ? { status: novoStatus } : {}),
       valorFrete:
-        dadosComCredito.valorFrete !== undefined
-          ? dadosComCredito.valorFrete
+        dadosSemConcluir.valorFrete !== undefined
+          ? dadosSemConcluir.valorFrete
           : existente.valorFrete
             ? Number(existente.valorFrete)
             : null,
       creditoAplicado:
-        dadosComCredito.creditoAplicado !== undefined
-          ? dadosComCredito.creditoAplicado
+        dadosSemConcluir.creditoAplicado !== undefined
+          ? dadosSemConcluir.creditoAplicado
           : existente.creditoAplicado
             ? Number(existente.creditoAplicado)
             : null,
       rateioParcelas:
-        dadosComCredito.rateioParcelas ??
+        dadosSemConcluir.rateioParcelas ??
         (existente.rateioParcelas as 'igual' | 'manual' | undefined),
       prazosPagamento:
-        dadosComCredito.prazosPagamento !== undefined
-          ? dadosComCredito.prazosPagamento
+        dadosSemConcluir.prazosPagamento !== undefined
+          ? dadosSemConcluir.prazosPagamento
           : (existente.prazosPagamento as DadosParaEditarPedidoCompra['prazosPagamento']),
     },
     itensParaTotal as DadosParaCriarPedidoCompra['itens']

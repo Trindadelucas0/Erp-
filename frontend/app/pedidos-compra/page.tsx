@@ -40,7 +40,9 @@ type FiltroStatus =
   | 'todos'
   | 'aberto'
   | 'rascunho'
-  | 'feito'
+  | 'enviado'
+  | 'parcial'
+  | 'recebido'
   | 'cancelado'
 
 type ItemPedido = {
@@ -138,7 +140,9 @@ const FILTRO_STATUS_OPCOES: { value: FiltroStatus; label: string }[] = [
   { value: 'todos', label: 'Todos os status' },
   { value: 'aberto', label: 'Em aberto' },
   { value: 'rascunho', label: 'Rascunho' },
-  { value: 'feito', label: 'Feito' },
+  { value: 'enviado', label: 'Enviado' },
+  { value: 'parcial', label: 'Recebimento parcial' },
+  { value: 'recebido', label: 'Recebido' },
   { value: 'cancelado', label: 'Cancelado' },
 ]
 
@@ -1214,25 +1218,28 @@ function ConteudoDaPagina() {
           <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]">
             <div className="min-w-0 space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
-                <SelectPadrao
-                  rotulo="Fornecedor *"
-                  valor={form.fornecedorPessoaId}
-                  aoMudar={(v) => setForm((f) => ({ ...f, fornecedorPessoaId: v }))}
-                  opcoes={[
-                    { value: '', label: 'Selecione' },
-                    ...fornecedores.map((f) => ({ value: f.id, label: f.nome })),
-                  ]}
-                  disabled={camposDesabilitados}
-                />
-                <InputPadrao
-                  rotulo="Descrição"
-                  className="sm:col-span-2"
-                  value={form.descricao}
-                  onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))}
-                  disabled={camposDesabilitados}
-                  placeholder="Ex.: Compra reposição estoque"
-                  maxLength={120}
-                />
+                <div className="sm:col-span-2">
+                  <SelectPadrao
+                    rotulo="Fornecedor *"
+                    valor={form.fornecedorPessoaId}
+                    aoMudar={(v) => setForm((f) => ({ ...f, fornecedorPessoaId: v }))}
+                    opcoes={[
+                      { value: '', label: 'Selecione' },
+                      ...fornecedores.map((f) => ({ value: f.id, label: f.nome })),
+                    ]}
+                    disabled={camposDesabilitados}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <InputPadrao
+                    rotulo="Descrição"
+                    value={form.descricao}
+                    onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))}
+                    disabled={camposDesabilitados}
+                    placeholder="Ex.: Compra reposição estoque"
+                    maxLength={120}
+                  />
+                </div>
                 <SelectPadrao
                   rotulo="Transportadora"
                   valor={form.transportadoraPessoaId}
@@ -1283,18 +1290,20 @@ function ConteudoDaPagina() {
                   onChange={(e) => setForm((f) => ({ ...f, previsaoEntrega: e.target.value }))}
                   disabled={camposDesabilitados}
                 />
-                <InputPadrao
-                  rotulo="Valor frete"
-                  value={form.valorFrete}
-                  onChange={(e) => setForm((f) => ({ ...f, valorFrete: e.target.value }))}
-                  disabled={camposDesabilitados}
-                />
-                <InputPadrao
-                  rotulo="Valor frete sugerido"
-                  value={form.valorFreteSugerido}
-                  onChange={(e) => setForm((f) => ({ ...f, valorFreteSugerido: e.target.value }))}
-                  disabled={camposDesabilitados}
-                />
+                <div className="sm:col-span-2 grid max-w-md grid-cols-2 gap-3">
+                  <InputPadrao
+                    rotulo="Valor frete"
+                    value={form.valorFrete}
+                    onChange={(e) => setForm((f) => ({ ...f, valorFrete: e.target.value }))}
+                    disabled={camposDesabilitados}
+                  />
+                  <InputPadrao
+                    rotulo="Valor frete sugerido"
+                    value={form.valorFreteSugerido}
+                    onChange={(e) => setForm((f) => ({ ...f, valorFreteSugerido: e.target.value }))}
+                    disabled={camposDesabilitados}
+                  />
+                </div>
                 <div className="sm:col-span-2 space-y-2">
                   <InputPadrao
                     rotulo="Buscar pedido venda (encomenda)"
