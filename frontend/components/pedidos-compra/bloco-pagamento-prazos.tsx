@@ -1,15 +1,29 @@
 'use client'
 
 import { useState } from 'react'
+import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
 import { Button } from '@/components/ui/button'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Label } from '@/components/ui/label'
-import { distribuirParcelasIguais } from '@/lib/parcelas-pagamento-pedido'
+import {
+  somarParcelasManual,
+  TOLERANCIA_PARCELAS,
+  distribuirParcelasIguais,
+} from '@/lib/parcelas-pagamento-pedido'
 import {
   calcularDiasEntreDatas,
   calcularVencimentoPorDias,
   formatarDataBr,
 } from '@/lib/prazos-pagamento'
+
+const MENSAGEM_PRAZO_ZERO =
+  'Condição de pagamento está como "0" dias o que significa que o pagamento é antes do faturamento das mercadorias. Após aprovação do pedido será gerado um contas a pagar.\n\nDeseja prosseguir?'
+
+type PendenteZero = {
+  index: number
+  diasAnterior: string
+  vencimentoAnterior: string
+}
 
 export type PrazoPagamento = {
   numero: number
@@ -34,7 +48,6 @@ type Props = {
   avisoBaixaCredito: string
   disabled: boolean
   formatarMoeda: (v: number) => string
-  onCondicaoChange: (v: string) => void
   onRateioChange: (v: string) => void
   onPrazosChange: (prazos: PrazoPagamento[]) => void
   onSelecionarCredito: (id: string) => void
@@ -78,7 +91,6 @@ export function BlocoPagamentoPrazos({
   avisoBaixaCredito,
   disabled,
   formatarMoeda,
-  onCondicaoChange,
   onRateioChange,
   onPrazosChange,
   onSelecionarCredito,
@@ -88,6 +100,8 @@ export function BlocoPagamentoPrazos({
 }: Props) {
   const rateioIgual = rateioParcelas === 'igual'
   const [linhaSelecionada, setLinhaSelecionada] = useState<number | null>(null)
+  const [confirmacaoZeroAberta, setConfirmacaoZeroAberta] = useState(false)
+  const [pendenteZero, setPendenteZero] = useState<PendenteZero | null>(null)
 
   function atualizarPrazo(index: number, patch: Partial<PrazoPagamento>) {
     onPrazosChange(prazos.map((p, i) => (i === index ? { ...p, ...patch } : p)))
@@ -95,8 +109,36 @@ export function BlocoPagamentoPrazos({
 
   function atualizarDias(index: number, dias: string) {
     const diasLimpo = dias.replace(/\D/g, '')
+    const prazoAtual = prazos[index]
+    const diasAnterior = prazoAtual?.dias ?? ''
     const vencimento = calcularVencimentoPorDias(dataFaturamento, diasLimpo)
+
+    if (diasLimpo === '0' && diasAnterior !== '0') {
+      setPendenteZero({
+        index,
+        diasAnterior,
+        vencimentoAnterior: prazoAtual?.vencimento ?? '',
+      })
+      setConfirmacaoZeroAberta(true)
+    }
+
     atualizarPrazo(index, { dias: diasLimpo, vencimento })
+  }
+
+  function confirmarPrazoZero() {
+    setConfirmacaoZeroAberta(false)
+    setPendenteZero(null)
+  }
+
+  function cancelarPrazoZero() {
+    if (pendenteZero) {
+      atualizarPrazo(pendenteZero.index, {
+        dias: pendenteZero.diasAnterior,
+        vencimento: pendenteZero.vencimentoAnterior,
+      })
+    }
+    setConfirmacaoZeroAberta(false)
+    setPendenteZero(null)
   }
 
   function atualizarVencimento(index: number, vencimento: string) {
@@ -127,13 +169,18 @@ export function BlocoPagamentoPrazos({
     <div className="space-y-4 rounded-lg border border-border p-4">
       <p className="text-sm font-medium">Condição de pagamento e prazos</p>
 
-      <InputPadrao
-        rotulo="Condição de pagamento"
-        value={condicaoPagamento}
-        onChange={(e) => onCondicaoChange(e.target.value)}
-        disabled={disabled}
-        placeholder="Ex.: 30/60/90 dias"
-      />
+      <div className="space-y-1">
+        <InputPadrao
+          rotulo="Condição de pagamento"
+          value={condicaoPagamento}
+          onChange={() => undefined}
+          disabled
+          placeholder="—"
+        />
+        <p className="text-xs text-muted-foreground">
+          Preenchida automaticamente pelos prazos do fornecedor / parcelas.
+        </p>
+      </div>
 
       <div className="flex flex-wrap items-center gap-4">
         <fieldset className="space-y-1">
@@ -262,6 +309,29 @@ export function BlocoPagamentoPrazos({
               : 'Modo Manual: informe o valor (R$) de cada parcela. A soma deve igualar o total líquido.'}
             {!disabled && ' Tecle [Shift + Del] para excluir um prazo.'}
           </p>
+          {!rateioIgual && (
+            (() => {
+              const somaManual = somarParcelasManual(prazos)
+              const diverge =
+                prazos.some((p) => p.vencimento?.trim()) &&
+                Math.abs(somaManual - totalLiquido) > TOLERANCIA_PARCELAS
+              return (
+                <div className="space-y-1 text-sm">
+                  <p className="tabular-nums">
+                    Soma: <strong>{formatarMoeda(somaManual)}</strong>
+                    {' · '}
+                    Total líquido: <strong>{formatarMoeda(totalLiquido)}</strong>
+                  </p>
+                  {diverge && (
+                    <p className="text-sm text-destructive">
+                      Soma {formatarMoeda(somaManual)} ≠ líquido {formatarMoeda(totalLiquido)} — ajuste as
+                      parcelas para finalizar.
+                    </p>
+                  )}
+                </div>
+              )
+            })()
+          )}
           {!dataFaturamento && (
             <p className="text-xs text-amber-600">
               Informe a data de faturamento para calcular o vencimento a partir dos dias.
@@ -321,6 +391,16 @@ export function BlocoPagamentoPrazos({
           </div>
         )}
       </div>
+
+      <ModalConfirmacao
+        aberto={confirmacaoZeroAberta}
+        titulo="Pagamento antes do faturamento"
+        mensagem={MENSAGEM_PRAZO_ZERO}
+        textoConfirmar="Prosseguir"
+        textoCancelar="Cancelar"
+        aoConfirmar={confirmarPrazoZero}
+        aoCancelar={cancelarPrazoZero}
+      />
     </div>
   )
 }

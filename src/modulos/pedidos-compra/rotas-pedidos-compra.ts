@@ -3,7 +3,7 @@
  */
 import { FastifyInstance } from 'fastify'
 import { middlewareDeAutenticacao } from '../../infraestrutura/autenticacao/middleware-de-autenticacao.js'
-import { middlewareDeAutorizacao } from '../../infraestrutura/autenticacao/middleware-de-autorizacao.js'
+import { middlewareDeAutorizacao, middlewareDeAutorizacaoQualquer } from '../../infraestrutura/autenticacao/middleware-de-autorizacao.js'
 import { middlewareEmpresaAtiva } from '../../infraestrutura/autenticacao/middleware-empresa-ativa.js'
 import { controladorDePedidosCompra } from './controlador-pedidos-compra.js'
 import { controladorCreditosPendencias } from './controlador-creditos-pendencias.js'
@@ -19,7 +19,7 @@ export async function rotasDePedidosCompra(aplicacao: FastifyInstance): Promise<
 
   aplicacao.post(
     '/creditos-fornecedor',
-    { preHandler: [...auth, middlewareDeAutorizacao('compras:create')] },
+    { preHandler: [...auth, middlewareDeAutorizacaoQualquer('compras:create', 'compras:edit')] },
     controladorCreditosPendencias.criarCredito
   )
 
@@ -31,7 +31,7 @@ export async function rotasDePedidosCompra(aplicacao: FastifyInstance): Promise<
 
   aplicacao.post(
     '/pendencias-fornecedor',
-    { preHandler: [...auth, middlewareDeAutorizacao('compras:create')] },
+    { preHandler: [...auth, middlewareDeAutorizacaoQualquer('compras:create', 'compras:edit')] },
     controladorCreditosPendencias.criarPendencia
   )
 

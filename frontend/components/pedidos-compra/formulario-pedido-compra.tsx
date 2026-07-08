@@ -1,0 +1,1433 @@
+'use client'
+
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import {
+  ArrowLeft,
+  CircleDollarSign,
+  AlertCircle,
+  History,
+  Package,
+  Plus,
+  Truck,
+} from 'lucide-react'
+import { BlocoPagamentoPrazos, type PrazoPagamento } from '@/components/pedidos-compra/bloco-pagamento-prazos'
+import { ComboboxPessoa } from '@/components/pedidos-compra/combobox-pessoa'
+import { LancamentoItensPedido } from '@/components/pedidos-compra/lancamento-itens-pedido'
+import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
+import { clienteHttp } from '@/services/api'
+import { usePermissao } from '@/hooks/use-permissao'
+import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
+import { CardPadrao } from '@/components/ui/card-padrao'
+import { BotaoPrimario } from '@/components/ui/botao-primario'
+import { Button } from '@/components/ui/button'
+import { Modal } from '@/components/ui/modal'
+import { InputPadrao } from '@/components/ui/input-padrao'
+import { SelectPadrao } from '@/components/ui/select-padrao'
+import { Label } from '@/components/ui/label'
+import { cn } from '@/lib/utils'
+import { BadgeStatus } from '@/components/ui/badge-status'
+import { Abas } from '@/components/ui/abas'
+import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
+import {
+  montarPrazosParaPayload,
+  validarSomaParcelasManual,
+} from '@/lib/parcelas-pagamento-pedido'
+import { formatarDataBr } from '@/lib/prazos-pagamento'
+import {
+  preencherItemComProduto,
+} from '@/lib/preencher-item-pedido-compra'
+import {
+  formatarPedido,
+  podeConcluirPedido,
+  rotuloStatusUi,
+  tituloModalPedido,
+  varianteStatusUi,
+} from '@/lib/status-pedido-compra'
+import {
+  AVISO_BAIXA_CREDITO_NF,
+  AVISO_CONFERENCIA_NF,
+  MODALIDADES,
+  TIPOS_COMPRA,
+  TIPOS_PENDENCIA,
+  calcularTotalItem,
+  creditoVazio,
+  formVazio,
+  formatarData,
+  formatarDataIso,
+  formatarMoeda,
+  itemVazio,
+  mapearPrazosDoPedido,
+  condicaoDePrazosForm,
+  montarCondicaoPagamentoDePrazos,
+  parseNum,
+  pedidoEditavel,
+  pendenciaVazia,
+  prazosFornecedorParaForm,
+  type ContextoFornecedor,
+  type HistoricoCompra,
+  type ItemPedido,
+  type ModoPedidoCompra,
+  type PedidoVendaOpcao,
+  type PessoaOpcao,
+  type ProdutoOpcao,
+} from '@/lib/pedido-compra-shared'
+
+type Props = {
+  modo: ModoPedidoCompra
+  pedidoId?: string
+}
+
+export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
+  const roteador = useRouter()
+  const { estaAutenticado, carregando: carregandoSessao } = useSessaoDoUsuario()
+  const podeCriar = usePermissao('compras:create')
+  const podeEditar = usePermissao('compras:edit')
+  const podeCancelar = usePermissao('compras:delete')
+
+  const [fornecedores, setFornecedores] = useState<PessoaOpcao[]>([])
+  const [transportadoras, setTransportadoras] = useState<PessoaOpcao[]>([])
+  const [produtos, setProdutos] = useState<ProdutoOpcao[]>([])
+  const [contexto, setContexto] = useState<ContextoFornecedor | null>(null)
+  const [modalPendenciaAberto, setModalPendenciaAberto] = useState(false)
+  const [modalCreditoAberto, setModalCreditoAberto] = useState(false)
+  const [modalListaPendenciasAberto, setModalListaPendenciasAberto] = useState(false)
+  const [modalListaCreditosAberto, setModalListaCreditosAberto] = useState(false)
+  const [modalCancelarAberto, setModalCancelarAberto] = useState(false)
+  const [modalEntradasAberto, setModalEntradasAberto] = useState(false)
+  const [modalPedidosAbertosAberto, setModalPedidosAbertosAberto] = useState(false)
+  const [modalHistoricoAberto, setModalHistoricoAberto] = useState(false)
+  const [produtoHistoricoModal, setProdutoHistoricoModal] = useState('')
+  const [pedidosVenda, setPedidosVenda] = useState<PedidoVendaOpcao[]>([])
+  const [buscaPedidoVenda, setBuscaPedidoVenda] = useState('')
+  const [textoMotivoCancelamento, setTextoMotivoCancelamento] = useState('')
+  const [erroMotivoCancelamento, setErroMotivoCancelamento] = useState('')
+  const [cancelandoPedido, setCancelandoPedido] = useState(false)
+  const [formPendencia, setFormPendencia] = useState(pendenciaVazia)
+  const [formCredito, setFormCredito] = useState(creditoVazio)
+  const [salvandoPendencia, setSalvandoPendencia] = useState(false)
+  const [salvandoCredito, setSalvandoCredito] = useState(false)
+  const [erroModalPendencia, setErroModalPendencia] = useState('')
+  const [erroModalCredito, setErroModalCredito] = useState('')
+  const [mensagemPainelFornecedor, setMensagemPainelFornecedor] = useState('')
+  const [numeroPedido, setNumeroPedido] = useState<number | undefined>()
+  const [form, setForm] = useState(formVazio)
+  const [salvando, setSalvando] = useState(false)
+  const [carregandoPedido, setCarregandoPedido] = useState(modo !== 'novo')
+  const [erro, setErro] = useState('')
+  const [confirmacaoParcelasAberta, setConfirmacaoParcelasAberta] = useState(false)
+  const [concluirPendente, setConcluirPendente] = useState(false)
+  const [mensagemConfirmacaoParcelas, setMensagemConfirmacaoParcelas] = useState('')
+  const [historicoProdutos, setHistoricoProdutos] = useState<Record<string, HistoricoCompra[]>>({})
+  const [abaAtiva, setAbaAtiva] = useState<'dados-gerais' | 'itens'>('dados-gerais')
+  const usuarioAlterouFornecedorRef = useRef(false)
+
+  const modoEdicao = modo !== 'novo'
+  const pedidoBloqueado = modoEdicao && ['cancelado', 'recebido'].includes(form.status)
+  const modoVisualizacao =
+    modo === 'visualizar' || (modo === 'editar' && (!pedidoEditavel(form.status) || !podeEditar))
+  const somenteLeitura = modoVisualizacao || pedidoBloqueado
+  const camposDesabilitados = somenteLeitura || (modoEdicao ? !podeEditar : !podeCriar)
+  const podeSalvar = modoEdicao ? podeEditar : podeCriar
+  const podeGerenciarCreditoPendencia = podeCriar || podeEditar
+  const podeCancelarPedido = modoEdicao && podeCancelar && pedidoEditavel(form.status)
+  const statusExibido = modoEdicao ? form.status : 'rascunho'
+  const idAtual = pedidoId ?? ''
+
+  const carregarCatalogos = useCallback(async () => {
+    try {
+      const [resForn, resTrans, resProd] = await Promise.all([
+        clienteHttp.get('/fornecedores'),
+        clienteHttp.get('/transportadoras'),
+        clienteHttp.get('/produtos'),
+      ])
+      setFornecedores(
+        (resForn.data.fornecedores ?? [])
+          .filter((f: { ativo: boolean }) => f.ativo)
+          .map((f: { id: string; nome: string }) => ({ id: f.id, nome: f.nome }))
+      )
+      setTransportadoras(
+        (resTrans.data.transportadoras ?? [])
+          .filter((t: { ativo: boolean }) => t.ativo)
+          .map((t: { id: string; nome: string }) => ({ id: t.id, nome: t.nome }))
+      )
+      setProdutos(
+        (resProd.data.produtos ?? [])
+          .filter((p: { ativo: boolean }) => p.ativo)
+          .map((p: {
+            id: string
+            nomeVenda: string
+            sku: string | null
+            unidade: string
+            codigoOrigem: string | null
+            precoCusto: number | null
+            bloqueadoCompra: boolean
+            fornecedores: {
+              fornecedorPessoaId: string
+              codigoFornecedor: string | null
+              unidadeEntrada: string | null
+            }[]
+          }) => ({
+            id: p.id,
+            nomeVenda: p.nomeVenda,
+            sku: p.sku,
+            unidade: p.unidade,
+            codigoOrigem: p.codigoOrigem ?? null,
+            precoCusto: p.precoCusto ?? null,
+            bloqueadoCompra: p.bloqueadoCompra ?? false,
+            fornecedores: (p.fornecedores ?? []).map((f) => ({
+              fornecedorPessoaId: f.fornecedorPessoaId,
+              codigoFornecedor: f.codigoFornecedor ?? null,
+              unidadeEntrada: f.unidadeEntrada ?? null,
+            })),
+          }))
+      )
+    } catch {
+      setErro('Erro ao carregar catálogos.')
+    }
+  }, [])
+
+  const carregarContexto = useCallback(async (fornecedorId: string, aplicarPrazos = false) => {
+    if (!fornecedorId) {
+      setContexto(null)
+      return
+    }
+    try {
+      const { data } = await clienteHttp.get(`/pedidos-compra/fornecedor/${fornecedorId}/contexto`)
+      setContexto(data)
+      if (aplicarPrazos && data.prazosPagamentoFornecedor?.length) {
+        const prazosFornecedor = data.prazosPagamentoFornecedor as number[]
+        setForm((f) => ({
+          ...f,
+          condicaoPagamento: montarCondicaoPagamentoDePrazos(prazosFornecedor),
+          prazos: prazosFornecedorParaForm(prazosFornecedor, f.dataFaturamento),
+        }))
+      }
+    } catch {
+      setContexto(null)
+    }
+  }, [])
+
+  const carregarPedidosVenda = useCallback(async (busca?: string) => {
+    try {
+      const qs = busca?.trim() ? `?busca=${encodeURIComponent(busca.trim())}` : ''
+      const { data } = await clienteHttp.get(`/pedidos-compra/pedidos-venda/encomenda${qs}`)
+      setPedidosVenda(data.pedidos ?? [])
+    } catch {
+      setPedidosVenda([])
+    }
+  }, [])
+
+  const carregarHistoricoProduto = useCallback(async (produtoId: string) => {
+    if (!produtoId) return
+    try {
+      const { data } = await clienteHttp.get(`/pedidos-compra/produto/${produtoId}/historico`)
+      setHistoricoProdutos((prev) => ({ ...prev, [produtoId]: data.historico ?? [] }))
+    } catch {
+      setHistoricoProdutos((prev) => ({ ...prev, [produtoId]: [] }))
+    }
+  }, [])
+
+  const carregarPedidoNoForm = useCallback(
+    async (id: string) => {
+      const { data } = await clienteHttp.get(`/pedidos-compra/${id}`)
+      const p = data.pedido
+      setNumeroPedido(p.numero)
+      setForm({
+        fornecedorPessoaId: p.fornecedorPessoaId,
+        transportadoraPessoaId: p.transportadoraPessoaId ?? '',
+        modalidadeTransporte: p.modalidadeTransporte ?? '',
+        condicaoPagamento: p.condicaoPagamento ?? '',
+        tipoCompra: p.tipoCompra ?? 'revenda',
+        dataFaturamento: formatarDataIso(p.dataFaturamento),
+        previsaoEntrega: formatarDataIso(p.previsaoEntrega),
+        valorFrete: p.valorFrete != null ? String(p.valorFrete) : '',
+        valorFreteSugerido: p.valorFreteSugerido != null ? String(p.valorFreteSugerido) : '0',
+        rateioParcelas: p.rateioParcelas ?? 'igual',
+        prazos: Array.isArray(p.prazosPagamento) && p.prazosPagamento.length > 0
+          ? mapearPrazosDoPedido(p.prazosPagamento as PrazoPagamento[], formatarDataIso(p.dataFaturamento))
+          : [{ numero: 1, dias: '', vencimento: '', valor: '' }],
+        observacoes: p.observacoes ?? '',
+        observacoesInternas: p.observacoesInternas ?? '',
+        pedidoVendaId: p.pedidoVendaId ?? '',
+        creditoFornecedorId: p.creditoFornecedorId ?? '',
+        creditoAplicado: p.creditoAplicado != null ? String(p.creditoAplicado) : '',
+        status: p.status,
+        motivoCancelamento: p.motivoCancelamento ?? '',
+        itens: p.itens.map((i: ItemPedido & { produtoNome: string; produtoSku: string | null }) => ({
+          id: i.id,
+          produtoId: i.produtoId,
+          produtoNome: i.produtoNome,
+          produtoSku: i.produtoSku,
+          codigoOriginal: i.codigoOriginal ?? '',
+          quantidade: String(i.quantidade),
+          unidade: i.unidade,
+          precoUnitario: String(i.precoUnitario),
+          percentualDesconto: i.percentualDesconto != null ? String(i.percentualDesconto) : '0',
+          valorDesconto: i.valorDesconto != null ? String(i.valorDesconto) : '0',
+          outrasDespesas: i.outrasDespesas != null ? String(i.outrasDespesas) : '0',
+          previsaoEntrega: formatarDataIso(i.previsaoEntrega),
+          total: i.total,
+          totalLiquido: i.totalLiquido,
+        })),
+      })
+      for (const item of p.itens) {
+        if (item.produtoId) {
+          void carregarHistoricoProduto(item.produtoId)
+        }
+      }
+      return p
+    },
+    [carregarHistoricoProduto]
+  )
+
+  useEffect(() => {
+    if (carregandoSessao || !estaAutenticado) return
+    void carregarCatalogos()
+    void carregarPedidosVenda()
+  }, [carregandoSessao, estaAutenticado, carregarCatalogos, carregarPedidosVenda])
+
+  useEffect(() => {
+    if (carregandoSessao || !estaAutenticado) return
+    if (modo === 'novo') {
+      setCarregandoPedido(false)
+      return
+    }
+    if (!pedidoId) {
+      setErro('Pedido não informado.')
+      setCarregandoPedido(false)
+      return
+    }
+    setCarregandoPedido(true)
+    setErro('')
+    void carregarPedidoNoForm(pedidoId)
+      .catch(() => setErro('Erro ao carregar pedido.'))
+      .finally(() => setCarregandoPedido(false))
+  }, [carregandoSessao, estaAutenticado, modo, pedidoId, carregarPedidoNoForm])
+
+  useEffect(() => {
+    if (form.fornecedorPessoaId) {
+      const aplicarPrazos = modo === 'novo' || usuarioAlterouFornecedorRef.current
+      void carregarContexto(form.fornecedorPessoaId, aplicarPrazos)
+    } else {
+      setContexto(null)
+    }
+  }, [form.fornecedorPessoaId, modo, carregarContexto])
+
+  function selecionarFornecedor(fornecedorId: string) {
+    if (fornecedorId !== form.fornecedorPessoaId) {
+      usuarioAlterouFornecedorRef.current = true
+    }
+    setForm((f) => ({ ...f, fornecedorPessoaId: fornecedorId }))
+  }
+
+  function voltarParaLista(mensagem?: string) {
+    const qs = mensagem ? `?mensagem=${encodeURIComponent(mensagem)}` : ''
+    roteador.push(`/pedidos-compra${qs}`)
+  }
+
+  function abrirHistoricoProduto(produtoId: string) {
+    setProdutoHistoricoModal(produtoId)
+    void carregarHistoricoProduto(produtoId)
+    setModalHistoricoAberto(true)
+  }
+
+  function atualizarPrazos(prazos: PrazoPagamento[]) {
+    setForm((f) => ({
+      ...f,
+      prazos,
+      condicaoPagamento: condicaoDePrazosForm(prazos),
+    }))
+  }
+
+  function adicionarPrazo() {
+    setForm((f) => {
+      const prazos = [
+        ...f.prazos,
+        { numero: f.prazos.length + 1, dias: '', vencimento: '', valor: '' },
+      ]
+      return {
+        ...f,
+        prazos,
+        condicaoPagamento: condicaoDePrazosForm(prazos),
+      }
+    })
+  }
+
+  async function preencherProdutoRascunho(produtoId: string, base: ItemPedido): Promise<ItemPedido> {
+    if (!produtoId) return itemVazio()
+
+    const produto = produtos.find((p) => p.id === produtoId)
+    if (!produto) return base
+
+    let historico: HistoricoCompra[] = historicoProdutos[produtoId] ?? []
+    if (historicoProdutos[produtoId] === undefined) {
+      try {
+        const { data } = await clienteHttp.get(`/pedidos-compra/produto/${produtoId}/historico`)
+        historico = data.historico ?? []
+        setHistoricoProdutos((prev) => ({ ...prev, [produtoId]: historico }))
+      } catch {
+        historico = []
+        setHistoricoProdutos((prev) => ({ ...prev, [produtoId]: [] }))
+      }
+    }
+
+    return preencherItemComProduto(
+      base,
+      produto,
+      form.fornecedorPessoaId,
+      form.previsaoEntrega,
+      historico
+    )
+  }
+
+  function adicionarItemLancado(item: ItemPedido) {
+    setForm((f) => ({ ...f, itens: [...f.itens, item] }))
+  }
+
+  function atualizarItemLancado(indiceOriginal: number, item: ItemPedido) {
+    setForm((f) => {
+      const itens = [...f.itens]
+      itens[indiceOriginal] = item
+      return { ...f, itens }
+    })
+  }
+
+  function removerItemLancado(indiceOriginal: number) {
+    setForm((f) => ({
+      ...f,
+      itens: f.itens.filter((_, i) => i !== indiceOriginal),
+    }))
+  }
+
+  const totalForm = form.itens.reduce((s, i) => s + calcularTotalItem(i).liquido, 0)
+  const freteForm = parseNum(form.valorFrete)
+  const totalComFrete = totalForm + freteForm
+
+  function aoSelecionarCredito(creditoId: string) {
+    setForm((f) => {
+      const credito = contexto?.creditos.find((c) => c.id === creditoId)
+      return {
+        ...f,
+        creditoFornecedorId: creditoId,
+        creditoAplicado: credito ? String(credito.saldo) : '',
+      }
+    })
+  }
+
+  function limparCredito() {
+    setForm((f) => ({ ...f, creditoFornecedorId: '', creditoAplicado: '' }))
+  }
+
+  const creditoSelecionado = contexto?.creditos.find((c) => c.id === form.creditoFornecedorId)
+  const saldoMaxCredito = creditoSelecionado?.saldo ?? 0
+  const creditoNum = form.creditoAplicado ? Number(form.creditoAplicado.replace(',', '.')) : 0
+  const creditoValido =
+    !form.creditoFornecedorId ||
+    (Number.isFinite(creditoNum) && creditoNum > 0 && creditoNum <= saldoMaxCredito)
+  const totalLiquidoForm = totalComFrete - (Number.isFinite(creditoNum) && creditoValido ? creditoNum : 0)
+
+  function montarPayload(concluir: boolean) {
+    const creditoAplicadoNum = form.creditoAplicado
+      ? Number(form.creditoAplicado.replace(',', '.'))
+      : null
+    const prazosValidos = montarPrazosParaPayload(form.prazos, form.rateioParcelas, totalLiquidoForm)
+    return {
+      fornecedorPessoaId: form.fornecedorPessoaId,
+      transportadoraPessoaId: form.transportadoraPessoaId || null,
+      modalidadeTransporte: form.modalidadeTransporte || undefined,
+      condicaoPagamento: form.condicaoPagamento || undefined,
+      tipoCompra: form.tipoCompra,
+      dataFaturamento: form.dataFaturamento || null,
+      previsaoEntrega: form.previsaoEntrega || null,
+      valorFrete: form.valorFrete ? parseNum(form.valorFrete) : null,
+      valorFreteSugerido: form.valorFreteSugerido ? parseNum(form.valorFreteSugerido) : null,
+      prazosPagamento: prazosValidos && prazosValidos.length > 0 ? prazosValidos : null,
+      rateioParcelas: form.rateioParcelas,
+      observacoes: form.observacoes || undefined,
+      observacoesInternas: form.observacoesInternas || undefined,
+      descricao: '',
+      concluir,
+      pedidoVendaId: form.pedidoVendaId || null,
+      creditoFornecedorId: form.creditoFornecedorId || null,
+      creditoAplicado:
+        form.creditoFornecedorId && creditoAplicadoNum != null && Number.isFinite(creditoAplicadoNum)
+          ? creditoAplicadoNum
+          : null,
+      itens: form.itens.map((item, ordem) => ({
+        produtoId: item.produtoId,
+        codigoOriginal: item.codigoOriginal || null,
+        quantidade: parseNum(item.quantidade),
+        unidade: item.unidade,
+        precoUnitario: parseNum(item.precoUnitario),
+        percentualDesconto: parseNum(item.percentualDesconto) || null,
+        valorDesconto: parseNum(item.valorDesconto) || null,
+        outrasDespesas: parseNum(item.outrasDespesas) || null,
+        previsaoEntrega: item.previsaoEntrega || null,
+        ordem,
+      })),
+    }
+  }
+
+  async function executarSalvar(concluir: boolean) {
+    setSalvando(true)
+    setErro('')
+    try {
+      const payload = montarPayload(concluir)
+      if (modoEdicao && idAtual) {
+        await clienteHttp.put(`/pedidos-compra/${idAtual}`, payload)
+        voltarParaLista(`${formatarPedido(numeroPedido ?? 0)} atualizado.`)
+      } else {
+        const { data } = await clienteHttp.post('/pedidos-compra', payload)
+        voltarParaLista(
+          `${formatarPedido(data.pedido.numero)} criado.`
+        )
+      }
+    } catch (err: unknown) {
+      setErro(extrairMensagemApi(err, 'Erro ao salvar pedido'))
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  function montarMensagemConfirmacaoParcelas(): string | null {
+    const prazosPayload = montarPrazosParaPayload(form.prazos, form.rateioParcelas, totalLiquidoForm)
+    if (!prazosPayload?.length) return null
+
+    const linhas = prazosPayload.map(
+      (p) => `${p.numero} — ${formatarDataBr(p.vencimento)} — ${formatarMoeda(p.valor)}`
+    )
+    const soma = prazosPayload.reduce((s, p) => s + p.valor, 0)
+    return [
+      'Confira os valores das parcelas:',
+      '',
+      ...linhas,
+      '',
+      `Soma: ${formatarMoeda(soma)}`,
+      `Total líquido: ${formatarMoeda(totalLiquidoForm)}`,
+      '',
+      'Deseja prosseguir?',
+    ].join('\n')
+  }
+
+  async function aoSalvar(e?: FormEvent, concluir = false) {
+    e?.preventDefault()
+    if (!form.fornecedorPessoaId) {
+      setErro('Selecione o fornecedor.')
+      setAbaAtiva('dados-gerais')
+      return
+    }
+    if (form.itens.length === 0 || form.itens.some((i) => !i.produtoId)) {
+      setErro('Adicione ao menos um produto no pedido.')
+      setAbaAtiva('itens')
+      return
+    }
+    if (form.creditoFornecedorId && !creditoValido) {
+      setErro('Valor do crédito inválido ou excede o saldo disponível.')
+      return
+    }
+    if (form.rateioParcelas === 'manual') {
+      const erroParcelas = validarSomaParcelasManual(form.prazos, totalLiquidoForm)
+      if (erroParcelas) {
+        setErro(erroParcelas)
+        setAbaAtiva('dados-gerais')
+        return
+      }
+    }
+
+    const mensagem = montarMensagemConfirmacaoParcelas()
+    if (mensagem) {
+      setMensagemConfirmacaoParcelas(mensagem)
+      setConcluirPendente(concluir)
+      setConfirmacaoParcelasAberta(true)
+      setErro('')
+      return
+    }
+
+    await executarSalvar(concluir)
+  }
+
+  async function confirmarSalvarParcelas() {
+    setConfirmacaoParcelasAberta(false)
+    await executarSalvar(concluirPendente)
+  }
+
+  function cancelarConfirmacaoParcelas() {
+    setConfirmacaoParcelasAberta(false)
+  }
+
+  async function registrarPendencia(e: FormEvent) {
+    e.preventDefault()
+    if (!form.fornecedorPessoaId || formPendencia.descricao.trim().length < 3) {
+      setErroModalPendencia('Informe a descrição da pendência (mín. 3 caracteres).')
+      return
+    }
+    setSalvandoPendencia(true)
+    setErroModalPendencia('')
+    try {
+      await clienteHttp.post('/pedidos-compra/pendencias-fornecedor', {
+        fornecedorPessoaId: form.fornecedorPessoaId,
+        tipo: formPendencia.tipo,
+        descricao: formPendencia.descricao.trim(),
+        produtoId: formPendencia.produtoId || null,
+      })
+      setModalPendenciaAberto(false)
+      setFormPendencia(pendenciaVazia)
+      setMensagemPainelFornecedor('Pendência registrada.')
+      await carregarContexto(form.fornecedorPessoaId)
+    } catch (err: unknown) {
+      setErroModalPendencia(extrairMensagemApi(err, 'Erro ao registrar pendência'))
+    } finally {
+      setSalvandoPendencia(false)
+    }
+  }
+
+  async function registrarCredito(e: FormEvent) {
+    e.preventDefault()
+    if (!form.fornecedorPessoaId) return
+    const valor = Number(formCredito.valor.replace(',', '.'))
+    if (!Number.isFinite(valor) || valor <= 0) {
+      setErroModalCredito('Informe um valor de crédito válido.')
+      return
+    }
+    setSalvandoCredito(true)
+    setErroModalCredito('')
+    try {
+      await clienteHttp.post('/pedidos-compra/creditos-fornecedor', {
+        fornecedorPessoaId: form.fornecedorPessoaId,
+        valor,
+        origem: formCredito.origem || undefined,
+        vencimento: formCredito.vencimento
+          ? new Date(formCredito.vencimento).toISOString()
+          : undefined,
+      })
+      setModalCreditoAberto(false)
+      setFormCredito(creditoVazio)
+      setMensagemPainelFornecedor('Crédito cadastrado.')
+      await carregarContexto(form.fornecedorPessoaId)
+    } catch (err: unknown) {
+      setErroModalCredito(extrairMensagemApi(err, 'Erro ao cadastrar crédito'))
+    } finally {
+      setSalvandoCredito(false)
+    }
+  }
+
+  async function resolverPendencia(id: string) {
+    try {
+      await clienteHttp.patch(`/pedidos-compra/pendencias-fornecedor/${id}`, { resolvido: true })
+      if (form.fornecedorPessoaId) {
+        await carregarContexto(form.fornecedorPessoaId)
+      }
+    } catch (err: unknown) {
+      setErro(extrairMensagemApi(err, 'Erro ao resolver pendência'))
+    }
+  }
+
+  async function confirmarCancelamentoPedido() {
+    const motivo = textoMotivoCancelamento.trim()
+    if (motivo.length < 3) {
+      setErroMotivoCancelamento('Informe o motivo do cancelamento (mínimo 3 caracteres).')
+      return
+    }
+    if (!idAtual) return
+
+    setCancelandoPedido(true)
+    setErroMotivoCancelamento('')
+    try {
+      await clienteHttp.patch(`/pedidos-compra/${idAtual}/cancelar`, { motivo })
+      setModalCancelarAberto(false)
+      voltarParaLista(`${formatarPedido(numeroPedido ?? 0)} cancelado.`)
+    } catch (err: unknown) {
+      setErroMotivoCancelamento(extrairMensagemApi(err, 'Erro ao cancelar pedido'))
+    } finally {
+      setCancelandoPedido(false)
+    }
+  }
+
+  const titulo = tituloModalPedido(numeroPedido, null, modo === 'novo')
+  const itensPreenchidos = form.itens.filter((i) => i.produtoId).length
+  const totalPendencias = contexto?.pendencias.length ?? 0
+  const totalSaldoCreditos =
+    contexto?.creditos.reduce((soma, credito) => soma + credito.saldo, 0) ?? 0
+
+  const blocoTotaisRodape = (
+    <div className="flex flex-wrap items-center gap-4 text-sm">
+      <span>
+        Itens: <strong>{formatarMoeda(totalForm)}</strong>
+      </span>
+      {freteForm > 0 && (
+        <span>
+          Frete: <strong>{formatarMoeda(freteForm)}</strong>
+        </span>
+      )}
+      {creditoNum > 0 && creditoValido && (
+        <span>
+          Crédito: <strong>-{formatarMoeda(creditoNum)}</strong>
+        </span>
+      )}
+      {form.creditoFornecedorId && !creditoValido && (
+        <span className="text-destructive">Crédito excede saldo</span>
+      )}
+      <span>
+        Líquido: <strong>{formatarMoeda(totalLiquidoForm)}</strong>
+      </span>
+    </div>
+  )
+
+  if (carregandoPedido) {
+    return <p className="text-sm text-muted-foreground">Carregando pedido...</p>
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mb-2 -ml-2"
+            onClick={() => voltarParaLista()}
+          >
+            <ArrowLeft className="mr-1 size-4" />
+            Voltar para lista
+          </Button>
+          <p className="text-sm text-muted-foreground">Compras &gt; Pedidos de Compra</p>
+          <div className="mt-1 flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight">{titulo}</h1>
+            <BadgeStatus variante={varianteStatusUi(statusExibido)}>
+              {rotuloStatusUi(statusExibido)}
+            </BadgeStatus>
+          </div>
+          {modoVisualizacao && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Consulta dos dados do pedido (somente leitura)
+            </p>
+          )}
+        </div>
+      </div>
+
+      {erro && (
+        <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{erro}</p>
+      )}
+
+      <CardPadrao>
+        <form
+          id="form-pedido-compra"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void aoSalvar(e, false)
+          }}
+        >
+          {contexto && contexto.pendencias.length > 0 && (
+            <div className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
+              <p className="text-sm font-medium text-amber-700">Pendências abertas do fornecedor</p>
+              <p className="mt-1 text-xs text-amber-700/80">
+                Informativo — o pedido pode ser salvo mesmo com pendências abertas.
+              </p>
+              <ul className="mt-2 space-y-1 text-sm">
+                {contexto.pendencias.map((p) => (
+                  <li key={p.id} className="flex items-start justify-between gap-2">
+                    <span>
+                      {TIPOS_PENDENCIA.find((t) => t.value === p.tipo)?.label ?? p.tipo}: {p.descricao}
+                    </span>
+                    {podeGerenciarCreditoPendencia && (
+                      <button
+                        type="button"
+                        className="shrink-0 text-primary hover:underline"
+                        onClick={() => resolverPendencia(p.id)}
+                      >
+                        Resolver
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <Abas
+            className="mb-6"
+            abaAtiva={abaAtiva}
+            aoMudar={(id) => setAbaAtiva(id as 'dados-gerais' | 'itens')}
+            abas={[
+              { id: 'dados-gerais', rotulo: 'Dados gerais' },
+              { id: 'itens', rotulo: 'Lançamento de produtos', contador: itensPreenchidos },
+            ]}
+          />
+
+          {abaAtiva === 'dados-gerais' && (
+          <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]">
+            <div className="min-w-0 space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <ComboboxPessoa
+                    rotulo="Fornecedor"
+                    pessoas={fornecedores}
+                    valor={form.fornecedorPessoaId}
+                    aoMudar={selecionarFornecedor}
+                    disabled={camposDesabilitados}
+                    placeholder="Digite o nome do fornecedor..."
+                    obrigatorio
+                  />
+                </div>
+                <ComboboxPessoa
+                  rotulo="Transportadora"
+                  pessoas={transportadoras}
+                  valor={form.transportadoraPessoaId}
+                  aoMudar={(v) => setForm((f) => ({ ...f, transportadoraPessoaId: v }))}
+                  disabled={camposDesabilitados}
+                  placeholder="Digite o nome da transportadora..."
+                  permitirVazio
+                  rotuloVazio="Nenhuma"
+                />
+                <SelectPadrao
+                  rotulo="Tipo de frete"
+                  valor={form.modalidadeTransporte}
+                  aoMudar={(v) => setForm((f) => ({ ...f, modalidadeTransporte: v }))}
+                  opcoes={MODALIDADES}
+                  disabled={camposDesabilitados}
+                />
+                <SelectPadrao
+                  rotulo="Tipo de compra"
+                  valor={form.tipoCompra}
+                  aoMudar={(v) => setForm((f) => ({ ...f, tipoCompra: v }))}
+                  opcoes={TIPOS_COMPRA}
+                  disabled={camposDesabilitados}
+                />
+                <InputPadrao
+                  rotulo="Data de faturamento"
+                  type="date"
+                  value={form.dataFaturamento}
+                  onChange={(e) => {
+                    const dataFaturamento = e.target.value
+                    setForm((f) => {
+                      const prazos = f.prazos.map((p) => ({
+                        ...p,
+                        dias: dataFaturamento ? '0' : '',
+                        vencimento: dataFaturamento || '',
+                      }))
+                      return {
+                        ...f,
+                        dataFaturamento,
+                        prazos,
+                        condicaoPagamento: condicaoDePrazosForm(prazos),
+                      }
+                    })
+                  }}
+                  disabled={camposDesabilitados}
+                />
+                <InputPadrao
+                  rotulo="Previsão de entrega"
+                  type="date"
+                  value={form.previsaoEntrega}
+                  onChange={(e) => setForm((f) => ({ ...f, previsaoEntrega: e.target.value }))}
+                  disabled={camposDesabilitados}
+                />
+                <div className="sm:col-span-2 grid max-w-md grid-cols-2 gap-3">
+                  <InputPadrao
+                    rotulo="Valor frete"
+                    value={form.valorFrete}
+                    onChange={(e) => setForm((f) => ({ ...f, valorFrete: e.target.value }))}
+                    disabled={camposDesabilitados}
+                  />
+                  <InputPadrao
+                    rotulo="Valor frete sugerido"
+                    value={form.valorFreteSugerido}
+                    onChange={(e) => setForm((f) => ({ ...f, valorFreteSugerido: e.target.value }))}
+                    disabled={camposDesabilitados}
+                  />
+                </div>
+                <div className="sm:col-span-2 space-y-2">
+                  <InputPadrao
+                    rotulo="Buscar pedido venda (encomenda)"
+                    value={buscaPedidoVenda}
+                    onChange={(e) => {
+                      setBuscaPedidoVenda(e.target.value)
+                      void carregarPedidosVenda(e.target.value)
+                    }}
+                    disabled={camposDesabilitados}
+                    placeholder="Nº ou nome do cliente"
+                  />
+                  <SelectPadrao
+                    rotulo="Pedido venda (encomenda)"
+                    valor={form.pedidoVendaId}
+                    aoMudar={(v) => setForm((f) => ({ ...f, pedidoVendaId: v }))}
+                    opcoes={[
+                      { value: '', label: 'Nenhum' },
+                      ...pedidosVenda.map((pv) => ({
+                        value: pv.id,
+                        label: `#${pv.numero} — ${pv.clienteNome}`,
+                      })),
+                    ]}
+                    disabled={camposDesabilitados}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <InputPadrao
+                  rotulo="Observação"
+                  value={form.observacoes}
+                  onChange={(e) => setForm((f) => ({ ...f, observacoes: e.target.value }))}
+                  disabled={camposDesabilitados}
+                />
+                <InputPadrao
+                  rotulo="Observação interna (não será impressa)"
+                  value={form.observacoesInternas}
+                  onChange={(e) => setForm((f) => ({ ...f, observacoesInternas: e.target.value }))}
+                  disabled={camposDesabilitados}
+                />
+              </div>
+
+              {modoEdicao && form.status === 'cancelado' && (
+                <div className="space-y-2">
+                  <Label htmlFor="motivo-cancelamento">Motivo do cancelamento</Label>
+                  <textarea
+                    id="motivo-cancelamento"
+                    readOnly
+                    value={form.motivoCancelamento || 'Não informado'}
+                    rows={3}
+                    className={cn(
+                      'w-full min-w-0 rounded-md border border-input bg-muted/30 px-2.5 py-2 text-sm',
+                      'disabled:cursor-not-allowed disabled:opacity-70'
+                    )}
+                  />
+                </div>
+              )}
+
+              <BlocoPagamentoPrazos
+                condicaoPagamento={form.condicaoPagamento}
+                rateioParcelas={form.rateioParcelas}
+                prazos={form.prazos}
+                dataFaturamento={form.dataFaturamento}
+                totalLiquido={totalLiquidoForm}
+                creditoFornecedorId={form.creditoFornecedorId}
+                creditoAplicado={form.creditoAplicado}
+                creditos={contexto?.creditos ?? []}
+                saldoMaxCredito={saldoMaxCredito}
+                creditoValido={creditoValido}
+                avisoBaixaCredito={AVISO_BAIXA_CREDITO_NF}
+                disabled={camposDesabilitados}
+                formatarMoeda={formatarMoeda}
+                onRateioChange={(v) => setForm((f) => ({ ...f, rateioParcelas: v }))}
+                onPrazosChange={atualizarPrazos}
+                onSelecionarCredito={aoSelecionarCredito}
+                onCreditoAplicadoChange={(v) => setForm((f) => ({ ...f, creditoAplicado: v }))}
+                onLimparCredito={limparCredito}
+                onAdicionarPrazo={adicionarPrazo}
+              />
+            </div>
+
+            <aside className="min-w-0 space-y-4 rounded-lg border border-border bg-muted/20 p-4 xl:sticky xl:top-0 xl:self-start">
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Painel do fornecedor</p>
+                {!form.fornecedorPessoaId && (
+                  <p className="text-xs text-muted-foreground">Selecione um fornecedor.</p>
+                )}
+                {form.fornecedorPessoaId && mensagemPainelFornecedor && (
+                  <p className="rounded-md bg-primary/10 px-2 py-1.5 text-xs text-primary">
+                    {mensagemPainelFornecedor}
+                  </p>
+                )}
+              </div>
+
+              {contexto && form.fornecedorPessoaId && (
+                <>
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">Botões rápidos</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full justify-start"
+                      onClick={() => setModalListaPendenciasAberto(true)}
+                    >
+                      <AlertCircle className="mr-2 size-4" />
+                      Pendências ({totalPendencias})
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full justify-start"
+                      onClick={() => setModalListaCreditosAberto(true)}
+                    >
+                      <CircleDollarSign className="mr-2 size-4" />
+                      Crédito ({formatarMoeda(totalSaldoCreditos)})
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full justify-start"
+                      onClick={() => setModalEntradasAberto(true)}
+                    >
+                      <Truck className="mr-2 size-4" />
+                      Últimas entradas ({contexto.ultimasEntradas.length})
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full justify-start"
+                      onClick={() => setModalPedidosAbertosAberto(true)}
+                    >
+                      <Package className="mr-2 size-4" />
+                      Pedidos em aberto (
+                      {contexto.pedidosAbertos.filter((p) => p.id !== idAtual).length})
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full justify-start"
+                      disabled={!form.itens.some((i) => i.produtoId)}
+                      onClick={() => {
+                        const primeiro = form.itens.find((i) => i.produtoId)
+                        if (primeiro) abrirHistoricoProduto(primeiro.produtoId)
+                      }}
+                    >
+                      <History className="mr-2 size-4" />
+                      Histórico de custo
+                    </Button>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground">{AVISO_CONFERENCIA_NF}</p>
+                </>
+              )}
+            </aside>
+          </div>
+          )}
+
+          {abaAtiva === 'itens' && (
+            <LancamentoItensPedido
+              itens={form.itens}
+              produtos={produtos}
+              disabled={somenteLeitura || !podeSalvar}
+              formatarMoeda={formatarMoeda}
+              formatarData={formatarData}
+              onPreencherProduto={preencherProdutoRascunho}
+              onAdicionar={adicionarItemLancado}
+              onAtualizar={atualizarItemLancado}
+              onRemover={removerItemLancado}
+              onAbrirHistorico={abrirHistoricoProduto}
+            />
+          )}
+
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+            <div className="shrink-0">
+              {podeCancelarPedido && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => {
+                    setTextoMotivoCancelamento('')
+                    setErroMotivoCancelamento('')
+                    setModalCancelarAberto(true)
+                  }}
+                >
+                  Cancelar pedido
+                </Button>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-4">
+              {blocoTotaisRodape}
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" onClick={() => voltarParaLista()}>
+                  {modoVisualizacao ? 'Fechar' : 'Cancelar'}
+                </Button>
+                {modoVisualizacao && podeEditar && !pedidoBloqueado && idAtual && (
+                  <BotaoPrimario
+                    type="button"
+                    onClick={() => roteador.push(`/pedidos-compra/${idAtual}?modo=editar`)}
+                  >
+                    Editar
+                  </BotaoPrimario>
+                )}
+                {!somenteLeitura && podeSalvar && (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void aoSalvar(undefined, false)}
+                      disabled={salvando}
+                    >
+                      {salvando ? 'Salvando...' : podeConcluirPedido(form.status) ? 'Salvar rascunho' : 'Salvar'}
+                    </Button>
+                    {podeConcluirPedido(form.status) && (
+                      <BotaoPrimario
+                        type="button"
+                        onClick={() => void aoSalvar(undefined, true)}
+                        disabled={salvando}
+                      >
+                        {salvando ? 'Salvando...' : 'Concluir pedido'}
+                      </BotaoPrimario>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </form>
+      </CardPadrao>
+
+      <ModalConfirmacao
+        aberto={confirmacaoParcelasAberta}
+        titulo="Confirmar valores das parcelas"
+        mensagem={mensagemConfirmacaoParcelas}
+        textoConfirmar="Prosseguir"
+        textoCancelar="Cancelar"
+        aoConfirmar={() => void confirmarSalvarParcelas()}
+        aoCancelar={cancelarConfirmacaoParcelas}
+      />
+
+      <Modal
+        aberto={modalCancelarAberto}
+        aoFechar={() => setModalCancelarAberto(false)}
+        titulo="Cancelar pedido"
+        largura="md"
+        rodape={
+          <div className="flex w-full justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setModalCancelarAberto(false)}
+              disabled={cancelandoPedido}
+            >
+              Voltar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void confirmarCancelamentoPedido()}
+              disabled={cancelandoPedido}
+            >
+              {cancelandoPedido ? 'Cancelando...' : 'Confirmar cancelamento'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-2">
+          <Label htmlFor="motivo-cancelar-pedido">Motivo do cancelamento *</Label>
+          <textarea
+            id="motivo-cancelar-pedido"
+            value={textoMotivoCancelamento}
+            onChange={(e) => setTextoMotivoCancelamento(e.target.value)}
+            rows={4}
+            placeholder="Descreva o motivo do cancelamento"
+            className={cn(
+              'w-full min-w-0 rounded-md border border-input bg-transparent px-2.5 py-2 text-sm shadow-xs outline-none',
+              'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
+              erroMotivoCancelamento && 'border-destructive'
+            )}
+          />
+          {erroMotivoCancelamento && (
+            <p className="text-sm text-destructive">{erroMotivoCancelamento}</p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            O pedido será marcado como cancelado e não poderá mais ser editado.
+          </p>
+        </div>
+      </Modal>
+
+      <Modal
+        aberto={modalListaPendenciasAberto}
+        aoFechar={() => setModalListaPendenciasAberto(false)}
+        titulo="Pendências do fornecedor"
+        largura="lg"
+      >
+        <div className="space-y-4">
+          {podeGerenciarCreditoPendencia && (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setModalListaPendenciasAberto(false)
+                  setErroModalPendencia('')
+                  setMensagemPainelFornecedor('')
+                  setFormPendencia(pendenciaVazia)
+                  setModalPendenciaAberto(true)
+                }}
+              >
+                <Plus className="mr-1 size-4" />
+                Nova pendência
+              </Button>
+            </div>
+          )}
+          {!contexto || contexto.pendencias.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Nenhuma pendência aberta para este fornecedor.
+            </p>
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {contexto.pendencias.map((p) => (
+                <li
+                  key={p.id}
+                  className="flex items-start justify-between gap-3 rounded-md border border-border p-3"
+                >
+                  <div>
+                    <p className="font-medium">
+                      {TIPOS_PENDENCIA.find((t) => t.value === p.tipo)?.label ?? p.tipo}
+                    </p>
+                    <p className="text-muted-foreground">{p.descricao}</p>
+                  </div>
+                  {podeGerenciarCreditoPendencia && (
+                    <button
+                      type="button"
+                      className="shrink-0 text-primary hover:underline"
+                      onClick={() => void resolverPendencia(p.id)}
+                    >
+                      Resolver
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        aberto={modalListaCreditosAberto}
+        aoFechar={() => setModalListaCreditosAberto(false)}
+        titulo="Créditos do fornecedor"
+        largura="lg"
+      >
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm">
+              Saldo disponível:{' '}
+              <strong className="tabular-nums">{formatarMoeda(totalSaldoCreditos)}</strong>
+            </p>
+            {podeGerenciarCreditoPendencia && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setModalListaCreditosAberto(false)
+                  setErroModalCredito('')
+                  setMensagemPainelFornecedor('')
+                  setFormCredito(creditoVazio)
+                  setModalCreditoAberto(true)
+                }}
+              >
+                <Plus className="mr-1 size-4" />
+                Novo crédito
+              </Button>
+            )}
+          </div>
+          {!contexto || contexto.creditos.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Nenhum crédito registrado para este fornecedor.
+            </p>
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {contexto.creditos.map((c) => (
+                <li key={c.id} className="rounded-md border border-border p-3">
+                  <p className="font-medium tabular-nums">{formatarMoeda(c.saldo)}</p>
+                  <p className="text-muted-foreground">{c.origem || 'Sem origem informada'}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        aberto={modalPendenciaAberto}
+        aoFechar={() => {
+          setModalPendenciaAberto(false)
+          setErroModalPendencia('')
+        }}
+        titulo="Registrar pendência"
+        descricao="Cadastre uma pendência comercial do fornecedor (produto quebrado, defeito, crédito pendente etc.)."
+        largura="md"
+      >
+        <form onSubmit={registrarPendencia} className="space-y-4">
+          {erroModalPendencia && (
+            <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {erroModalPendencia}
+            </p>
+          )}
+          <SelectPadrao
+            rotulo="Tipo"
+            valor={formPendencia.tipo}
+            aoMudar={(v) => setFormPendencia((f) => ({ ...f, tipo: v }))}
+            opcoes={TIPOS_PENDENCIA}
+          />
+          <InputPadrao
+            rotulo="Descrição *"
+            value={formPendencia.descricao}
+            onChange={(e) => setFormPendencia((f) => ({ ...f, descricao: e.target.value }))}
+          />
+          <SelectPadrao
+            rotulo="Produto (opcional)"
+            valor={formPendencia.produtoId}
+            aoMudar={(v) => setFormPendencia((f) => ({ ...f, produtoId: v }))}
+            opcoes={[
+              { value: '', label: 'Nenhum' },
+              ...produtos.map((p) => ({
+                value: p.id,
+                label: `${p.sku ? p.sku + ' — ' : ''}${p.nomeVenda}`,
+              })),
+            ]}
+          />
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setModalPendenciaAberto(false)}>
+              Cancelar
+            </Button>
+            <BotaoPrimario type="submit" disabled={salvandoPendencia}>
+              {salvandoPendencia ? 'Salvando...' : 'Registrar'}
+            </BotaoPrimario>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        aberto={modalCreditoAberto}
+        aoFechar={() => {
+          setModalCreditoAberto(false)
+          setErroModalCredito('')
+        }}
+        titulo="Cadastrar crédito"
+        descricao="Inclua um novo crédito para o fornecedor. Depois você poderá aplicá-lo na condição de pagamento."
+        largura="md"
+      >
+        <form onSubmit={registrarCredito} className="space-y-4">
+          {erroModalCredito && (
+            <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {erroModalCredito}
+            </p>
+          )}
+          <InputPadrao
+            rotulo="Valor (R$) *"
+            value={formCredito.valor}
+            onChange={(e) => setFormCredito((f) => ({ ...f, valor: e.target.value }))}
+          />
+          <InputPadrao
+            rotulo="Origem"
+            value={formCredito.origem}
+            onChange={(e) => setFormCredito((f) => ({ ...f, origem: e.target.value }))}
+            placeholder="Ex.: devolução NF 123"
+          />
+          <InputPadrao
+            rotulo="Vencimento"
+            type="date"
+            value={formCredito.vencimento}
+            onChange={(e) => setFormCredito((f) => ({ ...f, vencimento: e.target.value }))}
+          />
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setModalCreditoAberto(false)}>
+              Cancelar
+            </Button>
+            <BotaoPrimario type="submit" disabled={salvandoCredito}>
+              {salvandoCredito ? 'Salvando...' : 'Cadastrar'}
+            </BotaoPrimario>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        aberto={modalEntradasAberto}
+        aoFechar={() => setModalEntradasAberto(false)}
+        titulo="Últimas entradas do fornecedor"
+        largura="lg"
+      >
+        {!contexto || contexto.ultimasEntradas.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhuma entrada registrada para este fornecedor.</p>
+        ) : (
+          <ul className="space-y-2 text-sm">
+            {contexto.ultimasEntradas.map((e) => (
+              <li key={e.id} className="rounded-md border border-border p-3">
+                <p className="font-medium">
+                  {formatarPedido(e.numero, e.descricao ?? null)} — {rotuloStatusUi(e.status)}
+                </p>
+                <p className="text-muted-foreground">
+                  {formatarData(e.data)} — {e.itens} item(ns) — {formatarMoeda(e.totalLiquido)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Modal>
+
+      <Modal
+        aberto={modalPedidosAbertosAberto}
+        aoFechar={() => setModalPedidosAbertosAberto(false)}
+        titulo="Pedidos de compra em aberto"
+        largura="lg"
+      >
+        {!contexto ||
+        contexto.pedidosAbertos.filter((p) => p.id !== idAtual).length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum pedido em aberto para este fornecedor.</p>
+        ) : (
+          <ul className="space-y-2 text-sm">
+            {contexto.pedidosAbertos
+              .filter((p) => p.id !== idAtual)
+              .map((p) => (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    className="w-full rounded-md border border-border p-3 text-left hover:bg-muted/30"
+                    onClick={() => {
+                      setModalPedidosAbertosAberto(false)
+                      roteador.push(`/pedidos-compra/${p.id}?modo=editar`)
+                    }}
+                  >
+                    <p className="font-medium">{formatarPedido(p.numero)}</p>
+                    <p className="text-muted-foreground">{formatarMoeda(p.totalLiquido)}</p>
+                  </button>
+                </li>
+              ))}
+          </ul>
+        )}
+      </Modal>
+
+      <Modal
+        aberto={modalHistoricoAberto}
+        aoFechar={() => setModalHistoricoAberto(false)}
+        titulo="Histórico de compras e preço de custo"
+        largura="lg"
+      >
+        {!produtoHistoricoModal ? (
+          <p className="text-sm text-muted-foreground">Selecione um produto.</p>
+        ) : historicoProdutos[produtoHistoricoModal] === undefined ? (
+          <p className="text-sm text-muted-foreground">Carregando...</p>
+        ) : historicoProdutos[produtoHistoricoModal].length === 0 ? (
+          <p className="text-sm text-muted-foreground">Sem compras registradas para este produto.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-muted-foreground">
+                  <th className="py-2 pr-3">Pedido</th>
+                  <th className="py-2 pr-3">Fornecedor</th>
+                  <th className="py-2 pr-3">Data</th>
+                  <th className="py-2 pr-3">Qtd</th>
+                  <th className="py-2 pr-3">Preço unit.</th>
+                  <th className="py-2">Custo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historicoProdutos[produtoHistoricoModal].map((h, i) => (
+                  <tr key={i} className="border-b border-border">
+                    <td className="py-2 pr-3">#{h.pedidoNumero}</td>
+                    <td className="py-2 pr-3">{h.fornecedorNome}</td>
+                    <td className="py-2 pr-3">{formatarData(h.data)}</td>
+                    <td className="py-2 pr-3">{h.quantidade}</td>
+                    <td className="py-2 pr-3">{formatarMoeda(h.precoUnitario)}</td>
+                    <td className="py-2">{formatarMoeda(h.precoCusto)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Modal>
+    </div>
+  )
+}

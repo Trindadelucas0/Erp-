@@ -12,10 +12,18 @@ export function distribuirParcelasIguais(totalParcelas: number, total: number): 
   return valores
 }
 
-function parseValorParcela(valor: unknown): number | null {
+export function parseValorParcela(valor: unknown): number | null {
   if (valor == null || valor === '') return null
   const n = typeof valor === 'number' ? valor : Number(String(valor).replace(',', '.'))
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : null
+}
+
+export function somarParcelasManual(
+  prazos: { vencimento: string; valor?: number | string | null }[]
+): number {
+  return prazos
+    .filter((p) => p.vencimento?.trim())
+    .reduce((s, p) => s + (parseValorParcela(p.valor) ?? 0), 0)
 }
 
 export function validarSomaParcelasManual(
@@ -32,7 +40,7 @@ export function validarSomaParcelasManual(
     }
   }
 
-  const soma = comVencimento.reduce((s, p) => s + (parseValorParcela(p.valor) ?? 0), 0)
+  const soma = somarParcelasManual(prazos)
   if (Math.abs(soma - totalLiquido) > TOLERANCIA_PARCELAS) {
     return `Soma das parcelas (${soma.toFixed(2)}) difere do total líquido (${totalLiquido.toFixed(2)}).`
   }

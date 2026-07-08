@@ -22,14 +22,39 @@ export function middlewareDeAutorizacao(chaveDaPermissao: string) {
       throw new ErroDaAplicacao('Não autenticado', 401)
     }
 
-    const usuarioTemPermissao =
-      await repositorioDePermissoes.usuarioPossuiPermissao(
-        idDoUsuario,
-        chaveDaPermissao
-      )
+    const usuarioTemPermissao = await repositorioDePermissoes.usuarioPossuiPermissao(
+      idDoUsuario,
+      chaveDaPermissao
+    )
 
     if (!usuarioTemPermissao) {
       throw new ErroDaAplicacao('Sem permissão para esta ação', 403)
     }
+  }
+}
+
+/**
+ * Exige ao menos uma das permissões informadas.
+ */
+export function middlewareDeAutorizacaoQualquer(...chavesDaPermissao: string[]) {
+  return async function (
+    requisicao: FastifyRequest,
+    _resposta: FastifyReply
+  ): Promise<void> {
+    const idDoUsuario = requisicao.idDoUsuario
+
+    if (!idDoUsuario) {
+      throw new ErroDaAplicacao('Não autenticado', 401)
+    }
+
+    for (const chave of chavesDaPermissao) {
+      const usuarioTemPermissao = await repositorioDePermissoes.usuarioPossuiPermissao(
+        idDoUsuario,
+        chave
+      )
+      if (usuarioTemPermissao) return
+    }
+
+    throw new ErroDaAplicacao('Sem permissão para esta ação', 403)
   }
 }

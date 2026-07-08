@@ -13,7 +13,7 @@ import {
   calcularTotalLiquidoPedido,
   normalizarPrazosPagamento,
 } from './parcelas-pagamento.js'
-import { baixarReservaPedido } from './servico-movimentacao-credito.js'
+import { repositorioDeFornecedores } from '../fornecedores/repositorio-fornecedores.js'
 import { statusAposEdicao } from './resolver-status-edicao-pedido.js'
 import type {
   DadosParaCriarPedidoCompra,
@@ -324,7 +324,7 @@ async function cancelarPedidoCompra(
 }
 
 async function obterContextoFornecedor(fornecedorPessoaId: string, companyId: string) {
-  const [pedidosAbertos, creditos, pendencias, ultimasEntradas] = await Promise.all([
+  const [pedidosAbertos, creditos, pendencias, ultimasEntradas, fornecedor] = await Promise.all([
     repositorioDePedidosCompra.listarPorEmpresa(companyId, {
       fornecedorId: fornecedorPessoaId,
       statusAberto: true,
@@ -332,7 +332,11 @@ async function obterContextoFornecedor(fornecedorPessoaId: string, companyId: st
     repositorioDePedidosCompra.listarCreditosFornecedor(companyId, fornecedorPessoaId),
     repositorioDePedidosCompra.listarPendenciasFornecedor(companyId, fornecedorPessoaId),
     repositorioDePedidosCompra.listarUltimasEntradasFornecedor(companyId, fornecedorPessoaId),
+    repositorioDeFornecedores.buscarPorId(fornecedorPessoaId),
   ])
+
+  const prazosPagamentoFornecedor =
+    fornecedor?.prazosPagamento?.filter((p): p is number => p != null && p > 0) ?? []
 
   return {
     pedidosAbertos,
@@ -352,6 +356,7 @@ async function obterContextoFornecedor(fornecedorPessoaId: string, companyId: st
     })),
     ultimasEntradas,
     historicoComprasProduto: [],
+    prazosPagamentoFornecedor,
   }
 }
 

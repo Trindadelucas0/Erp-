@@ -40,7 +40,7 @@ export function ModalConfirmacao({
         <h2 id="modal-confirmacao-titulo" className="text-lg font-semibold">
           {titulo}
         </h2>
-        <p id="modal-confirmacao-mensagem" className="mt-2 text-sm text-muted-foreground">
+        <p id="modal-confirmacao-mensagem" className="mt-2 whitespace-pre-line text-sm text-muted-foreground">
           {mensagem}
         </p>
         <div className="mt-6 flex justify-end gap-2">

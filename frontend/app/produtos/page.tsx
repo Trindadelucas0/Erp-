@@ -10,6 +10,12 @@ import { clienteHttp } from '@/services/api'
 import { resolverUrlUpload } from '@/lib/resolver-url-upload'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { RodapeModalVisualizacao } from '@/components/compartilhado/rodape-modal-visualizacao'
+import { RodapeModalFormulario } from '@/components/compartilhado/rodape-modal-formulario'
+import { IndicadorEtapasModal } from '@/components/compartilhado/indicador-etapas-modal'
+import {
+  tituloComAtalho,
+  useTeclaDaAcao,
+} from '@/components/compartilhado/provedor-de-atalhos'
 import { usePermissao } from '@/hooks/use-permissao'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { useValidacaoDeAbas, type ConfigDeAba } from '@/hooks/use-validacao-de-abas'
@@ -74,13 +80,6 @@ const ORIGENS_FISCAIS = [
   { value: '7', label: '7 - Estrangeira (Adquirida no mercado interno, sem similar nacional)' },
   { value: '8', label: '8 - Nacional (Conteúdo de importação superior a 70%)' },
 ] as const
-
-const ROTULO_PROXIMA_ABA: Record<(typeof ORDEM_ABAS)[number], string | null> = {
-  principal: 'Logística',
-  logistica: 'Compras',
-  compras: 'Fiscal',
-  fiscal: null,
-}
 
 const MENSAGEM_NCM_INVALIDO = 'NCM deve ter 8 dígitos.'
 const MENSAGEM_ERRO_ABA_LOGISTICA = 'Revise os códigos de barras na aba Logística.'
@@ -329,7 +328,19 @@ function ConteudoDaPagina() {
     validarAba,
     marcarAbaVisitada,
     resetarStatus,
+    abaLiberada,
   } = useValidacaoDeAbas(configAbas)
+
+  const teclaSalvar = useTeclaDaAcao('salvar')
+
+  const formularioValido = useMemo(
+    () => configAbas.every((aba) => aba.validar()),
+    [configAbas]
+  )
+
+  useEffect(() => {
+    if (modalAberto && !modoVisualizacao) validarTodasAsAbas()
+  }, [form, modalAberto, modoVisualizacao, validarTodasAsAbas])
 
   const carregar = useCallback(async () => {
     try {
@@ -683,21 +694,6 @@ function ConteudoDaPagina() {
   async function aoSalvar(e?: FormEvent) {
     e?.preventDefault()
     if (modoVisualizacao) return
-    marcarAbaVisitada(abaAtiva)
-
-    if (!validarAba(abaAtiva)) {
-      setErro(mensagemErroDaAba(abaAtiva))
-      return
-    }
-
-    const indiceAtual = ORDEM_ABAS.indexOf(abaAtiva as (typeof ORDEM_ABAS)[number])
-    const proximaAba = ORDEM_ABAS[indiceAtual + 1]
-
-    if (proximaAba) {
-      setErro('')
-      setAbaAtiva(proximaAba)
-      return
-    }
 
     const { todasValidas, primeiraAbaComErro } = validarTodasAsAbas()
     if (!todasValidas) {
@@ -780,19 +776,36 @@ function ConteudoDaPagina() {
   const indiceAba = ORDEM_ABAS.indexOf(abaAtiva as (typeof ORDEM_ABAS)[number])
   const ehPrimeiraAba = indiceAba <= 0
   const ehUltimaAba = indiceAba >= ORDEM_ABAS.length - 1
+  const etapaAtualLiberada = abaLiberada(abaAtiva)
 
   function irParaAbaAnterior() {
+    setErro('')
     if (!ehPrimeiraAba) {
-      setErro('')
       setAbaAtiva(ORDEM_ABAS[indiceAba - 1])
     }
   }
 
   function irParaProximaAba() {
     if (!ehUltimaAba) {
-      setErro('')
       setAbaAtiva(ORDEM_ABAS[indiceAba + 1])
     }
+  }
+
+  function aoAvancar() {
+    if (modoVisualizacao) {
+      setErro('')
+      irParaProximaAba()
+      return
+    }
+
+    marcarAbaVisitada(abaAtiva)
+    if (!validarAba(abaAtiva)) {
+      setErro(mensagemErroDaAba(abaAtiva))
+      return
+    }
+
+    setErro('')
+    irParaProximaAba()
   }
 
   const tituloModal = modoVisualizacao
@@ -802,12 +815,6 @@ function ConteudoDaPagina() {
       : veioDeDuplicacao
         ? 'Duplicar produto'
         : 'Novo produto'
-  const proximaAbaLabel = ROTULO_PROXIMA_ABA[abaAtiva as (typeof ORDEM_ABAS)[number]]
-  const rotuloBotaoSalvar = salvando
-    ? 'Salvando...'
-    : proximaAbaLabel
-      ? `Salvar e próximo → ${proximaAbaLabel}`
-      : 'Salvar'
 
   const abas = [
     { id: 'principal', rotulo: 'Principal', status: statusDasAbas.principal },
@@ -815,6 +822,8 @@ function ConteudoDaPagina() {
     { id: 'compras', rotulo: 'Compras', status: statusDasAbas.compras },
     { id: 'fiscal', rotulo: 'Fiscal', status: statusDasAbas.fiscal },
   ]
+
+  const etapasModalProduto = abas.map(({ id, rotulo }) => ({ id, rotulo }))
 
   const flagsEntregaPermitida: { campo: keyof FormProduto; rotulo: string }[] = [
     { campo: 'entregaNoAto', rotulo: 'No ato' },
@@ -1027,12 +1036,13 @@ function ConteudoDaPagina() {
         }
         largura="4xl"
         manterPosicao={!modoVisualizacao}
+        alturaMinimaConteudo={!modoVisualizacao ? 'min-h-[420px]' : undefined}
         rodape={
           modoVisualizacao ? (
             <RodapeModalVisualizacao
               aoFechar={fecharModal}
               aoAnterior={irParaAbaAnterior}
-              aoProximo={irParaProximaAba}
+              aoProximo={aoAvancar}
               mostrarAnterior={!ehPrimeiraAba}
               mostrarProximo={!ehUltimaAba}
               rotuloProximo="Próximo →"
@@ -1043,30 +1053,60 @@ function ConteudoDaPagina() {
               registroAtivo={form.ativo}
             />
           ) : (
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={fecharModal}>
-                Cancelar
-              </Button>
-              {podeSalvar && (
-                <BotaoPrimario form="form-produto" type="submit" disabled={salvando}>
-                  {rotuloBotaoSalvar}
-                </BotaoPrimario>
+            <RodapeModalFormulario
+              formId="form-produto"
+              rotuloSalvar={modoEdicao ? 'Salvar' : 'Cadastrar produto'}
+              salvando={salvando}
+              podeSalvar={formularioValido && podeSalvar}
+              titleSalvar={tituloComAtalho(
+                modoEdicao ? 'Salvar' : 'Cadastrar produto',
+                teclaSalvar
               )}
-            </div>
+              aoAnterior={irParaAbaAnterior}
+              mostrarAnterior={!ehPrimeiraAba}
+              aoProximo={aoAvancar}
+              mostrarProximo={!ehUltimaAba}
+              podeProximo={etapaAtualLiberada}
+              desabilitado={salvando}
+            />
           )
         }
       >
-        <form id="form-produto" onSubmit={aoSalvar} className="space-y-4">
-          <Abas
-            abas={abas}
-            abaAtiva={abaAtiva}
-            aoMudar={(id) => {
-              if (!modoVisualizacao) marcarAbaVisitada(abaAtiva)
-              setErro('')
-              setAbaAtiva(id)
-            }}
+        {!modoVisualizacao && (
+          <IndicadorEtapasModal
+            etapas={etapasModalProduto}
+            etapaAtiva={abaAtiva}
+            className="mb-4"
           />
+        )}
 
+        {!modoVisualizacao && erro && (
+          <div className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <p>{erro}</p>
+          </div>
+        )}
+
+        {!modoVisualizacao &&
+          !etapaAtualLiberada &&
+          !ehUltimaAba &&
+          !erro && (
+            <p className="mb-4 text-xs text-muted-foreground">
+              Preencha os campos obrigatórios desta etapa para continuar
+            </p>
+          )}
+
+        <Abas
+          abas={abas}
+          abaAtiva={abaAtiva}
+          aoMudar={(id) => {
+            if (!modoVisualizacao) marcarAbaVisitada(abaAtiva)
+            setErro('')
+            setAbaAtiva(id)
+          }}
+          className="mb-5"
+        />
+
+        <form id="form-produto" onSubmit={aoSalvar}>
           <fieldset disabled={somenteLeitura} className="m-0 min-w-0 space-y-4 border-0 p-0">
           {abaAtiva === 'principal' && (
             <div className="grid gap-4 sm:grid-cols-2">
@@ -1366,10 +1406,6 @@ function ConteudoDaPagina() {
             </div>
           )}
           </fieldset>
-
-          {!modoVisualizacao && erro && modalAberto && (
-            <p className="text-sm text-destructive">{erro}</p>
-          )}
         </form>
       </Modal>
     </div>
