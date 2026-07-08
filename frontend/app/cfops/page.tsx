@@ -31,6 +31,11 @@ import { Modal } from '@/components/ui/modal'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Label } from '@/components/ui/label'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
+import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
+import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
+import { ordenarLista } from '@/lib/ordenacao-lista'
+
+type ColunaCfop = 'codigo' | 'nome' | 'tipo' | 'situacao'
 
 type Cfop = {
   id: string
@@ -69,6 +74,7 @@ function ConteudoDaPagina() {
   const [salvando, setSalvando] = useState(false)
   const [mensagem, setMensagem] = useState('')
   const [erro, setErro] = useState('')
+  const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<ColunaCfop>()
 
   const classificacaoAtual = useMemo(
     () => inferirCfopDoCodigo(form.codigo),
@@ -180,6 +186,23 @@ function ConteudoDaPagina() {
     )
   })
 
+  const listaExibida = useMemo(
+    () =>
+      ordenarLista(listaFiltrada, ordenacao, (cfop, coluna) => {
+        switch (coluna) {
+          case 'codigo':
+            return cfop.codigo
+          case 'nome':
+            return cfop.nome
+          case 'tipo':
+            return rotuloExibicaoCfop(cfop.natureza, cfop.abrangencia, cfop.subtipoCfop)
+          case 'situacao':
+            return cfop.ativo ? 'Ativo' : 'Inativo'
+        }
+      }),
+    [listaFiltrada, ordenacao]
+  )
+
   const podeSalvar = modoEdicao ? podeEditar : podeCriar
 
   return (
@@ -226,22 +249,22 @@ function ConteudoDaPagina() {
             </colgroup>
             <thead>
               <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
-                <th className="px-4 py-3 font-medium">Código</th>
-                <th className="px-4 py-3 font-medium">Nome</th>
-                <th className="px-4 py-3 font-medium">Tipo</th>
-                <th className="px-4 py-3 font-medium">Situação</th>
+                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Código" coluna="codigo" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Nome" coluna="nome" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Tipo" coluna="tipo" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Situação" coluna="situacao" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
                 <th className="px-2 py-3" />
               </tr>
             </thead>
             <tbody>
-              {listaFiltrada.length === 0 && (
+              {listaExibida.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
                     Nenhum CFOP encontrado.
                   </td>
                 </tr>
               )}
-              {listaFiltrada.map((cfop) => {
+              {listaExibida.map((cfop) => {
                 const rotuloTipo = rotuloExibicaoCfop(
                   cfop.natureza,
                   cfop.abrangencia,

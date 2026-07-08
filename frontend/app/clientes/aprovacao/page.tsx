@@ -3,7 +3,7 @@
 /**
  * Painel de aprovação de clientes — Etapa 2 (admin).
  */
-import { FormEvent, useCallback, useEffect, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
@@ -16,6 +16,9 @@ import { BadgeStatus } from '@/components/ui/badge-status'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
+import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
+import { ordenarLista } from '@/lib/ordenacao-lista'
 import { Modal } from '@/components/ui/modal'
 import { SelectPadrao } from '@/components/ui/select-padrao'
 import {
@@ -105,6 +108,10 @@ function ConteudoAprovacao() {
 
   const [pendentes, setPendentes] = useState<ClientePendente[]>([])
   const [aguardando, setAguardando] = useState<ClienteAguardando[]>([])
+  const { ordenacao: ordenacaoPendentes, alternarOrdenacao: alternarOrdenacaoPendentes } =
+    useOrdenacaoColunas<'tipo' | 'nome' | 'documento' | 'contato' | 'status'>()
+  const { ordenacao: ordenacaoAguardando, alternarOrdenacao: alternarOrdenacaoAguardando } =
+    useOrdenacaoColunas<'nome' | 'documento' | 'email' | 'status'>()
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
@@ -253,6 +260,42 @@ function ConteudoAprovacao() {
     }
   }
 
+  const pendentesExibidos = useMemo(
+    () =>
+      ordenarLista(pendentes, ordenacaoPendentes, (c, coluna) => {
+        switch (coluna) {
+          case 'tipo':
+            return c.tipo
+          case 'nome':
+            return c.nome
+          case 'documento':
+            return c.tipo === 'PF' ? (c.cpf ?? '') : (c.cnpj ?? '')
+          case 'contato':
+            return c.email || c.telefone || ''
+          case 'status':
+            return rotuloStatusAprovacao(c.statusAprovacao)
+        }
+      }),
+    [pendentes, ordenacaoPendentes]
+  )
+
+  const aguardandoExibidos = useMemo(
+    () =>
+      ordenarLista(aguardando, ordenacaoAguardando, (c, coluna) => {
+        switch (coluna) {
+          case 'nome':
+            return c.nome
+          case 'documento':
+            return c.tipo === 'PF' ? (c.cpf ?? '') : (c.cnpj ?? '')
+          case 'email':
+            return c.email ?? ''
+          case 'status':
+            return rotuloStatusAprovacao(c.statusAprovacao)
+        }
+      }),
+    [aguardando, ordenacaoAguardando]
+  )
+
   if (!podeAprovar) {
     return (
       <CardPadrao titulo="Aprovação de clientes" descricao="Acesso restrito">
@@ -303,16 +346,16 @@ function ConteudoAprovacao() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/50">
-                  <th className="px-4 py-3 text-left font-medium">Tipo</th>
-                  <th className="px-4 py-3 text-left font-medium">Nome</th>
-                  <th className="px-4 py-3 text-left font-medium">Documento</th>
-                  <th className="px-4 py-3 text-left font-medium">Contato</th>
-                  <th className="px-4 py-3 text-left font-medium">Status</th>
+                  <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Tipo" coluna="tipo" ordenacao={ordenacaoPendentes} onOrdenar={alternarOrdenacaoPendentes} />
+                  <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Nome" coluna="nome" ordenacao={ordenacaoPendentes} onOrdenar={alternarOrdenacaoPendentes} />
+                  <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Documento" coluna="documento" ordenacao={ordenacaoPendentes} onOrdenar={alternarOrdenacaoPendentes} />
+                  <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Contato" coluna="contato" ordenacao={ordenacaoPendentes} onOrdenar={alternarOrdenacaoPendentes} />
+                  <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Status" coluna="status" ordenacao={ordenacaoPendentes} onOrdenar={alternarOrdenacaoPendentes} />
                   <th className="px-4 py-3 text-left font-medium">Ações</th>
                 </tr>
               </thead>
               <tbody>
-                {pendentes.map((c) => (
+                {pendentesExibidos.map((c) => (
                   <tr key={c.id} className="border-b border-border last:border-0 hover:bg-muted/30">
                     <td className="px-4 py-3">{c.tipo}</td>
                     <td className="px-4 py-3 font-medium">{c.nome}</td>
@@ -356,15 +399,15 @@ function ConteudoAprovacao() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/50">
-                  <th className="px-4 py-3 text-left font-medium">Nome</th>
-                  <th className="px-4 py-3 text-left font-medium">Documento</th>
-                  <th className="px-4 py-3 text-left font-medium">E-mail</th>
-                  <th className="px-4 py-3 text-left font-medium">Status</th>
+                  <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Nome" coluna="nome" ordenacao={ordenacaoAguardando} onOrdenar={alternarOrdenacaoAguardando} />
+                  <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Documento" coluna="documento" ordenacao={ordenacaoAguardando} onOrdenar={alternarOrdenacaoAguardando} />
+                  <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="E-mail" coluna="email" ordenacao={ordenacaoAguardando} onOrdenar={alternarOrdenacaoAguardando} />
+                  <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Status" coluna="status" ordenacao={ordenacaoAguardando} onOrdenar={alternarOrdenacaoAguardando} />
                   <th className="px-4 py-3 text-left font-medium">Ações</th>
                 </tr>
               </thead>
               <tbody>
-                {aguardando.map((c) => (
+                {aguardandoExibidos.map((c) => (
                   <tr key={c.id} className="border-b border-border last:border-0 hover:bg-muted/30">
                     <td className="px-4 py-3 font-medium">{c.nome}</td>
                     <td className="px-4 py-3 font-mono text-muted-foreground">

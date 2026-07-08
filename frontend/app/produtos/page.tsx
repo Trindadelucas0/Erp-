@@ -31,6 +31,9 @@ import { InputPadrao } from '@/components/ui/input-padrao'
 import { TextareaPadrao } from '@/components/ui/textarea-padrao'
 import { SelectPadrao } from '@/components/ui/select-padrao'
 import { CampoFotoProduto } from '@/components/produtos/campo-foto-produto'
+import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
+import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
+import { ordenarLista } from '@/lib/ordenacao-lista'
 import { ComboboxMarca } from '@/components/produtos/combobox-marca'
 import {
   ListaEmbalagensMaster,
@@ -282,6 +285,9 @@ function ConteudoDaPagina() {
   const [produtosParaDuplicar, setProdutosParaDuplicar] = useState<ProdutoOpcao[]>([])
   const [carregandoCatalogoDuplicar, setCarregandoCatalogoDuplicar] = useState(false)
   const [produtoIdFotoOrigem, setProdutoIdFotoOrigem] = useState('')
+  const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<
+    'sku' | 'nome' | 'marca' | 'unidade' | 'situacao'
+  >()
 
   const configAbas: ConfigDeAba[] = useMemo(
     () => [
@@ -860,6 +866,25 @@ function ConteudoDaPagina() {
       ? MENSAGEM_NCM_INVALIDO
       : undefined
 
+  const listaExibida = useMemo(
+    () =>
+      ordenarLista(lista, ordenacao, (produto, coluna) => {
+        switch (coluna) {
+          case 'sku':
+            return produto.sku ?? ''
+          case 'nome':
+            return produto.nomeVenda
+          case 'marca':
+            return produto.marca ?? ''
+          case 'unidade':
+            return produto.unidade
+          case 'situacao':
+            return produto.ativo ? 'Ativo' : 'Inativo'
+        }
+      }),
+    [lista, ordenacao]
+  )
+
   return (
     <div className="min-w-0 space-y-6">
       <div>
@@ -905,23 +930,23 @@ function ConteudoDaPagina() {
             <thead>
               <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
                 <th className="px-4 py-3 font-medium w-16">Foto</th>
-                <th className="px-4 py-3 font-medium">SKU</th>
-                <th className="px-4 py-3 font-medium">Nome</th>
-                <th className="px-4 py-3 font-medium">Marca</th>
-                <th className="px-4 py-3 font-medium">Unidade</th>
-                <th className="px-4 py-3 font-medium">Situação</th>
+                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="SKU" coluna="sku" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Nome" coluna="nome" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Marca" coluna="marca" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Unidade" coluna="unidade" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Situação" coluna="situacao" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
                 <th className="px-2 py-3" />
               </tr>
             </thead>
             <tbody>
-              {lista.length === 0 && (
+              {listaExibida.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                     Nenhum produto encontrado.
                   </td>
                 </tr>
               )}
-              {lista.map((p: {
+              {listaExibida.map((p: {
                 id: string
                 sku: string | null
                 nomeVenda: string

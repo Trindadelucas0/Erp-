@@ -3,11 +3,14 @@
 /**
  * Página de auditoria — histórico de ações do sistema (somente admin).
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { useRegistrarAtalhos } from '@/hooks/use-registrar-atalhos'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
+import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
+import { ordenarLista } from '@/lib/ordenacao-lista'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Button } from '@/components/ui/button'
 
@@ -61,6 +64,28 @@ function ConteudoDaPaginaDeAuditoria() {
   const [filtroUsuarioId, setFiltroUsuarioId] = useState('')
   const [filtroDataInicio, setFiltroDataInicio] = useState('')
   const [filtroDataFim, setFiltroDataFim] = useState('')
+  const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<
+    'data' | 'usuario' | 'acao' | 'entidade' | 'id'
+  >()
+
+  const logsExibidos = useMemo(
+    () =>
+      ordenarLista(logs, ordenacao, (log, coluna) => {
+        switch (coluna) {
+          case 'data':
+            return new Date(log.criadoEm)
+          case 'usuario':
+            return log.usuario?.name ?? ''
+          case 'acao':
+            return rotuloDaAcao(log.acao)
+          case 'entidade':
+            return log.entidade
+          case 'id':
+            return log.entidadeId
+        }
+      }),
+    [logs, ordenacao]
+  )
 
   useEffect(() => {
     carregarLogs()
@@ -170,15 +195,15 @@ function ConteudoDaPaginaDeAuditoria() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/50">
-                    <th className="px-4 py-3 text-left font-medium">Data/Hora</th>
-                    <th className="px-4 py-3 text-left font-medium">Usuário</th>
-                    <th className="px-4 py-3 text-left font-medium">Ação</th>
-                    <th className="px-4 py-3 text-left font-medium">Entidade</th>
-                    <th className="px-4 py-3 text-left font-medium">ID</th>
+                    <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Data/Hora" coluna="data" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                    <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Usuário" coluna="usuario" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                    <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Ação" coluna="acao" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                    <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Entidade" coluna="entidade" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                    <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="ID" coluna="id" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
                   </tr>
                 </thead>
                 <tbody>
-                  {logs.map((log) => (
+                  {logsExibidos.map((log) => (
                     <tr
                       key={log.id}
                       className="border-b border-border last:border-0 hover:bg-muted/30"

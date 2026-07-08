@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft,
@@ -71,6 +71,9 @@ import {
   type PessoaOpcao,
   type ProdutoOpcao,
 } from '@/lib/pedido-compra-shared'
+import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
+import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
+import { ordenarLista } from '@/lib/ordenacao-lista'
 
 type Props = {
   modo: ModoPedidoCompra
@@ -118,6 +121,8 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   const [concluirPendente, setConcluirPendente] = useState(false)
   const [mensagemConfirmacaoParcelas, setMensagemConfirmacaoParcelas] = useState('')
   const [historicoProdutos, setHistoricoProdutos] = useState<Record<string, HistoricoCompra[]>>({})
+  const { ordenacao: ordenacaoHistorico, alternarOrdenacao: alternarOrdenacaoHistorico } =
+    useOrdenacaoColunas<'pedido' | 'fornecedor' | 'data' | 'quantidade' | 'preco' | 'custo'>()
   const [abaAtiva, setAbaAtiva] = useState<'dados-gerais' | 'itens'>('dados-gerais')
   const requisicaoContextoRef = useRef(0)
   const deveAplicarPrazosFornecedorRef = useRef(false)
@@ -702,6 +707,27 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
       </span>
     </div>
   )
+
+  const historicoExibido = useMemo(() => {
+    if (!produtoHistoricoModal) return []
+    const lista = historicoProdutos[produtoHistoricoModal] ?? []
+    return ordenarLista(lista, ordenacaoHistorico, (h, coluna) => {
+      switch (coluna) {
+        case 'pedido':
+          return h.pedidoNumero
+        case 'fornecedor':
+          return h.fornecedorNome
+        case 'data':
+          return new Date(h.data)
+        case 'quantidade':
+          return h.quantidade
+        case 'preco':
+          return h.precoUnitario
+        case 'custo':
+          return h.precoCusto
+      }
+    })
+  }, [produtoHistoricoModal, historicoProdutos, ordenacaoHistorico])
 
   if (carregandoPedido) {
     return <p className="text-sm text-muted-foreground">Carregando pedido...</p>
@@ -1447,16 +1473,16 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-muted-foreground">
-                  <th className="py-2 pr-3">Pedido</th>
-                  <th className="py-2 pr-3">Fornecedor</th>
-                  <th className="py-2 pr-3">Data</th>
-                  <th className="py-2 pr-3">Qtd</th>
-                  <th className="py-2 pr-3">Preço unit.</th>
-                  <th className="py-2">Custo</th>
+                  <CabecalhoColunaOrdenavel className="py-2 pr-3" rotulo="Pedido" coluna="pedido" ordenacao={ordenacaoHistorico} onOrdenar={alternarOrdenacaoHistorico} />
+                  <CabecalhoColunaOrdenavel className="py-2 pr-3" rotulo="Fornecedor" coluna="fornecedor" ordenacao={ordenacaoHistorico} onOrdenar={alternarOrdenacaoHistorico} />
+                  <CabecalhoColunaOrdenavel className="py-2 pr-3" rotulo="Data" coluna="data" ordenacao={ordenacaoHistorico} onOrdenar={alternarOrdenacaoHistorico} />
+                  <CabecalhoColunaOrdenavel className="py-2 pr-3" rotulo="Qtd" coluna="quantidade" ordenacao={ordenacaoHistorico} onOrdenar={alternarOrdenacaoHistorico} />
+                  <CabecalhoColunaOrdenavel className="py-2 pr-3" rotulo="Preço unit." coluna="preco" ordenacao={ordenacaoHistorico} onOrdenar={alternarOrdenacaoHistorico} />
+                  <CabecalhoColunaOrdenavel className="py-2" rotulo="Custo" coluna="custo" ordenacao={ordenacaoHistorico} onOrdenar={alternarOrdenacaoHistorico} />
                 </tr>
               </thead>
               <tbody>
-                {historicoProdutos[produtoHistoricoModal].map((h, i) => (
+                {historicoExibido.map((h, i) => (
                   <tr key={i} className="border-b border-border">
                     <td className="py-2 pr-3">#{h.pedidoNumero}</td>
                     <td className="py-2 pr-3">{h.fornecedorNome}</td>

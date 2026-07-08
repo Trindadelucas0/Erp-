@@ -1,11 +1,14 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { ArrowDown, ArrowUp, ArrowUpDown, History, Plus, Trash2 } from 'lucide-react'
+import { History, Plus, Trash2 } from 'lucide-react'
 import { ComboboxProduto } from '@/components/pedidos-compra/combobox-produto'
 import { Button } from '@/components/ui/button'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
+import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
 import { InputPadrao } from '@/components/ui/input-padrao'
+import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
+import { ordenarLista } from '@/lib/ordenacao-lista'
 import { cn } from '@/lib/utils'
 import {
   calcularTotalItem,
@@ -29,11 +32,6 @@ type ColunaOrdenacao =
   | 'totalBruto'
   | 'totalLiquido'
   | 'previsaoEntrega'
-
-type Ordenacao = {
-  coluna: ColunaOrdenacao
-  direcao: 'asc' | 'desc'
-}
 
 type LinhaExibida = {
   item: ItemPedido
@@ -64,77 +62,6 @@ function urlFotoDoItem(item: ItemPedido, produtos: ProdutoOpcao[]): string | nul
   return resolverUrlUpload(produto?.urlFotoMiniatura)
 }
 
-function compararTexto(a: string, b: string): number {
-  return a.localeCompare(b, 'pt-BR', { sensitivity: 'base' })
-}
-
-function valorOrdenacao(
-  item: ItemPedido,
-  coluna: ColunaOrdenacao,
-  produtos: ProdutoOpcao[]
-): string | number {
-  const totais = calcularTotalItem(item)
-  switch (coluna) {
-    case 'produto':
-      return nomeProduto(item, produtos)
-    case 'codigoOriginal':
-      return item.codigoOriginal || ''
-    case 'unidade':
-      return item.unidade || ''
-    case 'quantidade':
-      return parseNum(item.quantidade)
-    case 'preco':
-      return parseNum(item.precoUnitario)
-    case 'pctDesconto':
-      return parseNum(item.percentualDesconto)
-    case 'valorDesconto':
-      return parseNum(item.valorDesconto)
-    case 'outras':
-      return parseNum(item.outrasDespesas)
-    case 'totalBruto':
-      return totais.bruto
-    case 'totalLiquido':
-      return totais.liquido
-    case 'previsaoEntrega':
-      return item.previsaoEntrega || ''
-  }
-}
-
-function CabecalhoOrdenavel({
-  rotulo,
-  coluna,
-  ordenacao,
-  onOrdenar,
-}: {
-  rotulo: string
-  coluna: ColunaOrdenacao
-  ordenacao: Ordenacao | null
-  onOrdenar: (coluna: ColunaOrdenacao) => void
-}) {
-  const ativo = ordenacao?.coluna === coluna
-  return (
-    <th className="px-2 py-1.5 font-medium whitespace-nowrap">
-      <button
-        type="button"
-        className={cn(
-          'inline-flex items-center gap-1 hover:text-foreground',
-          ativo ? 'text-foreground' : 'text-muted-foreground'
-        )}
-        onClick={() => onOrdenar(coluna)}
-      >
-        {rotulo}
-        {ativo && ordenacao.direcao === 'asc' ? (
-          <ArrowUp className="size-3.5 shrink-0" />
-        ) : ativo && ordenacao.direcao === 'desc' ? (
-          <ArrowDown className="size-3.5 shrink-0" />
-        ) : (
-          <ArrowUpDown className="size-3.5 shrink-0 opacity-50" />
-        )}
-      </button>
-    </th>
-  )
-}
-
 export function LancamentoItensPedido({
   itens,
   produtos,
@@ -150,7 +77,7 @@ export function LancamentoItensPedido({
   const [rascunho, setRascunho] = useState<ItemPedido>(itemVazio())
   const [indiceEdicao, setIndiceEdicao] = useState<number | null>(null)
   const [erroRascunho, setErroRascunho] = useState('')
-  const [ordenacao, setOrdenacao] = useState<Ordenacao | null>(null)
+  const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<ColunaOrdenacao>()
   const [preenchendoProduto, setPreenchendoProduto] = useState(false)
 
   const itensLancados = useMemo(
@@ -161,19 +88,38 @@ export function LancamentoItensPedido({
     [itens]
   )
 
-  const linhasExibidas: LinhaExibida[] = useMemo(() => {
-    if (!ordenacao) return itensLancados
-    const { coluna, direcao } = ordenacao
-    const fator = direcao === 'asc' ? 1 : -1
-    return [...itensLancados].sort((a, b) => {
-      const va = valorOrdenacao(a.item, coluna, produtos)
-      const vb = valorOrdenacao(b.item, coluna, produtos)
-      if (typeof va === 'number' && typeof vb === 'number') {
-        return (va - vb) * fator
-      }
-      return compararTexto(String(va), String(vb)) * fator
-    })
-  }, [itensLancados, ordenacao, produtos])
+  const linhasExibidas: LinhaExibida[] = useMemo(
+    () =>
+      ordenarLista(itensLancados, ordenacao, (linha, coluna) => {
+        const item = linha.item
+        const totais = calcularTotalItem(item)
+        switch (coluna) {
+          case 'produto':
+            return nomeProduto(item, produtos)
+          case 'codigoOriginal':
+            return item.codigoOriginal || ''
+          case 'unidade':
+            return item.unidade || ''
+          case 'quantidade':
+            return parseNum(item.quantidade)
+          case 'preco':
+            return parseNum(item.precoUnitario)
+          case 'pctDesconto':
+            return parseNum(item.percentualDesconto)
+          case 'valorDesconto':
+            return parseNum(item.valorDesconto)
+          case 'outras':
+            return parseNum(item.outrasDespesas)
+          case 'totalBruto':
+            return totais.bruto
+          case 'totalLiquido':
+            return totais.liquido
+          case 'previsaoEntrega':
+            return item.previsaoEntrega || ''
+        }
+      }),
+    [itensLancados, ordenacao, produtos]
+  )
 
   const totaisRascunho = calcularTotalItem(rascunho)
   const origemPrecoLabel = rotuloOrigemPreco(rascunho.origemPreco)
@@ -233,18 +179,6 @@ export function LancamentoItensPedido({
     setRascunho({ ...linha.item })
     setIndiceEdicao(linha.indiceOriginal)
     setErroRascunho('')
-  }
-
-  function alternarOrdenacao(coluna: ColunaOrdenacao) {
-    setOrdenacao((atual) => {
-      if (!atual || atual.coluna !== coluna) {
-        return { coluna, direcao: 'asc' }
-      }
-      if (atual.direcao === 'asc') {
-        return { coluna, direcao: 'desc' }
-      }
-      return null
-    })
   }
 
   return (
@@ -371,67 +305,78 @@ export function LancamentoItensPedido({
         <table className="w-full min-w-0 table-fixed text-sm md:table-auto">
           <thead>
             <tr className="border-b border-border bg-muted/40 text-left">
-              <CabecalhoOrdenavel
+              <CabecalhoColunaOrdenavel
+                className="px-2 py-1.5"
                 rotulo="Produto"
                 coluna="produto"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
-              <CabecalhoOrdenavel
+              <CabecalhoColunaOrdenavel
+                className="px-2 py-1.5"
                 rotulo="Cód. orig."
                 coluna="codigoOriginal"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
-              <CabecalhoOrdenavel
+              <CabecalhoColunaOrdenavel
+                className="px-2 py-1.5"
                 rotulo="Unidade"
                 coluna="unidade"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
-              <CabecalhoOrdenavel
+              <CabecalhoColunaOrdenavel
+                className="px-2 py-1.5"
                 rotulo="Qtd."
                 coluna="quantidade"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
-              <CabecalhoOrdenavel
+              <CabecalhoColunaOrdenavel
+                className="px-2 py-1.5"
                 rotulo="Preço"
                 coluna="preco"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
-              <CabecalhoOrdenavel
+              <CabecalhoColunaOrdenavel
+                className="px-2 py-1.5"
                 rotulo="% desc."
                 coluna="pctDesconto"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
-              <CabecalhoOrdenavel
+              <CabecalhoColunaOrdenavel
+                className="px-2 py-1.5"
                 rotulo="R$ desc."
                 coluna="valorDesconto"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
-              <CabecalhoOrdenavel
+              <CabecalhoColunaOrdenavel
+                className="px-2 py-1.5"
                 rotulo="Outras"
                 coluna="outras"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
-              <CabecalhoOrdenavel
+              <CabecalhoColunaOrdenavel
+                className="px-2 py-1.5"
                 rotulo="T. bruto"
                 coluna="totalBruto"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
-              <CabecalhoOrdenavel
+              <CabecalhoColunaOrdenavel
+                className="px-2 py-1.5"
                 rotulo="T. líquido"
                 coluna="totalLiquido"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
-              <CabecalhoOrdenavel
+              <CabecalhoColunaOrdenavel
+                className="px-2 py-1.5"
                 rotulo="Prev. ent."
                 coluna="previsaoEntrega"
                 ordenacao={ordenacao}

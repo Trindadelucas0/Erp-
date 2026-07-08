@@ -3,7 +3,7 @@
 /**
  * Tela de cadastros — CRUD de empresas com permissões cadastros:*.
  */
-import { FormEvent, useCallback, useEffect, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { LinhaTabelaClicavel } from '@/components/compartilhado/linha-tabela-clicavel'
@@ -21,6 +21,9 @@ import { BadgeStatus } from '@/components/ui/badge-status'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
+import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
+import { ordenarLista } from '@/lib/ordenacao-lista'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { SelectPadrao } from '@/components/ui/select-padrao'
 import { Modal } from '@/components/ui/modal'
@@ -143,6 +146,9 @@ function ConteudoDaPaginaDeCadastros() {
   const [idDaEmpresaEmEdicao, setIdDaEmpresaEmEdicao] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [alterandoStatusId, setAlterandoStatusId] = useState('')
+  const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<
+    'nome' | 'cnpj' | 'telefone' | 'cidadeUf' | 'status'
+  >()
 
   const [form, setForm] = useState<FormularioEmpresa>(formularioVazio)
   const [formInicial, setFormInicial] = useState<FormularioEmpresa>(() =>
@@ -314,6 +320,27 @@ function ConteudoDaPaginaDeCadastros() {
       salvar: modalAberto && !salvando && !modoVisualizacao,
       cancelar: modalAberto && !salvando,
     }
+  )
+
+  const listaExibida = useMemo(
+    () =>
+      ordenarLista(listaDeEmpresas, ordenacao, (empresa, coluna) => {
+        switch (coluna) {
+          case 'nome':
+            return empresa.name
+          case 'cnpj':
+            return empresa.cnpj ?? ''
+          case 'telefone':
+            return empresa.phone ?? ''
+          case 'cidadeUf':
+            return empresa.cidade && empresa.estado
+              ? `${empresa.cidade} / ${empresa.estado}`
+              : empresa.cidade || empresa.estado || ''
+          case 'status':
+            return empresa.active ? 'Ativa' : 'Inativa'
+        }
+      }),
+    [listaDeEmpresas, ordenacao]
   )
 
   return (
@@ -545,15 +572,15 @@ function ConteudoDaPaginaDeCadastros() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium">Nome</th>
-                <th className="px-4 py-3 text-left font-medium">CNPJ</th>
-                <th className="px-4 py-3 text-left font-medium">Telefone</th>
-                <th className="px-4 py-3 text-left font-medium">Cidade / UF</th>
-                <th className="px-4 py-3 text-left font-medium">Status</th>
+                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Nome" coluna="nome" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="CNPJ" coluna="cnpj" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Telefone" coluna="telefone" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Cidade / UF" coluna="cidadeUf" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Status" coluna="status" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
               </tr>
             </thead>
             <tbody>
-              {listaDeEmpresas.length === 0 && (
+              {listaExibida.length === 0 && (
                 <tr>
                   <td
                     colSpan={5}
@@ -563,7 +590,7 @@ function ConteudoDaPaginaDeCadastros() {
                   </td>
                 </tr>
               )}
-              {listaDeEmpresas.map((empresa) => (
+              {listaExibida.map((empresa) => (
                 <LinhaTabelaClicavel
                   key={empresa.id}
                   ariaLabel={`Visualizar ${empresa.name}`}

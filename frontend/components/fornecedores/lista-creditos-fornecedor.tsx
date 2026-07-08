@@ -1,5 +1,10 @@
 'use client'
 
+import { useMemo } from 'react'
+import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
+import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
+import { ordenarLista } from '@/lib/ordenacao-lista'
+
 export type MovimentoCreditoFornecedor = {
   id: string
   tipo: string
@@ -44,6 +49,63 @@ function formatarData(iso: string) {
   } catch {
     return iso
   }
+}
+
+function TabelaMovimentosCredito({ movimentos }: { movimentos: MovimentoCreditoFornecedor[] }) {
+  const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<
+    'data' | 'tipo' | 'valor' | 'saldo' | 'motivo'
+  >()
+
+  const movimentosExibidos = useMemo(
+    () =>
+      ordenarLista(movimentos, ordenacao, (m, coluna) => {
+        switch (coluna) {
+          case 'data':
+            return new Date(m.createdAt)
+          case 'tipo':
+            return ROTULO_TIPO[m.tipo] ?? m.tipo
+          case 'valor':
+            return m.valor
+          case 'saldo':
+            return m.saldoDepois
+          case 'motivo':
+            return m.motivo ?? ''
+        }
+      }),
+    [movimentos, ordenacao]
+  )
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[32rem] text-xs">
+        <thead>
+          <tr className="border-b text-left text-muted-foreground">
+            <CabecalhoColunaOrdenavel className="py-1.5 pr-2" rotulo="Data" coluna="data" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+            <CabecalhoColunaOrdenavel className="py-1.5 pr-2" rotulo="Tipo" coluna="tipo" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+            <CabecalhoColunaOrdenavel className="py-1.5 pr-2" rotulo="Valor" coluna="valor" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+            <CabecalhoColunaOrdenavel className="py-1.5 pr-2" rotulo="Saldo depois" coluna="saldo" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+            <CabecalhoColunaOrdenavel className="py-1.5" rotulo="Motivo" coluna="motivo" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+          </tr>
+        </thead>
+        <tbody>
+          {movimentosExibidos.map((m) => (
+            <tr key={m.id} className="border-b border-border/60 last:border-0">
+              <td className="py-1.5 pr-2 whitespace-nowrap">{formatarData(m.createdAt)}</td>
+              <td className="py-1.5 pr-2">{ROTULO_TIPO[m.tipo] ?? m.tipo}</td>
+              <td className="py-1.5 pr-2 tabular-nums">{formatarMoeda(m.valor)}</td>
+              <td className="py-1.5 pr-2 tabular-nums">{formatarMoeda(m.saldoDepois)}</td>
+              <td className="py-1.5">
+                {m.motivo ?? '—'}
+                {m.pedidoNumero != null && (
+                  <span className="ml-1 text-muted-foreground">(PO #{m.pedidoNumero})</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
 }
 
 type Props = {
@@ -96,35 +158,7 @@ export function ListaCreditosFornecedor({ creditos, carregando }: Props) {
           </div>
 
           {credito.movimentos && credito.movimentos.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[32rem] text-xs">
-                <thead>
-                  <tr className="border-b text-left text-muted-foreground">
-                    <th className="py-1.5 pr-2 font-medium">Data</th>
-                    <th className="py-1.5 pr-2 font-medium">Tipo</th>
-                    <th className="py-1.5 pr-2 font-medium">Valor</th>
-                    <th className="py-1.5 pr-2 font-medium">Saldo depois</th>
-                    <th className="py-1.5 font-medium">Motivo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {credito.movimentos.map((m) => (
-                    <tr key={m.id} className="border-b border-border/60 last:border-0">
-                      <td className="py-1.5 pr-2 whitespace-nowrap">{formatarData(m.createdAt)}</td>
-                      <td className="py-1.5 pr-2">{ROTULO_TIPO[m.tipo] ?? m.tipo}</td>
-                      <td className="py-1.5 pr-2 tabular-nums">{formatarMoeda(m.valor)}</td>
-                      <td className="py-1.5 pr-2 tabular-nums">{formatarMoeda(m.saldoDepois)}</td>
-                      <td className="py-1.5">
-                        {m.motivo ?? '—'}
-                        {m.pedidoNumero != null && (
-                          <span className="ml-1 text-muted-foreground">(PO #{m.pedidoNumero})</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <TabelaMovimentosCredito movimentos={credito.movimentos} />
           ) : (
             <p className="text-xs text-muted-foreground">Sem movimentações registradas.</p>
           )}

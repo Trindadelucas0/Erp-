@@ -6,6 +6,9 @@ import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { useAtalhos } from '@/components/compartilhado/provedor-de-atalhos'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
+import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
+import { ordenarLista } from '@/lib/ordenacao-lista'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { REGISTRO_DE_ACOES } from '@/lib/atalhos/registro-de-acoes'
@@ -34,6 +37,23 @@ function ConteudoDaPaginaDeConfiguracoes() {
   const [capturandoAcao, setCapturandoAcao] = useState<ChaveDaAcao | null>(null)
   const [mensagem, setMensagem] = useState('')
   const [erro, setErro] = useState('')
+  const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<'acao' | 'tecla' | 'ativo'>()
+
+  const acoesExibidas = useMemo(
+    () =>
+      ordenarLista([...REGISTRO_DE_ACOES], ordenacao, (def, coluna) => {
+        const atalho = atalhos.find((a) => a.acao === def.chave)
+        switch (coluna) {
+          case 'acao':
+            return def.rotulo
+          case 'tecla':
+            return atalho?.tecla ?? ''
+          case 'ativo':
+            return atalho?.ativo ? 1 : 0
+        }
+      }),
+    [atalhos, ordenacao]
+  )
 
   const carregarAtalhos = useCallback(async () => {
     setCarregando(true)
@@ -197,14 +217,14 @@ function ConteudoDaPaginaDeConfiguracoes() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/50">
-                    <th className="px-4 py-3 text-left font-medium">Ação</th>
-                    <th className="px-4 py-3 text-left font-medium">Tecla</th>
-                    <th className="px-4 py-3 text-left font-medium">Ativo</th>
+                    <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Ação" coluna="acao" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                    <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Tecla" coluna="tecla" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                    <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Ativo" coluna="ativo" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
                     <th className="px-4 py-3 text-left font-medium">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {REGISTRO_DE_ACOES.map((def) => {
+                  {acoesExibidas.map((def) => {
                     const atalho = atalhos.find((a) => a.acao === def.chave)
                     if (!atalho) return null
                     const conflito = teclaTemConflitoNavegador(atalho.tecla)

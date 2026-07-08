@@ -1,9 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
+import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
+import { ordenarLista } from '@/lib/ordenacao-lista'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { BadgeStatus } from '@/components/ui/badge-status'
@@ -80,6 +83,26 @@ export function ListaDocumentosZapsign() {
   // Modal de envio
   const [clienteParaModal, setClienteParaModal] = useState<ClienteParaAssinatura | null>(null)
   const [modalEnvioAberto, setModalEnvioAberto] = useState(false)
+  const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<
+    'documento' | 'signatario' | 'status' | 'data'
+  >()
+
+  const documentosExibidos = useMemo(
+    () =>
+      ordenarLista(documentos, ordenacao, (doc, coluna) => {
+        switch (coluna) {
+          case 'documento':
+            return doc.nomeDocumento
+          case 'signatario':
+            return doc.signatarioNome ?? doc.signatarioEmail ?? ''
+          case 'status':
+            return statusParaBadge(doc.status).rotulo
+          case 'data':
+            return new Date(doc.assinadoEm || doc.recusadoEm || doc.criadoEm)
+        }
+      }),
+    [documentos, ordenacao]
+  )
 
   const carregar = useCallback(async () => {
     setCarregando(true)
@@ -276,15 +299,15 @@ export function ListaDocumentosZapsign() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/50">
-                  <th className="px-4 py-3 text-left font-medium">Documento</th>
-                  <th className="px-4 py-3 text-left font-medium">Signatário</th>
-                  <th className="px-4 py-3 text-left font-medium">Status</th>
-                  <th className="px-4 py-3 text-left font-medium">Data</th>
+                  <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Documento" coluna="documento" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                  <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Signatário" coluna="signatario" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                  <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Status" coluna="status" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                  <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Data" coluna="data" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
                   <th className="px-4 py-3 text-left font-medium">Link</th>
                 </tr>
               </thead>
               <tbody>
-                {documentos.map((doc) => {
+                {documentosExibidos.map((doc) => {
                   const { variante, rotulo } = statusParaBadge(doc.status)
                   const dataPrincipal = doc.assinadoEm || doc.recusadoEm || doc.criadoEm
                   const labelData = doc.assinadoEm

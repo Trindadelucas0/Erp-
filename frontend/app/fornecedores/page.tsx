@@ -29,6 +29,9 @@ import { CelulaBadge } from '@/components/ui/celula-badge'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
+import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
+import { ordenarLista } from '@/lib/ordenacao-lista'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Modal } from '@/components/ui/modal'
 import { Abas } from '@/components/ui/abas'
@@ -598,6 +601,9 @@ function ConteudoDaPaginaDeFornecedores() {
   const [mensagemDeErro, setMensagemDeErro] = useState('')
   const [mensagemDeSucesso, setMensagemDeSucesso] = useState('')
   const [busca, setBusca] = useState('')
+  const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<
+    'nome' | 'nomeFantasia' | 'documento' | 'estado' | 'status' | 'cadastro'
+  >()
   const [carregandoLista, setCarregandoLista] = useState(false)
   const [alterandoStatus, setAlterandoStatus] = useState<string | null>(null)
 
@@ -1259,6 +1265,27 @@ function ConteudoDaPaginaDeFornecedores() {
     )
   })
 
+  const listaExibida = useMemo(
+    () =>
+      ordenarLista(fornecedoresFiltrados, ordenacao, (f, coluna) => {
+        switch (coluna) {
+          case 'nome':
+            return f.nome
+          case 'nomeFantasia':
+            return f.nomeFantasia ?? ''
+          case 'documento':
+            return f.tipo === 'PF' ? (f.cpf ?? '') : (f.cnpj ?? '')
+          case 'estado':
+            return f.estado ?? ''
+          case 'status':
+            return f.ativo ? 'Ativo' : 'Inativo'
+          case 'cadastro':
+            return calcularStatusCadastro(f).completo ? 1 : 0
+        }
+      }),
+    [fornecedoresFiltrados, ordenacao]
+  )
+
   // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
@@ -1823,12 +1850,12 @@ function ConteudoDaPaginaDeFornecedores() {
             </colgroup>
             <thead>
               <tr className="border-b border-border bg-muted/50">
-                <th className="px-2 py-2 text-left font-medium">Razão social</th>
-                <th className="px-2 py-2 text-left font-medium">Nome fantasia</th>
-                <th className="px-2 py-2 text-left font-medium">CPF/CNPJ</th>
-                <th className="px-2 py-2 text-left font-medium">UF</th>
-                <th className="px-2 py-2 text-left font-medium">Status</th>
-                <th className="px-2 py-2 text-left font-medium">Cadastro</th>
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Razão social" coluna="nome" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Nome fantasia" coluna="nomeFantasia" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="CPF/CNPJ" coluna="documento" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="UF" coluna="estado" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Status" coluna="status" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Cadastro" coluna="cadastro" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
               </tr>
             </thead>
             <tbody>
@@ -1843,7 +1870,7 @@ function ConteudoDaPaginaDeFornecedores() {
                   </tr>
                 ))}
 
-              {!carregandoLista && fornecedoresFiltrados.length === 0 && (
+              {!carregandoLista && listaExibida.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
                     {listaFornecedores.length === 0 ? 'Nenhum fornecedor cadastrado.' : 'Nenhum fornecedor encontrado.'}
@@ -1851,7 +1878,7 @@ function ConteudoDaPaginaDeFornecedores() {
                 </tr>
               )}
 
-              {!carregandoLista && fornecedoresFiltrados.map((f) => {
+              {!carregandoLista && listaExibida.map((f) => {
                 const { completo, pendencias } = calcularStatusCadastro(f)
                 const documento = f.tipo === 'PF'
                   ? (f.cpf ? mascaraCpf(f.cpf) : '—')

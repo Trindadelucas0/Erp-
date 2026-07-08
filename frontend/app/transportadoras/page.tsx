@@ -27,6 +27,9 @@ import { BadgeStatus } from '@/components/ui/badge-status'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
+import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
+import { ordenarLista } from '@/lib/ordenacao-lista'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Modal } from '@/components/ui/modal'
 import { Abas } from '@/components/ui/abas'
@@ -407,6 +410,9 @@ function ConteudoDaPaginaDeTransportadoras() {
   const [mensagemDeErro, setMensagemDeErro] = useState('')
   const [mensagemDeSucesso, setMensagemDeSucesso] = useState('')
   const [busca, setBusca] = useState('')
+  const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<
+    'nome' | 'nomeFantasia' | 'documento' | 'antt' | 'estado' | 'status'
+  >()
   const [carregandoLista, setCarregandoLista] = useState(false)
   const [alterandoStatus, setAlterandoStatus] = useState<string | null>(null)
 
@@ -913,6 +919,27 @@ function ConteudoDaPaginaDeTransportadoras() {
       (t.estado && t.estado.toLowerCase().includes(termo))
   })
 
+  const listaExibida = useMemo(
+    () =>
+      ordenarLista(transportadorasFiltradas, ordenacao, (t, coluna) => {
+        switch (coluna) {
+          case 'nome':
+            return t.nome
+          case 'nomeFantasia':
+            return t.nomeFantasia ?? ''
+          case 'documento':
+            return t.tipo === 'PF' ? (t.cpf ?? '') : (t.cnpj ?? '')
+          case 'antt':
+            return t.antt ?? ''
+          case 'estado':
+            return t.estado ?? ''
+          case 'status':
+            return t.ativo ? 'Ativo' : 'Inativo'
+        }
+      }),
+    [transportadorasFiltradas, ordenacao]
+  )
+
   return (
     <div className="min-w-0 space-y-6">
       {mensagemDeErro && !modalAberto && (
@@ -1270,12 +1297,12 @@ function ConteudoDaPaginaDeTransportadoras() {
             </colgroup>
             <thead>
               <tr className="border-b border-border bg-muted/50">
-                <th className="px-2 py-2 text-left font-medium">Razão social</th>
-                <th className="px-2 py-2 text-left font-medium">Nome fantasia</th>
-                <th className="px-2 py-2 text-left font-medium">CPF/CNPJ</th>
-                <th className="px-2 py-2 text-left font-medium">ANTT</th>
-                <th className="px-2 py-2 text-left font-medium">UF</th>
-                <th className="px-2 py-2 text-left font-medium">Status</th>
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Razão social" coluna="nome" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Nome fantasia" coluna="nomeFantasia" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="CPF/CNPJ" coluna="documento" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="ANTT" coluna="antt" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="UF" coluna="estado" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Status" coluna="status" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
               </tr>
             </thead>
             <tbody>
@@ -1287,7 +1314,7 @@ function ConteudoDaPaginaDeTransportadoras() {
                 </tr>
               ))}
 
-              {!carregandoLista && transportadorasFiltradas.length === 0 && (
+              {!carregandoLista && listaExibida.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
                     {listaTransportadoras.length === 0 ? 'Nenhuma transportadora cadastrada.' : 'Nenhuma transportadora encontrada.'}
@@ -1295,7 +1322,7 @@ function ConteudoDaPaginaDeTransportadoras() {
                 </tr>
               )}
 
-              {!carregandoLista && transportadorasFiltradas.map((t) => {
+              {!carregandoLista && listaExibida.map((t) => {
                 const documento = t.tipo === 'PF' ? (t.cpf ? mascaraCpf(t.cpf) : '—') : (t.cnpj ? mascaraCnpj(t.cnpj) : '—')
                 return (
                   <LinhaTabelaClicavel

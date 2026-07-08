@@ -17,6 +17,9 @@ import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { ChevronDown, ChevronRight, GripVertical, Pencil, Plus, Power } from 'lucide-react'
 import { MenuAcoesLinha } from '@/components/compartilhado/menu-acoes-linha'
 import { BadgeStatus } from '@/components/ui/badge-status'
+import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
+import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
+import { ordenarArvore } from '@/lib/ordenacao-lista'
 import { cn } from '@/lib/utils'
 import { criarRestrictToContainer } from './modifier-restrict-container'
 import { LinhaOverlayDrag } from './linha-overlay-drag'
@@ -35,7 +38,7 @@ import {
   classesLinhaPorNivel,
   classesNomePorNivel,
 } from './estilos-hierarquia-plano'
-import { COLUNAS_FLAGS_PLANO, textoFlagSim } from './flags-plano-financeiro'
+import { COLUNAS_FLAGS_PLANO, textoFlagSim, type ChaveFlagPlano } from './flags-plano-financeiro'
 import { NIVEL_MAXIMO_PLANO } from './util-arvore-planos'
 
 export type PlanoFinanceiroNo = {
@@ -54,6 +57,8 @@ export type PlanoFinanceiroNo = {
 }
 
 export type { PosicaoMoverPlano }
+
+type ColunaPlano = 'nome' | ChaveFlagPlano | 'situacao'
 
 type LinhaPlana = PlanoFinanceiroNo & { nivel: number; temFilhos: boolean }
 
@@ -331,6 +336,7 @@ export function ArvorePlanosFinanceiros({
   const [larguraTabela, setLarguraTabela] = useState(0)
   const refAreaDrag = useRef<HTMLDivElement>(null)
   const refTabela = useRef<HTMLTableElement>(null)
+  const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<ColunaPlano>()
 
   const arrastarHabilitado =
     Boolean(podeEditar && aoMover) && !busca.trim() && filtroSituacao === 'todos'
@@ -378,9 +384,19 @@ export function ArvorePlanosFinanceiros({
     return () => window.removeEventListener('resize', atualizarLarguraTabela)
   }, [arrastarHabilitado, atualizarLarguraTabela])
 
+  const arvoreOrdenada = useMemo(
+    () =>
+      ordenarArvore(arvore, ordenacao, (no, coluna) => {
+        if (coluna === 'nome') return no.nome
+        if (coluna === 'situacao') return no.ativo ? 'Ativo' : 'Inativo'
+        return no[coluna] ? 1 : 0
+      }),
+    [arvore, ordenacao]
+  )
+
   const linhas = useMemo(() => {
     const termo = busca.trim().toLowerCase()
-    const achatado = achatarArvore(arvore, expandidos)
+    const achatado = achatarArvore(arvoreOrdenada, expandidos)
 
     return achatado.filter((linha) => {
       const matchBusca =
@@ -393,7 +409,7 @@ export function ArvorePlanosFinanceiros({
         (filtroSituacao === 'inativos' && !linha.ativo)
       return matchBusca && matchSituacao
     })
-  }, [arvore, expandidos, busca, filtroSituacao])
+  }, [arvoreOrdenada, expandidos, busca, filtroSituacao])
 
   const linhaPorId = useMemo(() => new Map(linhas.map((l) => [l.id, l])), [linhas])
 
@@ -561,17 +577,19 @@ export function ArvorePlanosFinanceiros({
       <thead>
         <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
           {arrastarHabilitado && <th className="px-1 py-3" />}
-          <th className="px-4 py-3 font-medium">Nome</th>
+          <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Nome" coluna="nome" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
           {COLUNAS_FLAGS_PLANO.map((coluna) => (
-            <th
+            <CabecalhoColunaOrdenavel
               key={coluna.chave}
-              className="px-2 py-3 text-center text-xs font-medium"
-              title={coluna.titulo}
-            >
-              {coluna.rotulo}
-            </th>
+              className="px-2 py-3 text-xs"
+              rotulo={coluna.rotulo}
+              coluna={coluna.chave}
+              ordenacao={ordenacao}
+              onOrdenar={alternarOrdenacao}
+              alinhamento="center"
+            />
           ))}
-          <th className="px-4 py-3 font-medium">Situação</th>
+          <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Situação" coluna="situacao" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
           <th className="px-2 py-3" />
         </tr>
       </thead>
@@ -589,11 +607,17 @@ export function ArvorePlanosFinanceiros({
 
   if (!arrastarHabilitado) {
     return (
-      <div className="overflow-x-auto rounded-lg border border-border bg-card">{tabela}</div>
+      <div className="space-y-2">
+        <div className="overflow-x-auto rounded-lg border border-border bg-card">{tabela}</div>
+        {ordenacao && (
+          <p className="text-xs text-muted-foreground">Ordenação visual apenas.</p>
+        )}
+      </div>
     )
   }
 
   return (
+    <div className="space-y-2">
     <DndContext
       sensors={sensores}
       modifiers={[restrictToVerticalAxis, restrictToArea]}
@@ -624,5 +648,9 @@ export function ArvorePlanosFinanceiros({
         ) : null}
       </DragOverlay>
     </DndContext>
+    {ordenacao && (
+      <p className="text-xs text-muted-foreground">Ordenação visual apenas.</p>
+    )}
+    </div>
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Copy, Pencil, Plus } from 'lucide-react'
 import { clienteHttp } from '@/services/api'
@@ -30,6 +30,11 @@ import {
   type PedidoCompra,
   type PessoaOpcao,
 } from '@/lib/pedido-compra-shared'
+import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
+import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
+import { ordenarLista } from '@/lib/ordenacao-lista'
+
+type ColunaPedido = 'numero' | 'data' | 'fornecedor' | 'status' | 'total' | 'condicaoPagamento'
 
 function ConteudoDaPagina() {
   const roteador = useRouter()
@@ -50,6 +55,7 @@ function ConteudoDaPagina() {
   const [mensagem, setMensagem] = useState('')
   const [erro, setErro] = useState('')
   const [filtros, setFiltros] = useState(FILTROS_VAZIOS)
+  const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<ColunaPedido>()
 
   const filtrosAtivos =
     filtros.status !== 'todos' ||
@@ -171,6 +177,27 @@ function ConteudoDaPagina() {
     }
   }
 
+  const listaExibida = useMemo(
+    () =>
+      ordenarLista(lista, ordenacao, (pedido, coluna) => {
+        switch (coluna) {
+          case 'numero':
+            return pedido.numero
+          case 'data':
+            return new Date(pedido.createdAt)
+          case 'fornecedor':
+            return pedido.fornecedorNome
+          case 'status':
+            return rotuloStatusUi(pedido.status)
+          case 'total':
+            return pedido.totalLiquido
+          case 'condicaoPagamento':
+            return pedido.condicaoPagamento ?? ''
+        }
+      }),
+    [lista, ordenacao]
+  )
+
   return (
     <div className="min-w-0 space-y-6">
       <div>
@@ -250,24 +277,24 @@ function ConteudoDaPagina() {
         </div>
 
         <p className="mb-3 text-sm text-muted-foreground">
-          {lista.length} pedido{lista.length !== 1 ? 's' : ''}
+          {listaExibida.length} pedido{listaExibida.length !== 1 ? 's' : ''}
         </p>
 
         <div className="overflow-x-auto rounded-lg border border-border bg-card">
           <table className="w-full min-w-[900px] text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
-                <th className="px-4 py-3 font-medium">Nº</th>
-                <th className="px-4 py-3 font-medium">Data</th>
-                <th className="px-4 py-3 font-medium">Fornecedor</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Total</th>
-                <th className="px-4 py-3 font-medium">Condição pag.</th>
+                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Nº" coluna="numero" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Data" coluna="data" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Fornecedor" coluna="fornecedor" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Status" coluna="status" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Total" coluna="total" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Condição pag." coluna="condicaoPagamento" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
                 <th className="px-2 py-3" />
               </tr>
             </thead>
             <tbody>
-              {lista.length === 0 && (
+              {listaExibida.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                     {filtrosAtivos ? (
@@ -287,7 +314,7 @@ function ConteudoDaPagina() {
                   </td>
                 </tr>
               )}
-              {lista.map((p) => (
+              {listaExibida.map((p) => (
                 <tr
                   key={p.id}
                   className="cursor-pointer border-b border-border hover:bg-muted/30"

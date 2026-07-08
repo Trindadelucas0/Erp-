@@ -1,7 +1,11 @@
 'use client'
 
 import type React from 'react'
+import { useMemo } from 'react'
 import { Checkbox } from '@/components/ui/checkbox'
+import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
+import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
+import { ordenarLista } from '@/lib/ordenacao-lista'
 import { cn } from '@/lib/utils'
 
 /**
@@ -47,9 +51,20 @@ export function GradePermissoes({
   aoAlterar,
   desabilitado = false,
 }: Props) {
-  const modulos = [
-    ...new Set(listaDePermissoes.map((p) => p.module)),
-  ].sort()
+  const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<'modulo'>()
+
+  const modulosBase = useMemo(
+    () => [...new Set(listaDePermissoes.map((p) => p.module))],
+    [listaDePermissoes]
+  )
+
+  const modulosExibidos = useMemo(
+    () =>
+      ordenarLista(modulosBase, ordenacao, (modulo) =>
+        ROTULOS_MODULOS[modulo] || modulo
+      ),
+    [modulosBase, ordenacao]
+  )
 
   function alternarId(id: string) {
     if (desabilitado) return
@@ -66,7 +81,7 @@ export function GradePermissoes({
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border bg-muted/50">
-            <th className="px-4 py-3 text-left font-medium">Módulo</th>
+            <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Módulo" coluna="modulo" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
             {ORDEM_ACOES.map((acao) => (
               <th
                 key={acao}
@@ -78,7 +93,7 @@ export function GradePermissoes({
           </tr>
         </thead>
         <tbody>
-          {modulos.map((modulo) => (
+          {modulosExibidos.map((modulo) => (
             <tr
               key={modulo}
               className="border-b border-border last:border-0 hover:bg-muted/30"

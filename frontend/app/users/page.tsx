@@ -33,6 +33,9 @@ import { CelulaBadge } from '@/components/ui/celula-badge'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
+import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
+import { ordenarLista } from '@/lib/ordenacao-lista'
 import { Checkbox } from '@/components/ui/checkbox'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Select, classesOption } from '@/components/ui/select'
@@ -218,6 +221,9 @@ function ConteudoDaPaginaDeUsuarios() {
   const [termoBusca, setTermoBusca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState<'todos' | 'ativo' | 'inativo'>('todos')
   const [filtroPapel, setFiltroPapel] = useState('')
+  const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<
+    'nome' | 'cargo' | 'email' | 'status' | 'papeis' | 'cadastro'
+  >()
 
   // Modais de ação
   const [usuarioParaDesativar, setUsuarioParaDesativar] = useState<Usuario | null>(null)
@@ -318,6 +324,27 @@ function ConteudoDaPaginaDeUsuarios() {
       return matchBusca && matchStatus && matchPapel
     })
   }, [listaDeUsuarios, termoBusca, filtroStatus, filtroPapel])
+
+  const listaExibida = useMemo(
+    () =>
+      ordenarLista(listaFiltrada, ordenacao, (usuario, coluna) => {
+        switch (coluna) {
+          case 'nome':
+            return usuario.name
+          case 'cargo':
+            return usuario.cargo ?? ''
+          case 'email':
+            return usuario.email
+          case 'status':
+            return usuario.active ? 'Ativo' : 'Inativo'
+          case 'papeis':
+            return usuario.roles.map((r) => r.role.name).join(', ')
+          case 'cadastro':
+            return gerarPendenciasUsuario(usuario).length === 0 ? 1 : 0
+        }
+      }),
+    [listaFiltrada, ordenacao]
+  )
 
   // ─── Validação visual das abas ─────────────────────────────────────────────
 
@@ -1109,14 +1136,12 @@ function ConteudoDaPaginaDeUsuarios() {
             </colgroup>
             <thead>
               <tr className="border-b border-border bg-muted/50">
-                <th className="px-2 py-2 text-left font-medium">Nome</th>
-                <th className="px-2 py-2 text-left font-medium">Cargo</th>
-                <th className="px-2 py-2 text-left font-medium">Email</th>
-                <th className="px-2 py-2 text-left font-medium">Status</th>
-                <th className="px-2 py-2 text-left font-medium">Papéis</th>
-                <th className="px-2 py-2 text-left font-medium" title="Situação do cadastro">
-                  Cadastro
-                </th>
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Nome" coluna="nome" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Cargo" coluna="cargo" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Email" coluna="email" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Status" coluna="status" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Papéis" coluna="papeis" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Cadastro" coluna="cadastro" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
                 <th className="px-2 py-2 text-left font-medium">
                   <span className="sr-only">Mais</span>
                 </th>
@@ -1135,7 +1160,7 @@ function ConteudoDaPaginaDeUsuarios() {
                   </tr>
                 ))}
 
-              {!carregandoLista && listaFiltrada.length === 0 && (
+              {!carregandoLista && listaExibida.length === 0 && (
                 <tr>
                   <td
                     colSpan={7}
@@ -1149,7 +1174,7 @@ function ConteudoDaPaginaDeUsuarios() {
               )}
 
               {!carregandoLista &&
-                listaFiltrada.map((usuario) => {
+                listaExibida.map((usuario) => {
                   const pendencias = gerarPendenciasUsuario(usuario)
                   const statusCadastro = pendencias.length === 0 ? 'completo' : 'incompleto'
                   const esteAlterando = alterandoStatusId === usuario.id

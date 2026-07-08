@@ -29,6 +29,9 @@ import { CelulaBadge } from '@/components/ui/celula-badge'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
+import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
+import { ordenarLista } from '@/lib/ordenacao-lista'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Select, classesOption } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
@@ -529,6 +532,9 @@ function ConteudoDaPaginaDeClientes() {
   const [mensagemDeErro, setMensagemDeErro] = useState('')
   const [mensagemDeSucesso, setMensagemDeSucesso] = useState('')
   const [busca, setBusca] = useState('')
+  const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<
+    'tipo' | 'nome' | 'nomeFantasia' | 'documento' | 'estado' | 'aprovacao' | 'status' | 'cadastro'
+  >()
   const [filtroStatus, setFiltroStatus] = useState<string>('todos')
   const [carregandoLista, setCarregandoLista] = useState(false)
   const [alterandoStatus, setAlterandoStatus] = useState<string | null>(null)
@@ -1201,6 +1207,31 @@ function ConteudoDaPaginaDeClientes() {
 
     return matchBusca && matchStatus
   })
+
+  const listaExibida = useMemo(
+    () =>
+      ordenarLista(clientesFiltrados, ordenacao, (cliente, coluna) => {
+        switch (coluna) {
+          case 'tipo':
+            return cliente.tipo
+          case 'nome':
+            return cliente.nome
+          case 'nomeFantasia':
+            return cliente.nomeFantasia ?? ''
+          case 'documento':
+            return cliente.tipo === 'PF' ? (cliente.cpf ?? '') : (cliente.cnpj ?? '')
+          case 'estado':
+            return cliente.estado ?? ''
+          case 'aprovacao':
+            return rotuloCurtoStatusAprovacao(cliente.statusAprovacao)
+          case 'status':
+            return cliente.ativo ? 'Ativo' : 'Inativo'
+          case 'cadastro':
+            return calcularStatusCadastro(cliente).completo ? 1 : 0
+        }
+      }),
+    [clientesFiltrados, ordenacao]
+  )
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -1904,14 +1935,14 @@ function ConteudoDaPaginaDeClientes() {
             </colgroup>
             <thead>
               <tr className="border-b border-border bg-muted/50">
-                <th className="px-2 py-2 text-left font-medium">Tipo</th>
-                <th className="px-2 py-2 text-left font-medium">Razão social</th>
-                <th className="px-2 py-2 text-left font-medium">Nome fantasia</th>
-                <th className="px-2 py-2 text-left font-medium">CPF/CNPJ</th>
-                <th className="px-2 py-2 text-left font-medium">UF</th>
-                <th className="px-2 py-2 text-left font-medium">Aprovação</th>
-                <th className="px-2 py-2 text-left font-medium">Status</th>
-                <th className="px-2 py-2 text-left font-medium">Cadastro</th>
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Tipo" coluna="tipo" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Razão social" coluna="nome" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Nome fantasia" coluna="nomeFantasia" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="CPF/CNPJ" coluna="documento" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="UF" coluna="estado" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Aprovação" coluna="aprovacao" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Status" coluna="status" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Cadastro" coluna="cadastro" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
               </tr>
             </thead>
             <tbody>
@@ -1928,7 +1959,7 @@ function ConteudoDaPaginaDeClientes() {
                   ))}
                 </>
               )}
-              {!carregandoLista && clientesFiltrados.length === 0 && (
+              {!carregandoLista && listaExibida.length === 0 && (
                 <tr>
                   <td
                     colSpan={8}
@@ -1940,7 +1971,7 @@ function ConteudoDaPaginaDeClientes() {
                   </td>
                 </tr>
               )}
-              {!carregandoLista && clientesFiltrados.map((cliente) => {
+              {!carregandoLista && listaExibida.map((cliente) => {
                 const statusCadastro = calcularStatusCadastro(cliente)
                 const estaAlterandoEsseLine = alterandoStatus === cliente.id
                 return (
