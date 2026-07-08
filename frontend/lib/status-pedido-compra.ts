@@ -46,7 +46,7 @@ export function tituloModalPedido(
   novo = false
 ): string {
   if (novo || numero == null) return 'Novo pedido de compra'
-  return `Pedido ${formatarPedido(numero, descricao)}`
+  return formatarPedido(numero, descricao)
 }
 
 export function podeConcluirPedido(status: string): boolean {

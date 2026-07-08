@@ -272,3 +272,14 @@ export function prazosFornecedorParaForm(
     valor: '',
   }))
 }
+
+export function aplicarPrazosFornecedorNoForm(
+  prazosFornecedor: number[],
+  dataFaturamento: string
+): { prazos: PrazoPagamento[]; condicaoPagamento: string } {
+  const prazos = prazosFornecedorParaForm(prazosFornecedor, dataFaturamento)
+  return {
+    prazos,
+    condicaoPagamento: condicaoDePrazosForm(prazos),
+  }
+}

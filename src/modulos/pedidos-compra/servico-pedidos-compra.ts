@@ -336,7 +336,8 @@ async function obterContextoFornecedor(fornecedorPessoaId: string, companyId: st
   ])
 
   const prazosPagamentoFornecedor =
-    fornecedor?.prazosPagamento?.filter((p): p is number => p != null && p > 0) ?? []
+    fornecedor?.prazosPagamento
+      ?.filter((p): p is number => p != null && p >= 0) ?? []
 
   return {
     pedidosAbertos,

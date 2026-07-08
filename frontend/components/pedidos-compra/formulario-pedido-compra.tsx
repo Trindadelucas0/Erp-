@@ -33,7 +33,7 @@ import {
   montarPrazosParaPayload,
   validarSomaParcelasManual,
 } from '@/lib/parcelas-pagamento-pedido'
-import { formatarDataBr } from '@/lib/prazos-pagamento'
+import { calcularVencimentoPorDias, formatarDataBr } from '@/lib/prazos-pagamento'
 import {
   preencherItemComProduto,
 } from '@/lib/preencher-item-pedido-compra'
@@ -59,11 +59,10 @@ import {
   itemVazio,
   mapearPrazosDoPedido,
   condicaoDePrazosForm,
-  montarCondicaoPagamentoDePrazos,
+  aplicarPrazosFornecedorNoForm,
   parseNum,
   pedidoEditavel,
   pendenciaVazia,
-  prazosFornecedorParaForm,
   type ContextoFornecedor,
   type HistoricoCompra,
   type ItemPedido,
@@ -120,7 +119,8 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   const [mensagemConfirmacaoParcelas, setMensagemConfirmacaoParcelas] = useState('')
   const [historicoProdutos, setHistoricoProdutos] = useState<Record<string, HistoricoCompra[]>>({})
   const [abaAtiva, setAbaAtiva] = useState<'dados-gerais' | 'itens'>('dados-gerais')
-  const usuarioAlterouFornecedorRef = useRef(false)
+  const requisicaoContextoRef = useRef(0)
+  const deveAplicarPrazosFornecedorRef = useRef(false)
 
   const modoEdicao = modo !== 'novo'
   const pedidoBloqueado = modoEdicao && ['cancelado', 'recebido'].includes(form.status)
@@ -192,18 +192,20 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
       setContexto(null)
       return
     }
+    const requisicaoId = ++requisicaoContextoRef.current
     try {
       const { data } = await clienteHttp.get(`/pedidos-compra/fornecedor/${fornecedorId}/contexto`)
+      if (requisicaoId !== requisicaoContextoRef.current) return
       setContexto(data)
-      if (aplicarPrazos && data.prazosPagamentoFornecedor?.length) {
-        const prazosFornecedor = data.prazosPagamentoFornecedor as number[]
+      if (aplicarPrazos) {
+        const prazosFornecedor = (data.prazosPagamentoFornecedor ?? []) as number[]
         setForm((f) => ({
           ...f,
-          condicaoPagamento: montarCondicaoPagamentoDePrazos(prazosFornecedor),
-          prazos: prazosFornecedorParaForm(prazosFornecedor, f.dataFaturamento),
+          ...aplicarPrazosFornecedorNoForm(prazosFornecedor, f.dataFaturamento),
         }))
       }
     } catch {
+      if (requisicaoId !== requisicaoContextoRef.current) return
       setContexto(null)
     }
   }, [])
@@ -306,19 +308,39 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   }, [carregandoSessao, estaAutenticado, modo, pedidoId, carregarPedidoNoForm])
 
   useEffect(() => {
-    if (form.fornecedorPessoaId) {
-      const aplicarPrazos = modo === 'novo' || usuarioAlterouFornecedorRef.current
-      void carregarContexto(form.fornecedorPessoaId, aplicarPrazos)
-    } else {
+    if (!form.fornecedorPessoaId) {
       setContexto(null)
+      return
     }
-  }, [form.fornecedorPessoaId, modo, carregarContexto])
+    const aplicarPrazos = deveAplicarPrazosFornecedorRef.current
+    deveAplicarPrazosFornecedorRef.current = false
+    void carregarContexto(form.fornecedorPessoaId, aplicarPrazos)
+  }, [form.fornecedorPessoaId, carregarContexto])
 
   function selecionarFornecedor(fornecedorId: string) {
-    if (fornecedorId !== form.fornecedorPessoaId) {
-      usuarioAlterouFornecedorRef.current = true
+    const mudou = fornecedorId !== form.fornecedorPessoaId
+    if (!mudou) return
+
+    if (!fornecedorId) {
+      requisicaoContextoRef.current += 1
+      setContexto(null)
+      setForm((f) => ({
+        ...f,
+        fornecedorPessoaId: '',
+        creditoFornecedorId: '',
+        creditoAplicado: '',
+        ...aplicarPrazosFornecedorNoForm([], f.dataFaturamento),
+      }))
+      return
     }
-    setForm((f) => ({ ...f, fornecedorPessoaId: fornecedorId }))
+
+    deveAplicarPrazosFornecedorRef.current = true
+    setForm((f) => ({
+      ...f,
+      fornecedorPessoaId: fornecedorId,
+      creditoFornecedorId: '',
+      creditoAplicado: '',
+    }))
   }
 
   function voltarParaLista(mensagem?: string) {
@@ -804,8 +826,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
                     setForm((f) => {
                       const prazos = f.prazos.map((p) => ({
                         ...p,
-                        dias: dataFaturamento ? '0' : '',
-                        vencimento: dataFaturamento || '',
+                        vencimento: calcularVencimentoPorDias(dataFaturamento, p.dias ?? ''),
                       }))
                       return {
                         ...f,
