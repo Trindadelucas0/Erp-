@@ -60,6 +60,30 @@ export function resolverPrecoUnitario(
   return { valor: '0', origem: '' }
 }
 
+export function resolverUnidadeEntrada(
+  vinculo: VinculoFornecedorProduto | undefined,
+  unidadeVenda: string
+): string {
+  return vinculo?.unidadeEntrada?.trim() || unidadeVenda
+}
+
+export function resolverCodigoOriginal(vinculo: VinculoFornecedorProduto | undefined): string {
+  return vinculo?.codigoFornecedor?.trim() || ''
+}
+
+export function recalcularCodigoUnidadeItem(
+  item: ItemPedidoPreenchivel,
+  produto: ProdutoParaPreenchimento,
+  fornecedorPessoaId: string
+): ItemPedidoPreenchivel {
+  const vinculo = obterVinculoFornecedor(produto, fornecedorPessoaId)
+  return {
+    ...item,
+    unidade: resolverUnidadeEntrada(vinculo, produto.unidade),
+    codigoOriginal: resolverCodigoOriginal(vinculo),
+  }
+}
+
 export function preencherItemComProduto(
   item: ItemPedidoPreenchivel,
   produto: ProdutoParaPreenchimento,
@@ -75,8 +99,8 @@ export function preencherItemComProduto(
     produtoId: produto.id,
     produtoNome: produto.nomeVenda,
     produtoSku: produto.sku,
-    unidade: vinculo?.unidadeEntrada?.trim() || produto.unidade,
-    codigoOriginal: vinculo?.codigoFornecedor?.trim() || produto.codigoOrigem?.trim() || '',
+    unidade: resolverUnidadeEntrada(vinculo, produto.unidade),
+    codigoOriginal: resolverCodigoOriginal(vinculo),
     precoUnitario: preco,
     origemPreco: origem,
     percentualDesconto: '0',

@@ -10,6 +10,12 @@ import {
   textoCadastroOpcional,
 } from '../../compartilhado/normalizacao/esquema-texto-cadastro.js'
 
+const MODALIDADES_TRANSPORTE_FORNECEDOR = ['FOB_NOTA', 'FOB_CONHECIMENTO', 'CIF'] as const
+
+function nulParaUndefined(valor: unknown) {
+  return valor === null || valor === '' ? undefined : valor
+}
+
 const campoIeOpcional = z
   .string()
   .max(30)
@@ -70,6 +76,10 @@ const camposComuns = {
   planosFinanceirosIds: z.array(z.string().uuid()).optional(),
   cfopsEntradaIds: z.array(z.string().uuid()).optional(),
   fornecedoresVinculadosIds: z.array(z.string().uuid()).optional(),
+  modalidadeTransportePadrao: z.preprocess(
+    nulParaUndefined,
+    z.enum(MODALIDADES_TRANSPORTE_FORNECEDOR).optional()
+  ),
 }
 
 export const esquemaDeContatoItem = z

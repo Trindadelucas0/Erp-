@@ -36,6 +36,7 @@ import {
 import { calcularVencimentoPorDias, formatarDataBr } from '@/lib/prazos-pagamento'
 import {
   preencherItemComProduto,
+  recalcularCodigoUnidadeItem,
 } from '@/lib/preencher-item-pedido-compra'
 import {
   formatarPedido,
@@ -52,14 +53,17 @@ import {
   TIPOS_PENDENCIA,
   calcularTotalItem,
   creditoVazio,
+  exigeDadosTransporte,
   formVazio,
   formatarData,
   formatarDataIso,
   formatarMoeda,
   itemVazio,
   mapearPrazosDoPedido,
+  normalizarModalidadeTransporte,
   condicaoDePrazosForm,
   aplicarPrazosFornecedorNoForm,
+  aplicarModalidadeTransportePadraoNoForm,
   parseNum,
   pedidoEditavel,
   pendenciaVazia,
@@ -165,6 +169,8 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
             sku: string | null
             urlFotoMiniatura?: string | null
             unidade: string
+            codigoBarras?: string | null
+            embalagensMaster?: { codigoBarras?: string | null }[]
             codigoOrigem: string | null
             precoCusto: number | null
             bloqueadoCompra: boolean
@@ -179,6 +185,8 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
             sku: p.sku,
             urlFotoMiniatura: p.urlFotoMiniatura ?? null,
             unidade: p.unidade,
+            codigoBarras: p.codigoBarras ?? null,
+            codigosBarrasEmbalagem: (p.embalagensMaster ?? []).map((e) => e.codigoBarras ?? null),
             codigoOrigem: p.codigoOrigem ?? null,
             precoCusto: p.precoCusto ?? null,
             bloqueadoCompra: p.bloqueadoCompra ?? false,
@@ -209,6 +217,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
         setForm((f) => ({
           ...f,
           ...aplicarPrazosFornecedorNoForm(prazosFornecedor, f.dataFaturamento),
+          ...aplicarModalidadeTransportePadraoNoForm(data.modalidadeTransportePadrao),
         }))
       }
     } catch {
@@ -241,17 +250,20 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     async (id: string) => {
       const { data } = await clienteHttp.get(`/pedidos-compra/${id}`)
       const p = data.pedido
+      const modalidadeTransporte = normalizarModalidadeTransporte(p.modalidadeTransporte)
+      const exibeDadosTransporte = exigeDadosTransporte(modalidadeTransporte)
       setNumeroPedido(p.numero)
       setForm({
         fornecedorPessoaId: p.fornecedorPessoaId,
-        transportadoraPessoaId: p.transportadoraPessoaId ?? '',
-        modalidadeTransporte: p.modalidadeTransporte ?? '',
+        transportadoraPessoaId: exibeDadosTransporte ? (p.transportadoraPessoaId ?? '') : '',
+        modalidadeTransporte,
         condicaoPagamento: p.condicaoPagamento ?? '',
         tipoCompra: p.tipoCompra ?? 'revenda',
         dataFaturamento: formatarDataIso(p.dataFaturamento),
         previsaoEntrega: formatarDataIso(p.previsaoEntrega),
-        valorFrete: p.valorFrete != null ? String(p.valorFrete) : '',
-        valorFreteSugerido: p.valorFreteSugerido != null ? String(p.valorFreteSugerido) : '0',
+        valorFrete: exibeDadosTransporte && p.valorFrete != null ? String(p.valorFrete) : '',
+        valorFreteSugerido:
+          exibeDadosTransporte && p.valorFreteSugerido != null ? String(p.valorFreteSugerido) : '0',
         rateioParcelas: p.rateioParcelas ?? 'igual',
         prazos: Array.isArray(p.prazosPagamento) && p.prazosPagamento.length > 0
           ? mapearPrazosDoPedido(p.prazosPagamento as PrazoPagamento[], formatarDataIso(p.dataFaturamento))
@@ -347,6 +359,12 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
       fornecedorPessoaId: fornecedorId,
       creditoFornecedorId: '',
       creditoAplicado: '',
+      itens: f.itens.map((item) => {
+        if (!item.produtoId) return item
+        const produto = produtos.find((p) => p.id === item.produtoId)
+        if (!produto) return item
+        return recalcularCodigoUnidadeItem(item, produto, fornecedorId)
+      }),
     }))
   }
 
@@ -435,8 +453,24 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   }
 
   const totalForm = form.itens.reduce((s, i) => s + calcularTotalItem(i).liquido, 0)
-  const freteForm = parseNum(form.valorFrete)
+  const exibeDadosTransporte = exigeDadosTransporte(form.modalidadeTransporte)
+  const freteForm = exibeDadosTransporte ? parseNum(form.valorFrete) : 0
   const totalComFrete = totalForm + freteForm
+
+  function mudarModalidadeTransporte(modalidade: string) {
+    setForm((f) => {
+      if (!exigeDadosTransporte(modalidade)) {
+        return {
+          ...f,
+          modalidadeTransporte: modalidade,
+          transportadoraPessoaId: '',
+          valorFrete: '',
+          valorFreteSugerido: '0',
+        }
+      }
+      return { ...f, modalidadeTransporte: modalidade }
+    })
+  }
 
   function aoSelecionarCredito(creditoId: string) {
     setForm((f) => {
@@ -466,16 +500,18 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
       ? Number(form.creditoAplicado.replace(',', '.'))
       : null
     const prazosValidos = montarPrazosParaPayload(form.prazos, form.rateioParcelas, totalLiquidoForm)
+    const exigeTransporte = exigeDadosTransporte(form.modalidadeTransporte)
     return {
       fornecedorPessoaId: form.fornecedorPessoaId,
-      transportadoraPessoaId: form.transportadoraPessoaId || null,
-      modalidadeTransporte: form.modalidadeTransporte || undefined,
+      transportadoraPessoaId: exigeTransporte ? form.transportadoraPessoaId || null : null,
+      modalidadeTransporte: form.modalidadeTransporte,
       condicaoPagamento: form.condicaoPagamento || undefined,
       tipoCompra: form.tipoCompra,
       dataFaturamento: form.dataFaturamento || null,
       previsaoEntrega: form.previsaoEntrega || null,
-      valorFrete: form.valorFrete ? parseNum(form.valorFrete) : null,
-      valorFreteSugerido: form.valorFreteSugerido ? parseNum(form.valorFreteSugerido) : null,
+      valorFrete: exigeTransporte && form.valorFrete ? parseNum(form.valorFrete) : null,
+      valorFreteSugerido:
+        exigeTransporte && form.valorFreteSugerido ? parseNum(form.valorFreteSugerido) : null,
       prazosPagamento: prazosValidos && prazosValidos.length > 0 ? prazosValidos : null,
       rateioParcelas: form.rateioParcelas,
       observacoes: form.observacoes || undefined,
@@ -548,6 +584,16 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     e?.preventDefault()
     if (!form.fornecedorPessoaId) {
       setErro('Selecione o fornecedor.')
+      setAbaAtiva('dados-gerais')
+      return
+    }
+    if (!form.modalidadeTransporte) {
+      setErro('Selecione o tipo de frete.')
+      setAbaAtiva('dados-gerais')
+      return
+    }
+    if (exigeDadosTransporte(form.modalidadeTransporte) && !form.transportadoraPessoaId) {
+      setErro('Selecione a transportadora para frete FOB.')
       setAbaAtiva('dados-gerais')
       return
     }
@@ -826,23 +872,43 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
                     obrigatorio
                   />
                 </div>
-                <ComboboxPessoa
-                  rotulo="Transportadora"
-                  pessoas={transportadoras}
-                  valor={form.transportadoraPessoaId}
-                  aoMudar={(v) => setForm((f) => ({ ...f, transportadoraPessoaId: v }))}
-                  disabled={camposDesabilitados}
-                  placeholder="Digite o nome da transportadora..."
-                  permitirVazio
-                  rotuloVazio="Nenhuma"
-                />
                 <SelectPadrao
                   rotulo="Tipo de frete"
                   valor={form.modalidadeTransporte}
-                  aoMudar={(v) => setForm((f) => ({ ...f, modalidadeTransporte: v }))}
+                  aoMudar={mudarModalidadeTransporte}
                   opcoes={MODALIDADES}
                   disabled={camposDesabilitados}
+                  obrigatorio
                 />
+                {exibeDadosTransporte && (
+                  <>
+                    <ComboboxPessoa
+                      rotulo="Transportadora"
+                      pessoas={transportadoras}
+                      valor={form.transportadoraPessoaId}
+                      aoMudar={(v) => setForm((f) => ({ ...f, transportadoraPessoaId: v }))}
+                      disabled={camposDesabilitados}
+                      placeholder="Digite o nome da transportadora..."
+                      obrigatorio
+                    />
+                    <div className="sm:col-span-2 grid max-w-md grid-cols-2 gap-3">
+                      <InputPadrao
+                        rotulo="Valor frete"
+                        value={form.valorFrete}
+                        onChange={(e) => setForm((f) => ({ ...f, valorFrete: e.target.value }))}
+                        disabled={camposDesabilitados}
+                      />
+                      <InputPadrao
+                        rotulo="Valor frete sugerido"
+                        value={form.valorFreteSugerido}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, valorFreteSugerido: e.target.value }))
+                        }
+                        disabled={camposDesabilitados}
+                      />
+                    </div>
+                  </>
+                )}
                 <SelectPadrao
                   rotulo="Tipo de compra"
                   valor={form.tipoCompra}
@@ -878,20 +944,6 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
                   onChange={(e) => setForm((f) => ({ ...f, previsaoEntrega: e.target.value }))}
                   disabled={camposDesabilitados}
                 />
-                <div className="sm:col-span-2 grid max-w-md grid-cols-2 gap-3">
-                  <InputPadrao
-                    rotulo="Valor frete"
-                    value={form.valorFrete}
-                    onChange={(e) => setForm((f) => ({ ...f, valorFrete: e.target.value }))}
-                    disabled={camposDesabilitados}
-                  />
-                  <InputPadrao
-                    rotulo="Valor frete sugerido"
-                    value={form.valorFreteSugerido}
-                    onChange={(e) => setForm((f) => ({ ...f, valorFreteSugerido: e.target.value }))}
-                    disabled={camposDesabilitados}
-                  />
-                </div>
                 <div className="sm:col-span-2 space-y-2">
                   <InputPadrao
                     rotulo="Buscar pedido venda (encomenda)"
@@ -1056,6 +1108,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
 
           {abaAtiva === 'itens' && (
             <LancamentoItensPedido
+              fornecedorPessoaId={form.fornecedorPessoaId}
               itens={form.itens}
               produtos={produtos}
               disabled={somenteLeitura || !podeSalvar}

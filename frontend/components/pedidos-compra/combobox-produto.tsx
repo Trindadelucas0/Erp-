@@ -10,6 +10,7 @@ import {
   useInstanciaDropdownCatalogo,
   useOuvirFechamentoDropdownCatalogo,
 } from '@/lib/dropdown-catalogo'
+import { normalizarCodigoBarrasGtin } from '@/lib/validar-codigo-barras-gtin'
 import { cn } from '@/lib/utils'
 
 export type ProdutoOpcao = {
@@ -17,6 +18,8 @@ export type ProdutoOpcao = {
   nomeVenda: string
   sku: string | null
   unidade: string
+  codigoBarras?: string | null
+  codigosBarrasEmbalagem?: (string | null)[]
 }
 
 type PosicaoDropdown = {
@@ -41,15 +44,30 @@ function rotuloProduto(p: ProdutoOpcao) {
   return p.sku ? `${p.sku} — ${p.nomeVenda}` : p.nomeVenda
 }
 
-function filtrarProdutos(produtos: ProdutoOpcao[], termo: string) {
+function codigoBarrasCorresponde(codigo: string | null | undefined, termo: string): boolean {
+  if (!codigo?.trim()) return false
+  const termoTexto = termo.toLowerCase().trim()
+  const termoDigitos = normalizarCodigoBarrasGtin(termo)
+  if (termoDigitos.length >= 3) {
+    const codigoDigitos = normalizarCodigoBarrasGtin(codigo)
+    if (codigoDigitos.includes(termoDigitos)) return true
+  }
+  return codigo.toLowerCase().includes(termoTexto)
+}
+
+export function filtrarProdutos(produtos: ProdutoOpcao[], termo: string) {
   const q = termo.toLowerCase().trim()
   if (!q) return produtos.slice(0, LIMITE)
   return produtos
-    .filter(
-      (p) =>
-        p.nomeVenda.toLowerCase().includes(q) ||
-        (p.sku?.toLowerCase().includes(q) ?? false)
-    )
+    .filter((p) => {
+      if (p.nomeVenda.toLowerCase().includes(q)) return true
+      if (p.sku?.toLowerCase().includes(q)) return true
+      if (codigoBarrasCorresponde(p.codigoBarras, termo)) return true
+      if (p.codigosBarrasEmbalagem?.some((codigo) => codigoBarrasCorresponde(codigo, termo))) {
+        return true
+      }
+      return false
+    })
     .slice(0, LIMITE)
 }
 
@@ -200,7 +218,7 @@ export function ComboboxProduto({
             }}
             onFocus={abrir}
             disabled={disabled}
-            placeholder="Buscar por SKU ou nome..."
+            placeholder="Buscar por SKU, nome ou código de barras..."
             className={cn(
               'flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent py-1 pl-9 pr-2 text-base shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30'
             )}

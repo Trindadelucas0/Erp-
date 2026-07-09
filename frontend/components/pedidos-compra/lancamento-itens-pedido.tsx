@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { History, Plus, Trash2 } from 'lucide-react'
 import { ComboboxProduto } from '@/components/pedidos-compra/combobox-produto'
 import { Button } from '@/components/ui/button'
@@ -17,7 +17,7 @@ import {
   type ItemPedido,
   type ProdutoOpcao,
 } from '@/lib/pedido-compra-shared'
-import { rotuloOrigemPreco } from '@/lib/preencher-item-pedido-compra'
+import { recalcularCodigoUnidadeItem, rotuloOrigemPreco } from '@/lib/preencher-item-pedido-compra'
 import { resolverUrlUpload } from '@/lib/resolver-url-upload'
 
 type ColunaOrdenacao =
@@ -39,6 +39,7 @@ type LinhaExibida = {
 }
 
 type Props = {
+  fornecedorPessoaId: string
   itens: ItemPedido[]
   produtos: ProdutoOpcao[]
   disabled: boolean
@@ -63,6 +64,7 @@ function urlFotoDoItem(item: ItemPedido, produtos: ProdutoOpcao[]): string | nul
 }
 
 export function LancamentoItensPedido({
+  fornecedorPessoaId,
   itens,
   produtos,
   disabled,
@@ -79,6 +81,15 @@ export function LancamentoItensPedido({
   const [erroRascunho, setErroRascunho] = useState('')
   const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<ColunaOrdenacao>()
   const [preenchendoProduto, setPreenchendoProduto] = useState(false)
+
+  useEffect(() => {
+    setRascunho((atual) => {
+      if (!atual.produtoId) return atual
+      const produto = produtos.find((p) => p.id === atual.produtoId)
+      if (!produto) return atual
+      return recalcularCodigoUnidadeItem(atual, produto, fornecedorPessoaId)
+    })
+  }, [fornecedorPessoaId, produtos])
 
   const itensLancados = useMemo(
     () =>
@@ -209,12 +220,20 @@ export function LancamentoItensPedido({
             <InputPadrao
               rotulo="Código original"
               value={rascunho.codigoOriginal}
-              onChange={(e) => atualizarRascunho('codigoOriginal', e.target.value)}
+              readOnly
+              disabled
+              placeholder="—"
+              className="bg-muted/30"
+              title="Editável no cadastro do produto, aba Compras"
             />
             <InputPadrao
               rotulo="Unidade"
               value={rascunho.unidade}
-              onChange={(e) => atualizarRascunho('unidade', e.target.value)}
+              readOnly
+              disabled
+              placeholder="—"
+              className="bg-muted/30"
+              title="Editável no cadastro do produto, aba Compras"
             />
             <InputPadrao
               rotulo="Quantidade"

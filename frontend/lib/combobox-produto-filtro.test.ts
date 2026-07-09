@@ -1,0 +1,43 @@
+import { describe, expect, it } from 'vitest'
+import { filtrarProdutos, type ProdutoOpcao } from '@/components/pedidos-compra/combobox-produto'
+
+const produtos: ProdutoOpcao[] = [
+  {
+    id: '1',
+    nomeVenda: 'ADITIVO COLANTE',
+    sku: '12345',
+    unidade: 'UN',
+    codigoBarras: '7894900011517',
+    codigosBarrasEmbalagem: ['10614141000415'],
+  },
+  {
+    id: '2',
+    nomeVenda: 'OUTRO PRODUTO',
+    sku: '99999',
+    unidade: 'CX',
+    codigoBarras: null,
+    codigosBarrasEmbalagem: [],
+  },
+]
+
+describe('filtrarProdutos', () => {
+  it('filtra por nome', () => {
+    expect(filtrarProdutos(produtos, 'colante')).toHaveLength(1)
+    expect(filtrarProdutos(produtos, 'colante')[0]?.id).toBe('1')
+  })
+
+  it('filtra por SKU', () => {
+    expect(filtrarProdutos(produtos, '99999')).toHaveLength(1)
+    expect(filtrarProdutos(produtos, '99999')[0]?.id).toBe('2')
+  })
+
+  it('filtra por código de barras da unidade', () => {
+    expect(filtrarProdutos(produtos, '7894900011517')).toHaveLength(1)
+    expect(filtrarProdutos(produtos, '7894900011517')[0]?.id).toBe('1')
+  })
+
+  it('filtra por código de barras da embalagem master', () => {
+    expect(filtrarProdutos(produtos, '10614141000415')).toHaveLength(1)
+    expect(filtrarProdutos(produtos, '10614141000415')[0]?.id).toBe('1')
+  })
+})

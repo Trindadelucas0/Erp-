@@ -73,6 +73,8 @@ import {
   ListaCreditosFornecedor,
   type CreditoFornecedorComMovimentos,
 } from '@/components/fornecedores/lista-creditos-fornecedor'
+import { SelectPadrao } from '@/components/ui/select-padrao'
+import { MODALIDADES, normalizarModalidadeTransporte } from '@/lib/pedido-compra-shared'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -112,6 +114,7 @@ type Fornecedor = {
   tipoPrestadorServico?: boolean
   permitirVinculoManual?: boolean
   exigirItensEntrada?: boolean
+  modalidadeTransportePadrao?: string | null
   prazosPagamento?: (number | null)[]
   planosFinanceiros?: ItemCatalogo[]
   cfopsEntrada?: ItemCatalogo[]
@@ -152,6 +155,7 @@ type FormFornecedor = {
   tipoPrestadorServico: boolean
   permitirVinculoManual: boolean
   exigirItensEntrada: boolean
+  modalidadeTransportePadrao: string
   prazosPagamento: string[]
   planosFinanceiros: ItemCatalogo[]
   cfopsEntrada: ItemCatalogo[]
@@ -202,6 +206,7 @@ const FORM_VAZIO: FormFornecedor = {
   tipoPrestadorServico: false,
   permitirVinculoManual: false,
   exigirItensEntrada: false,
+  modalidadeTransportePadrao: '',
   prazosPagamento: ['', '', '', '', '', ''],
   planosFinanceiros: [],
   cfopsEntrada: [],
@@ -262,6 +267,7 @@ function fornecedorParaForm(f: Fornecedor): FormFornecedor {
     tipoPrestadorServico: f.tipoPrestadorServico ?? false,
     permitirVinculoManual: f.permitirVinculoManual ?? false,
     exigirItensEntrada: f.exigirItensEntrada ?? false,
+    modalidadeTransportePadrao: normalizarModalidadeTransporte(f.modalidadeTransportePadrao),
     prazosPagamento: prazos.slice(0, 6).map((p) => (p != null ? String(p) : '')),
     planosFinanceiros: f.planosFinanceiros ?? [],
     cfopsEntrada: f.cfopsEntrada ?? [],
@@ -1136,6 +1142,7 @@ function ConteudoDaPaginaDeFornecedores() {
       tipoPrestadorServico: form.tipoPrestadorServico,
       permitirVinculoManual: form.permitirVinculoManual,
       exigirItensEntrada: form.exigirItensEntrada,
+      modalidadeTransportePadrao: form.modalidadeTransportePadrao || undefined,
       prazosPagamento,
       planosFinanceirosIds: form.planosFinanceiros.map((p) => p.id),
       cfopsEntradaIds: form.cfopsEntrada.map((c) => c.id),
@@ -1730,6 +1737,15 @@ function ConteudoDaPaginaDeFornecedores() {
                     ))}
                   </div>
                 </div>
+
+                <SelectPadrao
+                  rotulo="Tipo de frete"
+                  valor={form.modalidadeTransportePadrao}
+                  aoMudar={(v) => set('modalidadeTransportePadrao', v)}
+                  opcoes={MODALIDADES}
+                  placeholder="Selecione"
+                  disabled={somenteLeitura}
+                />
 
                 {(form.tipoConsumo || form.tipoPrestadorServico) && (
                   <div className="space-y-2">

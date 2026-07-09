@@ -66,9 +66,49 @@ export const esquemaItemPedidoCompra = z.object({
   ordem: z.number().int().optional(),
 })
 
+export const MODALIDADES_TRANSPORTE_PEDIDO = ['FOB_NOTA', 'FOB_CONHECIMENTO', 'CIF'] as const
+
+const esquemaModalidadeTransporte = z.enum(MODALIDADES_TRANSPORTE_PEDIDO, {
+  required_error: 'Tipo de frete obrigatório',
+  invalid_type_error: 'Tipo de frete inválido',
+})
+
+function exigeDadosTransporte(modalidade: string): boolean {
+  return modalidade === 'FOB_NOTA' || modalidade === 'FOB_CONHECIMENTO'
+}
+
+type DadosComTransporte = {
+  modalidadeTransporte?: string
+  transportadoraPessoaId?: string | null
+  valorFrete?: number | null
+  valorFreteSugerido?: number | null
+}
+
+function validarRegrasTransporte(data: DadosComTransporte, ctx: z.RefinementCtx) {
+  if (!data.modalidadeTransporte) return
+
+  if (exigeDadosTransporte(data.modalidadeTransporte) && !data.transportadoraPessoaId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Transportadora obrigatória para frete FOB',
+      path: ['transportadoraPessoaId'],
+    })
+  }
+}
+
+function normalizarDadosTransporte<T extends DadosComTransporte>(data: T): T {
+  if (data.modalidadeTransporte !== 'CIF') return data
+
+  return {
+    ...data,
+    transportadoraPessoaId: null,
+    valorFrete: null,
+    valorFreteSugerido: null,
+  }
+}
+
 const camposComunsPedido = {
   transportadoraPessoaId: z.string().uuid().optional().nullable(),
-  modalidadeTransporte: textoCadastroOpcional(50),
   condicaoPagamento: textoCadastroOpcional(200),
   tipoCompra: z.enum(['revenda', 'bonificacao', 'uso_consumo']).optional(),
   dataFaturamento: dataOpcional,
@@ -83,19 +123,27 @@ const camposComunsPedido = {
   pedidoVendaId: z.string().uuid().optional().nullable(),
   creditoFornecedorId: z.string().uuid().optional().nullable(),
   creditoAplicado: decimalObrigatorio.optional().nullable(),
+  concluir: z.boolean().optional(),
 }
 
-export const esquemaDeCriacaoDePedidoCompra = z.object({
+function esquemaPedidoCompraComTransporte<T extends z.ZodRawShape>(campos: T) {
+  return z
+    .object(campos)
+    .superRefine(validarRegrasTransporte)
+    .transform(normalizarDadosTransporte)
+}
+
+export const esquemaDeCriacaoDePedidoCompra = esquemaPedidoCompraComTransporte({
   fornecedorPessoaId: z.string().uuid('Fornecedor obrigatório'),
+  modalidadeTransporte: esquemaModalidadeTransporte,
   ...camposComunsPedido,
-  concluir: z.boolean().optional(),
   itens: z.array(esquemaItemPedidoCompra).min(1, 'Adicione ao menos um item'),
 })
 
-export const esquemaDeEdicaoDePedidoCompra = z.object({
+export const esquemaDeEdicaoDePedidoCompra = esquemaPedidoCompraComTransporte({
   fornecedorPessoaId: z.string().uuid().optional(),
+  modalidadeTransporte: esquemaModalidadeTransporte.optional(),
   ...camposComunsPedido,
-  concluir: z.boolean().optional(),
   itens: z.array(esquemaItemPedidoCompra).min(1).optional(),
 })
 

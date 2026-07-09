@@ -1,0 +1,79 @@
+import { describe, expect, it } from 'vitest'
+import { esquemaDeCriacaoDePedidoCompra } from './esquema-pedidos-compra.js'
+
+const fornecedorId = '11111111-1111-4111-8111-111111111111'
+const transportadoraId = '22222222-2222-4222-8222-222222222222'
+const produtoId = '33333333-3333-4333-8333-333333333333'
+
+const itemBase = {
+  produtoId,
+  quantidade: 1,
+  unidade: 'UN',
+  precoUnitario: 10,
+}
+
+const payloadBase = {
+  fornecedorPessoaId: fornecedorId,
+  itens: [itemBase],
+}
+
+describe('esquemaDeCriacaoDePedidoCompra — modalidade de transporte', () => {
+  it('rejeita criação sem tipo de frete', () => {
+    const resultado = esquemaDeCriacaoDePedidoCompra.safeParse(payloadBase)
+    expect(resultado.success).toBe(false)
+  })
+
+  it('aceita CIF sem transportadora', () => {
+    const resultado = esquemaDeCriacaoDePedidoCompra.safeParse({
+      ...payloadBase,
+      modalidadeTransporte: 'CIF',
+      transportadoraPessoaId: transportadoraId,
+      valorFrete: 50,
+    })
+
+    expect(resultado.success).toBe(true)
+    if (resultado.success) {
+      expect(resultado.data.modalidadeTransporte).toBe('CIF')
+      expect(resultado.data.transportadoraPessoaId).toBeNull()
+      expect(resultado.data.valorFrete).toBeNull()
+    }
+  })
+
+  it('exige transportadora para FOB', () => {
+    const resultado = esquemaDeCriacaoDePedidoCompra.safeParse({
+      ...payloadBase,
+      modalidadeTransporte: 'FOB_NOTA',
+    })
+
+    expect(resultado.success).toBe(false)
+    if (!resultado.success) {
+      expect(resultado.error.errors.some((e) => e.path.includes('transportadoraPessoaId'))).toBe(
+        true
+      )
+    }
+  })
+
+  it('aceita FOB com transportadora', () => {
+    const resultado = esquemaDeCriacaoDePedidoCompra.safeParse({
+      ...payloadBase,
+      modalidadeTransporte: 'FOB_CONHECIMENTO',
+      transportadoraPessoaId: transportadoraId,
+      valorFrete: 25,
+    })
+
+    expect(resultado.success).toBe(true)
+    if (resultado.success) {
+      expect(resultado.data.transportadoraPessoaId).toBe(transportadoraId)
+      expect(resultado.data.valorFrete).toBe(25)
+    }
+  })
+
+  it('rejeita modalidade legada RETIRA', () => {
+    const resultado = esquemaDeCriacaoDePedidoCompra.safeParse({
+      ...payloadBase,
+      modalidadeTransporte: 'RETIRA',
+    })
+
+    expect(resultado.success).toBe(false)
+  })
+})

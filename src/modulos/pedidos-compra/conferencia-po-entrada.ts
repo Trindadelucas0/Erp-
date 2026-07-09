@@ -1,6 +1,7 @@
 /**
  * Conferência PO × Entrada NF (preço, prazo, transporte).
  */
+import { normalizarModalidadeTransporte } from './modalidade-transporte.js'
 export type ItemConferenciaEntrada = {
   produtoId: string
   precoUnitario: number
@@ -72,9 +73,10 @@ export function conferirPedidoCompraComEntrada(
   }
 
   if (
-    normalizarTexto(pedido.modalidadeTransporte) &&
-    normalizarTexto(entrada.modalidadeTransporte) &&
-    normalizarTexto(pedido.modalidadeTransporte) !== normalizarTexto(entrada.modalidadeTransporte)
+    normalizarTexto(normalizarModalidadeTransporte(pedido.modalidadeTransporte)) &&
+    normalizarTexto(normalizarModalidadeTransporte(entrada.modalidadeTransporte)) &&
+    normalizarTexto(normalizarModalidadeTransporte(pedido.modalidadeTransporte)) !==
+      normalizarTexto(normalizarModalidadeTransporte(entrada.modalidadeTransporte))
   ) {
     divergencias.push({
       tipo: 'modalidade_transporte',

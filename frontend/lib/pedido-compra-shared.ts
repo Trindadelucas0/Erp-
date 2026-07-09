@@ -47,6 +47,8 @@ export type ProdutoOpcao = {
   sku: string | null
   urlFotoMiniatura?: string | null
   unidade: string
+  codigoBarras?: string | null
+  codigosBarrasEmbalagem?: (string | null)[]
   codigoOrigem: string | null
   precoCusto: number | null
   bloqueadoCompra: boolean
@@ -93,6 +95,7 @@ export type ContextoFornecedor = {
   ultimasEntradas: EntradaFornecedor[]
   historicoComprasProduto: HistoricoCompra[]
   prazosPagamentoFornecedor?: number[]
+  modalidadeTransportePadrao?: string | null
 }
 
 export type ModoPedidoCompra = 'novo' | 'visualizar' | 'editar'
@@ -119,11 +122,24 @@ export const FILTRO_STATUS_OPCOES: { value: FiltroStatus; label: string }[] = [
 export const AVISO_CONFERENCIA_NF =
   'Na entrada da nota fiscal, o sistema conferirá preço, prazo de pagamento e modalidade de transporte contra este pedido.'
 
+export const MODALIDADES_TRANSPORTE = ['FOB_NOTA', 'FOB_CONHECIMENTO', 'CIF'] as const
+export type ModalidadeTransporte = (typeof MODALIDADES_TRANSPORTE)[number]
+
 export const MODALIDADES = [
   { value: 'FOB_NOTA', label: 'FOB, frete na nota' },
   { value: 'FOB_CONHECIMENTO', label: 'FOB, frete no conhecimento' },
-  { value: 'RETIRA', label: 'Retira' },
-]
+  { value: 'CIF', label: 'CIF' },
+] as const
+
+export function exigeDadosTransporte(modalidade: string): boolean {
+  return modalidade === 'FOB_NOTA' || modalidade === 'FOB_CONHECIMENTO'
+}
+
+export function normalizarModalidadeTransporte(modalidade: string | null | undefined): string {
+  if (!modalidade) return ''
+  if (modalidade === 'RETIRA') return 'CIF'
+  return modalidade
+}
 
 export const TIPOS_COMPRA = [
   { value: 'revenda', label: 'Revenda' },
@@ -152,7 +168,7 @@ export const itemVazio = (): ItemPedido => ({
   produtoId: '',
   codigoOriginal: '',
   quantidade: '1',
-  unidade: 'UN',
+  unidade: '',
   precoUnitario: '0',
   percentualDesconto: '0',
   valorDesconto: '0',
@@ -283,4 +299,23 @@ export function aplicarPrazosFornecedorNoForm(
     prazos,
     condicaoPagamento: condicaoDePrazosForm(prazos),
   }
+}
+
+export function aplicarModalidadeTransportePadraoNoForm(modalidadePadrao: string | null | undefined): {
+  modalidadeTransporte?: string
+  transportadoraPessoaId?: string
+  valorFrete?: string
+  valorFreteSugerido?: string
+} {
+  const modalidade = normalizarModalidadeTransporte(modalidadePadrao)
+  if (!modalidade) return {}
+  if (!exigeDadosTransporte(modalidade)) {
+    return {
+      modalidadeTransporte: modalidade,
+      transportadoraPessoaId: '',
+      valorFrete: '',
+      valorFreteSugerido: '0',
+    }
+  }
+  return { modalidadeTransporte: modalidade }
 }

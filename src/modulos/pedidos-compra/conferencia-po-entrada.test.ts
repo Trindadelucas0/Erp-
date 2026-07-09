@@ -43,4 +43,23 @@ describe('conferirPedidoCompraComEntrada', () => {
     })
     expect(divergencias.some((d) => d.tipo === 'modalidade_transporte')).toBe(true)
   })
+
+  it('trata RETIRA legado do pedido como equivalente a CIF na conferência', () => {
+    const divergencias = conferirPedidoCompraComEntrada(
+      { ...pedido, modalidadeTransporte: 'RETIRA' },
+      {
+        modalidadeTransporte: 'CIF',
+        itens: [],
+      }
+    )
+    expect(divergencias.some((d) => d.tipo === 'modalidade_transporte')).toBe(false)
+  })
+
+  it('trata RETIRA legado da NF como equivalente a CIF na conferência', () => {
+    const divergencias = conferirPedidoCompraComEntrada(pedido, {
+      modalidadeTransporte: 'RETIRA',
+      itens: [],
+    })
+    expect(divergencias.some((d) => d.tipo === 'modalidade_transporte')).toBe(false)
+  })
 })

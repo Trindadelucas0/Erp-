@@ -196,6 +196,7 @@ model DadosFornecedor {
   prazoPagamento4   Int?
   prazoPagamento5   Int?
   prazoPagamento6   Int?
+  modalidadeTransportePadrao String?
   observacoes       String?
 
   planosFinanceiros              FornecedorPlanoFinanceiro[]

@@ -15,6 +15,10 @@ import {
 } from './parcelas-pagamento.js'
 import { repositorioDeFornecedores } from '../fornecedores/repositorio-fornecedores.js'
 import { statusAposEdicao } from './resolver-status-edicao-pedido.js'
+import {
+  normalizarUnidadeCodigoItens,
+  validarUnidadeCodigoItens,
+} from './normalizar-itens-pedido-compra.js'
 import type {
   DadosParaCriarPedidoCompra,
   DadosParaEditarPedidoCompra,
@@ -140,6 +144,12 @@ async function criarPedidoCompra(
   await validarPedidoVenda(dados.pedidoVendaId, companyId)
   await validarItens(dados.itens, companyId)
 
+  const itensNormalizados = await normalizarUnidadeCodigoItens(
+    dados.itens,
+    dados.fornecedorPessoaId,
+    companyId
+  )
+
   const creditoValidado = await servicoCreditosPendencias.validarCreditoNoPedido(
     dados.creditoFornecedorId,
     dados.creditoAplicado ?? undefined,
@@ -150,10 +160,11 @@ async function criarPedidoCompra(
   const dadosComCredito = creditoValidado
     ? {
         ...dados,
+        itens: itensNormalizados,
         creditoFornecedorId: creditoValidado.creditoFornecedorId,
         creditoAplicado: creditoValidado.creditoAplicado,
       }
-    : dados
+    : { ...dados, itens: itensNormalizados }
 
   const dadosFinais = prepararDadosComPrazos(dadosComCredito, dadosComCredito.itens)
 
@@ -211,11 +222,21 @@ async function editarPedidoCompra(
   }
   await validarTransportadora(dados.transportadoraPessoaId, companyId)
   await validarPedidoVenda(dados.pedidoVendaId, companyId)
+  const fornecedorId = dados.fornecedorPessoaId ?? existente.fornecedorPessoaId
+
   if (dados.itens) {
     await validarItens(dados.itens, companyId)
+    await validarUnidadeCodigoItens(
+      dados.itens,
+      fornecedorId,
+      companyId,
+      existente.itens.map((i) => ({
+        produtoId: i.produtoId,
+        unidade: i.unidade,
+        codigoOriginal: i.codigoOriginal,
+      }))
+    )
   }
-
-  const fornecedorId = dados.fornecedorPessoaId ?? existente.fornecedorPessoaId
   const creditoValidado = await servicoCreditosPendencias.validarCreditoNoPedido(
     dados.creditoFornecedorId !== undefined
       ? dados.creditoFornecedorId
@@ -339,6 +360,8 @@ async function obterContextoFornecedor(fornecedorPessoaId: string, companyId: st
     fornecedor?.prazosPagamento
       ?.filter((p): p is number => p != null && p >= 0) ?? []
 
+  const modalidadeTransportePadrao = fornecedor?.modalidadeTransportePadrao ?? null
+
   return {
     pedidosAbertos,
     creditos: creditos.map((c) => ({
@@ -358,6 +381,7 @@ async function obterContextoFornecedor(fornecedorPessoaId: string, companyId: st
     ultimasEntradas,
     historicoComprasProduto: [],
     prazosPagamentoFornecedor,
+    modalidadeTransportePadrao,
   }
 }
 
