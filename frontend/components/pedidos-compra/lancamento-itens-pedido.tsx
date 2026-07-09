@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { History, Plus, Trash2 } from 'lucide-react'
 import { ComboboxProduto } from '@/components/pedidos-compra/combobox-produto'
 import { Button } from '@/components/ui/button'
@@ -81,6 +81,17 @@ export function LancamentoItensPedido({
   const [erroRascunho, setErroRascunho] = useState('')
   const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<ColunaOrdenacao>()
   const [preenchendoProduto, setPreenchendoProduto] = useState(false)
+  const containerRascunhoRef = useRef<HTMLDivElement>(null)
+  const rascunhoRef = useRef(rascunho)
+  const preenchendoProdutoRef = useRef(preenchendoProduto)
+  const indiceEdicaoRef = useRef(indiceEdicao)
+  const onAdicionarRef = useRef(onAdicionar)
+  const onAtualizarRef = useRef(onAtualizar)
+  rascunhoRef.current = rascunho
+  preenchendoProdutoRef.current = preenchendoProduto
+  indiceEdicaoRef.current = indiceEdicao
+  onAdicionarRef.current = onAdicionar
+  onAtualizarRef.current = onAtualizar
 
   useEffect(() => {
     setRascunho((atual) => {
@@ -165,33 +176,57 @@ export function LancamentoItensPedido({
       setRascunho(preenchido)
     } finally {
       setPreenchendoProduto(false)
+      requestAnimationFrame(() => {
+        document.getElementById('rascunho-item-quantidade')?.focus()
+      })
     }
   }
 
   function confirmarRascunho() {
-    if (!rascunho.produtoId) {
+    confirmarRascunhoComItem(rascunhoRef.current)
+  }
+
+  function confirmarRascunhoComItem(atual: ItemPedido) {
+    if (!atual.produtoId) {
       setErroRascunho('Selecione o produto.')
       return
     }
-    if (parseNum(rascunho.quantidade) <= 0) {
+    if (parseNum(atual.quantidade) <= 0) {
       setErroRascunho('Informe uma quantidade maior que zero.')
       return
     }
-    if (indiceEdicao != null) {
-      onAtualizar(indiceEdicao, rascunho)
+    if (indiceEdicaoRef.current != null) {
+      onAtualizarRef.current(indiceEdicaoRef.current, atual)
     } else {
-      onAdicionar(rascunho)
+      onAdicionarRef.current(atual)
     }
     limparRascunho()
   }
 
-  function aoTeclarRascunho(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (disabled || preenchendoProduto) return
-    if (e.key !== 'Enter' || e.shiftKey) return
-    e.preventDefault()
-    e.stopPropagation()
-    confirmarRascunho()
+  const adicionarAoEnterRef = useRef(() => {})
+  adicionarAoEnterRef.current = () => {
+    if (preenchendoProdutoRef.current) return
+    const atual = rascunhoRef.current
+    if (!atual.produtoId) return
+    confirmarRascunhoComItem(atual)
   }
+
+  useEffect(() => {
+    if (disabled) return
+
+    function aoTeclarEnter(e: KeyboardEvent) {
+      if (e.key !== 'Enter' || e.shiftKey) return
+
+      const container = containerRascunhoRef.current
+      if (!container?.contains(e.target as Node)) return
+
+      e.preventDefault()
+      adicionarAoEnterRef.current()
+    }
+
+    document.addEventListener('keydown', aoTeclarEnter, true)
+    return () => document.removeEventListener('keydown', aoTeclarEnter, true)
+  }, [disabled])
 
   function carregarParaEdicao(linha: LinhaExibida) {
     if (disabled) return
@@ -216,8 +251,9 @@ export function LancamentoItensPedido({
 
       {!disabled && (
         <div
+          ref={containerRascunhoRef}
           className="space-y-2 rounded-md bg-muted/20 p-2"
-          onKeyDown={aoTeclarRascunho}
+          data-area-rascunho-item
         >
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
             <div className="sm:col-span-2 lg:col-span-3 2xl:col-span-2">
@@ -247,6 +283,7 @@ export function LancamentoItensPedido({
               title="Editável no cadastro do produto, aba Compras"
             />
             <InputPadrao
+              id="rascunho-item-quantidade"
               rotulo="Quantidade"
               value={rascunho.quantidade}
               onChange={(e) => atualizarRascunho('quantidade', e.target.value)}

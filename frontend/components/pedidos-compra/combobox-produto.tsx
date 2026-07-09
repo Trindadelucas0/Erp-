@@ -36,6 +36,8 @@ type Props = {
   produtos: ProdutoOpcao[]
   valor: string
   aoMudar: (produtoId: string) => void
+  /** Quando informado, Enter com produto já selecionado e lista fechada dispara esta ação (ex.: adicionar item). */
+  aoEnterComProdutoSelecionado?: () => void
   disabled?: boolean
 }
 
@@ -76,6 +78,7 @@ export function ComboboxProduto({
   produtos,
   valor,
   aoMudar,
+  aoEnterComProdutoSelecionado,
   disabled,
 }: Props) {
   const [aberto, setAberto] = useState(false)
@@ -165,11 +168,13 @@ export function ComboboxProduto({
 
   function aoTeclarBusca(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== 'Enter' || e.shiftKey) return
-    if (!aberto) return
+
     e.preventDefault()
     e.stopPropagation()
-    if (filtrados.length > 0) {
-      selecionar(filtrados[0].id)
+
+    if (valor && aoEnterComProdutoSelecionado) {
+      fechar()
+      aoEnterComProdutoSelecionado()
     }
   }
 
@@ -227,7 +232,9 @@ export function ComboboxProduto({
               setBusca(e.target.value)
               abrirSeFechado()
             }}
-            onFocus={abrirSeFechado}
+            onFocus={() => {
+              if (!valor) abrirSeFechado()
+            }}
             onKeyDown={aoTeclarBusca}
             disabled={disabled}
             placeholder="Buscar por SKU, nome ou código de barras..."

@@ -23,6 +23,11 @@ type PosicaoDropdown = {
   maxHeight: number
 }
 
+
+
+
+
+
 type Props = {
   rotulo: string
   pessoas: PessoaOpcao[]
@@ -92,6 +97,8 @@ export function ComboboxPessoa({
       maxHeight,
     })
   }, [])
+
+
 
   useEffect(() => {
     if (!aberto) return
