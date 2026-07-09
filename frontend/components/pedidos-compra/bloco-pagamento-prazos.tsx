@@ -9,6 +9,7 @@ import {
   somarParcelasManual,
   TOLERANCIA_PARCELAS,
   distribuirParcelasIguais,
+  parseValorParcela,
 } from '@/lib/parcelas-pagamento-pedido'
 import {
   calcularDiasEntreDatas,
@@ -63,16 +64,21 @@ function valorExibido(
   rateioParcelas: string,
   totalLiquido: number
 ): string {
+  const valorNoEstado = parseValorParcela(prazo.valor)
+  if (valorNoEstado != null && prazo.valor !== '' && prazo.valor != null) {
+    return String(prazo.valor)
+  }
+
   if (rateioParcelas === 'igual') {
     const comVencimento = prazos.filter((p) => p.vencimento?.trim())
-    if (!prazo.vencimento?.trim()) return ''
-    const idx = comVencimento.findIndex((p) => p.numero === prazo.numero)
+    const base = comVencimento.length > 0 ? comVencimento : prazos
+    const idx = base.findIndex((p) => p.numero === prazo.numero)
     if (idx < 0) return ''
-    const n = comVencimento.length || prazos.length
-    const valores = distribuirParcelasIguais(n, totalLiquido)
+    const valores = distribuirParcelasIguais(base.length, totalLiquido)
     const v = valores[idx]
     return v != null ? String(v) : ''
   }
+
   if (prazo.valor == null || prazo.valor === '') return ''
   return String(prazo.valor)
 }
@@ -219,15 +225,15 @@ export function BlocoPagamentoPrazos({
 
       {prazos.length > 0 && (
         <>
-          <div className="min-w-0 max-w-full">
-            <table className="w-full table-fixed text-sm">
+          <div className="min-w-0 overflow-x-auto">
+            <table className="w-full min-w-[32rem] text-sm">
               <thead>
                 <tr className="border-b bg-muted/40 text-left text-muted-foreground">
-                  <th className="w-[10%] px-2 py-1.5 font-medium">Prazo</th>
-                  <th className="w-[15%] px-2 py-1.5 font-medium">Dia</th>
-                  <th className="w-[35%] px-2 py-1.5 font-medium">Vencimento</th>
-                  <th className="w-[25%] px-2 py-1.5 font-medium">Valor (R$)</th>
-                  {!disabled && <th className="w-[15%] px-2 py-1.5 font-medium" />}
+                  <th className="px-2 py-1.5 font-medium">Prazo</th>
+                  <th className="px-2 py-1.5 font-medium">Dia</th>
+                  <th className="px-2 py-1.5 font-medium">Vencimento</th>
+                  <th className="px-2 py-1.5 font-medium">Valor (R$)</th>
+                  {!disabled && <th className="shrink-0 px-2 py-1.5 font-medium" />}
                 </tr>
               </thead>
               <tbody>
@@ -286,7 +292,7 @@ export function BlocoPagamentoPrazos({
                       )}
                     </td>
                     {!disabled && (
-                      <td className="px-2 py-1.5">
+                      <td className="shrink-0 px-2 py-1.5">
                         <Button
                           type="button"
                           variant="ghost"

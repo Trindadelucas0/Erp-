@@ -4,12 +4,14 @@ import { useCallback, useEffect, useRef, useState, type FocusEvent } from 'react
 import { createPortal } from 'react-dom'
 import { Search, X } from 'lucide-react'
 import { Label } from '@/components/ui/label'
+import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
 import {
   notificarAberturaDropdownCatalogo,
   useFecharAoSairComMouse,
   useInstanciaDropdownCatalogo,
   useOuvirFechamentoDropdownCatalogo,
 } from '@/lib/dropdown-catalogo'
+import { normalizarTermoBusca, textoContemTermo } from '@/lib/normalizar-busca'
 import { cn } from '@/lib/utils'
 
 export type PessoaOpcao = { id: string; nome: string }
@@ -37,9 +39,8 @@ const LIMITE = 80
 const ALTURA_MAXIMA_LISTA = 240
 
 function filtrarPessoas(pessoas: PessoaOpcao[], termo: string) {
-  const q = termo.toLowerCase().trim()
-  if (!q) return pessoas.slice(0, LIMITE)
-  return pessoas.filter((p) => p.nome.toLowerCase().includes(q)).slice(0, LIMITE)
+  if (!normalizarTermoBusca(termo)) return pessoas.slice(0, LIMITE)
+  return pessoas.filter((p) => textoContemTermo(p.nome, termo)).slice(0, LIMITE)
 }
 
 export function ComboboxPessoa({
@@ -70,7 +71,7 @@ export function ComboboxPessoa({
   }, [])
 
   useOuvirFechamentoDropdownCatalogo(instanciaId, fechar)
-  const zonaHover = useFecharAoSairComMouse(fechar)
+  const zonaHover = useFecharAoSairComMouse(fechar, [containerRef, listaRef])
 
   useEffect(() => {
     setMontado(true)
@@ -124,11 +125,13 @@ export function ComboboxPessoa({
 
   function abrir(inicializarBusca = false) {
     if (disabled) return
-    notificarAberturaDropdownCatalogo(instanciaId)
+    if (!aberto) {
+      notificarAberturaDropdownCatalogo(instanciaId)
+      setAberto(true)
+    }
     if (inicializarBusca && selecionado) {
       setBusca(selecionado.nome)
     }
-    setAberto(true)
   }
 
   function aoFocarInput(e: FocusEvent<HTMLInputElement>) {
@@ -153,7 +156,6 @@ export function ComboboxPessoa({
     <ul
       ref={listaRef}
       role="listbox"
-      {...zonaHover}
       className="fixed z-[60] overflow-auto rounded-md border border-border bg-popover text-popover-foreground shadow-md text-sm"
       style={{
         top: posicao.top,
@@ -192,7 +194,7 @@ export function ComboboxPessoa({
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => selecionar(p.id)}
             >
-              <span className="truncate">{p.nome}</span>
+              <TextoDestaqueBusca texto={p.nome} termo={busca} className="truncate" />
             </button>
           </li>
         ))

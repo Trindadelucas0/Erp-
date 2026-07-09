@@ -88,6 +88,7 @@ async function listarPedidosCompra(
     fornecedorId?: string
     status?: string
     statusAberto?: boolean
+    statusIn?: string[]
     numero?: number
     busca?: string
     dataInicio?: Date

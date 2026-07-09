@@ -320,8 +320,12 @@ export function LancamentoItensPedido({
         </div>
       )}
 
-      <div className="min-w-0 overflow-x-auto md:overflow-x-visible rounded-md border border-border">
-        <table className="w-full min-w-0 table-fixed text-sm md:table-auto">
+      <p className="text-xs text-muted-foreground lg:hidden">
+        Deslize horizontalmente para ver todas as colunas.
+      </p>
+
+      <div className="min-w-0 overflow-x-auto rounded-md border border-border">
+        <table className="w-full min-w-[72rem] text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/40 text-left">
               <CabecalhoColunaOrdenavel
@@ -401,7 +405,9 @@ export function LancamentoItensPedido({
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
-              <th className="px-2 py-1.5 font-medium text-muted-foreground">Ações</th>
+              <th className="sticky right-0 z-10 bg-muted/40 px-2 py-1.5 font-medium text-muted-foreground">
+                Ações
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -421,7 +427,7 @@ export function LancamentoItensPedido({
                   <tr
                     key={linha.item.id ?? `item-${linha.indiceOriginal}`}
                     className={cn(
-                      'border-b border-border',
+                      'group border-b border-border',
                       !disabled && 'cursor-pointer hover:bg-muted/30',
                       selecionada && 'bg-primary/5'
                     )}
@@ -475,8 +481,15 @@ export function LancamentoItensPedido({
                           )
                         : '—'}
                     </td>
-                    <td className="px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center gap-1">
+                    <td
+                      className={cn(
+                        'sticky right-0 z-10 bg-card px-2 py-1.5',
+                        !disabled && 'group-hover:bg-muted/30',
+                        selecionada && 'bg-primary/5'
+                      )}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex shrink-0 items-center gap-1">
                         <Button
                           type="button"
                           variant="ghost"

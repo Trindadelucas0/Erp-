@@ -30,6 +30,7 @@ import { CardPadrao } from '@/components/ui/card-padrao'
 import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
 import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
 import { ordenarLista } from '@/lib/ordenacao-lista'
+import { filtrarCadastroPessoa } from '@/lib/normalizar-busca'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Modal } from '@/components/ui/modal'
 import { Abas } from '@/components/ui/abas'
@@ -909,15 +910,10 @@ function ConteudoDaPaginaDeTransportadoras() {
     }
   )
 
-  const transportadorasFiltradas = listaTransportadoras.filter((t) => {
-    const termo = busca.toLowerCase()
-    return t.nome.toLowerCase().includes(termo) ||
-      (t.nomeFantasia && t.nomeFantasia.toLowerCase().includes(termo)) ||
-      (t.cpf && t.cpf.includes(busca.replace(/\D/g, ''))) ||
-      (t.cnpj && t.cnpj.includes(busca.replace(/\D/g, ''))) ||
-      (t.email && t.email.toLowerCase().includes(termo)) ||
-      (t.estado && t.estado.toLowerCase().includes(termo))
-  })
+  const transportadorasFiltradas = useMemo(
+    () => filtrarCadastroPessoa(listaTransportadoras, busca),
+    [listaTransportadoras, busca]
+  )
 
   const listaExibida = useMemo(
     () =>

@@ -66,6 +66,7 @@ function ConteudoDaPagina() {
 
   const [lista, setLista] = useState<Cfop[]>([])
   const [busca, setBusca] = useState('')
+  const [buscaDebounced, setBuscaDebounced] = useState('')
   const [modalAberto, setModalAberto] = useState(false)
   const [modoEdicao, setModoEdicao] = useState(false)
   const [idEmEdicao, setIdEmEdicao] = useState('')
@@ -83,16 +84,21 @@ function ConteudoDaPagina() {
 
   const cfopEhSaida = classificacaoAtual?.tipo === 'saida'
 
+  useEffect(() => {
+    const timer = setTimeout(() => setBuscaDebounced(busca), 300)
+    return () => clearTimeout(timer)
+  }, [busca])
+
   const carregar = useCallback(async () => {
     try {
       const params = new URLSearchParams({ incluirInativos: 'true' })
-      if (busca.trim()) params.set('q', busca.trim())
+      if (buscaDebounced.trim()) params.set('q', buscaDebounced.trim())
       const { data } = await clienteHttp.get(`/cfops?${params}`)
       setLista(data.cfops ?? [])
     } catch {
       setErro('Erro ao carregar CFOPs.')
     }
-  }, [busca])
+  }, [buscaDebounced])
 
   useEffect(() => {
     if (carregandoSessao || !estaAutenticado) return
@@ -177,18 +183,9 @@ function ConteudoDaPagina() {
     }
   }
 
-  const listaFiltrada = lista.filter((c) => {
-    const t = busca.toLowerCase()
-    return (
-      !t ||
-      c.codigo.toLowerCase().includes(t) ||
-      c.nome.toLowerCase().includes(t)
-    )
-  })
-
   const listaExibida = useMemo(
     () =>
-      ordenarLista(listaFiltrada, ordenacao, (cfop, coluna) => {
+      ordenarLista(lista, ordenacao, (cfop, coluna) => {
         switch (coluna) {
           case 'codigo':
             return cfop.codigo
@@ -200,7 +197,7 @@ function ConteudoDaPagina() {
             return cfop.ativo ? 'Ativo' : 'Inativo'
         }
       }),
-    [listaFiltrada, ordenacao]
+    [lista, ordenacao]
   )
 
   const podeSalvar = modoEdicao ? podeEditar : podeCriar

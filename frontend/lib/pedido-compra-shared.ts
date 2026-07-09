@@ -100,6 +100,66 @@ export type ContextoFornecedor = {
 
 export type ModoPedidoCompra = 'novo' | 'visualizar' | 'editar'
 
+export type StatusPedidoFiltravel =
+  | 'rascunho'
+  | 'enviado'
+  | 'parcial'
+  | 'recebido'
+  | 'cancelado'
+
+export const STATUS_PEDIDO_FILTRAVEL = [
+  { value: 'rascunho' as const, label: 'Rascunho' },
+  { value: 'enviado' as const, label: 'Enviado' },
+  { value: 'parcial' as const, label: 'Recebimento parcial' },
+  { value: 'recebido' as const, label: 'Recebido' },
+  { value: 'cancelado' as const, label: 'Cancelado' },
+]
+
+export const STATUS_FILTRO_PADRAO: StatusPedidoFiltravel[] = [
+  'rascunho',
+  'enviado',
+  'parcial',
+]
+
+export const TODOS_STATUS_PEDIDO_FILTRAVEL: StatusPedidoFiltravel[] =
+  STATUS_PEDIDO_FILTRAVEL.map((s) => s.value)
+
+export function statusesIguais(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false
+  const conjuntoB = new Set(b)
+  return a.every((status) => conjuntoB.has(status))
+}
+
+export function rotuloResumoStatusFiltro(statuses: readonly string[]): string {
+  if (statuses.length === 0) return 'Nenhum status'
+  if (statuses.length === TODOS_STATUS_PEDIDO_FILTRAVEL.length) return 'Todos os status'
+
+  const rotulos = statuses
+    .map((status) => STATUS_PEDIDO_FILTRAVEL.find((s) => s.value === status)?.label)
+    .filter((label): label is string => !!label)
+
+  if (rotulos.length <= 2) return rotulos.join(', ')
+  return `${rotulos.slice(0, 2).join(', ')} +${rotulos.length - 2}`
+}
+
+export type FiltrosPedidoCompra = {
+  statuses: StatusPedidoFiltravel[]
+  fornecedorId: string
+  buscaNumero: string
+  dataInicio: string
+  dataFim: string
+}
+
+export function filtrosDiferentesDoPadrao(filtros: FiltrosPedidoCompra): boolean {
+  return (
+    !statusesIguais(filtros.statuses, STATUS_FILTRO_PADRAO) ||
+    filtros.fornecedorId !== '' ||
+    filtros.buscaNumero.trim() !== '' ||
+    filtros.dataInicio !== '' ||
+    filtros.dataFim !== ''
+  )
+}
+
 export type FiltroStatus =
   | 'todos'
   | 'aberto'
@@ -156,8 +216,8 @@ export const TIPOS_PENDENCIA = [
   { value: 'credito_pendente', label: 'Crédito pendente' },
 ]
 
-export const FILTROS_VAZIOS = {
-  status: 'todos' as FiltroStatus,
+export const FILTROS_VAZIOS: FiltrosPedidoCompra = {
+  statuses: [...STATUS_FILTRO_PADRAO],
   fornecedorId: '',
   buscaNumero: '',
   dataInicio: '',
@@ -197,6 +257,25 @@ export const formVazio = {
   status: 'rascunho',
   motivoCancelamento: '',
   itens: [] as ItemPedido[],
+}
+
+export type FormPedidoCompra = typeof formVazio
+
+const TIPOS_COMPRA_VALIDOS = new Set(TIPOS_COMPRA.map((t) => t.value))
+
+export function validarCamposObrigatoriosLancamento(
+  form: Pick<FormPedidoCompra, 'tipoCompra' | 'dataFaturamento' | 'previsaoEntrega'>
+): string | null {
+  if (!form.tipoCompra?.trim() || !TIPOS_COMPRA_VALIDOS.has(form.tipoCompra)) {
+    return 'Selecione o tipo de compra.'
+  }
+  if (!form.dataFaturamento?.trim()) {
+    return 'Informe a data de faturamento.'
+  }
+  if (!form.previsaoEntrega?.trim()) {
+    return 'Informe a previsão de entrega.'
+  }
+  return null
 }
 
 export const pendenciaVazia = {

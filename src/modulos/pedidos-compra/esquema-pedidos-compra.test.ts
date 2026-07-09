@@ -77,3 +77,47 @@ describe('esquemaDeCriacaoDePedidoCompra — modalidade de transporte', () => {
     expect(resultado.success).toBe(false)
   })
 })
+
+describe('esquemaDeCriacaoDePedidoCompra — campos obrigatórios na conclusão', () => {
+  const payloadCif = {
+    ...payloadBase,
+    modalidadeTransporte: 'CIF' as const,
+  }
+
+  it('permite rascunho sem datas', () => {
+    const resultado = esquemaDeCriacaoDePedidoCompra.safeParse({
+      ...payloadCif,
+      concluir: false,
+    })
+
+    expect(resultado.success).toBe(true)
+  })
+
+  it('rejeita conclusão sem data de faturamento', () => {
+    const resultado = esquemaDeCriacaoDePedidoCompra.safeParse({
+      ...payloadCif,
+      concluir: true,
+      tipoCompra: 'revenda',
+      previsaoEntrega: '2026-07-15',
+    })
+
+    expect(resultado.success).toBe(false)
+    if (!resultado.success) {
+      expect(resultado.error.errors.some((e) => e.path.includes('dataFaturamento'))).toBe(
+        true
+      )
+    }
+  })
+
+  it('aceita conclusão com campos obrigatórios preenchidos', () => {
+    const resultado = esquemaDeCriacaoDePedidoCompra.safeParse({
+      ...payloadCif,
+      concluir: true,
+      tipoCompra: 'revenda',
+      dataFaturamento: '2026-07-01',
+      previsaoEntrega: '2026-07-15',
+    })
+
+    expect(resultado.success).toBe(true)
+  })
+})

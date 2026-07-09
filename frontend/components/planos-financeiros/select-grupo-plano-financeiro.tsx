@@ -49,7 +49,8 @@ export function SelectGrupoPlanoFinanceiro({
   const listaRef = useRef<HTMLDivElement>(null)
   const idCampo = useId()
 
-  const zonaHover = useFecharAoSairComMouse(() => setAberto(false))
+  const fechar = useCallback(() => setAberto(false), [])
+  const zonaHover = useFecharAoSairComMouse(fechar, [containerRef, listaRef])
 
   useEffect(() => {
     setMontado(true)
@@ -116,7 +117,6 @@ export function SelectGrupoPlanoFinanceiro({
     <div
       ref={listaRef}
       role="listbox"
-      {...zonaHover}
       className="fixed z-[60] max-h-60 overflow-y-auto rounded-md border border-border bg-card py-1 shadow-lg"
       style={{
         top: posicao.top,

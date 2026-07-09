@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Label } from '@/components/ui/label'
+import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
 import { useFecharAoSairComMouse } from '@/lib/dropdown-catalogo'
+import { normalizarTermoBusca, textoContemTermo } from '@/lib/normalizar-busca'
 import { cn } from '@/lib/utils'
 import { BANCOS_BRASILEIROS } from '@/lib/bancos-brasileiros'
 
@@ -26,14 +28,14 @@ export function ComboboxBanco({ valor, aoMudar, disabled, mensagemDeErro }: Prop
     setBusca('')
   }, [])
 
-  const zonaHover = useFecharAoSairComMouse(fechar)
+  const zonaHover = useFecharAoSairComMouse(fechar, [containerRef])
 
-  const termoBusca = busca.toLowerCase().trim()
+  const termoBusca = normalizarTermoBusca(busca)
   const filtrados = termoBusca
     ? BANCOS_BRASILEIROS.filter(
         (b) =>
           b.codigo.startsWith(termoBusca) ||
-          b.nome.toLowerCase().includes(termoBusca)
+          textoContemTermo(b.nome, busca)
       ).slice(0, LIMITE_DROPDOWN)
     : BANCOS_BRASILEIROS.slice(0, LIMITE_DROPDOWN)
 
@@ -127,8 +129,10 @@ export function ComboboxBanco({ valor, aoMudar, disabled, mensagemDeErro }: Prop
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => selecionar(b.codigo, b.nome)}
                   >
-                    <span className="text-xs text-muted-foreground w-8 shrink-0">{b.codigo}</span>
-                    <span className="truncate">{b.nome}</span>
+                    <span className="text-xs text-muted-foreground w-8 shrink-0">
+                      <TextoDestaqueBusca texto={b.codigo} termo={busca} />
+                    </span>
+                    <TextoDestaqueBusca texto={b.nome} termo={busca} className="truncate" />
                   </button>
                 </li>
               ))

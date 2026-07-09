@@ -4,6 +4,7 @@
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { servicoDePedidosCompra } from './servico-pedidos-compra.js'
+import { parsearStatusesQuery } from './filtro-status-pedido.js'
 import {
   esquemaCancelarPedidoCompra,
   esquemaCompararPdf,
@@ -14,11 +15,12 @@ import {
 
 async function listarPedidosCompra(requisicao: FastifyRequest, resposta: FastifyReply) {
   const companyId = requisicao.empresaAtivaId || ''
-  const { fornecedorId, status, statusAberto, numero, busca, dataInicio, dataFim } =
+  const { fornecedorId, status, statusAberto, statuses, numero, busca, dataInicio, dataFim } =
     requisicao.query as {
       fornecedorId?: string
       status?: string
       statusAberto?: string
+      statuses?: string | string[]
       numero?: string
       busca?: string
       dataInicio?: string
@@ -49,10 +51,13 @@ async function listarPedidosCompra(requisicao: FastifyRequest, resposta: Fastify
     }
   }
 
+  const statusIn = parsearStatusesQuery(statuses)
+
   const pedidos = await servicoDePedidosCompra.listarPedidosCompra(companyId, {
     fornecedorId,
     status,
     statusAberto: statusAberto === 'true',
+    statusIn,
     numero: numeroFiltro,
     busca: busca?.trim() || undefined,
     dataInicio: inicio,

@@ -11,6 +11,7 @@ import {
   useOuvirFechamentoDropdownCatalogo,
 } from '@/lib/dropdown-catalogo'
 import { cn } from '@/lib/utils'
+import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
 
 export type PlanoCfopPar = {
   planoFinanceiroId: string
@@ -63,9 +64,10 @@ function ComboboxItem({
   const fechar = useCallback(() => setAberto(false), [])
 
   useOuvirFechamentoDropdownCatalogo(instanciaId, fechar)
-  const zonaHover = useFecharAoSairComMouse(fechar)
+  const zonaHover = useFecharAoSairComMouse(fechar, [ref])
 
-  function abrir() {
+  function abrirSeFechado() {
+    if (disabled || aberto) return
     notificarAberturaDropdownCatalogo(instanciaId)
     setAberto(true)
   }
@@ -129,8 +131,8 @@ function ComboboxItem({
             value={aberto ? busca : textoAtual}
             placeholder="Buscar..."
             disabled={disabled}
-            onChange={(e) => { setBusca(e.target.value); setErroSelecao(''); abrir() }}
-            onFocus={abrir}
+            onChange={(e) => { setBusca(e.target.value); setErroSelecao(''); abrirSeFechado() }}
+            onFocus={abrirSeFechado}
           />
           {valor && !disabled && (
             <button
@@ -157,8 +159,10 @@ function ComboboxItem({
                   className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
                   onMouseDown={(e) => { e.preventDefault(); selecionar(item) }}
                 >
-                  <span className="font-mono text-xs text-muted-foreground">{item.codigo}</span>
-                  <span className="truncate">{item.descricao}</span>
+                  <span className="font-mono text-xs text-muted-foreground">
+                    <TextoDestaqueBusca texto={item.codigo} termo={busca} />
+                  </span>
+                  <TextoDestaqueBusca texto={item.descricao} termo={busca} className="truncate" />
                 </button>
               ))}
             </div>

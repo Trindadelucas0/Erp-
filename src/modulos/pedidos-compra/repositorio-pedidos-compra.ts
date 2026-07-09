@@ -167,6 +167,7 @@ async function listarPorEmpresa(
     fornecedorId?: string
     status?: string
     statusAberto?: boolean
+    statusIn?: string[]
     numero?: number
     busca?: string
     dataInicio?: Date
@@ -204,7 +205,9 @@ async function listarPorEmpresa(
     }
   }
 
-  if (filtros?.statusAberto) {
+  if (filtros?.statusIn?.length) {
+    where.status = { in: filtros.statusIn }
+  } else if (filtros?.statusAberto) {
     where.status = { in: ['rascunho', 'enviado', 'parcial'] }
   } else if (filtros?.status === 'feito') {
     where.status = { in: ['enviado', 'parcial', 'recebido'] }

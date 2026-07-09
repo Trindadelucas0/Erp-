@@ -4,12 +4,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Search, X } from 'lucide-react'
 import { Label } from '@/components/ui/label'
+import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
 import {
   notificarAberturaDropdownCatalogo,
   useFecharAoSairComMouse,
   useInstanciaDropdownCatalogo,
   useOuvirFechamentoDropdownCatalogo,
 } from '@/lib/dropdown-catalogo'
+import { normalizarTermoBusca, textoContemTermo } from '@/lib/normalizar-busca'
 import { normalizarCodigoBarrasGtin } from '@/lib/validar-codigo-barras-gtin'
 import { cn } from '@/lib/utils'
 
@@ -46,22 +48,20 @@ function rotuloProduto(p: ProdutoOpcao) {
 
 function codigoBarrasCorresponde(codigo: string | null | undefined, termo: string): boolean {
   if (!codigo?.trim()) return false
-  const termoTexto = termo.toLowerCase().trim()
   const termoDigitos = normalizarCodigoBarrasGtin(termo)
   if (termoDigitos.length >= 3) {
     const codigoDigitos = normalizarCodigoBarrasGtin(codigo)
     if (codigoDigitos.includes(termoDigitos)) return true
   }
-  return codigo.toLowerCase().includes(termoTexto)
+  return textoContemTermo(codigo, termo)
 }
 
 export function filtrarProdutos(produtos: ProdutoOpcao[], termo: string) {
-  const q = termo.toLowerCase().trim()
-  if (!q) return produtos.slice(0, LIMITE)
+  if (!normalizarTermoBusca(termo)) return produtos.slice(0, LIMITE)
   return produtos
     .filter((p) => {
-      if (p.nomeVenda.toLowerCase().includes(q)) return true
-      if (p.sku?.toLowerCase().includes(q)) return true
+      if (textoContemTermo(p.nomeVenda, termo)) return true
+      if (p.sku && textoContemTermo(p.sku, termo)) return true
       if (codigoBarrasCorresponde(p.codigoBarras, termo)) return true
       if (p.codigosBarrasEmbalagem?.some((codigo) => codigoBarrasCorresponde(codigo, termo))) {
         return true
@@ -95,7 +95,7 @@ export function ComboboxProduto({
   }, [])
 
   useOuvirFechamentoDropdownCatalogo(instanciaId, fechar)
-  const zonaHover = useFecharAoSairComMouse(fechar)
+  const zonaHover = useFecharAoSairComMouse(fechar, [containerRef, listaRef])
 
   useEffect(() => {
     setMontado(true)
@@ -147,8 +147,8 @@ export function ComboboxProduto({
     return () => document.removeEventListener('mousedown', aoClicarFora)
   }, [aberto, fechar])
 
-  function abrir() {
-    if (disabled) return
+  function abrirSeFechado() {
+    if (disabled || aberto) return
     notificarAberturaDropdownCatalogo(instanciaId)
     setAberto(true)
   }
@@ -170,7 +170,6 @@ export function ComboboxProduto({
     <ul
       ref={listaRef}
       role="listbox"
-      {...zonaHover}
       className="fixed z-[60] overflow-auto rounded-md border border-border bg-popover text-popover-foreground shadow-md text-sm"
       style={{
         top: posicao.top,
@@ -193,9 +192,11 @@ export function ComboboxProduto({
               onClick={() => selecionar(p.id)}
             >
               {p.sku && (
-                <span className="shrink-0 font-mono text-xs text-muted-foreground">{p.sku}</span>
+                <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                  <TextoDestaqueBusca texto={p.sku} termo={busca} />
+                </span>
               )}
-              <span className="truncate">{p.nomeVenda}</span>
+              <TextoDestaqueBusca texto={p.nomeVenda} termo={busca} className="truncate" />
             </button>
           </li>
         ))
@@ -214,9 +215,9 @@ export function ComboboxProduto({
             value={aberto ? busca : textoExibido}
             onChange={(e) => {
               setBusca(e.target.value)
-              abrir()
+              abrirSeFechado()
             }}
-            onFocus={abrir}
+            onFocus={abrirSeFechado}
             disabled={disabled}
             placeholder="Buscar por SKU, nome ou código de barras..."
             className={cn(

@@ -21,6 +21,11 @@ const produtos: ProdutoOpcao[] = [
 ]
 
 describe('filtrarProdutos', () => {
+  it('filtra por nome sem diferenciar maiúsculas', () => {
+    expect(filtrarProdutos(produtos, 'COLANTE')).toHaveLength(1)
+    expect(filtrarProdutos(produtos, 'colante')[0]?.id).toBe('1')
+  })
+
   it('filtra por nome', () => {
     expect(filtrarProdutos(produtos, 'colante')).toHaveLength(1)
     expect(filtrarProdutos(produtos, 'colante')[0]?.id).toBe('1')

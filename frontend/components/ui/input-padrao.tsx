@@ -4,12 +4,14 @@ import { cn } from '@/lib/utils'
 
 type Props = React.ComponentProps<typeof Input> & {
   rotulo: string
+  obrigatorio?: boolean
   mensagemDeErro?: string
   id?: string
 }
 
 export function InputPadrao({
   rotulo,
+  obrigatorio,
   mensagemDeErro,
   id,
   className,
@@ -19,11 +21,15 @@ export function InputPadrao({
 
   return (
     <div className="space-y-2">
-      <Label htmlFor={idDoCampo}>{rotulo}</Label>
+      <Label htmlFor={idDoCampo}>
+        {rotulo}
+        {obrigatorio && <span className="ml-0.5 text-destructive">*</span>}
+      </Label>
       <Input
         id={idDoCampo}
         className={cn(mensagemDeErro && 'border-destructive', className)}
         aria-invalid={!!mensagemDeErro}
+        aria-required={obrigatorio}
         {...props}
       />
       {mensagemDeErro && (

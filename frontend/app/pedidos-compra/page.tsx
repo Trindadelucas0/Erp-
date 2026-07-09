@@ -21,15 +21,16 @@ import {
   varianteStatusUi,
 } from '@/lib/status-pedido-compra'
 import {
-  FILTRO_STATUS_OPCOES,
   FILTROS_VAZIOS,
+  filtrosDiferentesDoPadrao,
   formatarData,
   formatarMoeda,
   pedidoEditavel,
-  type FiltroStatus,
   type PedidoCompra,
   type PessoaOpcao,
+  type StatusPedidoFiltravel,
 } from '@/lib/pedido-compra-shared'
+import { FiltroStatusMultiplo } from '@/components/pedidos-compra/filtro-status-multiplo'
 import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
 import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
 import { ordenarLista } from '@/lib/ordenacao-lista'
@@ -57,12 +58,7 @@ function ConteudoDaPagina() {
   const [filtros, setFiltros] = useState(FILTROS_VAZIOS)
   const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<ColunaPedido>()
 
-  const filtrosAtivos =
-    filtros.status !== 'todos' ||
-    filtros.fornecedorId !== '' ||
-    filtros.buscaNumero.trim() !== '' ||
-    filtros.dataInicio !== '' ||
-    filtros.dataFim !== ''
+  const filtrosAtivos = filtrosDiferentesDoPadrao(filtros)
 
   useEffect(() => {
     const msg = searchParams.get('mensagem')
@@ -78,10 +74,8 @@ function ConteudoDaPagina() {
       if (filtrosAtuais.fornecedorId) {
         params.set('fornecedorId', filtrosAtuais.fornecedorId)
       }
-      if (filtrosAtuais.status === 'aberto') {
-        params.set('statusAberto', 'true')
-      } else if (filtrosAtuais.status !== 'todos') {
-        params.set('status', filtrosAtuais.status)
+      if (filtrosAtuais.statuses.length > 0) {
+        params.set('statuses', filtrosAtuais.statuses.join(','))
       }
       const busca = filtrosAtuais.buscaNumero.trim()
       if (busca) {
@@ -230,19 +224,12 @@ function ConteudoDaPagina() {
             value={filtros.buscaNumero}
             onChange={(e) => setFiltros((f) => ({ ...f, buscaNumero: e.target.value }))}
           />
-          <select
-            className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:w-auto"
-            value={filtros.status}
-            onChange={(e) =>
-              setFiltros((f) => ({ ...f, status: e.target.value as FiltroStatus }))
+          <FiltroStatusMultiplo
+            selecionados={filtros.statuses}
+            aoMudar={(statuses) =>
+              setFiltros((f) => ({ ...f, statuses: statuses as StatusPedidoFiltravel[] }))
             }
-          >
-            {FILTRO_STATUS_OPCOES.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+          />
           <select
             className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:min-w-[12rem] sm:max-w-xs"
             value={filtros.fornecedorId}

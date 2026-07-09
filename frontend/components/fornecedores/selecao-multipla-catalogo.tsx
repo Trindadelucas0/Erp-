@@ -11,6 +11,7 @@ import {
   useOuvirFechamentoDropdownCatalogo,
 } from '@/lib/dropdown-catalogo'
 import { cn } from '@/lib/utils'
+import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
 export type ItemCatalogo = {
   id: string
   codigo: string
@@ -52,9 +53,10 @@ export function SelecaoMultiplaCatalogo({
   const fechar = useCallback(() => setAbrindo(false), [])
 
   useOuvirFechamentoDropdownCatalogo(instanciaId, fechar)
-  const zonaHover = useFecharAoSairComMouse(fechar)
+  const zonaHover = useFecharAoSairComMouse(fechar, [ref])
 
-  function abrir() {
+  function abrirSeFechado() {
+    if (disabled || abrindo) return
     notificarAberturaDropdownCatalogo(instanciaId)
     setAbrindo(true)
   }
@@ -129,9 +131,9 @@ export function SelecaoMultiplaCatalogo({
             onChange={(e) => {
               setBusca(e.target.value)
               setErroSelecao('')
-              abrir()
+              abrirSeFechado()
             }}
-            onFocus={abrir}
+            onFocus={abrirSeFechado}
             placeholder="Buscar por código ou descrição..."
             disabled={disabled}
           />
@@ -156,8 +158,13 @@ export function SelecaoMultiplaCatalogo({
                     adicionar(item)
                   }}
                 >
-                  <span className="font-mono font-medium">{item.codigo}</span>
-                  <span className="text-muted-foreground"> — {item.descricao}</span>
+                  <span className="font-mono font-medium">
+                    <TextoDestaqueBusca texto={item.codigo} termo={busca} />
+                  </span>
+                  <span className="text-muted-foreground">
+                    {' — '}
+                    <TextoDestaqueBusca texto={item.descricao} termo={busca} />
+                  </span>
                 </button>
               ))}
             </div>

@@ -1,9 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import { clienteHttp } from '@/services/api'
 import { mascaraCnpj, mascaraCpf } from '@/lib/documentos'
+import { useFecharAoSairComMouse } from '@/lib/dropdown-catalogo'
+import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
 
 export type FornecedorRelacionadoItem = {
   dadosFornecedorId: string
@@ -46,6 +48,21 @@ export function FornecedoresRelacionadosField({
   const [resultados, setResultados] = useState<FornecedorBusca[]>([])
   const [abrindo, setAbrindo] = useState(false)
   const [carregando, setCarregando] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  const fechar = useCallback(() => setAbrindo(false), [])
+  const zonaHover = useFecharAoSairComMouse(fechar, [ref])
+
+  useEffect(() => {
+    if (!abrindo) return
+    function aoClicarFora(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        fechar()
+      }
+    }
+    document.addEventListener('mousedown', aoClicarFora)
+    return () => document.removeEventListener('mousedown', aoClicarFora)
+  }, [abrindo, fechar])
 
   useEffect(() => {
     if (!abrindo) return
@@ -109,17 +126,16 @@ export function FornecedoresRelacionadosField({
         rede — útil para cruzar pedido de compra e entrada de nota com CNPJs distintos.
       </p>
 
-      <div className="relative">
+      <div className="relative" ref={ref} {...zonaHover}>
         <div className="flex items-center gap-2">
           <input
             className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 pr-9 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
             value={busca}
             onChange={(e) => {
               setBusca(e.target.value)
-              setAbrindo(true)
+              if (!abrindo) setAbrindo(true)
             }}
             onFocus={() => setAbrindo(true)}
-            onBlur={() => setTimeout(() => setAbrindo(false), 200)}
             placeholder="Buscar fornecedor por nome ou CNPJ/CPF..."
             disabled={disabled}
           />
@@ -147,7 +163,7 @@ export function FornecedoresRelacionadosField({
                   adicionar(item)
                 }}
               >
-                <span className="font-medium">{item.nome}</span>
+                <TextoDestaqueBusca texto={item.nome} termo={busca} className="font-medium" />
                 <span className="ml-2 font-mono text-xs text-muted-foreground">
                   {formatarDocumento(item.cpf, item.cnpj)}
                 </span>

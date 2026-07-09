@@ -84,6 +84,13 @@ type DadosComTransporte = {
   valorFreteSugerido?: number | null
 }
 
+type DadosComConclusao = {
+  concluir?: boolean
+  tipoCompra?: string
+  dataFaturamento?: Date | null
+  previsaoEntrega?: Date | null
+}
+
 function validarRegrasTransporte(data: DadosComTransporte, ctx: z.RefinementCtx) {
   if (!data.modalidadeTransporte) return
 
@@ -92,6 +99,32 @@ function validarRegrasTransporte(data: DadosComTransporte, ctx: z.RefinementCtx)
       code: z.ZodIssueCode.custom,
       message: 'Transportadora obrigatória para frete FOB',
       path: ['transportadoraPessoaId'],
+    })
+  }
+}
+
+function validarCamposObrigatoriosConclusao(data: DadosComConclusao, ctx: z.RefinementCtx) {
+  if (!data.concluir) return
+
+  if (!data.tipoCompra) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Tipo de compra obrigatório',
+      path: ['tipoCompra'],
+    })
+  }
+  if (!data.dataFaturamento) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Data de faturamento obrigatória',
+      path: ['dataFaturamento'],
+    })
+  }
+  if (!data.previsaoEntrega) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Previsão de entrega obrigatória',
+      path: ['previsaoEntrega'],
     })
   }
 }
@@ -130,6 +163,7 @@ function esquemaPedidoCompraComTransporte<T extends z.ZodRawShape>(campos: T) {
   return z
     .object(campos)
     .superRefine(validarRegrasTransporte)
+    .superRefine(validarCamposObrigatoriosConclusao)
     .transform(normalizarDadosTransporte)
 }
 

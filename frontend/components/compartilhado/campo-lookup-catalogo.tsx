@@ -11,6 +11,7 @@ import {
   useOuvirFechamentoDropdownCatalogo,
 } from '@/lib/dropdown-catalogo'
 import { cn } from '@/lib/utils'
+import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
 
 export type ItemCatalogo = { id: string; codigo: string; descricao: string; tipo?: string }
 
@@ -45,11 +46,16 @@ export function CampoLookupCatalogo({
   const fechar = useCallback(() => setAberto(false), [])
 
   useOuvirFechamentoDropdownCatalogo(instanciaId, fechar)
-  const zonaHover = useFecharAoSairComMouse(fechar)
+  const zonaHover = useFecharAoSairComMouse(fechar, [ref])
 
-  function abrir() {
+  function abrirSeFechado() {
+    if (disabled || aberto) return
     notificarAberturaDropdownCatalogo(instanciaId)
     setAberto(true)
+  }
+
+  function textoSelecionadoAtual(): string {
+    return valor ? `${valor.codigo} - ${valor.descricao}` : ''
   }
 
   const valorInvalido =
@@ -57,6 +63,12 @@ export function CampoLookupCatalogo({
     endpoint === '/planos-financeiros' &&
     tipoPlanoEsperado === 'despesa' &&
     !planoEhDespesa(valor)
+
+  const termoDestaque = aberto
+    ? busca.includes(' - ')
+      ? (busca.split(' - ').pop() ?? busca)
+      : busca
+    : ''
 
   useEffect(() => {
     if (valor) {
@@ -129,11 +141,15 @@ export function CampoLookupCatalogo({
             )}
             value={busca}
             onChange={(e) => {
-              setBusca(e.target.value)
+              const texto = e.target.value
+              setBusca(texto)
               setErroSelecao('')
-              if (valor) aoSelecionar(null)
+              abrirSeFechado()
+              if (valor && texto !== textoSelecionadoAtual()) {
+                aoSelecionar(null)
+              }
             }}
-            onFocus={abrir}
+            onFocus={abrirSeFechado}
             disabled={disabled}
             placeholder="Buscar..."
           />
@@ -150,7 +166,7 @@ export function CampoLookupCatalogo({
           <button
             type="button"
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input text-muted-foreground hover:bg-muted"
-            onClick={() => (aberto ? fechar() : abrir())}
+            onClick={() => (aberto ? fechar() : abrirSeFechado())}
             disabled={disabled}
           >
             <Search className="size-4" />
@@ -175,7 +191,9 @@ export function CampoLookupCatalogo({
                     tentarSelecionar(item)
                   }}
                 >
-                  {item.codigo} - {item.descricao}
+                  <TextoDestaqueBusca texto={item.codigo} termo={termoDestaque} />
+                  {' - '}
+                  <TextoDestaqueBusca texto={item.descricao} termo={termoDestaque} />
                 </button>
               ))}
             </div>

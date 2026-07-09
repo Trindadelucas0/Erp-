@@ -61,7 +61,7 @@ export function SelectPadrao({
   const instanciaId = useInstanciaDropdownCatalogo()
 
   const fechar = useCallback(() => setAberto(false), [])
-  const zonaHover = useFecharAoSairComMouse(fechar)
+  const zonaHover = useFecharAoSairComMouse(fechar, [containerRef, listaRef])
 
   useOuvirFechamentoDropdownCatalogo(instanciaId, fechar)
 
@@ -139,7 +139,6 @@ export function SelectPadrao({
       ref={listaRef}
       role="listbox"
       aria-labelledby={idDoCampo}
-      {...zonaHover}
       className="fixed z-[60] max-h-48 overflow-auto rounded-md border border-border bg-card shadow-lg"
       style={{
         top: posicao.top,

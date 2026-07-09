@@ -31,6 +31,8 @@ import { Abas } from '@/components/ui/abas'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import {
   montarPrazosParaPayload,
+  prazosValoresIguais,
+  sincronizarValoresParcelasComTotal,
   validarSomaParcelasManual,
 } from '@/lib/parcelas-pagamento-pedido'
 import { calcularVencimentoPorDias, formatarDataBr } from '@/lib/prazos-pagamento'
@@ -67,6 +69,7 @@ import {
   parseNum,
   pedidoEditavel,
   pendenciaVazia,
+  validarCamposObrigatoriosLancamento,
   type ContextoFornecedor,
   type HistoricoCompra,
   type ItemPedido,
@@ -374,6 +377,27 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   }
 
   function avancarParaItens() {
+    if (!form.fornecedorPessoaId) {
+      setErro('Selecione o fornecedor.')
+      setAbaAtiva('dados-gerais')
+      return
+    }
+    if (!form.modalidadeTransporte) {
+      setErro('Selecione o tipo de frete.')
+      setAbaAtiva('dados-gerais')
+      return
+    }
+    if (exigeDadosTransporte(form.modalidadeTransporte) && !form.transportadoraPessoaId) {
+      setErro('Selecione a transportadora para frete FOB.')
+      setAbaAtiva('dados-gerais')
+      return
+    }
+    const erroLancamento = validarCamposObrigatoriosLancamento(form)
+    if (erroLancamento) {
+      setErro(erroLancamento)
+      setAbaAtiva('dados-gerais')
+      return
+    }
     setErro('')
     setAbaAtiva('itens')
   }
@@ -495,6 +519,29 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     (Number.isFinite(creditoNum) && creditoNum > 0 && creditoNum <= saldoMaxCredito)
   const totalLiquidoForm = totalComFrete - (Number.isFinite(creditoNum) && creditoValido ? creditoNum : 0)
 
+  useEffect(() => {
+    setForm((f) => {
+      const prazosAtualizados = sincronizarValoresParcelasComTotal(
+        f.prazos,
+        f.rateioParcelas,
+        totalLiquidoForm
+      )
+      if (prazosValoresIguais(f.prazos, prazosAtualizados)) return f
+      return { ...f, prazos: prazosAtualizados }
+    })
+  }, [totalLiquidoForm])
+
+  function mudarRateioParcelas(rateio: string) {
+    setForm((f) => {
+      const prazosAtualizados = sincronizarValoresParcelasComTotal(
+        f.prazos,
+        rateio,
+        totalLiquidoForm
+      )
+      return { ...f, rateioParcelas: rateio, prazos: prazosAtualizados }
+    })
+  }
+
   function montarPayload(concluir: boolean) {
     const creditoAplicadoNum = form.creditoAplicado
       ? Number(form.creditoAplicado.replace(',', '.'))
@@ -601,6 +648,14 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
       setErro('Adicione ao menos um produto no pedido.')
       setAbaAtiva('itens')
       return
+    }
+    if (concluir) {
+      const erroLancamento = validarCamposObrigatoriosLancamento(form)
+      if (erroLancamento) {
+        setErro(erroLancamento)
+        setAbaAtiva('dados-gerais')
+        return
+      }
     }
     if (form.creditoFornecedorId && !creditoValido) {
       setErro('Valor do crédito inválido ou excede o saldo disponível.')
@@ -915,10 +970,12 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
                   aoMudar={(v) => setForm((f) => ({ ...f, tipoCompra: v }))}
                   opcoes={TIPOS_COMPRA}
                   disabled={camposDesabilitados}
+                  obrigatorio
                 />
                 <InputPadrao
                   rotulo="Data de faturamento"
                   type="date"
+                  obrigatorio
                   value={form.dataFaturamento}
                   onChange={(e) => {
                     const dataFaturamento = e.target.value
@@ -940,6 +997,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
                 <InputPadrao
                   rotulo="Previsão de entrega"
                   type="date"
+                  obrigatorio
                   value={form.previsaoEntrega}
                   onChange={(e) => setForm((f) => ({ ...f, previsaoEntrega: e.target.value }))}
                   disabled={camposDesabilitados}
@@ -1016,7 +1074,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
                 avisoBaixaCredito={AVISO_BAIXA_CREDITO_NF}
                 disabled={camposDesabilitados}
                 formatarMoeda={formatarMoeda}
-                onRateioChange={(v) => setForm((f) => ({ ...f, rateioParcelas: v }))}
+                onRateioChange={mudarRateioParcelas}
                 onPrazosChange={atualizarPrazos}
                 onSelecionarCredito={aoSelecionarCredito}
                 onCreditoAplicadoChange={(v) => setForm((f) => ({ ...f, creditoAplicado: v }))}
@@ -1122,7 +1180,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
             />
           )}
 
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+          <div className="mt-4 flex flex-col gap-3 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="shrink-0">
               {podeCancelarPedido && (
                 <Button
@@ -1138,7 +1196,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
                 </Button>
               )}
             </div>
-            <div className="flex flex-wrap items-center justify-end gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
               {blocoTotaisRodape}
               <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="outline" onClick={() => voltarParaLista()}>

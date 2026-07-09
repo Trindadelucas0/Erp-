@@ -20,6 +20,7 @@ import { BadgeStatus } from '@/components/ui/badge-status'
 import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
 import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
 import { ordenarArvore } from '@/lib/ordenacao-lista'
+import { textoContemTermo } from '@/lib/normalizar-busca'
 import { cn } from '@/lib/utils'
 import { criarRestrictToContainer } from './modifier-restrict-container'
 import { LinhaOverlayDrag } from './linha-overlay-drag'
@@ -395,14 +396,14 @@ export function ArvorePlanosFinanceiros({
   )
 
   const linhas = useMemo(() => {
-    const termo = busca.trim().toLowerCase()
+    const termo = busca.trim()
     const achatado = achatarArvore(arvoreOrdenada, expandidos)
 
     return achatado.filter((linha) => {
       const matchBusca =
         !termo ||
-        linha.codigo.toLowerCase().includes(termo) ||
-        linha.nome.toLowerCase().includes(termo)
+        textoContemTermo(linha.codigo, termo) ||
+        textoContemTermo(linha.nome, termo)
       const matchSituacao =
         filtroSituacao === 'todos' ||
         (filtroSituacao === 'ativos' && linha.ativo) ||

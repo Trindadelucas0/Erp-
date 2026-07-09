@@ -32,6 +32,7 @@ import { CardPadrao } from '@/components/ui/card-padrao'
 import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
 import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
 import { ordenarLista } from '@/lib/ordenacao-lista'
+import { filtrarCadastroPessoa } from '@/lib/normalizar-busca'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Modal } from '@/components/ui/modal'
 import { Abas } from '@/components/ui/abas'
@@ -1260,17 +1261,10 @@ function ConteudoDaPaginaDeFornecedores() {
     }
   )
 
-  const fornecedoresFiltrados = listaFornecedores.filter((f) => {
-    const termo = busca.toLowerCase()
-    return (
-      f.nome.toLowerCase().includes(termo) ||
-      (f.nomeFantasia && f.nomeFantasia.toLowerCase().includes(termo)) ||
-      (f.cpf && f.cpf.includes(busca.replace(/\D/g, ''))) ||
-      (f.cnpj && f.cnpj.includes(busca.replace(/\D/g, ''))) ||
-      (f.email && f.email.toLowerCase().includes(termo)) ||
-      (f.estado && f.estado.toLowerCase().includes(termo))
-    )
-  })
+  const fornecedoresFiltrados = useMemo(
+    () => filtrarCadastroPessoa(listaFornecedores, busca),
+    [listaFornecedores, busca]
+  )
 
   const listaExibida = useMemo(
     () =>

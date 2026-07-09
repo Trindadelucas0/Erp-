@@ -265,6 +265,7 @@ function ConteudoDaPagina() {
   >([])
   const [fornecedores, setFornecedores] = useState<FornecedorOpcao[]>([])
   const [busca, setBusca] = useState('')
+  const [buscaDebounced, setBuscaDebounced] = useState('')
   const [modalAberto, setModalAberto] = useState(false)
   const [modoEdicao, setModoEdicao] = useState(false)
   const [modoVisualizacao, setModoVisualizacao] = useState(false)
@@ -348,16 +349,21 @@ function ConteudoDaPagina() {
     if (modalAberto && !modoVisualizacao) validarTodasAsAbas()
   }, [form, modalAberto, modoVisualizacao, validarTodasAsAbas])
 
+  useEffect(() => {
+    const timer = setTimeout(() => setBuscaDebounced(busca), 300)
+    return () => clearTimeout(timer)
+  }, [busca])
+
   const carregar = useCallback(async () => {
     try {
       const params = new URLSearchParams({ incluirInativos: 'true' })
-      if (busca.trim()) params.set('q', busca.trim())
+      if (buscaDebounced.trim()) params.set('q', buscaDebounced.trim())
       const { data } = await clienteHttp.get(`/produtos?${params}`)
       setLista(data.produtos ?? [])
     } catch {
       setErro('Erro ao carregar produtos.')
     }
-  }, [busca])
+  }, [buscaDebounced])
 
   const carregarFornecedores = useCallback(async () => {
     try {

@@ -52,7 +52,7 @@ function ConteudoDaPagina() {
   const [filtroSituacao, setFiltroSituacao] = useState<'todos' | 'ativos' | 'inativos'>('todos')
   const [filtrosAbertos, setFiltrosAbertos] = useState(false)
   const refFiltros = useRef<HTMLDivElement>(null)
-  const zonaHoverFiltros = useFecharAoSairComMouse(() => setFiltrosAbertos(false))
+  const zonaHoverFiltros = useFecharAoSairComMouse(() => setFiltrosAbertos(false), [refFiltros])
   const [modalAberto, setModalAberto] = useState(false)
   const [modoEdicao, setModoEdicao] = useState(false)
   const [planoEmEdicao, setPlanoEmEdicao] = useState<PlanoFinanceiroNo | null>(null)

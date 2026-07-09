@@ -5,6 +5,7 @@ import { Search, X } from 'lucide-react'
 import { clienteHttp } from '@/services/api'
 import { Button } from '@/components/ui/button'
 import { useFecharAoSairComMouse } from '@/lib/dropdown-catalogo'
+import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
 import { cn } from '@/lib/utils'
 
 export type ProdutoSimilarItem = {
@@ -27,7 +28,7 @@ export function SelecaoProdutosSimilares({ selecionados, aoMudar, excluirId, dis
   const ref = useRef<HTMLDivElement>(null)
 
   const fechar = useCallback(() => setAberto(false), [])
-  const zonaHover = useFecharAoSairComMouse(fechar)
+  const zonaHover = useFecharAoSairComMouse(fechar, [ref])
 
   const buscar = useCallback(async () => {
     try {
@@ -128,7 +129,13 @@ export function SelecaoProdutosSimilares({ selecionados, aoMudar, excluirId, dis
                     )}
                     onClick={() => adicionar(r)}
                   >
-                    {r.sku ? `${r.sku} — ` : ''}{r.nomeVenda}
+                    {r.sku ? (
+                      <>
+                        <TextoDestaqueBusca texto={r.sku} termo={busca} />
+                        {' — '}
+                      </>
+                    ) : null}
+                    <TextoDestaqueBusca texto={r.nomeVenda} termo={busca} />
                   </button>
                 ))}
               {resultados.length === 0 && (

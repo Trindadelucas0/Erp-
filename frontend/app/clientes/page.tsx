@@ -32,6 +32,7 @@ import { CardPadrao } from '@/components/ui/card-padrao'
 import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
 import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
 import { ordenarLista } from '@/lib/ordenacao-lista'
+import { filtrarCadastroPessoa } from '@/lib/normalizar-busca'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Select, classesOption } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
@@ -1189,24 +1190,17 @@ function ConteudoDaPaginaDeClientes() {
     }
   )
 
-  const clientesFiltrados = listaDeClientes.filter((c) => {
-    const termo = busca.toLowerCase()
-    const matchBusca =
-      c.nome.toLowerCase().includes(termo) ||
-      (c.nomeFantasia && c.nomeFantasia.toLowerCase().includes(termo)) ||
-      (c.cpf && c.cpf.includes(busca.replace(/\D/g, ''))) ||
-      (c.cnpj && c.cnpj.includes(busca.replace(/\D/g, ''))) ||
-      (c.email && c.email.toLowerCase().includes(termo)) ||
-      (c.estado && c.estado.toLowerCase().includes(termo))
-
-    const status = c.statusAprovacao ?? 'ativo'
-    const matchStatus =
-      filtroStatus === 'todos' ||
-      (filtroStatus === 'ativo' && status === 'ativo') ||
-      status === filtroStatus
-
-    return matchBusca && matchStatus
-  })
+  const clientesFiltrados = useMemo(() => {
+    const porBusca = filtrarCadastroPessoa(listaDeClientes, busca)
+    return porBusca.filter((c) => {
+      const status = c.statusAprovacao ?? 'ativo'
+      const matchStatus =
+        filtroStatus === 'todos' ||
+        (filtroStatus === 'ativo' && status === 'ativo') ||
+        status === filtroStatus
+      return matchStatus
+    })
+  }, [listaDeClientes, busca, filtroStatus])
 
   const listaExibida = useMemo(
     () =>

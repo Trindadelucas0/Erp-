@@ -5,6 +5,7 @@ import { Plus, Search, X } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { InputPadrao } from '@/components/ui/input-padrao'
+import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import {
@@ -13,6 +14,7 @@ import {
   useInstanciaDropdownCatalogo,
   useOuvirFechamentoDropdownCatalogo,
 } from '@/lib/dropdown-catalogo'
+import { normalizarTermoBusca, textoContemTermo } from '@/lib/normalizar-busca'
 import { cn } from '@/lib/utils'
 
 type Props = {
@@ -50,7 +52,7 @@ export function ComboboxMarca({
   }, [])
 
   useOuvirFechamentoDropdownCatalogo(instanciaId, fechar)
-  const zonaHover = useFecharAoSairComMouse(fechar)
+  const zonaHover = useFecharAoSairComMouse(fechar, [containerRef])
 
   const carregarMarcas = useCallback(async (termo?: string) => {
     setCarregando(true)
@@ -66,8 +68,8 @@ export function ComboboxMarca({
     }
   }, [])
 
-  function abrir() {
-    if (disabled) return
+  function abrirSeFechado() {
+    if (disabled || aberto) return
     notificarAberturaDropdownCatalogo(instanciaId)
     setAberto(true)
   }
@@ -95,10 +97,10 @@ export function ComboboxMarca({
     }
   }, [busca, aberto, carregarMarcas])
 
-  const termoBusca = busca.toLowerCase().trim()
+  const termoBusca = normalizarTermoBusca(busca)
   let filtradas = marcas
   if (termoBusca) {
-    filtradas = marcas.filter((m) => m.toLowerCase().includes(termoBusca))
+    filtradas = marcas.filter((m) => textoContemTermo(m, busca))
   }
   filtradas = filtradas.slice(0, LIMITE)
 
@@ -145,9 +147,9 @@ export function ComboboxMarca({
                 value={aberto ? busca : valor}
                 onChange={(e) => {
                   setBusca(e.target.value)
-                  abrir()
+                  abrirSeFechado()
                 }}
-                onFocus={abrir}
+                onFocus={abrirSeFechado}
                 disabled={disabled}
                 placeholder="Buscar marca..."
                 className={cn(
@@ -184,7 +186,7 @@ export function ComboboxMarca({
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => selecionar(marca)}
                       >
-                        <span className="truncate">{marca}</span>
+                        <TextoDestaqueBusca texto={marca} termo={busca} className="truncate" />
                       </button>
                     </li>
                   ))}
