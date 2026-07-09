@@ -405,7 +405,7 @@ export function LancamentoItensPedido({
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
-              <th className="sticky right-0 z-10 bg-muted/40 px-2 py-1.5 font-medium text-muted-foreground">
+              <th className="w-[5.5rem] min-w-[5.5rem] whitespace-nowrap px-2 py-1.5 font-medium text-muted-foreground">
                 Ações
               </th>
             </tr>
@@ -483,7 +483,7 @@ export function LancamentoItensPedido({
                     </td>
                     <td
                       className={cn(
-                        'sticky right-0 z-10 bg-card px-2 py-1.5',
+                        'w-[5.5rem] min-w-[5.5rem] whitespace-nowrap px-2 py-1.5',
                         !disabled && 'group-hover:bg-muted/30',
                         selecionada && 'bg-primary/5'
                       )}
