@@ -185,6 +185,14 @@ export function LancamentoItensPedido({
     limparRascunho()
   }
 
+  function aoTeclarRascunho(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (disabled || preenchendoProduto) return
+    if (e.key !== 'Enter' || e.shiftKey) return
+    e.preventDefault()
+    e.stopPropagation()
+    confirmarRascunho()
+  }
+
   function carregarParaEdicao(linha: LinhaExibida) {
     if (disabled) return
     setRascunho({ ...linha.item })
@@ -207,7 +215,10 @@ export function LancamentoItensPedido({
       </div>
 
       {!disabled && (
-        <div className="space-y-2 rounded-md bg-muted/20 p-2">
+        <div
+          className="space-y-2 rounded-md bg-muted/20 p-2"
+          onKeyDown={aoTeclarRascunho}
+        >
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
             <div className="sm:col-span-2 lg:col-span-3 2xl:col-span-2">
               <ComboboxProduto

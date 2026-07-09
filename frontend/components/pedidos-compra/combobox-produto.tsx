@@ -163,6 +163,16 @@ export function ComboboxProduto({
     setBusca('')
   }
 
+  function aoTeclarBusca(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter' || e.shiftKey) return
+    if (!aberto) return
+    e.preventDefault()
+    e.stopPropagation()
+    if (filtrados.length > 0) {
+      selecionar(filtrados[0].id)
+    }
+  }
+
   const filtrados = filtrarProdutos(produtos, aberto ? busca : '')
   const textoExibido = selecionado ? rotuloProduto(selecionado) : ''
 
@@ -218,6 +228,7 @@ export function ComboboxProduto({
               abrirSeFechado()
             }}
             onFocus={abrirSeFechado}
+            onKeyDown={aoTeclarBusca}
             disabled={disabled}
             placeholder="Buscar por SKU, nome ou código de barras..."
             className={cn(
