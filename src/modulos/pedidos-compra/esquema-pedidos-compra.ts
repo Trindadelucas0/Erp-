@@ -103,6 +103,10 @@ function validarRegrasTransporte(data: DadosComTransporte, ctx: z.RefinementCtx)
   }
 }
 
+function chaveDiaUtc(data: Date): string {
+  return data.toISOString().slice(0, 10)
+}
+
 function validarCamposObrigatoriosConclusao(data: DadosComConclusao, ctx: z.RefinementCtx) {
   if (!data.concluir) return
 
@@ -124,6 +128,18 @@ function validarCamposObrigatoriosConclusao(data: DadosComConclusao, ctx: z.Refi
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: 'Previsão de entrega obrigatória',
+      path: ['previsaoEntrega'],
+    })
+  }
+}
+
+function validarOrdemDatasFaturamentoEntrega(data: DadosComConclusao, ctx: z.RefinementCtx) {
+  if (!data.dataFaturamento || !data.previsaoEntrega) return
+
+  if (chaveDiaUtc(data.previsaoEntrega) < chaveDiaUtc(data.dataFaturamento)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Previsão de entrega não pode ser anterior à data de faturamento',
       path: ['previsaoEntrega'],
     })
   }
@@ -164,6 +180,7 @@ function esquemaPedidoCompraComTransporte<T extends z.ZodRawShape>(campos: T) {
     .object(campos)
     .superRefine(validarRegrasTransporte)
     .superRefine(validarCamposObrigatoriosConclusao)
+    .superRefine(validarOrdemDatasFaturamentoEntrega)
     .transform(normalizarDadosTransporte)
 }
 

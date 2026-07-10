@@ -14,9 +14,11 @@ import {
   calcularTotalItem,
   itemVazio,
   parseNum,
+  produtoJaExisteNosItens,
   type ItemPedido,
   type ProdutoOpcao,
 } from '@/lib/pedido-compra-shared'
+import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
 import { recalcularCodigoUnidadeItem, rotuloOrigemPreco } from '@/lib/preencher-item-pedido-compra'
 import { resolverUrlUpload } from '@/lib/resolver-url-upload'
 
@@ -49,6 +51,7 @@ type Props = {
   onAdicionar: (item: ItemPedido) => void
   onAtualizar: (indiceOriginal: number, item: ItemPedido) => void
   onRemover: (indiceOriginal: number) => void
+  onSubstituirProduto: (item: ItemPedido, indiceEdicao: number | null) => void
   onAbrirHistorico: (produtoId: string) => void
 }
 
@@ -74,11 +77,15 @@ export function LancamentoItensPedido({
   onAdicionar,
   onAtualizar,
   onRemover,
+  onSubstituirProduto,
   onAbrirHistorico,
 }: Props) {
   const [rascunho, setRascunho] = useState<ItemPedido>(itemVazio())
   const [indiceEdicao, setIndiceEdicao] = useState<number | null>(null)
   const [erroRascunho, setErroRascunho] = useState('')
+  const [confirmacaoDuplicadoAberta, setConfirmacaoDuplicadoAberta] = useState(false)
+  const [itemDuplicadoPendente, setItemDuplicadoPendente] = useState<ItemPedido | null>(null)
+  const [indiceEdicaoDuplicado, setIndiceEdicaoDuplicado] = useState<number | null>(null)
   const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<ColunaOrdenacao>()
   const [preenchendoProduto, setPreenchendoProduto] = useState(false)
   const containerRascunhoRef = useRef<HTMLDivElement>(null)
@@ -87,11 +94,13 @@ export function LancamentoItensPedido({
   const indiceEdicaoRef = useRef(indiceEdicao)
   const onAdicionarRef = useRef(onAdicionar)
   const onAtualizarRef = useRef(onAtualizar)
+  const onSubstituirProdutoRef = useRef(onSubstituirProduto)
   rascunhoRef.current = rascunho
   preenchendoProdutoRef.current = preenchendoProduto
   indiceEdicaoRef.current = indiceEdicao
   onAdicionarRef.current = onAdicionar
   onAtualizarRef.current = onAtualizar
+  onSubstituirProdutoRef.current = onSubstituirProduto
 
   useEffect(() => {
     setRascunho((atual) => {
@@ -154,6 +163,15 @@ export function LancamentoItensPedido({
     setErroRascunho('')
   }
 
+  function aplicarItemConfirmado(atual: ItemPedido, indiceEdicaoAtual: number | null) {
+    if (indiceEdicaoAtual != null) {
+      onAtualizarRef.current(indiceEdicaoAtual, atual)
+    } else {
+      onAdicionarRef.current(atual)
+    }
+    limparRascunho()
+  }
+
   function atualizarRascunho(campo: keyof ItemPedido, valor: string) {
     setRascunho((atual) => {
       const proximo = { ...atual, [campo]: valor }
@@ -195,12 +213,31 @@ export function LancamentoItensPedido({
       setErroRascunho('Informe uma quantidade maior que zero.')
       return
     }
-    if (indiceEdicaoRef.current != null) {
-      onAtualizarRef.current(indiceEdicaoRef.current, atual)
-    } else {
-      onAdicionarRef.current(atual)
+
+    const indiceEdicaoAtual = indiceEdicaoRef.current
+    if (produtoJaExisteNosItens(itens, atual.produtoId, indiceEdicaoAtual)) {
+      setItemDuplicadoPendente(atual)
+      setIndiceEdicaoDuplicado(indiceEdicaoAtual)
+      setConfirmacaoDuplicadoAberta(true)
+      return
     }
+
+    aplicarItemConfirmado(atual, indiceEdicaoAtual)
+  }
+
+  function confirmarProdutoDuplicado() {
+    if (!itemDuplicadoPendente) return
+    onSubstituirProdutoRef.current(itemDuplicadoPendente, indiceEdicaoDuplicado)
     limparRascunho()
+    setConfirmacaoDuplicadoAberta(false)
+    setItemDuplicadoPendente(null)
+    setIndiceEdicaoDuplicado(null)
+  }
+
+  function cancelarProdutoDuplicado() {
+    setConfirmacaoDuplicadoAberta(false)
+    setItemDuplicadoPendente(null)
+    setIndiceEdicaoDuplicado(null)
   }
 
   const adicionarAoEnterRef = useRef(() => {})
@@ -578,6 +615,16 @@ export function LancamentoItensPedido({
           Ordenação visual apenas. A ordem salva no pedido permanece a de lançamento.
         </p>
       )}
+
+      <ModalConfirmacao
+        aberto={confirmacaoDuplicadoAberta}
+        titulo="Produto já lançado"
+        mensagem="Este produto já está no pedido. Deseja lançar novamente com dados diferentes? O lançamento anterior será removido."
+        textoConfirmar="Substituir lançamento"
+        textoCancelar="Cancelar"
+        aoConfirmar={confirmarProdutoDuplicado}
+        aoCancelar={cancelarProdutoDuplicado}
+      />
     </div>
   )
 }

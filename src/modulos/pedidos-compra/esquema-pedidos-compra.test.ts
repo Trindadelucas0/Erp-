@@ -121,3 +121,43 @@ describe('esquemaDeCriacaoDePedidoCompra — campos obrigatórios na conclusão'
     expect(resultado.success).toBe(true)
   })
 })
+
+describe('esquemaDeCriacaoDePedidoCompra — ordem data faturamento e previsão', () => {
+  const payloadCif = {
+    ...payloadBase,
+    modalidadeTransporte: 'CIF' as const,
+  }
+
+  it('rejeita previsão de entrega anterior ao faturamento', () => {
+    const resultado = esquemaDeCriacaoDePedidoCompra.safeParse({
+      ...payloadCif,
+      dataFaturamento: '2026-07-15',
+      previsaoEntrega: '2026-07-01',
+    })
+
+    expect(resultado.success).toBe(false)
+    if (!resultado.success) {
+      expect(resultado.error.errors.some((e) => e.path.includes('previsaoEntrega'))).toBe(true)
+    }
+  })
+
+  it('aceita previsão no mesmo dia do faturamento', () => {
+    const resultado = esquemaDeCriacaoDePedidoCompra.safeParse({
+      ...payloadCif,
+      dataFaturamento: '2026-07-01',
+      previsaoEntrega: '2026-07-01',
+    })
+
+    expect(resultado.success).toBe(true)
+  })
+
+  it('aceita previsão posterior ao faturamento', () => {
+    const resultado = esquemaDeCriacaoDePedidoCompra.safeParse({
+      ...payloadCif,
+      dataFaturamento: '2026-07-01',
+      previsaoEntrega: '2026-07-15',
+    })
+
+    expect(resultado.success).toBe(true)
+  })
+})

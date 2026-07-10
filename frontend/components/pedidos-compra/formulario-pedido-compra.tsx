@@ -69,6 +69,7 @@ import {
   parseNum,
   pedidoEditavel,
   pendenciaVazia,
+  substituirItemProdutoNosItens,
   validarCamposObrigatoriosLancamento,
   type ContextoFornecedor,
   type HistoricoCompra,
@@ -473,6 +474,13 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     setForm((f) => ({
       ...f,
       itens: f.itens.filter((_, i) => i !== indiceOriginal),
+    }))
+  }
+
+  function substituirProdutoLancado(item: ItemPedido, indiceEdicao: number | null) {
+    setForm((f) => ({
+      ...f,
+      itens: substituirItemProdutoNosItens(f.itens, item, indiceEdicao),
     }))
   }
 
@@ -998,6 +1006,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
                   rotulo="Previsão de entrega"
                   type="date"
                   obrigatorio
+                  min={form.dataFaturamento || undefined}
                   value={form.previsaoEntrega}
                   onChange={(e) => setForm((f) => ({ ...f, previsaoEntrega: e.target.value }))}
                   disabled={camposDesabilitados}
@@ -1176,6 +1185,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
               onAdicionar={adicionarItemLancado}
               onAtualizar={atualizarItemLancado}
               onRemover={removerItemLancado}
+              onSubstituirProduto={substituirProdutoLancado}
               onAbrirHistorico={abrirHistoricoProduto}
             />
           )}

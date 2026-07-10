@@ -275,7 +275,40 @@ export function validarCamposObrigatoriosLancamento(
   if (!form.previsaoEntrega?.trim()) {
     return 'Informe a previsão de entrega.'
   }
+  if (form.previsaoEntrega < form.dataFaturamento) {
+    return 'Previsão de entrega não pode ser anterior à data de faturamento.'
+  }
   return null
+}
+
+export function produtoJaExisteNosItens(
+  itens: { produtoId: string }[],
+  produtoId: string,
+  indiceIgnorado?: number | null
+): boolean {
+  if (!produtoId) return false
+  return itens.some(
+    (item, indice) =>
+      item.produtoId === produtoId && (indiceIgnorado == null || indice !== indiceIgnorado)
+  )
+}
+
+/** Substitui o lançamento anterior do mesmo produto pelos novos dados (sem duplicar linha). */
+export function substituirItemProdutoNosItens<T extends { produtoId: string }>(
+  itens: T[],
+  item: T,
+  indiceEdicao?: number | null
+): T[] {
+  const alvo =
+    indiceEdicao != null ? indiceEdicao : itens.findIndex((it) => it.produtoId === item.produtoId)
+
+  if (alvo < 0) {
+    return [...itens, item]
+  }
+
+  return itens
+    .map((it, i) => (i === alvo ? item : it))
+    .filter((it, i) => it.produtoId !== item.produtoId || i === alvo)
 }
 
 export const pendenciaVazia = {
