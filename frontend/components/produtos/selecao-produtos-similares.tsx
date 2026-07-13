@@ -6,12 +6,14 @@ import { clienteHttp } from '@/services/api'
 import { Button } from '@/components/ui/button'
 import { useFecharAoSairComMouse } from '@/lib/dropdown-catalogo'
 import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
+import { resolverUrlUpload } from '@/lib/resolver-url-upload'
 import { cn } from '@/lib/utils'
 
 export type ProdutoSimilarItem = {
   id: string
   nomeVenda: string
   sku: string | null
+  urlFotoMiniatura?: string | null
 }
 
 type Props = {
@@ -37,11 +39,19 @@ export function SelecaoProdutosSimilares({ selecionados, aoMudar, excluirId, dis
       const { data } = await clienteHttp.get(`/produtos?${params}`)
       const lista = (data.produtos ?? [])
         .filter((p: { id: string; ativo: boolean }) => p.ativo && p.id !== excluirId)
-        .map((p: { id: string; nomeVenda: string; sku: string | null }) => ({
-          id: p.id,
-          nomeVenda: p.nomeVenda,
-          sku: p.sku,
-        }))
+        .map(
+          (p: {
+            id: string
+            nomeVenda: string
+            sku: string | null
+            urlFotoMiniatura?: string | null
+          }) => ({
+            id: p.id,
+            nomeVenda: p.nomeVenda,
+            sku: p.sku,
+            urlFotoMiniatura: p.urlFotoMiniatura ?? null,
+          })
+        )
       setResultados(lista)
     } catch {
       setResultados([])
@@ -76,23 +86,37 @@ export function SelecaoProdutosSimilares({ selecionados, aoMudar, excluirId, dis
 
       {selecionados.length > 0 && (
         <div className="flex flex-wrap gap-2">
-          {selecionados.map((s) => (
-            <span
-              key={s.id}
-              className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs"
-            >
-              {s.sku ? `${s.sku} — ` : ''}{s.nomeVenda}
-              {!disabled && (
-                <button
-                  type="button"
-                  onClick={() => aoMudar(selecionados.filter((x) => x.id !== s.id))}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  <X className="size-3" />
-                </button>
-              )}
-            </span>
-          ))}
+          {selecionados.map((s) => {
+            const urlFoto = resolverUrlUpload(s.urlFotoMiniatura)
+            return (
+              <span
+                key={s.id}
+                className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 text-xs"
+              >
+                {urlFoto ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={urlFoto}
+                    alt=""
+                    className="size-5 shrink-0 rounded object-cover"
+                  />
+                ) : (
+                  <div className="size-5 shrink-0 rounded bg-background" />
+                )}
+                {s.sku ? `${s.sku} — ` : ''}
+                {s.nomeVenda}
+                {!disabled && (
+                  <button
+                    type="button"
+                    onClick={() => aoMudar(selecionados.filter((x) => x.id !== s.id))}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="size-3" />
+                  </button>
+                )}
+              </span>
+            )
+          })}
         </div>
       )}
 
@@ -120,24 +144,39 @@ export function SelecaoProdutosSimilares({ selecionados, aoMudar, excluirId, dis
               {resultados
                 .filter((r) => !selecionados.some((s) => s.id === r.id))
                 .slice(0, 20)
-                .map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    className={cn(
-                      'block w-full px-3 py-2 text-left text-sm hover:bg-muted'
-                    )}
-                    onClick={() => adicionar(r)}
-                  >
-                    {r.sku ? (
-                      <>
-                        <TextoDestaqueBusca texto={r.sku} termo={busca} />
-                        {' — '}
-                      </>
-                    ) : null}
-                    <TextoDestaqueBusca texto={r.nomeVenda} termo={busca} />
-                  </button>
-                ))}
+                .map((r) => {
+                  const urlFoto = resolverUrlUpload(r.urlFotoMiniatura)
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      className={cn(
+                        'flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted'
+                      )}
+                      onClick={() => adicionar(r)}
+                    >
+                      {urlFoto ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={urlFoto}
+                          alt=""
+                          className="size-8 shrink-0 rounded object-cover"
+                        />
+                      ) : (
+                        <div className="size-8 shrink-0 rounded bg-muted" />
+                      )}
+                      <span className="min-w-0 truncate">
+                        {r.sku ? (
+                          <>
+                            <TextoDestaqueBusca texto={r.sku} termo={busca} />
+                            {' — '}
+                          </>
+                        ) : null}
+                        <TextoDestaqueBusca texto={r.nomeVenda} termo={busca} />
+                      </span>
+                    </button>
+                  )
+                })}
               {resultados.length === 0 && (
                 <p className="px-3 py-2 text-xs text-muted-foreground">Nenhum produto encontrado.</p>
               )}

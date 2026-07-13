@@ -12,6 +12,7 @@ import {
   useOuvirFechamentoDropdownCatalogo,
 } from '@/lib/dropdown-catalogo'
 import { normalizarTermoBusca, textoContemTermo } from '@/lib/normalizar-busca'
+import { resolverUrlUpload } from '@/lib/resolver-url-upload'
 import { normalizarCodigoBarrasGtin } from '@/lib/validar-codigo-barras-gtin'
 import { cn } from '@/lib/utils'
 
@@ -22,6 +23,7 @@ export type ProdutoOpcao = {
   unidade: string
   codigoBarras?: string | null
   codigosBarrasEmbalagem?: (string | null)[]
+  urlFotoMiniatura?: string | null
 }
 
 type PosicaoDropdown = {
@@ -197,25 +199,40 @@ export function ComboboxProduto({
       {filtrados.length === 0 ? (
         <li className="px-3 py-2 text-muted-foreground">Nenhum produto encontrado</li>
       ) : (
-        filtrados.map((p) => (
-          <li key={p.id}>
-            <button
-              type="button"
-              role="option"
-              aria-selected={valor === p.id}
-              className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => selecionar(p.id)}
-            >
-              {p.sku && (
-                <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                  <TextoDestaqueBusca texto={p.sku} termo={busca} />
+        filtrados.map((p) => {
+          const urlFoto = resolverUrlUpload(p.urlFotoMiniatura)
+          return (
+            <li key={p.id}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={valor === p.id}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => selecionar(p.id)}
+              >
+                {urlFoto ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={urlFoto}
+                    alt=""
+                    className="size-8 shrink-0 rounded object-cover"
+                  />
+                ) : (
+                  <div className="size-8 shrink-0 rounded bg-muted" />
+                )}
+                <span className="min-w-0 flex flex-1 items-start gap-2">
+                  {p.sku && (
+                    <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                      <TextoDestaqueBusca texto={p.sku} termo={busca} />
+                    </span>
+                  )}
+                  <TextoDestaqueBusca texto={p.nomeVenda} termo={busca} className="truncate" />
                 </span>
-              )}
-              <TextoDestaqueBusca texto={p.nomeVenda} termo={busca} className="truncate" />
-            </button>
-          </li>
-        ))
+              </button>
+            </li>
+          )
+        })
       )}
     </ul>
   )

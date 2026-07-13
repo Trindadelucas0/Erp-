@@ -489,11 +489,13 @@ function ConteudoDaPagina() {
             nomeVenda: string
             sku: string | null
             unidade: string
+            urlFotoMiniatura?: string | null
           }) => ({
             id: p.id,
             nomeVenda: p.nomeVenda,
             sku: p.sku,
             unidade: p.unidade,
+            urlFotoMiniatura: p.urlFotoMiniatura ?? null,
           })
         )
       )
