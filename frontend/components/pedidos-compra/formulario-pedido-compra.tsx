@@ -487,10 +487,11 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     })
   }
 
-  function removerItemLancado(indiceOriginal: number) {
+  function removerItensLancados(indices: number[]) {
+    const remover = new Set(indices)
     setForm((f) => ({
       ...f,
-      itens: f.itens.filter((_, i) => i !== indiceOriginal),
+      itens: f.itens.filter((_, i) => !remover.has(i)),
     }))
   }
 
@@ -1155,7 +1156,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
               onPreencherProduto={preencherProdutoRascunho}
               onAdicionar={adicionarItemLancado}
               onAtualizar={atualizarItemLancado}
-              onRemover={removerItemLancado}
+              onRemoverVarios={removerItensLancados}
               onSubstituirProduto={substituirProdutoLancado}
               onAbrirHistorico={abrirHistoricoProduto}
             />

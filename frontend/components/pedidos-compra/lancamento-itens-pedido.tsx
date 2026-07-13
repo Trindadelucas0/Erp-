@@ -6,6 +6,7 @@ import { ComboboxProduto } from '@/components/pedidos-compra/combobox-produto'
 import { Button } from '@/components/ui/button'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
+import { Checkbox } from '@/components/ui/checkbox'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
 import { ordenarLista } from '@/lib/ordenacao-lista'
@@ -62,7 +63,7 @@ type Props = {
   onPreencherProduto: (produtoId: string, base: ItemPedido) => Promise<ItemPedido>
   onAdicionar: (item: ItemPedido) => void
   onAtualizar: (indiceOriginal: number, item: ItemPedido) => void
-  onRemover: (indiceOriginal: number) => void
+  onRemoverVarios: (indicesOriginais: number[]) => void
   onSubstituirProduto: (item: ItemPedido, indiceEdicao: number | null) => void
   onAbrirHistorico: (produtoId: string) => void
 }
@@ -110,7 +111,7 @@ export function LancamentoItensPedido({
   onPreencherProduto,
   onAdicionar,
   onAtualizar,
-  onRemover,
+  onRemoverVarios,
   onSubstituirProduto,
   onAbrirHistorico,
 }: Props) {
@@ -124,6 +125,8 @@ export function LancamentoItensPedido({
   const [itemMultiploPendente, setItemMultiploPendente] = useState<ItemPedido | null>(null)
   const [quantidadeSugeridaMultiplo, setQuantidadeSugeridaMultiplo] = useState(0)
   const [multiploPendente, setMultiploPendente] = useState(0)
+  const [indicesSelecionados, setIndicesSelecionados] = useState<number[]>([])
+  const [confirmacaoExclusaoMassaAberta, setConfirmacaoExclusaoMassaAberta] = useState(false)
   const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<ColunaOrdenacao>()
   const [preenchendoProduto, setPreenchendoProduto] = useState(false)
   const containerRascunhoRef = useRef<HTMLDivElement>(null)
@@ -140,6 +143,19 @@ export function LancamentoItensPedido({
   onAtualizarRef.current = onAtualizar
   onSubstituirProdutoRef.current = onSubstituirProduto
 
+  useEffect(() => {
+    if (disabled) {
+      setIndicesSelecionados([])
+      setConfirmacaoExclusaoMassaAberta(false)
+    }
+  }, [disabled])
+
+  useEffect(() => {
+    setIndicesSelecionados((atual) => {
+      const validos = atual.filter((indice) => indice >= 0 && indice < itens.length)
+      return validos.length === atual.length ? atual : validos
+    })
+  }, [itens.length])
   useEffect(() => {
     setRascunho((atual) => {
       if (!atual.produtoId) return atual
@@ -223,6 +239,69 @@ export function LancamentoItensPedido({
     setRascunho(itemVazio())
     setIndiceEdicao(null)
     setErroRascunho('')
+  }
+
+  const indicesVisiveis = useMemo(
+    () => linhasExibidas.map((linha) => linha.indiceOriginal),
+    [linhasExibidas]
+  )
+  const quantidadeSelecionada = indicesSelecionados.length
+  const todosVisiveisMarcados =
+    indicesVisiveis.length > 0 && indicesVisiveis.every((indice) => indicesSelecionados.includes(indice))
+  const algunsVisiveisMarcados = indicesVisiveis.some((indice) =>
+    indicesSelecionados.includes(indice)
+  )
+  const estadoCheckboxCabecalho: boolean | 'indeterminate' = todosVisiveisMarcados
+    ? true
+    : algunsVisiveisMarcados
+      ? 'indeterminate'
+      : false
+
+  function alternarSelecaoLinha(indiceOriginal: number, marcado: boolean) {
+    setIndicesSelecionados((atual) => {
+      if (marcado) {
+        if (atual.includes(indiceOriginal)) return atual
+        return [...atual, indiceOriginal]
+      }
+      return atual.filter((indice) => indice !== indiceOriginal)
+    })
+  }
+
+  function alternarSelecaoTodosVisiveis(marcar: boolean) {
+    setIndicesSelecionados((atual) => {
+      if (marcar) {
+        const juntos = new Set([...atual, ...indicesVisiveis])
+        return [...juntos]
+      }
+      const remover = new Set(indicesVisiveis)
+      return atual.filter((indice) => !remover.has(indice))
+    })
+  }
+
+  function desmarcarSelecao() {
+    setIndicesSelecionados([])
+    setConfirmacaoExclusaoMassaAberta(false)
+  }
+
+  function confirmarExclusaoMassa() {
+    const lote = [...indicesSelecionados]
+    if (lote.length === 0) {
+      setConfirmacaoExclusaoMassaAberta(false)
+      return
+    }
+    if (indiceEdicao != null) {
+      if (lote.includes(indiceEdicao)) {
+        limparRascunho()
+      } else {
+        const removidosAntes = lote.filter((indice) => indice < indiceEdicao).length
+        if (removidosAntes > 0) {
+          setIndiceEdicao(indiceEdicao - removidosAntes)
+        }
+      }
+    }
+    onRemoverVarios(lote)
+    setIndicesSelecionados([])
+    setConfirmacaoExclusaoMassaAberta(false)
   }
 
   function aplicarItemConfirmado(atual: ItemPedido, indiceEdicaoAtual: number | null) {
@@ -552,10 +631,44 @@ export function LancamentoItensPedido({
         Deslize horizontalmente para ver todas as colunas.
       </p>
 
+      {!disabled && quantidadeSelecionada > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
+          <p className="text-sm font-medium">
+            {quantidadeSelecionada} item{quantidadeSelecionada !== 1 ? 'ns' : ''} selecionado
+            {quantidadeSelecionada !== 1 ? 's' : ''}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={desmarcarSelecao}>
+              Desmarcar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={() => setConfirmacaoExclusaoMassaAberta(true)}
+            >
+              <Trash2 className="mr-1 size-4" />
+              Excluir selecionados
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="min-w-0 overflow-x-auto rounded-md border border-border">
         <table className="w-full min-w-[88rem] text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/40 text-left">
+              <th className="w-10 px-2 py-1.5">
+                {!disabled && linhasExibidas.length > 0 ? (
+                  <Checkbox
+                    checked={estadoCheckboxCabecalho}
+                    onCheckedChange={(valor) =>
+                      alternarSelecaoTodosVisiveis(valor === true)
+                    }
+                    aria-label="Selecionar todos os itens visíveis"
+                  />
+                ) : null}
+              </th>
               <CabecalhoColunaOrdenavel
                 className="px-2 py-1.5"
                 rotulo="Produto"
@@ -654,7 +767,7 @@ export function LancamentoItensPedido({
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
-              <th className="w-[5.5rem] min-w-[5.5rem] whitespace-nowrap px-2 py-1.5 font-medium text-muted-foreground">
+              <th className="w-12 min-w-12 whitespace-nowrap px-2 py-1.5 font-medium text-muted-foreground">
                 Ações
               </th>
             </tr>
@@ -662,7 +775,7 @@ export function LancamentoItensPedido({
           <tbody>
             {linhasExibidas.length === 0 ? (
               <tr>
-                <td colSpan={15} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={16} className="px-4 py-8 text-center text-muted-foreground">
                   Nenhum produto lançado. Preencha o formulário acima e clique em Adicionar.
                 </td>
               </tr>
@@ -670,6 +783,7 @@ export function LancamentoItensPedido({
               linhasExibidas.map((linha) => {
                 const totais = calcularTotalItem(linha.item)
                 const selecionada = indiceEdicao === linha.indiceOriginal
+                const marcada = indicesSelecionados.includes(linha.indiceOriginal)
                 const nome = nomeProduto(linha.item, produtos)
                 const urlFoto = urlFotoDoItem(linha.item, produtos)
                 const embalagem = dadosEmbalagemDoItem(linha.item, produtos, fornecedorPessoaId)
@@ -679,10 +793,25 @@ export function LancamentoItensPedido({
                     className={cn(
                       'group border-b border-border',
                       !disabled && 'cursor-pointer hover:bg-muted/30',
-                      selecionada && 'bg-primary/5'
+                      selecionada && 'bg-primary/5',
+                      marcada && !selecionada && 'bg-muted/20'
                     )}
                     onClick={() => carregarParaEdicao(linha)}
                   >
+                    <td
+                      className="px-2 py-1.5"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {!disabled ? (
+                        <Checkbox
+                          checked={marcada}
+                          onCheckedChange={(valor) =>
+                            alternarSelecaoLinha(linha.indiceOriginal, valor === true)
+                          }
+                          aria-label={`Selecionar ${nome}`}
+                        />
+                      ) : null}
+                    </td>
                     <td className="px-2 py-1.5">
                       <div className="flex min-w-0 items-center gap-2">
                         {urlFoto ? (
@@ -736,7 +865,7 @@ export function LancamentoItensPedido({
                     </td>
                     <td
                       className={cn(
-                        'w-[5.5rem] min-w-[5.5rem] whitespace-nowrap px-2 py-1.5',
+                        'w-12 min-w-12 whitespace-nowrap px-2 py-1.5',
                         !disabled && 'group-hover:bg-muted/30',
                         selecionada && 'bg-primary/5'
                       )}
@@ -752,22 +881,6 @@ export function LancamentoItensPedido({
                         >
                           <History className="size-4" />
                         </Button>
-                        {!disabled && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            title="Remover item"
-                            onClick={() => {
-                              onRemover(linha.indiceOriginal)
-                              if (indiceEdicao === linha.indiceOriginal) {
-                                limparRascunho()
-                              }
-                            }}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        )}
                       </div>
                     </td>
                   </tr>
@@ -783,6 +896,16 @@ export function LancamentoItensPedido({
           Ordenação visual apenas. A ordem salva no pedido permanece a de lançamento.
         </p>
       )}
+
+      <ModalConfirmacao
+        aberto={confirmacaoExclusaoMassaAberta}
+        titulo="Excluir itens selecionados"
+        mensagem={`Deseja excluir ${quantidadeSelecionada} item${quantidadeSelecionada !== 1 ? 'ns' : ''} selecionado${quantidadeSelecionada !== 1 ? 's' : ''}?`}
+        textoConfirmar="Excluir"
+        textoCancelar="Cancelar"
+        aoConfirmar={confirmarExclusaoMassa}
+        aoCancelar={() => setConfirmacaoExclusaoMassaAberta(false)}
+      />
 
       <ModalConfirmacao
         aberto={confirmacaoDuplicadoAberta}
