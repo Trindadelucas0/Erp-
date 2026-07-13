@@ -172,6 +172,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
             nomeVenda: string
             sku: string | null
             urlFotoMiniatura?: string | null
+            marca?: string | null
             unidade: string
             codigoBarras?: string | null
             embalagensMaster?: { codigoBarras?: string | null }[]
@@ -182,12 +183,15 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
               fornecedorPessoaId: string
               codigoFornecedor: string | null
               unidadeEntrada: string | null
+              multiploEntrada?: number | null
+              multiplicadorEntrada?: number | null
             }[]
           }) => ({
             id: p.id,
             nomeVenda: p.nomeVenda,
             sku: p.sku,
             urlFotoMiniatura: p.urlFotoMiniatura ?? null,
+            marca: p.marca ?? '',
             unidade: p.unidade,
             codigoBarras: p.codigoBarras ?? null,
             codigosBarrasEmbalagem: (p.embalagensMaster ?? []).map((e) => e.codigoBarras ?? null),
@@ -198,6 +202,8 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
               fornecedorPessoaId: f.fornecedorPessoaId,
               codigoFornecedor: f.codigoFornecedor ?? null,
               unidadeEntrada: f.unidadeEntrada ?? null,
+              multiploEntrada: f.multiploEntrada ?? null,
+              multiplicadorEntrada: f.multiplicadorEntrada ?? null,
             })),
           }))
       )
@@ -279,11 +285,19 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
         creditoAplicado: p.creditoAplicado != null ? String(p.creditoAplicado) : '',
         status: p.status,
         motivoCancelamento: p.motivoCancelamento ?? '',
-        itens: p.itens.map((i: ItemPedido & { produtoNome: string; produtoSku: string | null }) => ({
+        itens: p.itens.map(
+          (
+            i: ItemPedido & {
+              produtoNome: string
+              produtoSku: string | null
+              produtoMarca?: string | null
+            }
+          ) => ({
           id: i.id,
           produtoId: i.produtoId,
           produtoNome: i.produtoNome,
           produtoSku: i.produtoSku,
+          produtoMarca: i.produtoMarca ?? null,
           codigoOriginal: i.codigoOriginal ?? '',
           quantidade: String(i.quantidade),
           unidade: i.unidade,

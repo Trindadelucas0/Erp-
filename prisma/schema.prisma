@@ -533,6 +533,9 @@ model Produto {
   comprimentoCm          Decimal? @db.Decimal(10, 2)
   capacidadeEmpilhamento Int?
   normaPalete            String?
+  multiploVenda          Decimal  @default(1) @db.Decimal(15, 4)
+  permiteVendaFracionada Boolean  @default(false)
+  unidadeEntregaMultiploVenda String?
 
   nomeCompra             String?
   precoCusto             Decimal? @db.Decimal(15, 4)
@@ -548,6 +551,7 @@ model Produto {
   similares              ProdutoSimilar[] @relation("ProdutoOrigem")
   similaresDe            ProdutoSimilar[] @relation("ProdutoSimilar")
   itensPedidoCompra      PedidoCompraItem[]
+  itensPedidoVenda       PedidoVendaItem[]
   pendencias             PendenciaFornecedor[]
 
   createdAt              DateTime @default(now())
@@ -622,7 +626,7 @@ model ProdutoFoto {
   @@unique([produtoId, tipo])
 }
 
-// ─── Pedido de Venda (mínimo para encomenda) ─────────────────────────────────
+// ─── Pedido de Venda ─────────────────────────────────────────────────────────
 
 model PedidoVenda {
   id           String   @id @default(uuid())
@@ -630,14 +634,38 @@ model PedidoVenda {
   company      Company  @relation(fields: [companyId], references: [id])
   numero       Int
   clienteNome  String
-  status       String   @default("aberto")
+  status       String   @default("rascunho") // rascunho | concluido | cancelado
   sobEncomenda Boolean  @default(false)
+  observacoes  String?
+  totalLiquido Decimal  @default(0) @db.Decimal(15, 2)
+  itens        PedidoVendaItem[]
   pedidosCompra PedidoCompra[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@unique([companyId, numero])
   @@index([companyId, sobEncomenda])
+  @@index([companyId, status])
+}
+
+model PedidoVendaItem {
+  id                     String      @id @default(uuid())
+  pedidoVendaId          String
+  pedidoVenda            PedidoVenda @relation(fields: [pedidoVendaId], references: [id], onDelete: Cascade)
+  produtoId              String
+  produto                Produto     @relation(fields: [produtoId], references: [id])
+  modoQuantidade         String      // UN | CX
+  quantidadeInformada    Decimal     @db.Decimal(15, 4)
+  quantidadeUnidadeVenda Decimal     @db.Decimal(15, 4)
+  itensPorEmbalagem      Decimal     @db.Decimal(15, 4)
+  unidade                String
+  precoUnitario          Decimal     @db.Decimal(15, 4)
+  total                  Decimal     @db.Decimal(15, 2)
+  ordem                  Int         @default(0)
+  createdAt              DateTime    @default(now())
+
+  @@index([pedidoVendaId])
+  @@index([produtoId])
 }
 
 // ─── Pedido de Compra ────────────────────────────────────────────────────────

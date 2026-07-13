@@ -170,6 +170,7 @@ export function ComboboxPessoa({
         width: posicao.width,
         maxHeight: posicao.maxHeight,
       }}
+      {...zonaHover}
     >
       {permitirVazio && (
         <li>

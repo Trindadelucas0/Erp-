@@ -12,7 +12,7 @@ async function listarParaEncomenda(companyId: string, busca?: string) {
   } = {
     companyId,
     sobEncomenda: true,
-    status: { in: ['aberto', 'parcial'] },
+    status: { in: ['aberto', 'rascunho', 'parcial'] },
   }
 
   if (busca?.trim()) {

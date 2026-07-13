@@ -18,7 +18,9 @@ const includeCompleto = {
   pedidoVenda: { select: { id: true, numero: true, clienteNome: true } },
   itens: {
     include: {
-      produto: { select: { id: true, nomeVenda: true, sku: true, unidade: true, ativo: true } },
+      produto: {
+        select: { id: true, nomeVenda: true, sku: true, marca: true, unidade: true, ativo: true },
+      },
     },
     orderBy: { ordem: 'asc' as const },
   },
@@ -34,6 +36,7 @@ function mapearItem(item: PedidoDb['itens'][number]) {
     produtoId: item.produtoId,
     produtoNome: item.produto.nomeVenda,
     produtoSku: item.produto.sku,
+    produtoMarca: item.produto.marca,
     produtoAtivo: item.produto.ativo,
     codigoOriginal: item.codigoOriginal,
     quantidade: Number(item.quantidade),

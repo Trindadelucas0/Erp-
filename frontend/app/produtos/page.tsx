@@ -85,7 +85,11 @@ const ORIGENS_FISCAIS = [
 ] as const
 
 const MENSAGEM_NCM_INVALIDO = 'NCM deve ter 8 dígitos.'
-const MENSAGEM_ERRO_ABA_LOGISTICA = 'Revise os códigos de barras na aba Logística.'
+const MENSAGEM_ERRO_ABA_LOGISTICA = 'Revise os campos de logística (código de barras e múltiplo de venda).'
+const MENSAGEM_MULTIPLICADOR_UNIDADES_IGUAIS =
+  'Quando a unidade na entrada é igual à unidade de venda, a quantidade por embalagem deve ser 1.'
+const MENSAGEM_MULTIPLICADOR_UNIDADES_DIFERENTES =
+  'Quando a unidade na entrada é diferente da unidade de venda, a quantidade por embalagem deve ser preenchida e diferente de 1.'
 
 function mensagemErroDaAba(abaId: string): string {
   switch (abaId) {
@@ -94,7 +98,7 @@ function mensagemErroDaAba(abaId: string): string {
     case 'logistica':
       return MENSAGEM_ERRO_ABA_LOGISTICA
     case 'compras':
-      return 'Selecione o fornecedor em todas as linhas da aba Compras.'
+      return 'Revise os fornecedores e a quantidade por embalagem na aba Compras.'
     case 'fiscal':
       return MENSAGEM_NCM_INVALIDO
     default:
@@ -130,6 +134,9 @@ type FormProduto = {
   comprimentoCm: string
   capacidadeEmpilhamento: string
   normaPalete: string
+  multiploVenda: string
+  permiteVendaFracionada: boolean
+  unidadeEntregaMultiploVenda: string
   embalagensMaster: EmbalagemMasterForm[]
   enderecosEstoque: EnderecoEstoqueForm[]
   nomeCompra: string
@@ -168,6 +175,9 @@ const formVazio: FormProduto = {
   comprimentoCm: '',
   capacidadeEmpilhamento: '',
   normaPalete: '',
+  multiploVenda: '1',
+  permiteVendaFracionada: false,
+  unidadeEntregaMultiploVenda: '',
   embalagensMaster: [],
   enderecosEstoque: [],
   nomeCompra: '',
@@ -199,6 +209,34 @@ function int(v: string): number | undefined {
   if (!v.trim()) return undefined
   const n = Number(v.replace(/\D/g, ''))
   return Number.isFinite(n) ? Math.round(n) : undefined
+}
+
+function calcularErrosFornecedores(
+  unidadeVenda: string,
+  fornecedores: FornecedorProdutoForm[]
+): Record<number, { multiplicadorEntrada?: string }> {
+  const erros: Record<number, { multiplicadorEntrada?: string }> = {}
+  const unidade = unidadeVenda.trim().toUpperCase()
+  if (!unidade) return erros
+
+  fornecedores.forEach((item, index) => {
+    const unidadeEntradaPreenchida = item.unidadeEntrada.trim().toUpperCase()
+    const unidadeEntradaEfetiva = unidadeEntradaPreenchida || unidade
+    const unidadesIguais = unidadeEntradaEfetiva === unidade
+    const multiplicador = num(item.multiplicadorEntrada)
+
+    if (unidadesIguais) {
+      if (multiplicador === undefined || multiplicador === 1) return
+      erros[index] = { multiplicadorEntrada: MENSAGEM_MULTIPLICADOR_UNIDADES_IGUAIS }
+      return
+    }
+
+    if (multiplicador === undefined || multiplicador === 1) {
+      erros[index] = { multiplicadorEntrada: MENSAGEM_MULTIPLICADOR_UNIDADES_DIFERENTES }
+    }
+  })
+
+  return erros
 }
 
 function calcularErrosEmbalagensMaster(
@@ -310,10 +348,16 @@ function ConteudoDaPagina() {
           const codigosInternosOk = validarCodigosBarrasInternos(
             coletarCodigosBarrasProduto(form.codigoBarras, form.embalagensMaster)
           )
+          const multiplo = num(form.multiploVenda)
+          const multiploOk =
+            multiplo !== undefined &&
+            multiplo > 0 &&
+            (form.permiteVendaFracionada || Math.abs(multiplo - Math.round(multiplo)) < 1e-9)
           return (
             codigoUnidadeOk &&
             mastersOk &&
             codigosInternosOk &&
+            multiploOk &&
             form.embalagensMaster.every((e) => {
               if (!e.quantidade.trim()) return true
               const qtd = num(e.quantidade)
@@ -323,7 +367,17 @@ function ConteudoDaPagina() {
           )
         },
       },
-      { id: 'compras', validar: () => form.fornecedores.every((f) => f.fornecedorPessoaId.trim().length > 0) },
+      {
+        id: 'compras',
+        validar: () => {
+          const fornecedoresOk = form.fornecedores.every(
+            (f) => f.fornecedorPessoaId.trim().length > 0
+          )
+          const multiplicadorOk =
+            Object.keys(calcularErrosFornecedores(form.unidade, form.fornecedores)).length === 0
+          return fornecedoresOk && multiplicadorOk
+        },
+      },
       { id: 'fiscal', validar: () => !form.ncm || /^\d{8}$/.test(form.ncm.replace(/\D/g, '')) },
     ],
     [form]
@@ -543,6 +597,9 @@ function ConteudoDaPagina() {
       capacidadeEmpilhamento:
         p.capacidadeEmpilhamento != null ? String(p.capacidadeEmpilhamento) : '',
       normaPalete: (p.normaPalete as string | null) ?? '',
+      multiploVenda: p.multiploVenda != null ? String(p.multiploVenda) : '1',
+      permiteVendaFracionada: (p.permiteVendaFracionada as boolean) ?? false,
+      unidadeEntregaMultiploVenda: (p.unidadeEntregaMultiploVenda as string | null) ?? '',
       embalagensMaster: ((p.embalagensMaster as Array<{
         quantidade: number
         codigoBarras: string | null
@@ -649,6 +706,9 @@ function ConteudoDaPagina() {
       comprimentoCm: num(form.comprimentoCm),
       capacidadeEmpilhamento: int(form.capacidadeEmpilhamento),
       normaPalete: form.normaPalete.trim() || undefined,
+      multiploVenda: num(form.multiploVenda) ?? 1,
+      permiteVendaFracionada: form.permiteVendaFracionada,
+      unidadeEntregaMultiploVenda: form.unidadeEntregaMultiploVenda.trim() || undefined,
       embalagensMaster: form.embalagensMaster
         .map((e, ordem) => {
           const quantidade = num(e.quantidade)
@@ -867,6 +927,15 @@ function ConteudoDaPagina() {
     form.codigoBarras,
     form.embalagensMaster
   )
+  const errosFornecedores = calcularErrosFornecedores(form.unidade, form.fornecedores)
+  const multiploVendaNum = num(form.multiploVenda)
+  const erroMultiploVenda =
+    multiploVendaNum === undefined || multiploVendaNum <= 0
+      ? 'Múltiplo de venda deve ser maior que zero.'
+      : !form.permiteVendaFracionada &&
+          Math.abs(multiploVendaNum - Math.round(multiploVendaNum)) >= 1e-9
+        ? 'Quando não permite venda fracionada, o múltiplo de venda deve ser um número inteiro.'
+        : undefined
   const erroNcm =
     form.ncm.trim() && !/^\d{8}$/.test(form.ncm.replace(/\D/g, ''))
       ? MENSAGEM_NCM_INVALIDO
@@ -1359,12 +1428,68 @@ function ConteudoDaPagina() {
                   className="sm:col-span-2"
                 />
               </div>
-              <ListaEmbalagensMaster
-                itens={form.embalagensMaster}
-                aoMudar={(itens) => setForm((f) => ({ ...f, embalagensMaster: itens }))}
-                disabled={camposDesabilitados}
-                errosPorIndice={errosEmbalagensMaster}
-              />
+
+              <div className="space-y-3 rounded-lg border border-border p-4">
+                <div>
+                  <p className="text-sm font-medium">Venda / embalagem</p>
+                  <p className="text-xs text-muted-foreground">
+                    Regras usadas no pedido de venda: múltiplo, fracionado e conversão caixa → unidade.
+                  </p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="min-w-0">
+                    <InputPadrao
+                      rotulo="Múltiplo de venda"
+                      value={form.multiploVenda}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          multiploVenda: e.target.value.replace(/[^\d,.]/g, ''),
+                        }))
+                      }
+                      disabled={camposDesabilitados}
+                      inputMode="decimal"
+                      mensagemDeErro={erroMultiploVenda}
+                      placeholder="Ex.: 1 ou 1,93"
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Passo da quantidade na unidade de venda (ex.: 1,93 m² por caixa de piso).
+                    </p>
+                  </div>
+                  <SelectPadrao
+                    rotulo="Permite venda fracionada?"
+                    valor={form.permiteVendaFracionada ? 'sim' : 'nao'}
+                    aoMudar={(v) =>
+                      setForm((f) => ({ ...f, permiteVendaFracionada: v === 'sim' }))
+                    }
+                    opcoes={[
+                      { value: 'nao', label: 'Não' },
+                      { value: 'sim', label: 'Sim' },
+                    ]}
+                    disabled={camposDesabilitados}
+                  />
+                  <div className="min-w-0 sm:col-span-2">
+                    <SelecaoUnidadeMedida
+                      rotulo="Unidade de entrega do múltiplo de venda"
+                      valor={form.unidadeEntregaMultiploVenda}
+                      aoMudar={(sigla) =>
+                        setForm((f) => ({ ...f, unidadeEntregaMultiploVenda: sigla }))
+                      }
+                      disabled={camposDesabilitados}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Unidade logística da conversão (ex.: CX). Sem cálculo automático neste MVP.
+                    </p>
+                  </div>
+                </div>
+                <ListaEmbalagensMaster
+                  itens={form.embalagensMaster}
+                  aoMudar={(itens) => setForm((f) => ({ ...f, embalagensMaster: itens }))}
+                  disabled={camposDesabilitados}
+                  errosPorIndice={errosEmbalagensMaster}
+                />
+              </div>
+
               <ListaEnderecosEstoque
                 itens={form.enderecosEstoque}
                 aoMudar={(itens) => setForm((f) => ({ ...f, enderecosEstoque: itens }))}
@@ -1389,6 +1514,7 @@ function ConteudoDaPagina() {
                   setForm((f) => ({ ...f, fornecedores: fornecedoresItens }))
                 }
                 disabled={camposDesabilitados}
+                errosPorIndice={errosFornecedores}
               />
               <SelecaoProdutosSimilares
                 selecionados={form.similares}

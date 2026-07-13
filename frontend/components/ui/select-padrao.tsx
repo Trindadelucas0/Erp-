@@ -145,6 +145,7 @@ export function SelectPadrao({
         left: posicao.left,
         width: posicao.width,
       }}
+      {...zonaHover}
     >
       {!obrigatorio && (
         <button

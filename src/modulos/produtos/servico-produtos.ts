@@ -140,6 +140,9 @@ async function criarProduto(
   normalizarNomeCompra(dados)
   dados.marca = await validarMarca(dados.marca, companyId)
   await servicoDeUnidadesMedida.validarUnidade(dados.unidade, companyId)
+  if (dados.unidadeEntregaMultiploVenda?.trim()) {
+    await servicoDeUnidadesMedida.validarUnidade(dados.unidadeEntregaMultiploVenda.trim(), companyId)
+  }
   await validarFornecedores(dados.fornecedores, companyId)
   await validarSimilares(dados.similaresIds, null, companyId)
   await validarCodigosBarras(dados, companyId)
@@ -178,6 +181,9 @@ async function editarProduto(
   normalizarNomeCompra(dados)
   dados.marca = await validarMarca(dados.marca, companyId)
   await servicoDeUnidadesMedida.validarUnidade(dados.unidade, companyId)
+  if (dados.unidadeEntregaMultiploVenda?.trim()) {
+    await servicoDeUnidadesMedida.validarUnidade(dados.unidadeEntregaMultiploVenda.trim(), companyId)
+  }
   await validarFornecedores(dados.fornecedores, companyId)
   await validarSimilares(dados.similaresIds, id, companyId)
   await validarCodigosBarras(dados, companyId, id)

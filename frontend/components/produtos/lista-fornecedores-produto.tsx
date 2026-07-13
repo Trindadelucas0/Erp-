@@ -3,7 +3,7 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { InputPadrao } from '@/components/ui/input-padrao'
-import { SelectPadrao } from '@/components/ui/select-padrao'
+import { ComboboxPessoa } from '@/components/pedidos-compra/combobox-pessoa'
 import { SelecaoUnidadeMedida } from '@/components/produtos/selecao-unidade-medida'
 
 export type FornecedorProdutoForm = {
@@ -21,6 +21,7 @@ type Props = {
   opcoesFornecedores: FornecedorOpcao[]
   aoMudar: (itens: FornecedorProdutoForm[]) => void
   disabled?: boolean
+  errosPorIndice?: Record<number, { multiplicadorEntrada?: string }>
 }
 
 const itemVazio = (): FornecedorProdutoForm => ({
@@ -43,6 +44,7 @@ export function ListaFornecedoresProduto({
   opcoesFornecedores,
   aoMudar,
   disabled,
+  errosPorIndice,
 }: Props) {
   function atualizar(index: number, campo: keyof FornecedorProdutoForm, valor: string) {
     const nova = [...itens]
@@ -85,15 +87,14 @@ export function ListaFornecedoresProduto({
           )}
 
           <div className="min-w-0 sm:col-span-2 sm:pr-10">
-            <SelectPadrao
-              rotulo="Fornecedor *"
+            <ComboboxPessoa
+              rotulo="Fornecedor"
+              pessoas={opcoesFornecedores}
               valor={item.fornecedorPessoaId}
               aoMudar={(v) => atualizar(index, 'fornecedorPessoaId', v)}
-              opcoes={[
-                { value: '', label: 'Selecione' },
-                ...opcoesFornecedores.map((f) => ({ value: f.id, label: f.nome })),
-              ]}
               disabled={disabled}
+              placeholder="Digite o nome do fornecedor..."
+              obrigatorio
             />
           </div>
           <div className="min-w-0">
@@ -106,23 +107,30 @@ export function ListaFornecedoresProduto({
           </div>
           <div className="min-w-0 sm:col-span-2">
             <InputPadrao
-              rotulo="Multiplo de compra"
+              rotulo="Múltiplo de compra"
               value={item.multiploEntrada}
               onChange={(e) => atualizar(index, 'multiploEntrada', filtrarDecimal(e.target.value))}
               disabled={disabled}
               inputMode="decimal"
-              placeholder="Quantidade mínima de embalagens master vendida pelo fornecedor"
+              placeholder="Ex.: 6 — só compra de 6 em 6 caixas"
             />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Passo mínimo que o fornecedor exige no pedido de compra.
+            </p>
           </div>
           <div className="min-w-0 sm:col-span-2">
             <InputPadrao
-              rotulo="Quantidade por embalagem"
+              rotulo="Quantidade por embalagem (entrada)"
               value={item.multiplicadorEntrada}
               onChange={(e) => atualizar(index, 'multiplicadorEntrada', filtrarDecimal(e.target.value))}
               disabled={disabled}
               inputMode="decimal"
-              placeholder="Quantidade por embalagem master se NF não vier instrução"
+              placeholder="Ex.: 12 — quantos itens vêm em cada embalagem de entrada"
+              mensagemDeErro={errosPorIndice?.[index]?.multiplicadorEntrada}
             />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Quantos itens da unidade de venda equivalem a 1 embalagem na entrada.
+            </p>
           </div>
           <div className="min-w-0 sm:col-span-2">
             <SelecaoUnidadeMedida

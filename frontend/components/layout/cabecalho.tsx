@@ -24,10 +24,12 @@ const TITULOS_POR_ROTA: Record<string, string> = {
   '/produtos': 'Produtos',
   '/pedidos-compra': 'Pedidos de compra',
   '/pedidos-compra/novo': 'Novo pedido de compra',
+  '/pedidos-venda': 'Pedidos de venda',
 }
 
 const PREFIXOS_TITULO: { prefixo: string; titulo: string }[] = [
   { prefixo: '/pedidos-compra/', titulo: 'Pedido de compra' },
+  { prefixo: '/pedidos-venda/', titulo: 'Pedido de venda' },
 ]
 
 function resolverTituloRota(caminho: string): string {

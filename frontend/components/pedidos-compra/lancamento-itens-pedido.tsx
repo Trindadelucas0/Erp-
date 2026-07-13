@@ -19,14 +19,24 @@ import {
   type ProdutoOpcao,
 } from '@/lib/pedido-compra-shared'
 import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
-import { recalcularCodigoUnidadeItem, rotuloOrigemPreco } from '@/lib/preencher-item-pedido-compra'
+import {
+  calcularQtdTotalUnVenda,
+  obterVinculoFornecedor,
+  recalcularCodigoUnidadeItem,
+  resolverItensPorEmbalagem,
+  rotuloOrigemPreco,
+  sugerirQuantidadeMultiplo,
+} from '@/lib/preencher-item-pedido-compra'
 import { resolverUrlUpload } from '@/lib/resolver-url-upload'
 
 type ColunaOrdenacao =
   | 'produto'
+  | 'marca'
   | 'codigoOriginal'
   | 'unidade'
+  | 'itensPorEmbalagem'
   | 'quantidade'
+  | 'qtdTotalUnVenda'
   | 'preco'
   | 'pctDesconto'
   | 'valorDesconto'
@@ -61,6 +71,28 @@ function nomeProduto(item: ItemPedido, produtos: ProdutoOpcao[]): string {
   return produto?.nomeVenda ?? '—'
 }
 
+function marcaDoItem(item: ItemPedido, produtos: ProdutoOpcao[]): string {
+  if (item.produtoMarca?.trim()) return item.produtoMarca
+  const produto = produtos.find((p) => p.id === item.produtoId)
+  return produto?.marca?.trim() || '—'
+}
+
+function dadosEmbalagemDoItem(
+  item: ItemPedido,
+  produtos: ProdutoOpcao[],
+  fornecedorPessoaId: string
+) {
+  const produto = produtos.find((p) => p.id === item.produtoId)
+  const vinculo = produto ? obterVinculoFornecedor(produto, fornecedorPessoaId) : undefined
+  const itensPorEmbalagem = resolverItensPorEmbalagem(vinculo)
+  const quantidade = parseNum(item.quantidade)
+  return {
+    itensPorEmbalagem,
+    qtdTotalUnVenda: calcularQtdTotalUnVenda(quantidade, itensPorEmbalagem),
+    multiploEntrada: vinculo?.multiploEntrada ?? null,
+  }
+}
+
 function urlFotoDoItem(item: ItemPedido, produtos: ProdutoOpcao[]): string | null {
   const produto = produtos.find((p) => p.id === item.produtoId)
   return resolverUrlUpload(produto?.urlFotoMiniatura)
@@ -86,6 +118,10 @@ export function LancamentoItensPedido({
   const [confirmacaoDuplicadoAberta, setConfirmacaoDuplicadoAberta] = useState(false)
   const [itemDuplicadoPendente, setItemDuplicadoPendente] = useState<ItemPedido | null>(null)
   const [indiceEdicaoDuplicado, setIndiceEdicaoDuplicado] = useState<number | null>(null)
+  const [confirmacaoMultiploAberta, setConfirmacaoMultiploAberta] = useState(false)
+  const [itemMultiploPendente, setItemMultiploPendente] = useState<ItemPedido | null>(null)
+  const [quantidadeSugeridaMultiplo, setQuantidadeSugeridaMultiplo] = useState(0)
+  const [multiploPendente, setMultiploPendente] = useState(0)
   const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<ColunaOrdenacao>()
   const [preenchendoProduto, setPreenchendoProduto] = useState(false)
   const containerRascunhoRef = useRef<HTMLDivElement>(null)
@@ -124,15 +160,22 @@ export function LancamentoItensPedido({
       ordenarLista(itensLancados, ordenacao, (linha, coluna) => {
         const item = linha.item
         const totais = calcularTotalItem(item)
+        const embalagem = dadosEmbalagemDoItem(item, produtos, fornecedorPessoaId)
         switch (coluna) {
           case 'produto':
             return nomeProduto(item, produtos)
+          case 'marca':
+            return marcaDoItem(item, produtos)
           case 'codigoOriginal':
             return item.codigoOriginal || ''
           case 'unidade':
             return item.unidade || ''
+          case 'itensPorEmbalagem':
+            return embalagem.itensPorEmbalagem
           case 'quantidade':
             return parseNum(item.quantidade)
+          case 'qtdTotalUnVenda':
+            return embalagem.qtdTotalUnVenda
           case 'preco':
             return parseNum(item.precoUnitario)
           case 'pctDesconto':
@@ -149,7 +192,7 @@ export function LancamentoItensPedido({
             return item.previsaoEntrega || ''
         }
       }),
-    [itensLancados, ordenacao, produtos]
+    [itensLancados, ordenacao, produtos, fornecedorPessoaId]
   )
 
   const totaisRascunho = calcularTotalItem(rascunho)
@@ -204,6 +247,16 @@ export function LancamentoItensPedido({
     confirmarRascunhoComItem(rascunhoRef.current)
   }
 
+  function seguirAposValidacoes(atual: ItemPedido, indiceEdicaoAtual: number | null) {
+    if (produtoJaExisteNosItens(itens, atual.produtoId, indiceEdicaoAtual)) {
+      setItemDuplicadoPendente(atual)
+      setIndiceEdicaoDuplicado(indiceEdicaoAtual)
+      setConfirmacaoDuplicadoAberta(true)
+      return
+    }
+    aplicarItemConfirmado(atual, indiceEdicaoAtual)
+  }
+
   function confirmarRascunhoComItem(atual: ItemPedido) {
     if (!atual.produtoId) {
       setErroRascunho('Selecione o produto.')
@@ -215,14 +268,43 @@ export function LancamentoItensPedido({
     }
 
     const indiceEdicaoAtual = indiceEdicaoRef.current
-    if (produtoJaExisteNosItens(itens, atual.produtoId, indiceEdicaoAtual)) {
-      setItemDuplicadoPendente(atual)
-      setIndiceEdicaoDuplicado(indiceEdicaoAtual)
-      setConfirmacaoDuplicadoAberta(true)
+
+    const produto = produtos.find((p) => p.id === atual.produtoId)
+    const vinculo = produto ? obterVinculoFornecedor(produto, fornecedorPessoaId) : undefined
+    const sugestao = sugerirQuantidadeMultiplo(
+      parseNum(atual.quantidade),
+      vinculo?.multiploEntrada
+    )
+    if (sugestao) {
+      setItemMultiploPendente(atual)
+      setQuantidadeSugeridaMultiplo(sugestao.quantidadeSugerida)
+      setMultiploPendente(sugestao.multiplo)
+      setConfirmacaoMultiploAberta(true)
       return
     }
 
-    aplicarItemConfirmado(atual, indiceEdicaoAtual)
+    seguirAposValidacoes(atual, indiceEdicaoAtual)
+  }
+
+  function adequarQuantidadeMultiplo() {
+    if (!itemMultiploPendente) return
+    const ajustado = {
+      ...itemMultiploPendente,
+      quantidade: String(quantidadeSugeridaMultiplo),
+    }
+    setConfirmacaoMultiploAberta(false)
+    setItemMultiploPendente(null)
+    setRascunho(ajustado)
+    rascunhoRef.current = ajustado
+    seguirAposValidacoes(ajustado, indiceEdicaoRef.current)
+  }
+
+  function continuarSemAjusteMultiplo() {
+    if (!itemMultiploPendente) return
+    const atual = itemMultiploPendente
+    setConfirmacaoMultiploAberta(false)
+    setItemMultiploPendente(null)
+    seguirAposValidacoes(atual, indiceEdicaoRef.current)
   }
 
   function confirmarProdutoDuplicado() {
@@ -410,13 +492,20 @@ export function LancamentoItensPedido({
       </p>
 
       <div className="min-w-0 overflow-x-auto rounded-md border border-border">
-        <table className="w-full min-w-[72rem] text-sm">
+        <table className="w-full min-w-[88rem] text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/40 text-left">
               <CabecalhoColunaOrdenavel
                 className="px-2 py-1.5"
                 rotulo="Produto"
                 coluna="produto"
+                ordenacao={ordenacao}
+                onOrdenar={alternarOrdenacao}
+              />
+              <CabecalhoColunaOrdenavel
+                className="px-2 py-1.5"
+                rotulo="Marca"
+                coluna="marca"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
@@ -436,8 +525,22 @@ export function LancamentoItensPedido({
               />
               <CabecalhoColunaOrdenavel
                 className="px-2 py-1.5"
+                rotulo="Itens por Embalagem"
+                coluna="itensPorEmbalagem"
+                ordenacao={ordenacao}
+                onOrdenar={alternarOrdenacao}
+              />
+              <CabecalhoColunaOrdenavel
+                className="px-2 py-1.5"
                 rotulo="Qtd."
                 coluna="quantidade"
+                ordenacao={ordenacao}
+                onOrdenar={alternarOrdenacao}
+              />
+              <CabecalhoColunaOrdenavel
+                className="px-2 py-1.5"
+                rotulo="Qtd total UN de Venda"
+                coluna="qtdTotalUnVenda"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
@@ -498,7 +601,7 @@ export function LancamentoItensPedido({
           <tbody>
             {linhasExibidas.length === 0 ? (
               <tr>
-                <td colSpan={12} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={15} className="px-4 py-8 text-center text-muted-foreground">
                   Nenhum produto lançado. Preencha o formulário acima e clique em Adicionar.
                 </td>
               </tr>
@@ -508,6 +611,7 @@ export function LancamentoItensPedido({
                 const selecionada = indiceEdicao === linha.indiceOriginal
                 const nome = nomeProduto(linha.item, produtos)
                 const urlFoto = urlFotoDoItem(linha.item, produtos)
+                const embalagem = dadosEmbalagemDoItem(linha.item, produtos, fornecedorPessoaId)
                 return (
                   <tr
                     key={linha.item.id ?? `item-${linha.indiceOriginal}`}
@@ -540,9 +644,12 @@ export function LancamentoItensPedido({
                         </div>
                       </div>
                     </td>
+                    <td className="px-2 py-1.5">{marcaDoItem(linha.item, produtos)}</td>
                     <td className="px-2 py-1.5">{linha.item.codigoOriginal || '—'}</td>
                     <td className="px-2 py-1.5">{linha.item.unidade || '—'}</td>
+                    <td className="px-2 py-1.5 tabular-nums">{embalagem.itensPorEmbalagem}</td>
                     <td className="px-2 py-1.5 tabular-nums">{linha.item.quantidade}</td>
+                    <td className="px-2 py-1.5 tabular-nums">{embalagem.qtdTotalUnVenda}</td>
                     <td className="px-2 py-1.5 tabular-nums">
                       {formatarMoeda(parseNum(linha.item.precoUnitario))}
                     </td>
@@ -624,6 +731,16 @@ export function LancamentoItensPedido({
         textoCancelar="Cancelar"
         aoConfirmar={confirmarProdutoDuplicado}
         aoCancelar={cancelarProdutoDuplicado}
+      />
+
+      <ModalConfirmacao
+        aberto={confirmacaoMultiploAberta}
+        titulo="Múltiplo de compra"
+        mensagem={`A quantidade informada (${itemMultiploPendente?.quantidade ?? ''}) não é múltiplo de ${multiploPendente}.\n\nDeseja adequar para ${quantidadeSugeridaMultiplo} ou continuar sem ajuste?`}
+        textoConfirmar="Adequar quantidade"
+        textoCancelar="Continuar sem ajuste"
+        aoConfirmar={adequarQuantidadeMultiplo}
+        aoCancelar={continuarSemAjusteMultiplo}
       />
     </div>
   )

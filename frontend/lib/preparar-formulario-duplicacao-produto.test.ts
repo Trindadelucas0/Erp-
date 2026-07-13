@@ -33,6 +33,9 @@ const formBase: FormProdutoDuplicavel = {
   comprimentoCm: '30',
   capacidadeEmpilhamento: '5',
   normaPalete: 'PBR',
+  multiploVenda: '1',
+  permiteVendaFracionada: false,
+  unidadeEntregaMultiploVenda: 'CX',
   embalagensMaster: [
     {
       quantidade: '12',
@@ -94,6 +97,9 @@ describe('prepararFormularioDuplicacaoProduto', () => {
     expect(r.ncm).toBe('84818019')
     expect(r.pesoKg).toBe('1')
     expect(r.embalagensMaster[0]?.quantidade).toBe('12')
+    expect(r.multiploVenda).toBe('1')
+    expect(r.permiteVendaFracionada).toBe(false)
+    expect(r.unidadeEntregaMultiploVenda).toBe('CX')
   })
 
   it('usa nome informado pelo usuario', () => {

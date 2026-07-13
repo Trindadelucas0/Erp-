@@ -2,12 +2,15 @@ export type VinculoFornecedorProduto = {
   fornecedorPessoaId: string
   codigoFornecedor: string | null
   unidadeEntrada: string | null
+  multiploEntrada?: number | null
+  multiplicadorEntrada?: number | null
 }
 
 export type ProdutoParaPreenchimento = {
   id: string
   nomeVenda: string
   sku: string | null
+  marca?: string
   unidade: string
   codigoOrigem: string | null
   precoCusto: number | null
@@ -24,6 +27,7 @@ export type ItemPedidoPreenchivel = {
   produtoId: string
   produtoNome?: string
   produtoSku?: string | null
+  produtoMarca?: string | null
   codigoOriginal: string
   quantidade: string
   unidade: string
@@ -71,6 +75,39 @@ export function resolverCodigoOriginal(vinculo: VinculoFornecedorProduto | undef
   return vinculo?.codigoFornecedor?.trim() || ''
 }
 
+export function resolverItensPorEmbalagem(vinculo: VinculoFornecedorProduto | undefined): number {
+  const valor = vinculo?.multiplicadorEntrada
+  if (valor == null || !Number.isFinite(valor) || valor <= 0) return 1
+  return valor
+}
+
+export function calcularQtdTotalUnVenda(quantidade: number, itensPorEmbalagem: number): number {
+  if (!Number.isFinite(quantidade) || !Number.isFinite(itensPorEmbalagem)) return 0
+  return Math.round(quantidade * itensPorEmbalagem * 1e6) / 1e6
+}
+
+function quantidadeEhMultiplo(quantidade: number, multiplo: number): boolean {
+  if (!(multiplo > 0) || !(quantidade > 0)) return true
+  const razao = quantidade / multiplo
+  return Math.abs(razao - Math.round(razao)) < 1e-9
+}
+
+export function sugerirQuantidadeMultiplo(
+  quantidade: number,
+  multiploEntrada: number | null | undefined
+): { precisaAjuste: true; quantidadeSugerida: number; multiplo: number } | null {
+  if (multiploEntrada == null || !Number.isFinite(multiploEntrada) || multiploEntrada <= 0) {
+    return null
+  }
+  if (multiploEntrada === 1) return null
+  if (!(quantidade > 0)) return null
+  if (quantidadeEhMultiplo(quantidade, multiploEntrada)) return null
+
+  const sugerida = Math.ceil(quantidade / multiploEntrada - 1e-9) * multiploEntrada
+  const quantidadeSugerida = Math.round(sugerida * 1e6) / 1e6
+  return { precisaAjuste: true, quantidadeSugerida, multiplo: multiploEntrada }
+}
+
 export function recalcularCodigoUnidadeItem(
   item: ItemPedidoPreenchivel,
   produto: ProdutoParaPreenchimento,
@@ -99,6 +136,7 @@ export function preencherItemComProduto(
     produtoId: produto.id,
     produtoNome: produto.nomeVenda,
     produtoSku: produto.sku,
+    produtoMarca: produto.marca ?? null,
     unidade: resolverUnidadeEntrada(vinculo, produto.unidade),
     codigoOriginal: resolverCodigoOriginal(vinculo),
     precoUnitario: preco,

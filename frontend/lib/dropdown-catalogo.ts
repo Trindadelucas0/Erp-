@@ -38,10 +38,10 @@ export function elementoEstaNaZona(
   return refs.some((ref) => ref.current?.contains(alvo) ?? false)
 }
 
-/** Fecha o dropdown quando o mouse sai da zona (input + lista), exceto se o foco permanecer na zona. */
+/** Fecha o dropdown quando o mouse sai da zona (input + lista). Use onMouseEnter/Leave na zona e na lista portal. */
 export function useFecharAoSairComMouse(
   aoFechar: () => void,
-  refs: RefElemento[] = []
+  _refs: RefElemento[] = []
 ) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -52,10 +52,6 @@ export function useFecharAoSairComMouse(
     }
   }, [])
 
-  const deveManterAberto = useCallback(() => {
-    return elementoEstaNaZona(refs)
-  }, [refs])
-
   const onMouseEnter = useCallback(() => {
     cancelarFechamento()
   }, [cancelarFechamento])
@@ -63,10 +59,9 @@ export function useFecharAoSairComMouse(
   const onMouseLeave = useCallback(() => {
     cancelarFechamento()
     timerRef.current = setTimeout(() => {
-      if (deveManterAberto()) return
       aoFechar()
     }, ATRASO_FECHAR_MOUSE_MS)
-  }, [aoFechar, cancelarFechamento, deveManterAberto])
+  }, [aoFechar, cancelarFechamento])
 
   useEffect(() => () => cancelarFechamento(), [cancelarFechamento])
 

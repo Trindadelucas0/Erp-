@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { esquemaDeCriacaoDeProduto, mensagemErroZod } from './esquema-produtos.js'
+import {
+  esquemaDeCriacaoDeProduto,
+  MENSAGEM_MULTIPLICADOR_UNIDADES_DIFERENTES,
+  MENSAGEM_MULTIPLICADOR_UNIDADES_IGUAIS,
+  mensagemErroZod,
+} from './esquema-produtos.js'
 
 const payloadMinimo = {
   ativo: true,
@@ -43,6 +48,151 @@ describe('esquemaDeCriacaoDeProduto', () => {
           codigoFornecedor: 'ABC123',
           multiploEntrada: 12,
           multiplicadorEntrada: 1.5,
+          unidadeEntrada: 'CX',
+        },
+      ],
+    })
+    expect(r.success).toBe(true)
+  })
+
+  it('rejeita multiplicadorEntrada diferente de 1 quando unidades iguais', () => {
+    const r = esquemaDeCriacaoDeProduto.safeParse({
+      ...payloadMinimo,
+      unidade: 'CX',
+      fornecedores: [
+        {
+          fornecedorPessoaId: '550e8400-e29b-41d4-a716-446655440000',
+          multiplicadorEntrada: 6,
+          unidadeEntrada: 'CX',
+        },
+      ],
+    })
+    expect(r.success).toBe(false)
+    if (!r.success) {
+      expect(mensagemErroZod(r.error)).toContain(MENSAGEM_MULTIPLICADOR_UNIDADES_IGUAIS)
+    }
+  })
+
+  it('aceita multiplicadorEntrada 1 quando unidades iguais', () => {
+    const r = esquemaDeCriacaoDeProduto.safeParse({
+      ...payloadMinimo,
+      unidade: 'CX',
+      fornecedores: [
+        {
+          fornecedorPessoaId: '550e8400-e29b-41d4-a716-446655440000',
+          multiplicadorEntrada: 1,
+          unidadeEntrada: 'cx',
+        },
+      ],
+    })
+    expect(r.success).toBe(true)
+  })
+
+  it('aceita multiplicadorEntrada null quando unidades iguais', () => {
+    const r = esquemaDeCriacaoDeProduto.safeParse({
+      ...payloadMinimo,
+      unidade: 'CX',
+      fornecedores: [
+        {
+          fornecedorPessoaId: '550e8400-e29b-41d4-a716-446655440000',
+          multiplicadorEntrada: null,
+          unidadeEntrada: 'CX',
+        },
+      ],
+    })
+    expect(r.success).toBe(true)
+  })
+
+  it('rejeita multiplicadorEntrada diferente de 1 quando unidadeEntrada vazia', () => {
+    const r = esquemaDeCriacaoDeProduto.safeParse({
+      ...payloadMinimo,
+      unidade: 'UN',
+      fornecedores: [
+        {
+          fornecedorPessoaId: '550e8400-e29b-41d4-a716-446655440000',
+          multiplicadorEntrada: 6,
+          unidadeEntrada: null,
+        },
+      ],
+    })
+    expect(r.success).toBe(false)
+    if (!r.success) {
+      expect(mensagemErroZod(r.error)).toContain(MENSAGEM_MULTIPLICADOR_UNIDADES_IGUAIS)
+    }
+  })
+
+  it('aceita multiplicadorEntrada null quando unidadeEntrada vazia', () => {
+    const r = esquemaDeCriacaoDeProduto.safeParse({
+      ...payloadMinimo,
+      unidade: 'UN',
+      fornecedores: [
+        {
+          fornecedorPessoaId: '550e8400-e29b-41d4-a716-446655440000',
+          multiplicadorEntrada: null,
+        },
+      ],
+    })
+    expect(r.success).toBe(true)
+  })
+
+  it('aceita multiplicadorEntrada 1 quando unidadeEntrada vazia', () => {
+    const r = esquemaDeCriacaoDeProduto.safeParse({
+      ...payloadMinimo,
+      unidade: 'UN',
+      fornecedores: [
+        {
+          fornecedorPessoaId: '550e8400-e29b-41d4-a716-446655440000',
+          multiplicadorEntrada: 1,
+        },
+      ],
+    })
+    expect(r.success).toBe(true)
+  })
+
+  it('rejeita multiplicadorEntrada vazio quando unidades diferentes', () => {
+    const r = esquemaDeCriacaoDeProduto.safeParse({
+      ...payloadMinimo,
+      unidade: 'UN',
+      fornecedores: [
+        {
+          fornecedorPessoaId: '550e8400-e29b-41d4-a716-446655440000',
+          multiplicadorEntrada: null,
+          unidadeEntrada: 'CX',
+        },
+      ],
+    })
+    expect(r.success).toBe(false)
+    if (!r.success) {
+      expect(mensagemErroZod(r.error)).toContain(MENSAGEM_MULTIPLICADOR_UNIDADES_DIFERENTES)
+    }
+  })
+
+  it('rejeita multiplicadorEntrada 1 quando unidades diferentes', () => {
+    const r = esquemaDeCriacaoDeProduto.safeParse({
+      ...payloadMinimo,
+      unidade: 'UN',
+      fornecedores: [
+        {
+          fornecedorPessoaId: '550e8400-e29b-41d4-a716-446655440000',
+          multiplicadorEntrada: 1,
+          unidadeEntrada: 'CX',
+        },
+      ],
+    })
+    expect(r.success).toBe(false)
+    if (!r.success) {
+      expect(mensagemErroZod(r.error)).toContain(MENSAGEM_MULTIPLICADOR_UNIDADES_DIFERENTES)
+    }
+  })
+
+  it('aceita multiplicadorEntrada diferente de 1 quando unidades diferentes', () => {
+    const r = esquemaDeCriacaoDeProduto.safeParse({
+      ...payloadMinimo,
+      unidade: 'UN',
+      fornecedores: [
+        {
+          fornecedorPessoaId: '550e8400-e29b-41d4-a716-446655440000',
+          multiplicadorEntrada: 6,
           unidadeEntrada: 'CX',
         },
       ],
@@ -195,6 +345,49 @@ describe('esquemaDeCriacaoDeProduto', () => {
       embalagensMaster: [{ quantidade: 12, codigoBarras: '10614141000415' }],
     })
     expect(r.success).toBe(true)
+  })
+
+  it('aplica default 1 para multiploVenda e false para permiteVendaFracionada', () => {
+    const r = esquemaDeCriacaoDeProduto.safeParse(payloadMinimo)
+    expect(r.success).toBe(true)
+    if (r.success) {
+      expect(r.data.multiploVenda).toBe(1)
+      expect(r.data.permiteVendaFracionada).toBe(false)
+    }
+  })
+
+  it('aceita multiploVenda decimal quando permite venda fracionada', () => {
+    const r = esquemaDeCriacaoDeProduto.safeParse({
+      ...payloadMinimo,
+      multiploVenda: 1.93,
+      permiteVendaFracionada: true,
+      unidadeEntregaMultiploVenda: 'cx',
+    })
+    expect(r.success).toBe(true)
+    if (r.success) {
+      expect(r.data.multiploVenda).toBe(1.93)
+      expect(r.data.unidadeEntregaMultiploVenda).toBe('CX')
+    }
+  })
+
+  it('rejeita multiploVenda decimal quando nao permite venda fracionada', () => {
+    const r = esquemaDeCriacaoDeProduto.safeParse({
+      ...payloadMinimo,
+      multiploVenda: 1.93,
+      permiteVendaFracionada: false,
+    })
+    expect(r.success).toBe(false)
+    if (!r.success) {
+      expect(mensagemErroZod(r.error)).toContain('múltiplo de venda deve ser um número inteiro')
+    }
+  })
+
+  it('rejeita multiploVenda zero ou negativo', () => {
+    const r = esquemaDeCriacaoDeProduto.safeParse({
+      ...payloadMinimo,
+      multiploVenda: 0,
+    })
+    expect(r.success).toBe(false)
   })
 })
 

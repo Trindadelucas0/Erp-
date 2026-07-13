@@ -39,9 +39,9 @@ export function ListaEmbalagensMaster({ itens, aoMudar, disabled, errosPorIndice
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-sm font-medium">Embalagens master</p>
+          <p className="text-sm font-medium">Embalagens master (caixa)</p>
           <p className="text-xs text-muted-foreground">
-            É permitido mais de um tipo de embalagem master.
+            Quantos itens vêm na caixa na venda. Usado para vender por CX no pedido de venda.
           </p>
         </div>
         {!disabled && (
@@ -71,10 +71,11 @@ export function ListaEmbalagensMaster({ itens, aoMudar, disabled, errosPorIndice
           )}
 
           <InputPadrao
-            rotulo="Quantidade por embalagem master"
+            rotulo="Quantidade na caixa (itens)"
             value={item.quantidade}
             onChange={(e) => atualizar(index, 'quantidade', e.target.value)}
             disabled={disabled}
+            placeholder="Ex.: 6 — itens por caixa"
           />
           <InputPadrao
             rotulo="Código de barras embalagem master"

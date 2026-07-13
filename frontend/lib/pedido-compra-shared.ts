@@ -6,6 +6,7 @@ export type ItemPedido = {
   produtoId: string
   produtoNome?: string
   produtoSku?: string | null
+  produtoMarca?: string | null
   codigoOriginal: string
   quantidade: string
   unidade: string
@@ -46,6 +47,7 @@ export type ProdutoOpcao = {
   nomeVenda: string
   sku: string | null
   urlFotoMiniatura?: string | null
+  marca: string
   unidade: string
   codigoBarras?: string | null
   codigosBarrasEmbalagem?: (string | null)[]
@@ -56,6 +58,8 @@ export type ProdutoOpcao = {
     fornecedorPessoaId: string
     codigoFornecedor: string | null
     unidadeEntrada: string | null
+    multiploEntrada: number | null
+    multiplicadorEntrada: number | null
   }[]
 }
 

@@ -41,6 +41,9 @@ export type FormProdutoDuplicavel = {
   comprimentoCm: string
   capacidadeEmpilhamento: string
   normaPalete: string
+  multiploVenda: string
+  permiteVendaFracionada: boolean
+  unidadeEntregaMultiploVenda: string
   embalagensMaster: EmbalagemMasterForm[]
   enderecosEstoque: EnderecoEstoqueForm[]
   nomeCompra: string

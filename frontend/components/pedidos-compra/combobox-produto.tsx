@@ -192,6 +192,7 @@ export function ComboboxProduto({
         width: posicao.width,
         maxHeight: posicao.maxHeight,
       }}
+      {...zonaHover}
     >
       {filtrados.length === 0 ? (
         <li className="px-3 py-2 text-muted-foreground">Nenhum produto encontrado</li>

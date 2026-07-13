@@ -1,16 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import {
+  calcularQtdTotalUnVenda,
   preencherItemComProduto,
   recalcularCodigoUnidadeItem,
   resolverCodigoOriginal,
+  resolverItensPorEmbalagem,
   resolverPrecoUnitario,
   resolverUnidadeEntrada,
+  sugerirQuantidadeMultiplo,
 } from './preencher-item-pedido-compra'
 
 const produtoBase = {
   id: 'p1',
   nomeVenda: 'Produto A',
   sku: 'SKU1',
+  marca: 'Marca X',
   unidade: 'UN',
   codigoOrigem: 'ORI1',
   precoCusto: 10.5,
@@ -20,6 +24,8 @@ const produtoBase = {
       fornecedorPessoaId: 'f1',
       codigoFornecedor: 'CF1',
       unidadeEntrada: 'CX',
+      multiploEntrada: 6,
+      multiplicadorEntrada: 12,
     },
   ],
 }
@@ -51,6 +57,7 @@ describe('preencher-item-pedido-compra', () => {
     const item = preencherItemComProduto(itemBase, produtoBase, 'f1', '2026-08-01')
     expect(item.unidade).toBe('CX')
     expect(item.codigoOriginal).toBe('CF1')
+    expect(item.produtoMarca).toBe('Marca X')
     expect(item.precoUnitario).toBe('10.5')
     expect(item.origemPreco).toBe('estoque')
     expect(item.percentualDesconto).toBe('0')
@@ -65,6 +72,8 @@ describe('preencher-item-pedido-compra', () => {
           fornecedorPessoaId: 'f1',
           codigoFornecedor: 'CF1',
           unidadeEntrada: null,
+          multiploEntrada: null,
+          multiplicadorEntrada: null,
         },
       ],
     }
@@ -85,6 +94,8 @@ describe('preencher-item-pedido-compra', () => {
           fornecedorPessoaId: 'f1',
           codigoFornecedor: null,
           unidadeEntrada: 'CX',
+          multiploEntrada: null,
+          multiplicadorEntrada: null,
         },
       ],
     }
@@ -111,6 +122,34 @@ describe('preencher-item-pedido-compra', () => {
     expect(resolverUnidadeEntrada(undefined, 'UN')).toBe('UN')
   })
 
+  it('resolverItensPorEmbalagem usa multiplicadorEntrada ou 1', () => {
+    expect(resolverItensPorEmbalagem(produtoBase.fornecedores[0])).toBe(12)
+    expect(resolverItensPorEmbalagem(undefined)).toBe(1)
+    expect(
+      resolverItensPorEmbalagem({
+        fornecedorPessoaId: 'f1',
+        codigoFornecedor: null,
+        unidadeEntrada: null,
+        multiplicadorEntrada: null,
+      })
+    ).toBe(1)
+  })
+
+  it('calcularQtdTotalUnVenda multiplica quantidade por embalagem', () => {
+    expect(calcularQtdTotalUnVenda(2, 12)).toBe(24)
+  })
+
+  it('sugerirQuantidadeMultiplo sugere próximo múltiplo para cima', () => {
+    expect(sugerirQuantidadeMultiplo(3, 6)).toEqual({
+      precisaAjuste: true,
+      quantidadeSugerida: 6,
+      multiplo: 6,
+    })
+    expect(sugerirQuantidadeMultiplo(6, 6)).toBeNull()
+    expect(sugerirQuantidadeMultiplo(4, 1)).toBeNull()
+    expect(sugerirQuantidadeMultiplo(4, null)).toBeNull()
+  })
+
   it('recalcula unidade e código ao trocar fornecedor', () => {
     const produto = {
       ...produtoBase,
@@ -119,11 +158,15 @@ describe('preencher-item-pedido-compra', () => {
           fornecedorPessoaId: 'f1',
           codigoFornecedor: 'CF1',
           unidadeEntrada: 'CX',
+          multiploEntrada: 6,
+          multiplicadorEntrada: 12,
         },
         {
           fornecedorPessoaId: 'f2',
           codigoFornecedor: 'CF2',
           unidadeEntrada: 'PC',
+          multiploEntrada: null,
+          multiplicadorEntrada: null,
         },
       ],
     }

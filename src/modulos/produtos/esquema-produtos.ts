@@ -62,6 +62,46 @@ const codigoBarrasGtinOpcional = z.preprocess(
     )
 )
 
+export const MENSAGEM_MULTIPLICADOR_UNIDADES_IGUAIS =
+  'Quando a unidade na entrada é igual à unidade de venda, a quantidade por embalagem deve ser 1.'
+
+export const MENSAGEM_MULTIPLICADOR_UNIDADES_DIFERENTES =
+  'Quando a unidade na entrada é diferente da unidade de venda, a quantidade por embalagem deve ser preenchida e diferente de 1.'
+
+export const MENSAGEM_MULTIPLO_VENDA_INTEIRO =
+  'Quando não permite venda fracionada, o múltiplo de venda deve ser um número inteiro.'
+
+export const MENSAGEM_MULTIPLO_VENDA_POSITIVO = 'Múltiplo de venda deve ser maior que zero.'
+
+const decimalPositivoComDefault = (padrao: number) =>
+  z.preprocess(
+    (valor) => (valor === null || valor === '' || valor === undefined ? padrao : valor),
+    z
+      .union([z.number(), z.string()])
+      .transform((v) => {
+        const n = typeof v === 'number' ? v : Number(String(v).replace(',', '.'))
+        return n
+      })
+      .refine((n) => Number.isFinite(n) && n > 0, MENSAGEM_MULTIPLO_VENDA_POSITIVO)
+  )
+
+function multiploVendaEhInteiro(valor: number): boolean {
+  return Math.abs(valor - Math.round(valor)) < 1e-9
+}
+
+function refinarMultiploVendaFracionada(
+  dados: { multiploVenda: number; permiteVendaFracionada: boolean },
+  ctx: z.RefinementCtx
+) {
+  if (!dados.permiteVendaFracionada && !multiploVendaEhInteiro(dados.multiploVenda)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: MENSAGEM_MULTIPLO_VENDA_INTEIRO,
+      path: ['multiploVenda'],
+    })
+  }
+}
+
 function refinarCodigosBarrasProduto(
   dados: {
     codigoBarras?: string
@@ -77,6 +117,45 @@ function refinarCodigosBarrasProduto(
       path: ['codigoBarras'],
     })
   }
+}
+
+function refinarMultiplicadorEntradaPorUnidades(
+  dados: {
+    unidade: string
+    fornecedores?: {
+      unidadeEntrada?: string | null
+      multiplicadorEntrada?: number | null
+    }[]
+  },
+  ctx: z.RefinementCtx
+) {
+  const unidadeVenda = dados.unidade.trim().toUpperCase()
+  if (!unidadeVenda || !dados.fornecedores?.length) return
+
+  dados.fornecedores.forEach((fornecedor, index) => {
+    const unidadeEntradaPreenchida = fornecedor.unidadeEntrada?.trim().toUpperCase() || ''
+    const unidadeEntradaEfetiva = unidadeEntradaPreenchida || unidadeVenda
+    const unidadesIguais = unidadeEntradaEfetiva === unidadeVenda
+    const multiplicador = fornecedor.multiplicadorEntrada
+
+    if (unidadesIguais) {
+      if (multiplicador == null || multiplicador === 1) return
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: MENSAGEM_MULTIPLICADOR_UNIDADES_IGUAIS,
+        path: ['fornecedores', index, 'multiplicadorEntrada'],
+      })
+      return
+    }
+
+    if (multiplicador == null || multiplicador === 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: MENSAGEM_MULTIPLICADOR_UNIDADES_DIFERENTES,
+        path: ['fornecedores', index, 'multiplicadorEntrada'],
+      })
+    }
+  })
 }
 
 export const esquemaEmbalagemMaster = z.object({
@@ -159,6 +238,15 @@ const camposProduto = {
   comprimentoCm: decimalOpcional,
   capacidadeEmpilhamento: inteiroOpcional,
   normaPalete: textoOpcionalNulavel(100),
+  multiploVenda: decimalPositivoComDefault(1),
+  permiteVendaFracionada: z.boolean().optional().default(false),
+  unidadeEntregaMultiploVenda: z.preprocess(
+    nulParaUndefined,
+    textoCadastroOpcional(20).transform((v) => {
+      if (v === undefined || !v.trim()) return undefined
+      return v.trim().toUpperCase()
+    })
+  ),
   nomeCompra: textoOpcionalNulavel(200),
   precoCusto: decimalOpcional,
   agruparSimilaresRuptura: z.boolean().optional().default(false),
@@ -210,6 +298,8 @@ export const esquemaDeCriacaoDeProduto = z
       }
     }
     refinarCodigosBarrasProduto(dados, ctx)
+    refinarMultiplicadorEntradaPorUnidades(dados, ctx)
+    refinarMultiploVendaFracionada(dados, ctx)
   })
 
 export const esquemaDeEdicaoDeProduto = z
@@ -232,6 +322,8 @@ export const esquemaDeEdicaoDeProduto = z
       }
     }
     refinarCodigosBarrasProduto(dados, ctx)
+    refinarMultiplicadorEntradaPorUnidades(dados, ctx)
+    refinarMultiploVendaFracionada(dados, ctx)
   })
 
 export const esquemaDeAtivarProduto = z.object({
