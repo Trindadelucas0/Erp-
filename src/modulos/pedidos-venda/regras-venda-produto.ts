@@ -1,5 +1,5 @@
 /**
- * Regras de conversão e validação de quantidade na venda (UN/CX).
+ * Regras de conversão e validação de quantidade/preço na venda (UN/CX).
  */
 
 export type ModoQuantidadeVenda = 'UN' | 'CX'
@@ -47,6 +47,24 @@ export function converterQtdParaUnidadeVenda(
   return arredondar6(quantidadeInformada)
 }
 
+/**
+ * Converte preço digitado no lançamento para preço unitário persistido.
+ * UN: retorna o valor informado. CX: preço da caixa ÷ itens na caixa.
+ * O front aplica ao adicionar o item; request/API gravam sempre o unitário.
+ */
+export function resolverPrecoUnitarioVenda(
+  modo: ModoQuantidadeVenda,
+  precoInformado: number,
+  itensNaCaixa: number
+): number {
+  if (!(precoInformado >= 0) || !Number.isFinite(precoInformado)) return 0
+  if (modo === 'CX') {
+    const fator = itensNaCaixa > 0 ? itensNaCaixa : 1
+    return arredondar6(precoInformado / fator)
+  }
+  return arredondar6(precoInformado)
+}
+
 export function validarQuantidadeModoUn(
   quantidade: number,
   permiteVendaFracionada: boolean,
@@ -64,7 +82,7 @@ export function validarQuantidadeModoUn(
   if (multiplo != null && multiplo !== 1 && !quantidadeEhMultiplo(quantidade, multiplo)) {
     return {
       ok: false,
-      mensagem: `Quantidade deve ser múltiplo de ${multiplo}.`,
+      mensagem: `Quantidade menor que o múltiplo permitido. Múltiplo: ${multiplo}.`,
     }
   }
 

@@ -131,7 +131,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   const [historicoProdutos, setHistoricoProdutos] = useState<Record<string, HistoricoCompra[]>>({})
   const { ordenacao: ordenacaoHistorico, alternarOrdenacao: alternarOrdenacaoHistorico } =
     useOrdenacaoColunas<'pedido' | 'fornecedor' | 'data' | 'quantidade' | 'preco' | 'custo'>()
-  const [abaAtiva, setAbaAtiva] = useState<'dados-gerais' | 'itens'>('dados-gerais')
+  const [abaAtiva, setAbaAtiva] = useState<'dados-gerais' | 'itens' | 'pagamento'>('dados-gerais')
   const requisicaoContextoRef = useRef(0)
   const deveAplicarPrazosFornecedorRef = useRef(false)
 
@@ -175,7 +175,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
             marca?: string | null
             unidade: string
             codigoBarras?: string | null
-            embalagensMaster?: { codigoBarras?: string | null }[]
+            embalagensMaster?: { codigoBarras?: string | null; quantidade?: number | null }[]
             codigoOrigem: string | null
             precoCusto: number | null
             bloqueadoCompra: boolean
@@ -195,6 +195,12 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
             unidade: p.unidade,
             codigoBarras: p.codigoBarras ?? null,
             codigosBarrasEmbalagem: (p.embalagensMaster ?? []).map((e) => e.codigoBarras ?? null),
+            embalagensMaster: (p.embalagensMaster ?? []).map((e) => ({
+              quantidade:
+                e.quantidade == null || !Number.isFinite(Number(e.quantidade))
+                  ? null
+                  : Number(e.quantidade),
+            })),
             codigoOrigem: p.codigoOrigem ?? null,
             precoCusto: p.precoCusto ?? null,
             bloqueadoCompra: p.bloqueadoCompra ?? false,
@@ -352,7 +358,9 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     const aplicarPrazos = deveAplicarPrazosFornecedorRef.current
     deveAplicarPrazosFornecedorRef.current = false
     void carregarContexto(form.fornecedorPessoaId, aplicarPrazos)
-  }, [form.fornecedorPessoaId, carregarContexto])
+    // Recarrega produtos para refletir embalagem/múltiplo recém-cadastrados.
+    void carregarCatalogos()
+  }, [form.fornecedorPessoaId, carregarContexto, carregarCatalogos])
 
   function selecionarFornecedor(fornecedorId: string) {
     const mudou = fornecedorId !== form.fornecedorPessoaId
@@ -415,6 +423,16 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     }
     setErro('')
     setAbaAtiva('itens')
+  }
+
+  function avancarParaPagamento() {
+    if (form.itens.length === 0 || form.itens.some((i) => !i.produtoId)) {
+      setErro('Adicione ao menos um produto no pedido.')
+      setAbaAtiva('itens')
+      return
+    }
+    setErro('')
+    setAbaAtiva('pagamento')
   }
 
   function abrirHistoricoProduto(produtoId: string) {
@@ -681,13 +699,14 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     }
     if (form.creditoFornecedorId && !creditoValido) {
       setErro('Valor do crédito inválido ou excede o saldo disponível.')
+      setAbaAtiva('pagamento')
       return
     }
     if (form.rateioParcelas === 'manual') {
       const erroParcelas = validarSomaParcelasManual(form.prazos, totalLiquidoForm)
       if (erroParcelas) {
         setErro(erroParcelas)
-        setAbaAtiva('dados-gerais')
+        setAbaAtiva('pagamento')
         return
       }
     }
@@ -927,10 +946,11 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
           <Abas
             className="mb-6"
             abaAtiva={abaAtiva}
-            aoMudar={(id) => setAbaAtiva(id as 'dados-gerais' | 'itens')}
+            aoMudar={(id) => setAbaAtiva(id as 'dados-gerais' | 'itens' | 'pagamento')}
             abas={[
               { id: 'dados-gerais', rotulo: 'Dados gerais' },
               { id: 'itens', rotulo: 'Lançamento de produtos', contador: itensPreenchidos },
+              { id: 'pagamento', rotulo: 'Pagamento e prazos' },
             ]}
           />
 
@@ -1082,28 +1102,6 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
                   />
                 </div>
               )}
-
-              <BlocoPagamentoPrazos
-                condicaoPagamento={form.condicaoPagamento}
-                rateioParcelas={form.rateioParcelas}
-                prazos={form.prazos}
-                dataFaturamento={form.dataFaturamento}
-                totalLiquido={totalLiquidoForm}
-                creditoFornecedorId={form.creditoFornecedorId}
-                creditoAplicado={form.creditoAplicado}
-                creditos={contexto?.creditos ?? []}
-                saldoMaxCredito={saldoMaxCredito}
-                creditoValido={creditoValido}
-                avisoBaixaCredito={AVISO_BAIXA_CREDITO_NF}
-                disabled={camposDesabilitados}
-                formatarMoeda={formatarMoeda}
-                onRateioChange={mudarRateioParcelas}
-                onPrazosChange={atualizarPrazos}
-                onSelecionarCredito={aoSelecionarCredito}
-                onCreditoAplicadoChange={(v) => setForm((f) => ({ ...f, creditoAplicado: v }))}
-                onLimparCredito={limparCredito}
-                onAdicionarPrazo={adicionarPrazo}
-              />
             </div>
 
             <aside className="min-w-0 space-y-3 rounded-lg border border-border bg-muted/20 p-3 xl:sticky xl:top-0 xl:self-start">
@@ -1204,6 +1202,30 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
             />
           )}
 
+          {abaAtiva === 'pagamento' && (
+            <BlocoPagamentoPrazos
+              condicaoPagamento={form.condicaoPagamento}
+              rateioParcelas={form.rateioParcelas}
+              prazos={form.prazos}
+              dataFaturamento={form.dataFaturamento}
+              totalLiquido={totalLiquidoForm}
+              creditoFornecedorId={form.creditoFornecedorId}
+              creditoAplicado={form.creditoAplicado}
+              creditos={contexto?.creditos ?? []}
+              saldoMaxCredito={saldoMaxCredito}
+              creditoValido={creditoValido}
+              avisoBaixaCredito={AVISO_BAIXA_CREDITO_NF}
+              disabled={camposDesabilitados}
+              formatarMoeda={formatarMoeda}
+              onRateioChange={mudarRateioParcelas}
+              onPrazosChange={atualizarPrazos}
+              onSelecionarCredito={aoSelecionarCredito}
+              onCreditoAplicadoChange={(v) => setForm((f) => ({ ...f, creditoAplicado: v }))}
+              onLimparCredito={limparCredito}
+              onAdicionarPrazo={adicionarPrazo}
+            />
+          )}
+
           <div className="mt-4 flex flex-col gap-3 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="shrink-0">
               {podeCancelarPedido && (
@@ -1245,28 +1267,45 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
                         Voltar
                       </Button>
                     )}
+                    {abaAtiva === 'pagamento' && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setAbaAtiva('itens')}
+                      >
+                        Voltar
+                      </Button>
+                    )}
                     <Button
                       type="button"
                       variant="outline"
                       onClick={() => void aoSalvar(undefined, false)}
                       disabled={salvando}
                     >
-                      {salvando ? 'Salvando...' : podeConcluirPedido(form.status) ? 'Salvar rascunho' : 'Salvar'}
+                      {salvando
+                        ? 'Salvando...'
+                        : podeConcluirPedido(form.status)
+                          ? 'Salvar rascunho'
+                          : 'Salvar'}
                     </Button>
-                    {abaAtiva === 'dados-gerais' && podeConcluirPedido(form.status) ? (
+                    {abaAtiva === 'dados-gerais' && (
                       <BotaoPrimario type="button" onClick={avancarParaItens}>
-                        Avançar
+                        Avançar para itens
                       </BotaoPrimario>
-                    ) : (
-                      podeConcluirPedido(form.status) && (
-                        <BotaoPrimario
-                          type="button"
-                          onClick={() => void aoSalvar(undefined, true)}
-                          disabled={salvando}
-                        >
-                          {salvando ? 'Salvando...' : 'Concluir pedido'}
-                        </BotaoPrimario>
-                      )
+                    )}
+                    {abaAtiva === 'itens' && (
+                      <BotaoPrimario type="button" onClick={avancarParaPagamento}>
+                        Avançar para pagamento
+                      </BotaoPrimario>
+                    )}
+                    {abaAtiva === 'pagamento' && podeConcluirPedido(form.status) && (
+                      <BotaoPrimario
+                        type="button"
+                        onClick={() => void aoSalvar(undefined, true)}
+                        disabled={salvando}
+                      >
+                        {salvando ? 'Salvando...' : 'Concluir pedido'}
+                      </BotaoPrimario>
                     )}
                   </>
                 )}

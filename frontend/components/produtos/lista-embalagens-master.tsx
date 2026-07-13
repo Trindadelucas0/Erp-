@@ -41,7 +41,7 @@ export function ListaEmbalagensMaster({ itens, aoMudar, disabled, errosPorIndice
         <div>
           <p className="text-sm font-medium">Embalagens master (caixa)</p>
           <p className="text-xs text-muted-foreground">
-            Quantos itens vêm na caixa na venda. Usado para vender por CX no pedido de venda.
+            Quantos itens vêm na caixa. Usado como fator de conversão de embalagem.
           </p>
         </div>
         {!disabled && (

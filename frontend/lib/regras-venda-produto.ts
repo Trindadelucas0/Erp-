@@ -44,6 +44,24 @@ export function converterQtdParaUnidadeVenda(
   return arredondar6(quantidadeInformada)
 }
 
+/**
+ * Converte preço digitado no lançamento para preço unitário persistido.
+ * UN: retorna o valor informado. CX: preço da caixa ÷ itens na caixa.
+ * Usar no front ao adicionar o item; o request/API grava sempre o unitário.
+ */
+export function resolverPrecoUnitarioVenda(
+  modo: ModoQuantidadeVenda,
+  precoInformado: number,
+  itensNaCaixa: number
+): number {
+  if (!(precoInformado >= 0) || !Number.isFinite(precoInformado)) return 0
+  if (modo === 'CX') {
+    const fator = itensNaCaixa > 0 ? itensNaCaixa : 1
+    return arredondar6(precoInformado / fator)
+  }
+  return arredondar6(precoInformado)
+}
+
 export function validarQuantidadeModoUn(
   quantidade: number,
   permiteVendaFracionada: boolean,
@@ -61,7 +79,7 @@ export function validarQuantidadeModoUn(
   if (multiplo != null && multiplo !== 1 && !quantidadeEhMultiplo(quantidade, multiplo)) {
     return {
       ok: false,
-      mensagem: `Quantidade deve ser múltiplo de ${multiplo}.`,
+      mensagem: `Quantidade menor que o múltiplo permitido. Múltiplo: ${multiplo}.`,
     }
   }
 
@@ -80,12 +98,11 @@ export function validarQuantidadeModoCx(
   return { ok: true }
 }
 
+/** Sugere o próximo múltiplo válido (para botão Adequar). */
 export function sugerirQuantidadeMultiploVenda(
   quantidade: number,
-  multiploVenda: number | null | undefined,
-  permiteVendaFracionada: boolean
+  multiploVenda: number | null | undefined
 ): { precisaAjuste: true; quantidadeSugerida: number; multiplo: number } | null {
-  if (!permiteVendaFracionada) return null
   if (multiploVenda == null || !Number.isFinite(multiploVenda) || multiploVenda <= 0) return null
   if (multiploVenda === 1) return null
   if (!(quantidade > 0)) return null

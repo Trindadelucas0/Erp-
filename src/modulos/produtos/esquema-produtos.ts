@@ -14,6 +14,7 @@ import {
   normalizarCodigoBarrasGtin,
   validarCodigosBarrasInternos,
 } from '../../compartilhado/validacoes/codigo-barras-gtin.js'
+import { preencherMultiploSeVazio } from './sincronizar-multiplo-embalagem.js'
 
 function nulParaUndefined(valor: unknown) {
   return valor === null || valor === '' ? undefined : valor
@@ -185,14 +186,26 @@ export const esquemaEnderecoEstoque = z.object({
   ordem: z.number().int().optional(),
 })
 
-export const esquemaProdutoFornecedor = z.object({
-  fornecedorPessoaId: z.string().uuid('Fornecedor obrigatório'),
-  codigoFornecedor: textoOpcionalNulavel(50),
-  multiploEntrada: decimalOpcional,
-  multiplicadorEntrada: decimalOpcional,
-  unidadeEntrada: textoOpcionalNulavel(20),
-  ordem: z.number().int().optional(),
-})
+export const esquemaProdutoFornecedor = z
+  .object({
+    fornecedorPessoaId: z.string().uuid('Fornecedor obrigatório'),
+    codigoFornecedor: textoOpcionalNulavel(50),
+    multiploEntrada: decimalOpcional,
+    multiplicadorEntrada: decimalOpcional,
+    unidadeEntrada: textoOpcionalNulavel(20),
+    ordem: z.number().int().optional(),
+  })
+  .transform((dados) => {
+    const sincronizado = preencherMultiploSeVazio({
+      multiplicadorEntrada: dados.multiplicadorEntrada,
+      multiploEntrada: dados.multiploEntrada,
+    })
+    return {
+      ...dados,
+      multiplicadorEntrada: sincronizado.multiplicadorEntrada,
+      multiploEntrada: sincronizado.multiploEntrada,
+    }
+  })
 
 const camposProduto = {
   sku: textoOpcionalNulavel(50),

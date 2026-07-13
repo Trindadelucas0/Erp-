@@ -53,6 +53,7 @@ import {
 } from '@/components/produtos/lista-fornecedores-produto'
 import { SelecaoUnidadeMedida } from '@/components/produtos/selecao-unidade-medida'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
+import { sugerirUnidadeLogisticaDeEntrada } from '@/lib/sugerir-unidade-logistica'
 import {
   nomeVendaParaCopia,
   prepararFormularioDuplicacaoProduto,
@@ -1433,7 +1434,7 @@ function ConteudoDaPagina() {
                 <div>
                   <p className="text-sm font-medium">Venda / embalagem</p>
                   <p className="text-xs text-muted-foreground">
-                    Regras usadas no pedido de venda: múltiplo, fracionado e conversão caixa → unidade.
+                    Múltiplo, fracionado e unidade logística usados na conversão de embalagem.
                   </p>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -1453,21 +1454,26 @@ function ConteudoDaPagina() {
                       placeholder="Ex.: 1 ou 1,93"
                     />
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Passo da quantidade na unidade de venda (ex.: 1,93 m² por caixa de piso).
+                      Ex.: 6 se só vende de 6 em 6; 1,93 para piso.
                     </p>
                   </div>
-                  <SelectPadrao
-                    rotulo="Permite venda fracionada?"
-                    valor={form.permiteVendaFracionada ? 'sim' : 'nao'}
-                    aoMudar={(v) =>
-                      setForm((f) => ({ ...f, permiteVendaFracionada: v === 'sim' }))
-                    }
-                    opcoes={[
-                      { value: 'nao', label: 'Não' },
-                      { value: 'sim', label: 'Sim' },
-                    ]}
-                    disabled={camposDesabilitados}
-                  />
+                  <div className="min-w-0">
+                    <SelectPadrao
+                      rotulo="Permite venda fracionada?"
+                      valor={form.permiteVendaFracionada ? 'sim' : 'nao'}
+                      aoMudar={(v) =>
+                        setForm((f) => ({ ...f, permiteVendaFracionada: v === 'sim' }))
+                      }
+                      opcoes={[
+                        { value: 'nao', label: 'Não' },
+                        { value: 'sim', label: 'Sim' },
+                      ]}
+                      disabled={camposDesabilitados}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Não = só inteiros; Sim = aceita decimal (ex. m²).
+                    </p>
+                  </div>
                   <div className="min-w-0 sm:col-span-2">
                     <SelecaoUnidadeMedida
                       rotulo="Unidade de entrega do múltiplo de venda"
@@ -1478,7 +1484,8 @@ function ConteudoDaPagina() {
                       disabled={camposDesabilitados}
                     />
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Unidade logística da conversão (ex.: CX). Sem cálculo automático neste MVP.
+                      Unidade logística da conversão (ex.: CX). Usada com a embalagem/múltiplo
+                      cadastrados para converter caixa → unidade.
                     </p>
                   </div>
                 </div>
@@ -1511,7 +1518,21 @@ function ConteudoDaPagina() {
                 itens={form.fornecedores}
                 opcoesFornecedores={fornecedores}
                 aoMudar={(fornecedoresItens) =>
-                  setForm((f) => ({ ...f, fornecedores: fornecedoresItens }))
+                  setForm((f) => {
+                    let unidadeLogistica = f.unidadeEntregaMultiploVenda
+                    for (const fr of fornecedoresItens) {
+                      unidadeLogistica = sugerirUnidadeLogisticaDeEntrada({
+                        unidadeVenda: f.unidade,
+                        unidadeLogisticaAtual: unidadeLogistica,
+                        unidadeEntrada: fr.unidadeEntrada,
+                      })
+                    }
+                    return {
+                      ...f,
+                      fornecedores: fornecedoresItens,
+                      unidadeEntregaMultiploVenda: unidadeLogistica,
+                    }
+                  })
                 }
                 disabled={camposDesabilitados}
                 errosPorIndice={errosFornecedores}

@@ -24,6 +24,7 @@ export const esquemaItemPedidoVenda = z.object({
   produtoId: z.string().uuid('Produto inválido'),
   modoQuantidade: z.enum(['UN', 'CX']),
   quantidadeInformada: decimalPositivo,
+  /** Sempre preço unitário (UN de venda). Em CX o front converte caixa→UN antes de enviar. */
   precoUnitario: decimalObrigatorio,
   ordem: z.number().int().optional(),
 })

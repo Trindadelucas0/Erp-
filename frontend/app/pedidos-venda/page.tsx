@@ -29,6 +29,7 @@ import {
 import {
   converterQtdParaUnidadeVenda,
   resolverItensNaCaixa,
+  resolverPrecoUnitarioVenda,
   sugerirQuantidadeMultiploVenda,
   validarQuantidadeModoCx,
   validarQuantidadeModoUn,
@@ -114,13 +115,19 @@ function ConteudoDaPagina() {
     () =>
       itens.reduce((s, item) => {
         const produto = produtos.find((p) => p.id === item.produtoId)
-        if (!produto) return s
-        const itensCaixa = resolverItensNaCaixa(produto)
-        const qtdUn = converterQtdParaUnidadeVenda(
-          item.modoQuantidade,
-          parseNum(item.quantidadeInformada),
-          itensCaixa
-        )
+        const itensCaixa =
+          item.itensPorEmbalagem && item.itensPorEmbalagem > 0
+            ? item.itensPorEmbalagem
+            : produto
+              ? resolverItensNaCaixa(produto)
+              : 1
+        const qtdUn =
+          item.quantidadeUnidadeVenda ??
+          converterQtdParaUnidadeVenda(
+            item.modoQuantidade,
+            parseNum(item.quantidadeInformada),
+            itensCaixa
+          )
         return s + qtdUn * parseNum(item.precoUnitario)
       }, 0),
     [itens, produtos]
@@ -147,6 +154,7 @@ function ConteudoDaPagina() {
         p.itens.map((i) => ({
           ...i,
           quantidadeInformada: String(i.quantidadeInformada),
+          // API já persiste unitário — sem reconversão CX.
           precoUnitario: String(i.precoUnitario),
         }))
       )
@@ -175,10 +183,7 @@ function ConteudoDaPagina() {
     })
   }
 
-  function tentarAdicionarItem(
-    ignorarMultiplo = false,
-    itemBase: ItemPedidoVenda = rascunho
-  ) {
+  function tentarAdicionarItem(itemBase: ItemPedidoVenda = rascunho) {
     setErro('')
     if (!itemBase.produtoId) {
       setErro('Selecione o produto.')
@@ -202,31 +207,48 @@ function ConteudoDaPagina() {
         return
       }
     } else {
-      if (!ignorarMultiplo) {
-        const sugestao = sugerirQuantidadeMultiploVenda(
-          qtd,
-          produto.multiploVenda,
-          produto.permiteVendaFracionada
-        )
+      const validacao = validarQuantidadeModoUn(
+        qtd,
+        produto.permiteVendaFracionada,
+        produto.multiploVenda
+      )
+      if (!validacao.ok) {
+        const sugestao = sugerirQuantidadeMultiploVenda(qtd, produto.multiploVenda)
         if (sugestao) {
           setQuantidadeSugerida(sugestao.quantidadeSugerida)
           setMultiploPendente(sugestao.multiplo)
           setConfirmacaoMultiploAberta(true)
+          setErro(validacao.mensagem)
           return
         }
-      }
-      const validacao = validarQuantidadeModoUn(
-        qtd,
-        produto.permiteVendaFracionada,
-        ignorarMultiplo ? 1 : produto.multiploVenda
-      )
-      if (!validacao.ok) {
         setErro(validacao.mensagem)
         return
       }
     }
 
-    setItens((atual) => [...atual, { ...itemBase }])
+    const itensCaixa = resolverItensNaCaixa(produto)
+    const precoDigitado = parseNum(itemBase.precoUnitario)
+    const precoUnitario = resolverPrecoUnitarioVenda(
+      itemBase.modoQuantidade,
+      precoDigitado,
+      itensCaixa
+    )
+    const qtdUn = converterQtdParaUnidadeVenda(
+      itemBase.modoQuantidade,
+      qtd,
+      itensCaixa
+    )
+
+    setItens((atual) => [
+      ...atual,
+      {
+        ...itemBase,
+        itensPorEmbalagem: itensCaixa,
+        precoUnitario: String(precoUnitario),
+        quantidadeUnidadeVenda: qtdUn,
+        total: Math.round(qtdUn * precoUnitario * 100) / 100,
+      },
+    ])
     setRascunho(itemVendaVazio())
   }
 
@@ -432,7 +454,9 @@ function ConteudoDaPagina() {
                 inputMode="decimal"
               />
               <InputPadrao
-                rotulo="Preço unitário (UN venda)"
+                rotulo={
+                  rascunho.modoQuantidade === 'CX' ? 'Preço da caixa' : 'Preço unitário'
+                }
                 value={rascunho.precoUnitario}
                 onChange={(e) =>
                   setRascunho((r) => ({
@@ -443,22 +467,40 @@ function ConteudoDaPagina() {
                 inputMode="decimal"
               />
             </div>
-            {rascunho.produtoId && (
-              <p className="text-xs text-muted-foreground">
-                Qtd total UN de venda:{' '}
-                {converterQtdParaUnidadeVenda(
+            {rascunho.produtoId &&
+              (() => {
+                const produtoSel = produtos.find((p) => p.id === rascunho.produtoId)
+                const itensCaixa = resolverItensNaCaixa(
+                  produtoSel ?? {
+                    unidade: 'UN',
+                    embalagensMaster: [],
+                    fornecedores: [],
+                  }
+                )
+                const qtdUn = converterQtdParaUnidadeVenda(
                   rascunho.modoQuantidade,
                   parseNum(rascunho.quantidadeInformada),
-                  resolverItensNaCaixa(
-                    produtos.find((p) => p.id === rascunho.produtoId) ?? {
-                      unidade: 'UN',
-                      embalagensMaster: [],
-                      fornecedores: [],
-                    }
-                  )
-                )}
-              </p>
-            )}
+                  itensCaixa
+                )
+                const precoUn = resolverPrecoUnitarioVenda(
+                  rascunho.modoQuantidade,
+                  parseNum(rascunho.precoUnitario),
+                  itensCaixa
+                )
+                return (
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    <p>Qtd total UN de venda: {qtdUn}</p>
+                    {rascunho.modoQuantidade === 'CX' && (
+                      <p>
+                        Preço unitário calculado: {formatarMoeda(precoUn)}
+                        {itensCaixa > 0
+                          ? ` (${formatarMoeda(parseNum(rascunho.precoUnitario))} ÷ ${itensCaixa})`
+                          : ''}
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
             <Button type="button" variant="outline" onClick={() => tentarAdicionarItem()}>
               <Plus className="mr-1 size-4" />
               Adicionar item
@@ -473,7 +515,7 @@ function ConteudoDaPagina() {
                   <th className="px-2 py-1.5">Modo</th>
                   <th className="px-2 py-1.5">Qtd</th>
                   <th className="px-2 py-1.5">Qtd UN</th>
-                  <th className="px-2 py-1.5">Preço</th>
+                  <th className="px-2 py-1.5">Preço UN</th>
                   <th className="px-2 py-1.5">Total</th>
                   <th className="px-2 py-1.5" />
                 </tr>
@@ -488,22 +530,29 @@ function ConteudoDaPagina() {
                 ) : (
                   itens.map((item, index) => {
                     const produto = produtos.find((p) => p.id === item.produtoId)
-                    const itensCaixa = produto ? resolverItensNaCaixa(produto) : 1
-                    const qtdUn = converterQtdParaUnidadeVenda(
-                      item.modoQuantidade,
-                      parseNum(item.quantidadeInformada),
-                      itensCaixa
-                    )
-                    const total = qtdUn * parseNum(item.precoUnitario)
+                    const itensCaixa =
+                      item.itensPorEmbalagem && item.itensPorEmbalagem > 0
+                        ? item.itensPorEmbalagem
+                        : produto
+                          ? resolverItensNaCaixa(produto)
+                          : 1
+                    const qtdUn =
+                      item.quantidadeUnidadeVenda ??
+                      converterQtdParaUnidadeVenda(
+                        item.modoQuantidade,
+                        parseNum(item.quantidadeInformada),
+                        itensCaixa
+                      )
+                    const precoUn = parseNum(item.precoUnitario)
+                    const total =
+                      item.total ?? Math.round(qtdUn * precoUn * 100) / 100
                     return (
                       <tr key={`${item.produtoId}-${index}`} className="border-b">
                         <td className="px-2 py-1.5">{item.produtoNome ?? produto?.nomeVenda ?? '—'}</td>
                         <td className="px-2 py-1.5">{item.modoQuantidade}</td>
                         <td className="px-2 py-1.5 tabular-nums">{item.quantidadeInformada}</td>
                         <td className="px-2 py-1.5 tabular-nums">{qtdUn}</td>
-                        <td className="px-2 py-1.5 tabular-nums">
-                          {formatarMoeda(parseNum(item.precoUnitario))}
-                        </td>
+                        <td className="px-2 py-1.5 tabular-nums">{formatarMoeda(precoUn)}</td>
                         <td className="px-2 py-1.5 tabular-nums">{formatarMoeda(total)}</td>
                         <td className="px-2 py-1.5">
                           <Button
@@ -548,9 +597,9 @@ function ConteudoDaPagina() {
       <ModalConfirmacao
         aberto={confirmacaoMultiploAberta}
         titulo="Múltiplo de venda"
-        mensagem={`A quantidade informada (${rascunho.quantidadeInformada}) não é múltiplo de ${multiploPendente}.\n\nDeseja adequar para ${quantidadeSugerida} ou continuar sem ajuste?`}
-        textoConfirmar="Adequar quantidade"
-        textoCancelar="Continuar sem ajuste"
+        mensagem={`Quantidade menor que o múltiplo permitido. Múltiplo: ${multiploPendente}.\n\nAdequar quantidade para ${quantidadeSugerida}?`}
+        textoConfirmar={`Adequar para ${quantidadeSugerida}`}
+        textoCancelar="Cancelar"
         aoConfirmar={() => {
           const ajustado = {
             ...rascunho,
@@ -558,11 +607,11 @@ function ConteudoDaPagina() {
           }
           setRascunho(ajustado)
           setConfirmacaoMultiploAberta(false)
-          tentarAdicionarItem(true, ajustado)
+          setErro('')
+          tentarAdicionarItem(ajustado)
         }}
         aoCancelar={() => {
           setConfirmacaoMultiploAberta(false)
-          tentarAdicionarItem(true, rascunho)
         }}
       />
     </div>

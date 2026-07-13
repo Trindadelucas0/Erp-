@@ -54,6 +54,7 @@ export type ProdutoOpcao = {
   codigoOrigem: string | null
   precoCusto: number | null
   bloqueadoCompra: boolean
+  embalagensMaster?: { quantidade: number | null }[]
   fornecedores: {
     fornecedorPessoaId: string
     codigoFornecedor: string | null

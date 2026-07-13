@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  calcularPrecoUnitarioPreview,
   calcularQtdTotalUnVenda,
   preencherItemComProduto,
   recalcularCodigoUnidadeItem,
@@ -7,6 +8,7 @@ import {
   resolverItensPorEmbalagem,
   resolverPrecoUnitario,
   resolverUnidadeEntrada,
+  rotuloCampoPrecoEntrada,
   sugerirQuantidadeMultiplo,
 } from './preencher-item-pedido-compra'
 
@@ -135,8 +137,73 @@ describe('preencher-item-pedido-compra', () => {
     ).toBe(1)
   })
 
+  it('resolverItensPorEmbalagem usa vínculo do fornecedor do PO', () => {
+    expect(resolverItensPorEmbalagem(produtoBase, 'f1')).toBe(12)
+  })
+
+  it('resolverItensPorEmbalagem faz fallback para embalagem master', () => {
+    const produto = {
+      ...produtoBase,
+      fornecedores: [
+        {
+          fornecedorPessoaId: 'f1',
+          codigoFornecedor: null,
+          unidadeEntrada: 'CX',
+          multiploEntrada: null,
+          multiplicadorEntrada: null,
+        },
+      ],
+      embalagensMaster: [{ quantidade: 6 }],
+    }
+    expect(resolverItensPorEmbalagem(produto, 'f1')).toBe(6)
+  })
+
+  it('resolverItensPorEmbalagem faz fallback para outro fornecedor', () => {
+    const produto = {
+      ...produtoBase,
+      fornecedores: [
+        {
+          fornecedorPessoaId: 'f1',
+          codigoFornecedor: null,
+          unidadeEntrada: null,
+          multiploEntrada: null,
+          multiplicadorEntrada: null,
+        },
+        {
+          fornecedorPessoaId: 'f2',
+          codigoFornecedor: null,
+          unidadeEntrada: 'CX',
+          multiploEntrada: null,
+          multiplicadorEntrada: 8,
+        },
+      ],
+      embalagensMaster: [],
+    }
+    expect(resolverItensPorEmbalagem(produto, 'f1')).toBe(8)
+  })
+
+  it('resolverItensPorEmbalagem retorna 1 sem dados', () => {
+    const produto = {
+      ...produtoBase,
+      fornecedores: [],
+      embalagensMaster: [],
+    }
+    expect(resolverItensPorEmbalagem(produto, 'f1')).toBe(1)
+  })
+
   it('calcularQtdTotalUnVenda multiplica quantidade por embalagem', () => {
     expect(calcularQtdTotalUnVenda(2, 12)).toBe(24)
+  })
+
+  it('rotuloCampoPrecoEntrada distingue embalagem e unitário', () => {
+    expect(rotuloCampoPrecoEntrada(6)).toBe('Preço da embalagem')
+    expect(rotuloCampoPrecoEntrada(1)).toBe('Preço unitário')
+  })
+
+  it('calcularPrecoUnitarioPreview divide pelo fator quando embalagem', () => {
+    expect(calcularPrecoUnitarioPreview(60, 6)).toBe(10)
+    expect(calcularPrecoUnitarioPreview(60, 1)).toBeNull()
+    expect(calcularPrecoUnitarioPreview(-1, 6)).toBeNull()
   })
 
   it('sugerirQuantidadeMultiplo sugere próximo múltiplo para cima', () => {

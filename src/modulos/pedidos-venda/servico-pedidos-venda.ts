@@ -17,6 +17,7 @@ import {
   converterQtdParaUnidadeVenda,
   resolverItensNaCaixa,
   validarQuantidadeModoCx,
+  validarQuantidadeModoUn,
 } from './regras-venda-produto.js'
 
 async function carregarProdutosDosItens(itens: DadosItemPedidoVenda[], companyId: string) {
@@ -93,13 +94,13 @@ function calcularItens(
         throw new ErroDaAplicacao(validacao.mensagem, 400)
       }
     } else {
-      // No backend, só bloqueia fracionamento indevido.
-      // Fora do múltiplo: o front sugere adequação; o usuário pode seguir sem ajuste.
-      if (
-        !produto.permiteVendaFracionada &&
-        Math.abs(item.quantidadeInformada - Math.round(item.quantidadeInformada)) >= 1e-9
-      ) {
-        throw new ErroDaAplicacao('Este produto não permite venda fracionada.', 400)
+      const validacao = validarQuantidadeModoUn(
+        item.quantidadeInformada,
+        produto.permiteVendaFracionada,
+        multiploVenda
+      )
+      if (!validacao.ok) {
+        throw new ErroDaAplicacao(validacao.mensagem, 400)
       }
     }
 
@@ -108,7 +109,9 @@ function calcularItens(
       item.quantidadeInformada,
       itensNaCaixa
     )
-    const total = Math.round(quantidadeUnidadeVenda * item.precoUnitario * 100) / 100
+    // Contrato: precoUnitario no request já é unitário (front converte CX→UN ao lançar).
+    const precoUnitario = item.precoUnitario
+    const total = Math.round(quantidadeUnidadeVenda * precoUnitario * 100) / 100
 
     return {
       produtoId: item.produtoId,
@@ -117,7 +120,7 @@ function calcularItens(
       quantidadeUnidadeVenda,
       itensPorEmbalagem: itensNaCaixa,
       unidade: produto.unidade,
-      precoUnitario: item.precoUnitario,
+      precoUnitario,
       total,
       ordem: item.ordem ?? ordem,
     }

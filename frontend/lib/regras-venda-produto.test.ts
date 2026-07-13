@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   converterQtdParaUnidadeVenda,
   resolverItensNaCaixa,
+  resolverPrecoUnitarioVenda,
   sugerirQuantidadeMultiploVenda,
   validarQuantidadeModoCx,
   validarQuantidadeModoUn,
@@ -33,9 +34,22 @@ describe('regras-venda-produto', () => {
     expect(converterQtdParaUnidadeVenda('UN', 2, 6)).toBe(2)
   })
 
+  it('resolverPrecoUnitarioVenda converte preço da caixa', () => {
+    expect(resolverPrecoUnitarioVenda('CX', 60, 6)).toBe(10)
+    expect(resolverPrecoUnitarioVenda('UN', 60, 6)).toBe(60)
+  })
+
   it('valida fracionado e múltiplo em modo UN', () => {
     expect(validarQuantidadeModoUn(0.5, false, 1).ok).toBe(false)
+    expect(validarQuantidadeModoUn(5, false, 6).ok).toBe(false)
+    expect(validarQuantidadeModoUn(5, false, 6)).toEqual({
+      ok: false,
+      mensagem: 'Quantidade menor que o múltiplo permitido. Múltiplo: 6.',
+    })
+    expect(validarQuantidadeModoUn(6, false, 6).ok).toBe(true)
+    expect(validarQuantidadeModoUn(12, false, 6).ok).toBe(true)
     expect(validarQuantidadeModoUn(1.93, true, 1.93).ok).toBe(true)
+    expect(validarQuantidadeModoUn(3.86, true, 1.93).ok).toBe(true)
     expect(validarQuantidadeModoUn(2, true, 1.93).ok).toBe(false)
   })
 
@@ -45,12 +59,17 @@ describe('regras-venda-produto', () => {
   })
 
   it('sugere próximo múltiplo de venda', () => {
-    expect(sugerirQuantidadeMultiploVenda(2, 1.93, true)).toEqual({
+    expect(sugerirQuantidadeMultiploVenda(2, 1.93)).toEqual({
       precisaAjuste: true,
       quantidadeSugerida: 3.86,
       multiplo: 1.93,
     })
-    expect(sugerirQuantidadeMultiploVenda(1.93, 1.93, true)).toBeNull()
-    expect(sugerirQuantidadeMultiploVenda(2, 1.93, false)).toBeNull()
+    expect(sugerirQuantidadeMultiploVenda(5, 6)).toEqual({
+      precisaAjuste: true,
+      quantidadeSugerida: 6,
+      multiplo: 6,
+    })
+    expect(sugerirQuantidadeMultiploVenda(1.93, 1.93)).toBeNull()
+    expect(sugerirQuantidadeMultiploVenda(6, 6)).toBeNull()
   })
 })

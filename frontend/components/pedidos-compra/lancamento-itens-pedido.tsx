@@ -20,10 +20,12 @@ import {
 } from '@/lib/pedido-compra-shared'
 import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
 import {
+  calcularPrecoUnitarioPreview,
   calcularQtdTotalUnVenda,
   obterVinculoFornecedor,
   recalcularCodigoUnidadeItem,
   resolverItensPorEmbalagem,
+  rotuloCampoPrecoEntrada,
   rotuloOrigemPreco,
   sugerirQuantidadeMultiplo,
 } from '@/lib/preencher-item-pedido-compra'
@@ -84,7 +86,7 @@ function dadosEmbalagemDoItem(
 ) {
   const produto = produtos.find((p) => p.id === item.produtoId)
   const vinculo = produto ? obterVinculoFornecedor(produto, fornecedorPessoaId) : undefined
-  const itensPorEmbalagem = resolverItensPorEmbalagem(vinculo)
+  const itensPorEmbalagem = resolverItensPorEmbalagem(produto, fornecedorPessoaId)
   const quantidade = parseNum(item.quantidade)
   return {
     itensPorEmbalagem,
@@ -198,6 +200,23 @@ export function LancamentoItensPedido({
   const totaisRascunho = calcularTotalItem(rascunho)
   const origemPrecoLabel = rotuloOrigemPreco(rascunho.origemPreco)
   const produtoRascunho = produtos.find((p) => p.id === rascunho.produtoId)
+  const vinculoRascunho = produtoRascunho
+    ? obterVinculoFornecedor(produtoRascunho, fornecedorPessoaId)
+    : undefined
+  const itensPorEmbalagemRascunho = resolverItensPorEmbalagem(
+    produtoRascunho,
+    fornecedorPessoaId
+  )
+  const multiploEntradaRascunho = vinculoRascunho?.multiploEntrada ?? null
+  const qtdTotalUnRascunho = calcularQtdTotalUnVenda(
+    parseNum(rascunho.quantidade),
+    itensPorEmbalagemRascunho
+  )
+  const precoUnitarioPreview = calcularPrecoUnitarioPreview(
+    parseNum(rascunho.precoUnitario),
+    itensPorEmbalagemRascunho
+  )
+  const rotuloPrecoRascunho = rotuloCampoPrecoEntrada(itensPorEmbalagemRascunho)
   const editando = indiceEdicao != null
 
   function limparRascunho() {
@@ -402,16 +421,58 @@ export function LancamentoItensPedido({
               title="Editável no cadastro do produto, aba Compras"
             />
             <InputPadrao
+              rotulo="Itens por embalagem"
+              value={rascunho.produtoId ? String(itensPorEmbalagemRascunho) : ''}
+              readOnly
+              disabled
+              placeholder="—"
+              className="bg-muted/30"
+            />
+            <InputPadrao
+              rotulo="Múltiplo de compra"
+              value={
+                rascunho.produtoId && multiploEntradaRascunho != null && multiploEntradaRascunho > 0
+                  ? String(multiploEntradaRascunho)
+                  : ''
+              }
+              readOnly
+              disabled
+              placeholder="—"
+              className="bg-muted/30"
+            />
+            <InputPadrao
               id="rascunho-item-quantidade"
               rotulo="Quantidade"
               value={rascunho.quantidade}
               onChange={(e) => atualizarRascunho('quantidade', e.target.value)}
             />
             <InputPadrao
-              rotulo="Preço unitário"
+              rotulo="Qtd total UN de venda"
+              value={rascunho.produtoId ? String(qtdTotalUnRascunho) : ''}
+              readOnly
+              disabled
+              placeholder="—"
+              className="bg-muted/30"
+            />
+            <InputPadrao
+              rotulo={rotuloPrecoRascunho}
               value={rascunho.precoUnitario}
               onChange={(e) => atualizarRascunho('precoUnitario', e.target.value)}
             />
+            {precoUnitarioPreview != null && (
+              <InputPadrao
+                rotulo="Preço unitário (UN)"
+                value={formatarMoeda(precoUnitarioPreview)}
+                readOnly
+                disabled
+                className="bg-muted/30"
+                title={
+                  itensPorEmbalagemRascunho > 1
+                    ? `${formatarMoeda(parseNum(rascunho.precoUnitario))} ÷ ${itensPorEmbalagemRascunho}`
+                    : undefined
+                }
+              />
+            )}
             <div>
               <p className="mb-2 text-sm font-medium leading-none">Total bruto</p>
               <p className="flex h-9 items-center text-sm font-medium tabular-nums">

@@ -10,6 +10,10 @@ export type ItemPedidoVenda = {
   quantidadeUnidadeVenda?: number
   itensPorEmbalagem?: number
   unidade: string
+  /**
+   * Na lista/API: sempre preço unitário (UN de venda).
+   * No rascunho em modo CX: preço da caixa (convertido ao adicionar).
+   */
   precoUnitario: string
   total?: number
 }

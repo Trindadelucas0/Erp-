@@ -16,6 +16,7 @@ export type ProdutoParaPreenchimento = {
   precoCusto: number | null
   bloqueadoCompra: boolean
   fornecedores: VinculoFornecedorProduto[]
+  embalagensMaster?: { quantidade: number | null }[]
 }
 
 export type HistoricoCompraItem = {
@@ -75,15 +76,77 @@ export function resolverCodigoOriginal(vinculo: VinculoFornecedorProduto | undef
   return vinculo?.codigoFornecedor?.trim() || ''
 }
 
-export function resolverItensPorEmbalagem(vinculo: VinculoFornecedorProduto | undefined): number {
-  const valor = vinculo?.multiplicadorEntrada
-  if (valor == null || !Number.isFinite(valor) || valor <= 0) return 1
-  return valor
+function fatorEmbalagemValido(valor: number | null | undefined): valor is number {
+  return valor != null && Number.isFinite(valor) && valor > 0
+}
+
+/**
+ * Resolve itens por embalagem no PO:
+ * 1) multiplicador do vínculo do fornecedor do pedido
+ * 2) embalagem master
+ * 3) qualquer multiplicador > 1 dos fornecedores do produto
+ * 4) 1
+ */
+export function resolverItensPorEmbalagem(
+  vinculoOuProduto?: VinculoFornecedorProduto | ProdutoParaPreenchimento | null,
+  fornecedorPessoaId?: string
+): number {
+  // Compat: chamada antiga só com vínculo
+  if (
+    vinculoOuProduto &&
+    'multiplicadorEntrada' in vinculoOuProduto &&
+    !('fornecedores' in vinculoOuProduto)
+  ) {
+    const valor = vinculoOuProduto.multiplicadorEntrada
+    return fatorEmbalagemValido(valor) ? valor : 1
+  }
+
+  const produto = vinculoOuProduto as ProdutoParaPreenchimento | null | undefined
+  if (!produto) return 1
+
+  const vinculo =
+    fornecedorPessoaId != null
+      ? obterVinculoFornecedor(produto, fornecedorPessoaId)
+      : undefined
+  if (fatorEmbalagemValido(vinculo?.multiplicadorEntrada)) {
+    return vinculo.multiplicadorEntrada
+  }
+
+  const master = produto.embalagensMaster?.[0]?.quantidade
+  if (fatorEmbalagemValido(master)) return master
+
+  const outro = produto.fornecedores.find(
+    (f) =>
+      fatorEmbalagemValido(f.multiplicadorEntrada) && f.multiplicadorEntrada > 1
+  )
+  if (outro && fatorEmbalagemValido(outro.multiplicadorEntrada)) {
+    return outro.multiplicadorEntrada
+  }
+
+  return 1
 }
 
 export function calcularQtdTotalUnVenda(quantidade: number, itensPorEmbalagem: number): number {
   if (!Number.isFinite(quantidade) || !Number.isFinite(itensPorEmbalagem)) return 0
   return Math.round(quantidade * itensPorEmbalagem * 1e6) / 1e6
+}
+
+/** Preço digitado no rascunho: embalagem quando fator > 1; caso contrário unitário. */
+export function rotuloCampoPrecoEntrada(itensPorEmbalagem: number): string {
+  return itensPorEmbalagem > 1 ? 'Preço da embalagem' : 'Preço unitário'
+}
+
+/**
+ * Preview do preço por UN de venda quando o valor digitado é da embalagem.
+ * Persistência do item continua com o preço na unidade de entrada (sem conversão).
+ */
+export function calcularPrecoUnitarioPreview(
+  precoInformado: number,
+  itensPorEmbalagem: number
+): number | null {
+  if (!(itensPorEmbalagem > 1)) return null
+  if (!(precoInformado >= 0) || !Number.isFinite(precoInformado)) return null
+  return Math.round((precoInformado / itensPorEmbalagem) * 1e6) / 1e6
 }
 
 function quantidadeEhMultiplo(quantidade: number, multiplo: number): boolean {
