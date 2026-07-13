@@ -16,7 +16,7 @@ async function listarTodas() {
 /**
  * Verifica se o usuário possui permissão via papel OU permissão extra direta.
  * @param idDoUsuario - UUID do usuário
- * @param chaveDaPermissao - Ex: "vendas:view"
+ * @param chaveDaPermissao - Ex: "compras:view"
  * @returns true se o usuário tiver a permissão
  */
 async function usuarioPossuiPermissao(
