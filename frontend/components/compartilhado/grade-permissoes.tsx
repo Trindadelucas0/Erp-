@@ -23,7 +23,6 @@ const ROTULOS_MODULOS: Record<string, string> = {
   cadastros: 'Cadastros',
   clientes: 'Clientes',
   estoque: 'Estoque',
-  vendas: 'Vendas',
   financeiro: 'Financeiro',
   relatorios: 'Relatórios',
   configuracoes: 'Configurações',

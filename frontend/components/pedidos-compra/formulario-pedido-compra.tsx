@@ -75,7 +75,6 @@ import {
   type HistoricoCompra,
   type ItemPedido,
   type ModoPedidoCompra,
-  type PedidoVendaOpcao,
   type PessoaOpcao,
   type ProdutoOpcao,
 } from '@/lib/pedido-compra-shared'
@@ -108,8 +107,6 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   const [modalPedidosAbertosAberto, setModalPedidosAbertosAberto] = useState(false)
   const [modalHistoricoAberto, setModalHistoricoAberto] = useState(false)
   const [produtoHistoricoModal, setProdutoHistoricoModal] = useState('')
-  const [pedidosVenda, setPedidosVenda] = useState<PedidoVendaOpcao[]>([])
-  const [buscaPedidoVenda, setBuscaPedidoVenda] = useState('')
   const [textoMotivoCancelamento, setTextoMotivoCancelamento] = useState('')
   const [erroMotivoCancelamento, setErroMotivoCancelamento] = useState('')
   const [cancelandoPedido, setCancelandoPedido] = useState(false)
@@ -242,16 +239,6 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     }
   }, [])
 
-  const carregarPedidosVenda = useCallback(async (busca?: string) => {
-    try {
-      const qs = busca?.trim() ? `?busca=${encodeURIComponent(busca.trim())}` : ''
-      const { data } = await clienteHttp.get(`/pedidos-compra/pedidos-venda/encomenda${qs}`)
-      setPedidosVenda(data.pedidos ?? [])
-    } catch {
-      setPedidosVenda([])
-    }
-  }, [])
-
   const carregarHistoricoProduto = useCallback(async (produtoId: string) => {
     if (!produtoId) return
     try {
@@ -286,7 +273,6 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
           : [{ numero: 1, dias: '', vencimento: '', valor: '' }],
         observacoes: p.observacoes ?? '',
         observacoesInternas: p.observacoesInternas ?? '',
-        pedidoVendaId: p.pedidoVendaId ?? '',
         creditoFornecedorId: p.creditoFornecedorId ?? '',
         creditoAplicado: p.creditoAplicado != null ? String(p.creditoAplicado) : '',
         status: p.status,
@@ -329,8 +315,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   useEffect(() => {
     if (carregandoSessao || !estaAutenticado) return
     void carregarCatalogos()
-    void carregarPedidosVenda()
-  }, [carregandoSessao, estaAutenticado, carregarCatalogos, carregarPedidosVenda])
+  }, [carregandoSessao, estaAutenticado, carregarCatalogos])
 
   useEffect(() => {
     if (carregandoSessao || !estaAutenticado) return
@@ -605,7 +590,6 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
       observacoesInternas: form.observacoesInternas || undefined,
       descricao: '',
       concluir,
-      pedidoVendaId: form.pedidoVendaId || null,
       creditoFornecedorId: form.creditoFornecedorId || null,
       creditoAplicado:
         form.creditoFornecedorId && creditoAplicadoNum != null && Number.isFinite(creditoAplicadoNum)
@@ -1045,31 +1029,6 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
                   onChange={(e) => setForm((f) => ({ ...f, previsaoEntrega: e.target.value }))}
                   disabled={camposDesabilitados}
                 />
-                <div className="sm:col-span-2 space-y-2">
-                  <InputPadrao
-                    rotulo="Buscar pedido venda (encomenda)"
-                    value={buscaPedidoVenda}
-                    onChange={(e) => {
-                      setBuscaPedidoVenda(e.target.value)
-                      void carregarPedidosVenda(e.target.value)
-                    }}
-                    disabled={camposDesabilitados}
-                    placeholder="Nº ou nome do cliente"
-                  />
-                  <SelectPadrao
-                    rotulo="Pedido venda (encomenda)"
-                    valor={form.pedidoVendaId}
-                    aoMudar={(v) => setForm((f) => ({ ...f, pedidoVendaId: v }))}
-                    opcoes={[
-                      { value: '', label: 'Nenhum' },
-                      ...pedidosVenda.map((pv) => ({
-                        value: pv.id,
-                        label: `#${pv.numero} — ${pv.clienteNome}`,
-                      })),
-                    ]}
-                    disabled={camposDesabilitados}
-                  />
-                </div>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">

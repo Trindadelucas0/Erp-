@@ -33,7 +33,6 @@ export type PedidoCompra = {
   motivoCancelamento: string | null
   descricao: string | null
   observacoes: string | null
-  pedidoVendaId: string | null
   creditoFornecedorId: string | null
   creditoAplicado: number | null
   totalPedido: number
@@ -83,13 +82,6 @@ export type HistoricoCompra = {
   quantidade: number
   precoUnitario: number
   precoCusto: number
-  status: string
-}
-
-export type PedidoVendaOpcao = {
-  id: string
-  numero: number
-  clienteNome: string
   status: string
 }
 
@@ -256,7 +248,6 @@ export const formVazio = {
   prazos: [{ numero: 1, dias: '', vencimento: '', valor: '' }] as PrazoPagamento[],
   observacoes: '',
   observacoesInternas: '',
-  pedidoVendaId: '',
   creditoFornecedorId: '',
   creditoAplicado: '',
   status: 'rascunho',

@@ -37,7 +37,6 @@ Frontend → JWT + X-Company-Id → API Fastify
 - `src/modulos/produtos/repositorio-produtos.ts`
 - `src/modulos/produtos/repositorio-unidades-medida.ts`
 - `src/modulos/pedidos-compra/repositorio-pedidos-compra.ts`
-- `src/modulos/pedidos-compra/repositorio-pedidos-venda.ts`
 - `src/modulos/planos-financeiros/repositorio-planos-financeiros.ts`
 - `src/modulos/cfops/repositorio-cfops.ts`
 - `src/modulos/catalogos/repositorio-catalogos.ts`

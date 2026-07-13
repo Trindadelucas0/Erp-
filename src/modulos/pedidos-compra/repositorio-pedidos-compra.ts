@@ -15,7 +15,6 @@ import type {
 const includeCompleto = {
   fornecedor: { select: { id: true, nome: true } },
   transportadora: { select: { id: true, nome: true } },
-  pedidoVenda: { select: { id: true, numero: true, clienteNome: true } },
   itens: {
     include: {
       produto: {
@@ -79,9 +78,6 @@ function mapearPedido(pedido: PedidoDb) {
     observacoes: pedido.observacoes,
     observacoesInternas: pedido.observacoesInternas,
     copiadoDeId: pedido.copiadoDeId,
-    pedidoVendaId: pedido.pedidoVendaId,
-    pedidoVendaNumero: pedido.pedidoVenda?.numero ?? null,
-    pedidoVendaCliente: pedido.pedidoVenda?.clienteNome ?? null,
     creditoFornecedorId: pedido.creditoFornecedorId,
     creditoAplicado: pedido.creditoAplicado ? Number(pedido.creditoAplicado) : null,
     totalPedido: totalPedido + frete,
@@ -158,7 +154,6 @@ function dadosCabecalhoParaCreate(dados: DadosParaCriarPedidoCompra) {
     observacoes: dados.observacoes || null,
     observacoesInternas: dados.observacoesInternas || null,
     descricao: dados.descricao || null,
-    pedidoVendaId: dados.pedidoVendaId || null,
     creditoFornecedorId: dados.creditoFornecedorId || null,
     creditoAplicado: dados.creditoAplicado ?? null,
   }
@@ -298,7 +293,6 @@ async function copiar(origemId: string, companyId: string) {
         observacoes: origem.observacoes,
         observacoesInternas: origem.observacoesInternas,
         descricao: origem.descricao,
-        pedidoVendaId: origem.pedidoVendaId,
         copiadoDeId: origemId,
         status: 'rascunho',
         itens: {
@@ -367,7 +361,6 @@ async function atualizar(
           ? { observacoesInternas: dados.observacoesInternas || null }
           : {}),
         ...(dados.descricao !== undefined ? { descricao: dados.descricao || null } : {}),
-        ...(dados.pedidoVendaId !== undefined ? { pedidoVendaId: dados.pedidoVendaId } : {}),
         ...(dados.creditoFornecedorId !== undefined
           ? { creditoFornecedorId: dados.creditoFornecedorId }
           : {}),

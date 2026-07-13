@@ -169,7 +169,6 @@ const camposComunsPedido = {
   observacoes: textoCadastroOpcional(2000),
   observacoesInternas: textoCadastroOpcional(2000),
   descricao: textoCadastroOpcional(120),
-  pedidoVendaId: z.string().uuid().optional().nullable(),
   creditoFornecedorId: z.string().uuid().optional().nullable(),
   creditoAplicado: decimalObrigatorio.optional().nullable(),
   concluir: z.boolean().optional(),

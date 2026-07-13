@@ -179,13 +179,6 @@ async function historicoProduto(requisicao: FastifyRequest, resposta: FastifyRep
   return resposta.send({ historico })
 }
 
-async function listarPedidosVendaEncomenda(requisicao: FastifyRequest, resposta: FastifyReply) {
-  const { busca } = requisicao.query as { busca?: string }
-  const companyId = requisicao.empresaAtivaId || ''
-  const pedidos = await servicoDePedidosCompra.listarPedidosVendaEncomenda(companyId, busca)
-  return resposta.send({ pedidos })
-}
-
 export const controladorDePedidosCompra = {
   listarPedidosCompra,
   buscarPedidoCompra,
@@ -197,5 +190,4 @@ export const controladorDePedidosCompra = {
   conferirEntrada,
   compararPdf,
   historicoProduto,
-  listarPedidosVendaEncomenda,
 }

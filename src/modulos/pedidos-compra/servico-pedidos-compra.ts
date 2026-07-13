@@ -5,7 +5,6 @@ import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-auditoria.js'
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import { repositorioDePedidosCompra } from './repositorio-pedidos-compra.js'
-import { repositorioPedidosVenda } from './repositorio-pedidos-venda.js'
 import { servicoCreditosPendencias } from './servico-creditos-pendencias.js'
 import { conferirPedidoCompraComEntrada } from './conferencia-po-entrada.js'
 import { compararPedidoComPdf } from './comparador-pdf-pedido.js'
@@ -53,18 +52,6 @@ async function validarTransportadora(
   })
   if (!pessoa) {
     throw new ErroDaAplicacao('Transportadora inválida ou inativa', 400)
-  }
-}
-
-async function validarPedidoVenda(
-  pedidoVendaId: string | null | undefined,
-  companyId: string
-) {
-  if (!pedidoVendaId) return
-
-  const pedido = await repositorioPedidosVenda.buscarPorId(pedidoVendaId, companyId)
-  if (!pedido) {
-    throw new ErroDaAplicacao('Pedido de venda sob encomenda não encontrado', 400)
   }
 }
 
@@ -142,7 +129,6 @@ async function criarPedidoCompra(
 
   await validarFornecedor(dados.fornecedorPessoaId, companyId)
   await validarTransportadora(dados.transportadoraPessoaId, companyId)
-  await validarPedidoVenda(dados.pedidoVendaId, companyId)
   await validarItens(dados.itens, companyId)
 
   const itensNormalizados = await normalizarUnidadeCodigoItens(
@@ -222,7 +208,6 @@ async function editarPedidoCompra(
     await validarFornecedor(dados.fornecedorPessoaId, companyId)
   }
   await validarTransportadora(dados.transportadoraPessoaId, companyId)
-  await validarPedidoVenda(dados.pedidoVendaId, companyId)
   const fornecedorId = dados.fornecedorPessoaId ?? existente.fornecedorPessoaId
 
   if (dados.itens) {
@@ -427,10 +412,6 @@ async function historicoProduto(produtoId: string, companyId: string) {
   return repositorioDePedidosCompra.historicoComprasProduto(produtoId, companyId)
 }
 
-async function listarPedidosVendaEncomenda(companyId: string, busca?: string) {
-  return repositorioPedidosVenda.listarParaEncomenda(companyId, busca)
-}
-
 async function baixarCreditoNaEntrada(pedidoCompraId: string, companyId: string) {
   return clientePrisma.$transaction(async (tx) => {
     const pedido = await tx.pedidoCompra.findFirst({
@@ -455,6 +436,5 @@ export const servicoDePedidosCompra = {
   conferirComEntrada,
   compararComPdf,
   historicoProduto,
-  listarPedidosVendaEncomenda,
   baixarCreditoNaEntrada,
 }

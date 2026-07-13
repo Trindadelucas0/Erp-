@@ -20,7 +20,6 @@ import { rotasDeAssinaturaZapsign } from '../../modulos/assinatura-zapsign/rotas
 import { rotasDeIntegracoes } from '../../modulos/integracoes/rotas-integracoes.js'
 import { rotasDeProdutos } from '../../modulos/produtos/rotas-produtos.js'
 import { rotasDePedidosCompra } from '../../modulos/pedidos-compra/rotas-pedidos-compra.js'
-import { rotasDePedidosVenda } from '../../modulos/pedidos-venda/rotas-pedidos-venda.js'
 import { rotasDeUploads } from './rotas-uploads.js'
 
 /**
@@ -37,7 +36,6 @@ export async function registrarRotas(aplicacao: FastifyInstance): Promise<void> 
   await aplicacao.register(rotasDeTransportadoras, { prefix: '/transportadoras' })
   await aplicacao.register(rotasDeProdutos, { prefix: '/produtos' })
   await aplicacao.register(rotasDePedidosCompra, { prefix: '/pedidos-compra' })
-  await aplicacao.register(rotasDePedidosVenda, { prefix: '/pedidos-venda' })
   await aplicacao.register(rotasDePaginas, { prefix: '/paginas' })
   await aplicacao.register(rotasDeAuditoria, { prefix: '/auditoria' })
   await aplicacao.register(rotasDeConfiguracoes, { prefix: '/configuracoes' })

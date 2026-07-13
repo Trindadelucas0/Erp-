@@ -48,12 +48,6 @@ export async function rotasDePedidosCompra(aplicacao: FastifyInstance): Promise<
   )
 
   aplicacao.get(
-    '/pedidos-venda/encomenda',
-    { preHandler: [...auth, middlewareDeAutorizacao('compras:view')] },
-    controladorDePedidosCompra.listarPedidosVendaEncomenda
-  )
-
-  aplicacao.get(
     '/fornecedor/:fornecedorId/contexto',
     { preHandler: [...auth, middlewareDeAutorizacao('compras:view')] },
     controladorDePedidosCompra.contextoFornecedor

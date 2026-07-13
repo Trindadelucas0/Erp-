@@ -8,20 +8,6 @@ const CNPJS_EMPRESAS_EXEMPLO = ['11111111000191', '22222222000182']
 const prisma = new PrismaClient()
 
 async function main() {
-  const pedidosRemovidos = await prisma.pedidoVenda.deleteMany({
-    where: {
-      OR: [
-        { clienteNome: 'Cliente Encomenda Exemplo' },
-        {
-          numero: 1001,
-          company: { cnpj: { in: CNPJS_EMPRESAS_EXEMPLO } },
-        },
-      ],
-    },
-  })
-
-  console.log(`Pedidos de venda de exemplo removidos: ${pedidosRemovidos.count}`)
-
   const empresasExemplo = await prisma.company.findMany({
     where: { cnpj: { in: CNPJS_EMPRESAS_EXEMPLO } },
     select: { id: true, name: true, cnpj: true },
