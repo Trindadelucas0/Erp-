@@ -36,8 +36,8 @@ type ColunaOrdenacao =
   | 'marca'
   | 'codigoOriginal'
   | 'unidade'
-  | 'itensPorEmbalagem'
   | 'quantidade'
+  | 'itensPorEmbalagem'
   | 'qtdTotalUnVenda'
   | 'preco'
   | 'pctDesconto'
@@ -421,6 +421,12 @@ export function LancamentoItensPedido({
               title="Editável no cadastro do produto, aba Compras"
             />
             <InputPadrao
+              id="rascunho-item-quantidade"
+              rotulo="Quantidade"
+              value={rascunho.quantidade}
+              onChange={(e) => atualizarRascunho('quantidade', e.target.value)}
+            />
+            <InputPadrao
               rotulo="Itens por embalagem"
               value={rascunho.produtoId ? String(itensPorEmbalagemRascunho) : ''}
               readOnly
@@ -439,12 +445,6 @@ export function LancamentoItensPedido({
               disabled
               placeholder="—"
               className="bg-muted/30"
-            />
-            <InputPadrao
-              id="rascunho-item-quantidade"
-              rotulo="Quantidade"
-              value={rascunho.quantidade}
-              onChange={(e) => atualizarRascunho('quantidade', e.target.value)}
             />
             <InputPadrao
               rotulo="Qtd total UN de venda"
@@ -586,15 +586,15 @@ export function LancamentoItensPedido({
               />
               <CabecalhoColunaOrdenavel
                 className="px-2 py-1.5"
-                rotulo="Itens por Embalagem"
-                coluna="itensPorEmbalagem"
+                rotulo="Qtd."
+                coluna="quantidade"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
               <CabecalhoColunaOrdenavel
                 className="px-2 py-1.5"
-                rotulo="Qtd."
-                coluna="quantidade"
+                rotulo="Itens por Embalagem"
+                coluna="itensPorEmbalagem"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
@@ -708,8 +708,8 @@ export function LancamentoItensPedido({
                     <td className="px-2 py-1.5">{marcaDoItem(linha.item, produtos)}</td>
                     <td className="px-2 py-1.5">{linha.item.codigoOriginal || '—'}</td>
                     <td className="px-2 py-1.5">{linha.item.unidade || '—'}</td>
-                    <td className="px-2 py-1.5 tabular-nums">{embalagem.itensPorEmbalagem}</td>
                     <td className="px-2 py-1.5 tabular-nums">{linha.item.quantidade}</td>
+                    <td className="px-2 py-1.5 tabular-nums">{embalagem.itensPorEmbalagem}</td>
                     <td className="px-2 py-1.5 tabular-nums">{embalagem.qtdTotalUnVenda}</td>
                     <td className="px-2 py-1.5 tabular-nums">
                       {formatarMoeda(parseNum(linha.item.precoUnitario))}
