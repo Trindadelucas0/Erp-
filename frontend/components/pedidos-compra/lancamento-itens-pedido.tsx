@@ -402,6 +402,10 @@ export function LancamentoItensPedido({
       setErroRascunho('Informe uma quantidade maior que zero.')
       return
     }
+    if (parseNum(atualSincronizado.precoUnitario) <= 0) {
+      setErroRascunho('Informe um preço unitário maior que zero.')
+      return
+    }
 
     const indiceEdicaoAtual = indiceEdicaoRef.current
 

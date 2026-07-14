@@ -17,6 +17,37 @@ const payloadBase = {
   itens: [itemBase],
 }
 
+describe('esquemaDeCriacaoDePedidoCompra — preço unitário do item', () => {
+  const payloadCif = {
+    ...payloadBase,
+    modalidadeTransporte: 'CIF' as const,
+  }
+
+  it('rejeita preço unitário zero', () => {
+    const resultado = esquemaDeCriacaoDePedidoCompra.safeParse({
+      ...payloadCif,
+      itens: [{ ...itemBase, precoUnitario: 0 }],
+    })
+
+    expect(resultado.success).toBe(false)
+    if (!resultado.success) {
+      expect(resultado.error.errors.some((e) => e.path.includes('precoUnitario'))).toBe(true)
+    }
+  })
+
+  it('rejeita preço unitário negativo', () => {
+    const resultado = esquemaDeCriacaoDePedidoCompra.safeParse({
+      ...payloadCif,
+      itens: [{ ...itemBase, precoUnitario: -1 }],
+    })
+
+    expect(resultado.success).toBe(false)
+    if (!resultado.success) {
+      expect(resultado.error.errors.some((e) => e.path.includes('precoUnitario'))).toBe(true)
+    }
+  })
+})
+
 describe('esquemaDeCriacaoDePedidoCompra — modalidade de transporte', () => {
   it('rejeita criação sem tipo de frete', () => {
     const resultado = esquemaDeCriacaoDePedidoCompra.safeParse(payloadBase)

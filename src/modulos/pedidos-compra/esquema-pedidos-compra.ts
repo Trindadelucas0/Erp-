@@ -15,13 +15,19 @@ const decimalObrigatorio = z.union([z.number(), z.string()]).transform((v) => {
   return n
 })
 
-const decimalPositivo = z.union([z.number(), z.string()]).transform((v) => {
-  const n = typeof v === 'number' ? v : Number(String(v).replace(',', '.'))
-  if (!Number.isFinite(n) || n <= 0) {
-    throw new Error('Quantidade deve ser maior que zero')
-  }
-  return n
-})
+function decimalMaiorQueZero(mensagem: string) {
+  return z.union([z.number(), z.string()]).transform((v, ctx) => {
+    const n = typeof v === 'number' ? v : Number(String(v).replace(',', '.'))
+    if (!Number.isFinite(n) || n <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: mensagem,
+      })
+      return z.NEVER
+    }
+    return n
+  })
+}
 
 const decimalOpcional = z
   .union([z.number(), z.string(), z.null()])
@@ -56,9 +62,9 @@ export const esquemaPrazoPagamento = z.object({
 export const esquemaItemPedidoCompra = z.object({
   produtoId: z.string().uuid('Produto inválido'),
   codigoOriginal: textoCadastroOpcional(100).optional().nullable(),
-  quantidade: decimalPositivo,
+  quantidade: decimalMaiorQueZero('Quantidade deve ser maior que zero'),
   unidade: z.string().min(1, 'Unidade obrigatória').max(20),
-  precoUnitario: decimalObrigatorio,
+  precoUnitario: decimalMaiorQueZero('Preço unitário deve ser maior que zero'),
   percentualDesconto: decimalOpcional,
   valorDesconto: decimalOpcional,
   outrasDespesas: decimalOpcional,
