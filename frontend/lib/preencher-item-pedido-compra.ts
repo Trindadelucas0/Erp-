@@ -82,10 +82,8 @@ function fatorEmbalagemValido(valor: number | null | undefined): valor is number
 
 /**
  * Resolve itens por embalagem no PO:
- * 1) multiplicador do vínculo do fornecedor do pedido
- * 2) embalagem master
- * 3) qualquer multiplicador > 1 dos fornecedores do produto
- * 4) 1
+ * usa somente o multiplicadorEntrada do vínculo do fornecedor do pedido;
+ * se ausente/inválido, retorna 1 (sem fallback de master nem de outro fornecedor).
  */
 export function resolverItensPorEmbalagem(
   vinculoOuProduto?: VinculoFornecedorProduto | ProdutoParaPreenchimento | null,
@@ -110,17 +108,6 @@ export function resolverItensPorEmbalagem(
       : undefined
   if (fatorEmbalagemValido(vinculo?.multiplicadorEntrada)) {
     return vinculo.multiplicadorEntrada
-  }
-
-  const master = produto.embalagensMaster?.[0]?.quantidade
-  if (fatorEmbalagemValido(master)) return master
-
-  const outro = produto.fornecedores.find(
-    (f) =>
-      fatorEmbalagemValido(f.multiplicadorEntrada) && f.multiplicadorEntrada > 1
-  )
-  if (outro && fatorEmbalagemValido(outro.multiplicadorEntrada)) {
-    return outro.multiplicadorEntrada
   }
 
   return 1

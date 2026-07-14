@@ -141,7 +141,7 @@ describe('preencher-item-pedido-compra', () => {
     expect(resolverItensPorEmbalagem(produtoBase, 'f1')).toBe(12)
   })
 
-  it('resolverItensPorEmbalagem faz fallback para embalagem master', () => {
+  it('resolverItensPorEmbalagem não usa embalagem master como fallback', () => {
     const produto = {
       ...produtoBase,
       fornecedores: [
@@ -155,10 +155,10 @@ describe('preencher-item-pedido-compra', () => {
       ],
       embalagensMaster: [{ quantidade: 6 }],
     }
-    expect(resolverItensPorEmbalagem(produto, 'f1')).toBe(6)
+    expect(resolverItensPorEmbalagem(produto, 'f1')).toBe(1)
   })
 
-  it('resolverItensPorEmbalagem faz fallback para outro fornecedor', () => {
+  it('resolverItensPorEmbalagem não usa multiplicador de outro fornecedor', () => {
     const produto = {
       ...produtoBase,
       fornecedores: [
@@ -179,7 +179,32 @@ describe('preencher-item-pedido-compra', () => {
       ],
       embalagensMaster: [],
     }
-    expect(resolverItensPorEmbalagem(produto, 'f1')).toBe(8)
+    expect(resolverItensPorEmbalagem(produto, 'f1')).toBe(1)
+  })
+
+  it('resolverItensPorEmbalagem não puxa embalagem de outro fornecedor no PO', () => {
+    const produto = {
+      ...produtoBase,
+      fornecedores: [
+        {
+          fornecedorPessoaId: 'resicola',
+          codigoFornecedor: null,
+          unidadeEntrada: 'CX',
+          multiploEntrada: null,
+          multiplicadorEntrada: 25,
+        },
+        {
+          fornecedorPessoaId: 'fortlev',
+          codigoFornecedor: null,
+          unidadeEntrada: 'UN',
+          multiploEntrada: null,
+          multiplicadorEntrada: null,
+        },
+      ],
+      embalagensMaster: [{ quantidade: 25 }],
+    }
+    expect(resolverItensPorEmbalagem(produto, 'fortlev')).toBe(1)
+    expect(resolverItensPorEmbalagem(produto, 'resicola')).toBe(25)
   })
 
   it('resolverItensPorEmbalagem retorna 1 sem dados', () => {

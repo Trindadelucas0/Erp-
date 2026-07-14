@@ -131,6 +131,10 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   const [abaAtiva, setAbaAtiva] = useState<'dados-gerais' | 'itens' | 'pagamento'>('dados-gerais')
   const requisicaoContextoRef = useRef(0)
   const deveAplicarPrazosFornecedorRef = useRef(false)
+  const formRef = useRef(form)
+  const produtosRef = useRef(produtos)
+  formRef.current = form
+  produtosRef.current = produtos
 
   const modoEdicao = modo !== 'novo'
   const pedidoBloqueado = modoEdicao && ['cancelado', 'recebido'].includes(form.status)
@@ -384,7 +388,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     roteador.push(`/pedidos-compra${qs}`)
   }
 
-  function avancarParaItens() {
+  function avancarParaPagamento() {
     if (!form.fornecedorPessoaId) {
       setErro('Selecione o fornecedor.')
       setAbaAtiva('dados-gerais')
@@ -407,17 +411,12 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
       return
     }
     setErro('')
-    setAbaAtiva('itens')
+    setAbaAtiva('pagamento')
   }
 
-  function avancarParaPagamento() {
-    if (form.itens.length === 0 || form.itens.some((i) => !i.produtoId)) {
-      setErro('Adicione ao menos um produto no pedido.')
-      setAbaAtiva('itens')
-      return
-    }
+  function avancarParaItens() {
     setErro('')
-    setAbaAtiva('pagamento')
+    setAbaAtiva('itens')
   }
 
   function abrirHistoricoProduto(produtoId: string) {
@@ -451,7 +450,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   async function preencherProdutoRascunho(produtoId: string, base: ItemPedido): Promise<ItemPedido> {
     if (!produtoId) return itemVazio()
 
-    const produto = produtos.find((p) => p.id === produtoId)
+    const produto = produtosRef.current.find((p) => p.id === produtoId)
     if (!produto) return base
 
     let historico: HistoricoCompra[] = historicoProdutos[produtoId] ?? []
@@ -466,11 +465,13 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
       }
     }
 
+    // Usa fornecedor/previsão atuais pós-await (evita código original vazio por closure antiga).
+    const formAtual = formRef.current
     return preencherItemComProduto(
       base,
       produto,
-      form.fornecedorPessoaId,
-      form.previsaoEntrega,
+      formAtual.fornecedorPessoaId,
+      formAtual.previsaoEntrega,
       historico
     )
   }
@@ -934,8 +935,8 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
             aoMudar={(id) => setAbaAtiva(id as 'dados-gerais' | 'itens' | 'pagamento')}
             abas={[
               { id: 'dados-gerais', rotulo: 'Dados gerais' },
-              { id: 'itens', rotulo: 'Lançamento de produtos', contador: itensPreenchidos },
               { id: 'pagamento', rotulo: 'Pagamento e prazos' },
+              { id: 'itens', rotulo: 'Lançamento de produtos', contador: itensPreenchidos },
             ]}
           />
 
@@ -1145,23 +1146,6 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
           </div>
           )}
 
-          {abaAtiva === 'itens' && (
-            <LancamentoItensPedido
-              fornecedorPessoaId={form.fornecedorPessoaId}
-              itens={form.itens}
-              produtos={produtos}
-              disabled={somenteLeitura || !podeSalvar}
-              formatarMoeda={formatarMoeda}
-              formatarData={formatarData}
-              onPreencherProduto={preencherProdutoRascunho}
-              onAdicionar={adicionarItemLancado}
-              onAtualizar={atualizarItemLancado}
-              onRemoverVarios={removerItensLancados}
-              onSubstituirProduto={substituirProdutoLancado}
-              onAbrirHistorico={abrirHistoricoProduto}
-            />
-          )}
-
           {abaAtiva === 'pagamento' && (
             <BlocoPagamentoPrazos
               condicaoPagamento={form.condicaoPagamento}
@@ -1183,6 +1167,23 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
               onCreditoAplicadoChange={(v) => setForm((f) => ({ ...f, creditoAplicado: v }))}
               onLimparCredito={limparCredito}
               onAdicionarPrazo={adicionarPrazo}
+            />
+          )}
+
+          {abaAtiva === 'itens' && (
+            <LancamentoItensPedido
+              fornecedorPessoaId={form.fornecedorPessoaId}
+              itens={form.itens}
+              produtos={produtos}
+              disabled={somenteLeitura || !podeSalvar}
+              formatarMoeda={formatarMoeda}
+              formatarData={formatarData}
+              onPreencherProduto={preencherProdutoRascunho}
+              onAdicionar={adicionarItemLancado}
+              onAtualizar={atualizarItemLancado}
+              onRemoverVarios={removerItensLancados}
+              onSubstituirProduto={substituirProdutoLancado}
+              onAbrirHistorico={abrirHistoricoProduto}
             />
           )}
 
@@ -1218,7 +1219,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
                 )}
                 {!somenteLeitura && podeSalvar && (
                   <>
-                    {abaAtiva === 'itens' && (
+                    {abaAtiva === 'pagamento' && (
                       <Button
                         type="button"
                         variant="outline"
@@ -1227,11 +1228,11 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
                         Voltar
                       </Button>
                     )}
-                    {abaAtiva === 'pagamento' && (
+                    {abaAtiva === 'itens' && (
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => setAbaAtiva('itens')}
+                        onClick={() => setAbaAtiva('pagamento')}
                       >
                         Voltar
                       </Button>
@@ -1249,16 +1250,16 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
                           : 'Salvar'}
                     </Button>
                     {abaAtiva === 'dados-gerais' && (
-                      <BotaoPrimario type="button" onClick={avancarParaItens}>
-                        Avançar para itens
-                      </BotaoPrimario>
-                    )}
-                    {abaAtiva === 'itens' && (
                       <BotaoPrimario type="button" onClick={avancarParaPagamento}>
                         Avançar para pagamento
                       </BotaoPrimario>
                     )}
-                    {abaAtiva === 'pagamento' && podeConcluirPedido(form.status) && (
+                    {abaAtiva === 'pagamento' && (
+                      <BotaoPrimario type="button" onClick={avancarParaItens}>
+                        Avançar para itens
+                      </BotaoPrimario>
+                    )}
+                    {abaAtiva === 'itens' && podeConcluirPedido(form.status) && (
                       <BotaoPrimario
                         type="button"
                         onClick={() => void aoSalvar(undefined, true)}

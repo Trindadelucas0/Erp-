@@ -25,7 +25,9 @@ import {
   calcularQtdTotalUnVenda,
   obterVinculoFornecedor,
   recalcularCodigoUnidadeItem,
+  resolverCodigoOriginal,
   resolverItensPorEmbalagem,
+  resolverUnidadeEntrada,
   rotuloCampoPrecoEntrada,
   rotuloOrigemPreco,
   sugerirQuantidadeMultiplo,
@@ -96,6 +98,17 @@ function dadosEmbalagemDoItem(
   }
 }
 
+function codigoOriginalDoItem(
+  item: ItemPedido,
+  produtos: ProdutoOpcao[],
+  fornecedorPessoaId: string
+): string {
+  const produto = produtos.find((p) => p.id === item.produtoId)
+  if (!produto) return item.codigoOriginal || ''
+  const vinculo = obterVinculoFornecedor(produto, fornecedorPessoaId)
+  return resolverCodigoOriginal(vinculo) || item.codigoOriginal || ''
+}
+
 function urlFotoDoItem(item: ItemPedido, produtos: ProdutoOpcao[]): string | null {
   const produto = produtos.find((p) => p.id === item.produtoId)
   return resolverUrlUpload(produto?.urlFotoMiniatura)
@@ -136,12 +149,17 @@ export function LancamentoItensPedido({
   const onAdicionarRef = useRef(onAdicionar)
   const onAtualizarRef = useRef(onAtualizar)
   const onSubstituirProdutoRef = useRef(onSubstituirProduto)
+  const preencherProdutoReqIdRef = useRef(0)
+  const fornecedorPessoaIdRef = useRef(fornecedorPessoaId)
+  const produtosRef = useRef(produtos)
   rascunhoRef.current = rascunho
   preenchendoProdutoRef.current = preenchendoProduto
   indiceEdicaoRef.current = indiceEdicao
   onAdicionarRef.current = onAdicionar
   onAtualizarRef.current = onAtualizar
   onSubstituirProdutoRef.current = onSubstituirProduto
+  fornecedorPessoaIdRef.current = fornecedorPessoaId
+  produtosRef.current = produtos
 
   useEffect(() => {
     if (disabled) {
@@ -185,7 +203,7 @@ export function LancamentoItensPedido({
           case 'marca':
             return marcaDoItem(item, produtos)
           case 'codigoOriginal':
-            return item.codigoOriginal || ''
+            return codigoOriginalDoItem(item, produtos, fornecedorPessoaId)
           case 'unidade':
             return item.unidade || ''
           case 'itensPorEmbalagem':
@@ -224,6 +242,12 @@ export function LancamentoItensPedido({
     fornecedorPessoaId
   )
   const multiploEntradaRascunho = vinculoRascunho?.multiploEntrada ?? null
+  const codigoOriginalRascunho = rascunho.produtoId
+    ? resolverCodigoOriginal(vinculoRascunho)
+    : ''
+  const unidadeRascunho = produtoRascunho
+    ? resolverUnidadeEntrada(vinculoRascunho, produtoRascunho.unidade)
+    : rascunho.unidade
   const qtdTotalUnRascunho = calcularQtdTotalUnVenda(
     parseNum(rascunho.quantidade),
     itensPorEmbalagemRascunho
@@ -234,6 +258,13 @@ export function LancamentoItensPedido({
   )
   const rotuloPrecoRascunho = rotuloCampoPrecoEntrada(itensPorEmbalagemRascunho)
   const editando = indiceEdicao != null
+
+  function sincronizarCodigoUnidadeDoVinculo(item: ItemPedido): ItemPedido {
+    if (!item.produtoId) return item
+    const produto = produtosRef.current.find((p) => p.id === item.produtoId)
+    if (!produto) return item
+    return recalcularCodigoUnidadeItem(item, produto, fornecedorPessoaIdRef.current)
+  }
 
   function limparRascunho() {
     setRascunho(itemVazio())
@@ -325,19 +356,25 @@ export function LancamentoItensPedido({
 
   async function aoSelecionarProduto(produtoId: string) {
     if (!produtoId) {
+      preencherProdutoReqIdRef.current += 1
       setRascunho(itemVazio())
       return
     }
+    const reqId = ++preencherProdutoReqIdRef.current
     setPreenchendoProduto(true)
     setErroRascunho('')
     try {
-      const preenchido = await onPreencherProduto(produtoId, rascunho)
-      setRascunho(preenchido)
+      const preenchido = await onPreencherProduto(produtoId, rascunhoRef.current)
+      if (reqId !== preencherProdutoReqIdRef.current) return
+      // Recalcula com fornecedor/produtos atuais (evita código vazio por estado atrasado).
+      setRascunho(sincronizarCodigoUnidadeDoVinculo(preenchido))
     } finally {
-      setPreenchendoProduto(false)
-      requestAnimationFrame(() => {
-        document.getElementById('rascunho-item-quantidade')?.focus()
-      })
+      if (reqId === preencherProdutoReqIdRef.current) {
+        setPreenchendoProduto(false)
+        requestAnimationFrame(() => {
+          document.getElementById('rascunho-item-quantidade')?.focus()
+        })
+      }
     }
   }
 
@@ -356,32 +393,35 @@ export function LancamentoItensPedido({
   }
 
   function confirmarRascunhoComItem(atual: ItemPedido) {
-    if (!atual.produtoId) {
+    const atualSincronizado = sincronizarCodigoUnidadeDoVinculo(atual)
+    if (!atualSincronizado.produtoId) {
       setErroRascunho('Selecione o produto.')
       return
     }
-    if (parseNum(atual.quantidade) <= 0) {
+    if (parseNum(atualSincronizado.quantidade) <= 0) {
       setErroRascunho('Informe uma quantidade maior que zero.')
       return
     }
 
     const indiceEdicaoAtual = indiceEdicaoRef.current
 
-    const produto = produtos.find((p) => p.id === atual.produtoId)
-    const vinculo = produto ? obterVinculoFornecedor(produto, fornecedorPessoaId) : undefined
+    const produto = produtosRef.current.find((p) => p.id === atualSincronizado.produtoId)
+    const vinculo = produto
+      ? obterVinculoFornecedor(produto, fornecedorPessoaIdRef.current)
+      : undefined
     const sugestao = sugerirQuantidadeMultiplo(
-      parseNum(atual.quantidade),
+      parseNum(atualSincronizado.quantidade),
       vinculo?.multiploEntrada
     )
     if (sugestao) {
-      setItemMultiploPendente(atual)
+      setItemMultiploPendente(atualSincronizado)
       setQuantidadeSugeridaMultiplo(sugestao.quantidadeSugerida)
       setMultiploPendente(sugestao.multiplo)
       setConfirmacaoMultiploAberta(true)
       return
     }
 
-    seguirAposValidacoes(atual, indiceEdicaoAtual)
+    seguirAposValidacoes(atualSincronizado, indiceEdicaoAtual)
   }
 
   function adequarQuantidadeMultiplo() {
@@ -483,16 +523,16 @@ export function LancamentoItensPedido({
             </div>
             <InputPadrao
               rotulo="Código original"
-              value={rascunho.codigoOriginal}
+              value={codigoOriginalRascunho}
               readOnly
               disabled
               placeholder="—"
               className="bg-muted/30"
-              title="Editável no cadastro do produto, aba Compras"
+              title="Editável no cadastro do produto, aba Compras (vínculo do fornecedor do pedido)"
             />
             <InputPadrao
               rotulo="Unidade"
-              value={rascunho.unidade}
+              value={unidadeRascunho}
               readOnly
               disabled
               placeholder="—"
@@ -835,7 +875,9 @@ export function LancamentoItensPedido({
                       </div>
                     </td>
                     <td className="px-2 py-1.5">{marcaDoItem(linha.item, produtos)}</td>
-                    <td className="px-2 py-1.5">{linha.item.codigoOriginal || '—'}</td>
+                    <td className="px-2 py-1.5">
+                      {codigoOriginalDoItem(linha.item, produtos, fornecedorPessoaId) || '—'}
+                    </td>
                     <td className="px-2 py-1.5">{linha.item.unidade || '—'}</td>
                     <td className="px-2 py-1.5 tabular-nums">{linha.item.quantidade}</td>
                     <td className="px-2 py-1.5 tabular-nums">{embalagem.itensPorEmbalagem}</td>

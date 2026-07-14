@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { ComboboxPessoa } from '@/components/pedidos-compra/combobox-pessoa'
 import { SelecaoUnidadeMedida } from '@/components/produtos/selecao-unidade-medida'
-import { aplicarEmbalagemNoFormularioFornecedor } from '@/lib/sincronizar-multiplo-embalagem'
 
 export type FornecedorProdutoForm = {
   fornecedorPessoaId: string
@@ -49,21 +48,7 @@ export function ListaFornecedoresProduto({
 }: Props) {
   function atualizar(index: number, campo: keyof FornecedorProdutoForm, valor: string) {
     const nova = [...itens]
-    const atual = nova[index]
-    if (campo === 'multiplicadorEntrada') {
-      const sincronizado = aplicarEmbalagemNoFormularioFornecedor({
-        multiplicadorEntradaAnterior: atual.multiplicadorEntrada,
-        multiplicadorEntrada: valor,
-        multiploEntradaAtual: atual.multiploEntrada,
-      })
-      nova[index] = {
-        ...atual,
-        multiplicadorEntrada: sincronizado.multiplicadorEntrada,
-        multiploEntrada: sincronizado.multiploEntrada,
-      }
-    } else {
-      nova[index] = { ...atual, [campo]: valor }
-    }
+    nova[index] = { ...nova[index], [campo]: valor }
     aoMudar(nova)
   }
 
