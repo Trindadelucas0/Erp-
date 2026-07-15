@@ -5,7 +5,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-const ROTAS_PUBLICAS = ['/login', '/assinatura']
+const ROTAS_PUBLICAS = ['/login', '/assinatura', '/portal-fornecedor', '/uploads']
 
 export function middleware(requisicao: NextRequest) {
   const { pathname } = requisicao.nextUrl

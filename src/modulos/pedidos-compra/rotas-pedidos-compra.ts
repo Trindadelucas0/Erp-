@@ -100,4 +100,46 @@ export async function rotasDePedidosCompra(aplicacao: FastifyInstance): Promise<
     { preHandler: [...auth, middlewareDeAutorizacao('compras:edit')] },
     controladorDePedidosCompra.compararPdf
   )
+
+  aplicacao.post(
+    '/:id/liberar-portal',
+    { preHandler: [...auth, middlewareDeAutorizacao('compras:edit')] },
+    controladorDePedidosCompra.liberarParaPortalFornecedor
+  )
+
+  aplicacao.post(
+    '/:id/bloquear-portal',
+    { preHandler: [...auth, middlewareDeAutorizacao('compras:edit')] },
+    controladorDePedidosCompra.bloquearPortalFornecedor
+  )
+
+  aplicacao.get(
+    '/:id/anexos-fornecedor/:anexoId/download',
+    { preHandler: [...auth, middlewareDeAutorizacao('compras:view')] },
+    controladorDePedidosCompra.baixarAnexoFornecedor
+  )
+
+  aplicacao.get(
+    '/:id/anexos-fornecedor/:anexoId/relatorio-conferencia-pdf',
+    { preHandler: [...auth, middlewareDeAutorizacao('compras:view')] },
+    controladorDePedidosCompra.baixarRelatorioConferenciaAnexo
+  )
+
+  aplicacao.post(
+    '/:id/anexos-fornecedor/:anexoId/conferir-ia',
+    { preHandler: [...auth, middlewareDeAutorizacao('compras:edit')] },
+    controladorDePedidosCompra.conferirAnexoComIa
+  )
+
+  aplicacao.post(
+    '/:id/anexos-fornecedor/:anexoId/aprovar',
+    { preHandler: [...auth, middlewareDeAutorizacao('compras:edit')] },
+    controladorDePedidosCompra.aprovarAnexoFornecedor
+  )
+
+  aplicacao.post(
+    '/:id/anexos-fornecedor/:anexoId/solicitar-ajuste',
+    { preHandler: [...auth, middlewareDeAutorizacao('compras:edit')] },
+    controladorDePedidosCompra.solicitarAjusteAnexoFornecedor
+  )
 }

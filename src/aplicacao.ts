@@ -9,6 +9,14 @@ import { criarServidor } from './infraestrutura/http/servidor.js'
 config()
 definirUrlDoBancoNoAmbiente()
 
+process.on('unhandledRejection', (erro) => {
+  console.error('[aplicacao] Promise rejeitada sem tratamento:', erro)
+})
+
+process.on('uncaughtException', (erro) => {
+  console.error('[aplicacao] Exceção não capturada:', erro)
+})
+
 const porta = Number(process.env.PORT) || 8885
 
 const aplicacao = await criarServidor()

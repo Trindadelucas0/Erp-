@@ -3,33 +3,13 @@
  * Usa heurísticas de texto (sem LLM) para comparar quantidades e preços.
  */
 import type { PedidoCompraView } from './repositorio-pedidos-compra.js'
+import { extrairTextoDoPdf } from './extrator-texto-pdf.js'
 
 export type DivergenciaPdf = {
   campo: string
   esperado: string
   encontrado: string
   severidade: 'alta' | 'media' | 'baixa'
-}
-
-function extrairTextoDoPdf(buffer: Buffer): string {
-  const raw = buffer.toString('latin1')
-  const trechos: string[] = []
-
-  const regexStream = /stream\r?\n([\s\S]*?)\r?\nendstream/g
-  let match: RegExpExecArray | null
-  while ((match = regexStream.exec(raw)) !== null) {
-    const chunk = match[1]
-    const legivel = chunk.replace(/[^\x20-\x7E\n\r\t\u00C0-\u00FF]/g, ' ')
-    if (legivel.trim().length > 10) {
-      trechos.push(legivel)
-    }
-  }
-
-  if (trechos.length === 0) {
-    return raw.replace(/[^\x20-\x7E\n\r\t\u00C0-\u00FF]/g, ' ')
-  }
-
-  return trechos.join('\n')
 }
 
 function normalizarNumero(s: string): number | null {
@@ -45,12 +25,12 @@ function extrairNumerosDoTexto(texto: string): number[] {
     .filter((n): n is number => n != null && n > 0)
 }
 
-export function compararPedidoComPdf(
+export async function compararPedidoComPdf(
   pedido: PedidoCompraView,
   base64Pdf: string
-): { divergencias: DivergenciaPdf[]; textoExtraido: string; temDivergencia: boolean } {
+): Promise<{ divergencias: DivergenciaPdf[]; textoExtraido: string; temDivergencia: boolean }> {
   const buffer = Buffer.from(base64Pdf.replace(/^data:application\/pdf;base64,/, ''), 'base64')
-  const texto = extrairTextoDoPdf(buffer)
+  const texto = await extrairTextoDoPdf(buffer)
   const divergencias: DivergenciaPdf[] = []
 
   if (texto.trim().length < 20) {

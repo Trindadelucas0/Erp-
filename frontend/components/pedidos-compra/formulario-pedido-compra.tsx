@@ -15,6 +15,11 @@ import { BlocoPagamentoPrazos, type PrazoPagamento } from '@/components/pedidos-
 import { ComboboxPessoa } from '@/components/pedidos-compra/combobox-pessoa'
 import { LancamentoItensPedido } from '@/components/pedidos-compra/lancamento-itens-pedido'
 import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
+import {
+  ModalConferenciaIa,
+  type StatusConferenciaAnexo,
+  type RelatorioConferencia,
+} from '@/components/pedidos-compra/modal-conferencia-ia'
 import { clienteHttp } from '@/services/api'
 import { usePermissao } from '@/hooks/use-permissao'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
@@ -82,6 +87,23 @@ import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-orden
 import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
 import { ordenarLista } from '@/lib/ordenacao-lista'
 
+type AnexoFornecedor = {
+  id: string
+  nomeArquivo: string
+  mimeType: string
+  tamanhoBytes: number
+  enviadoEm: string
+  statusConferencia: StatusConferenciaAnexo
+  motivoAjuste: string | null
+  relatorioConferencia: RelatorioConferencia | null
+}
+
+const ROTULO_STATUS_CONFERENCIA: Record<StatusConferenciaAnexo, { texto: string; variante: 'ativo' | 'pendente' | 'reprovado' }> = {
+  pendente: { texto: 'Pendente de decisão', variante: 'pendente' },
+  aprovado: { texto: 'Aprovado', variante: 'ativo' },
+  ajuste_solicitado: { texto: 'Ajuste solicitado', variante: 'reprovado' },
+}
+
 type Props = {
   modo: ModoPedidoCompra
   pedidoId?: string
@@ -118,6 +140,13 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   const [erroModalCredito, setErroModalCredito] = useState('')
   const [mensagemPainelFornecedor, setMensagemPainelFornecedor] = useState('')
   const [numeroPedido, setNumeroPedido] = useState<number | undefined>()
+  const [portalLiberadoEm, setPortalLiberadoEm] = useState<string | null>(null)
+  const [portalBloqueadoEm, setPortalBloqueadoEm] = useState<string | null>(null)
+  const [anexosFornecedor, setAnexosFornecedor] = useState<AnexoFornecedor[]>([])
+  const [liberandoPortal, setLiberandoPortal] = useState(false)
+  const [bloqueandoPortal, setBloqueandoPortal] = useState(false)
+  const [mensagemPortal, setMensagemPortal] = useState('')
+  const [anexoEmConferencia, setAnexoEmConferencia] = useState<AnexoFornecedor | null>(null)
   const [form, setForm] = useState(formVazio)
   const [salvando, setSalvando] = useState(false)
   const [carregandoPedido, setCarregandoPedido] = useState(modo !== 'novo')
@@ -260,6 +289,9 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
       const modalidadeTransporte = normalizarModalidadeTransporte(p.modalidadeTransporte)
       const exibeDadosTransporte = exigeDadosTransporte(modalidadeTransporte)
       setNumeroPedido(p.numero)
+      setPortalLiberadoEm(p.portalLiberadoEm ?? null)
+      setPortalBloqueadoEm(p.portalBloqueadoEm ?? null)
+      setAnexosFornecedor(p.anexosFornecedor ?? [])
       setForm({
         fornecedorPessoaId: p.fornecedorPessoaId,
         transportadoraPessoaId: exibeDadosTransporte ? (p.transportadoraPessoaId ?? '') : '',
@@ -315,6 +347,57 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     },
     [carregarHistoricoProduto]
   )
+
+  async function liberarPortalFornecedor() {
+    if (!pedidoId) return
+    setLiberandoPortal(true)
+    setMensagemPortal('')
+    try {
+      const { data } = await clienteHttp.post(`/pedidos-compra/${pedidoId}/liberar-portal`)
+      setPortalLiberadoEm(new Date().toISOString())
+      setPortalBloqueadoEm(null)
+      setMensagemPortal(
+        data.avisoEmailEnviado
+          ? 'Portal liberado. E-mail com CNPJ e senha enviado ao fornecedor.'
+          : `Portal liberado. ${data.mensagemAviso ?? 'Não foi possível enviar o e-mail — avise o fornecedor manualmente.'}`
+      )
+    } catch (e: unknown) {
+      setMensagemPortal(extrairMensagemApi(e, 'Erro ao liberar o portal para o fornecedor.'))
+    } finally {
+      setLiberandoPortal(false)
+    }
+  }
+
+  async function bloquearPortalFornecedor() {
+    if (!pedidoId) return
+    setBloqueandoPortal(true)
+    setMensagemPortal('')
+    try {
+      await clienteHttp.post(`/pedidos-compra/${pedidoId}/bloquear-portal`)
+      setPortalBloqueadoEm(new Date().toISOString())
+      setMensagemPortal('Portal bloqueado. O fornecedor não consegue mais acessar este pedido.')
+    } catch (e: unknown) {
+      setMensagemPortal(extrairMensagemApi(e, 'Erro ao bloquear o portal do fornecedor.'))
+    } finally {
+      setBloqueandoPortal(false)
+    }
+  }
+
+  async function baixarAnexoFornecedor(anexo: AnexoFornecedor) {
+    if (!pedidoId) return
+    const resposta = await clienteHttp.get(
+      `/pedidos-compra/${pedidoId}/anexos-fornecedor/${anexo.id}/download`,
+      { responseType: 'blob' }
+    )
+    const url = window.URL.createObjectURL(new Blob([resposta.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = anexo.nomeArquivo
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+  }
 
   useEffect(() => {
     if (carregandoSessao || !estaAutenticado) return
@@ -892,6 +975,88 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
 
       {erro && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{erro}</p>
+      )}
+
+      {modoEdicao && (
+        <CardPadrao
+          compacto
+          titulo="Portal do fornecedor"
+          descricao={
+            portalBloqueadoEm
+              ? `Bloqueado em ${formatarData(portalBloqueadoEm)}`
+              : portalLiberadoEm
+                ? `Liberado em ${formatarData(portalLiberadoEm)}`
+                : 'O fornecedor acessa com CNPJ + senha (número do pedido) e envia o documento oficial.'
+          }
+          acoes={
+            podeEditar &&
+            ((!portalLiberadoEm || portalBloqueadoEm) ? (
+              <BotaoPrimario type="button" onClick={liberarPortalFornecedor} disabled={liberandoPortal}>
+                {liberandoPortal ? 'Liberando...' : 'Liberar para fornecedor'}
+              </BotaoPrimario>
+            ) : (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={bloquearPortalFornecedor}
+                disabled={bloqueandoPortal}
+              >
+                {bloqueandoPortal ? 'Bloqueando...' : 'Bloquear portal'}
+              </Button>
+            ))
+          }
+        >
+          {mensagemPortal && <p className="mb-2 text-sm text-muted-foreground">{mensagemPortal}</p>}
+          {anexosFornecedor.length > 0 ? (
+            <ul className="space-y-2 text-sm">
+              {anexosFornecedor.map((anexo) => (
+                <li key={anexo.id} className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate">
+                        {anexo.nomeArquivo} — {formatarData(anexo.enviadoEm)}
+                      </span>
+                      <BadgeStatus variante={ROTULO_STATUS_CONFERENCIA[anexo.statusConferencia].variante}>
+                        {ROTULO_STATUS_CONFERENCIA[anexo.statusConferencia].texto}
+                      </BadgeStatus>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-3">
+                      <button
+                        type="button"
+                        className="text-primary hover:underline"
+                        onClick={() => baixarAnexoFornecedor(anexo)}
+                      >
+                        Baixar
+                      </button>
+                      {podeEditar && anexo.statusConferencia === 'pendente' && (
+                        <button
+                          type="button"
+                          className={
+                            anexo.relatorioConferencia
+                              ? 'text-muted-foreground hover:underline'
+                              : 'text-primary hover:underline'
+                          }
+                          onClick={() => setAnexoEmConferencia(anexo)}
+                        >
+                          {anexo.relatorioConferencia ? 'Conferido com IA' : 'Conferir com IA'}
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                  {anexo.statusConferencia === 'ajuste_solicitado' && anexo.motivoAjuste && (
+                    <p className="text-xs text-destructive">Motivo do ajuste: {anexo.motivoAjuste}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            portalLiberadoEm && (
+              <p className="text-sm text-muted-foreground">
+                Nenhum documento enviado pelo fornecedor ainda.
+              </p>
+            )
+          )}
+        </CardPadrao>
       )}
 
       <CardPadrao compacto>
@@ -1632,6 +1797,21 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
           </div>
         )}
       </Modal>
+
+      {anexoEmConferencia && pedidoId && (
+        <ModalConferenciaIa
+          key={anexoEmConferencia.id}
+          aberto
+          pedidoId={pedidoId}
+          anexoId={anexoEmConferencia.id}
+          nomeArquivo={anexoEmConferencia.nomeArquivo}
+          statusConferencia={anexoEmConferencia.statusConferencia}
+          motivoAjuste={anexoEmConferencia.motivoAjuste}
+          relatorioInicial={anexoEmConferencia.relatorioConferencia}
+          aoFechar={() => setAnexoEmConferencia(null)}
+          aoDecidir={() => void carregarPedidoNoForm(pedidoId)}
+        />
+      )}
     </div>
   )
 }

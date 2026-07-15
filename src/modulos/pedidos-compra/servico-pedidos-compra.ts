@@ -8,6 +8,11 @@ import { repositorioDePedidosCompra } from './repositorio-pedidos-compra.js'
 import { servicoCreditosPendencias } from './servico-creditos-pendencias.js'
 import { conferirPedidoCompraComEntrada } from './conferencia-po-entrada.js'
 import { compararPedidoComPdf } from './comparador-pdf-pedido.js'
+import { baixarReservaPedido } from './servico-movimentacao-credito.js'
+import { servicoDoPortalFornecedor } from '../portal-fornecedor/servico-portal-fornecedor.js'
+import { caminhoAbsolutoAnexo } from '../portal-fornecedor/armazenamento-anexo-fornecedor.js'
+import { servicoDeConferenciaArquivo } from './conferencia-arquivo/servico-conferencia-arquivo.js'
+import { gerarPdfRelatorioConferencia } from './conferencia-arquivo/gerador-pdf-relatorio-conferencia.js'
 import {
   calcularTotalLiquidoPedido,
   normalizarPrazosPagamento,
@@ -23,6 +28,7 @@ import type {
   DadosParaEditarPedidoCompra,
   DadosConferenciaEntrada,
 } from './esquema-pedidos-compra.js'
+import type { RelatorioConferenciaArquivo } from './conferencia-arquivo/tipos-conferencia.js'
 
 async function validarFornecedor(fornecedorPessoaId: string, companyId: string) {
   const pessoa = await clientePrisma.pessoa.findFirst({
@@ -412,6 +418,137 @@ async function historicoProduto(produtoId: string, companyId: string) {
   return repositorioDePedidosCompra.historicoComprasProduto(produtoId, companyId)
 }
 
+async function liberarParaPortalFornecedor(id: string, companyId: string, idDoAutor: string) {
+  const resultado = await servicoDoPortalFornecedor.liberarParaFornecedor(id, companyId)
+
+  await registrarAuditoria({
+    usuarioId: idDoAutor,
+    acao: 'liberar_portal',
+    entidade: 'pedido_compra',
+    entidadeId: id,
+    valoresDepois: { avisoEmailEnviado: resultado.avisoEmailEnviado },
+  })
+
+  return resultado
+}
+
+async function bloquearPortalFornecedor(id: string, companyId: string, idDoAutor: string) {
+  await servicoDoPortalFornecedor.bloquearPortal(id, companyId)
+
+  await registrarAuditoria({
+    usuarioId: idDoAutor,
+    acao: 'bloquear_portal',
+    entidade: 'pedido_compra',
+    entidadeId: id,
+  })
+}
+
+async function aprovarAnexoFornecedor(
+  id: string,
+  anexoId: string,
+  companyId: string,
+  idDoAutor: string
+) {
+  const resultado = await servicoDoPortalFornecedor.aprovarAnexo(id, anexoId, companyId)
+
+  await registrarAuditoria({
+    usuarioId: idDoAutor,
+    acao: 'aprovar_anexo_fornecedor',
+    entidade: 'pedido_compra',
+    entidadeId: id,
+    valoresDepois: { anexoId, avisoEmailEnviado: resultado.avisoEmailEnviado },
+  })
+
+  return resultado
+}
+
+async function solicitarAjusteAnexoFornecedor(
+  id: string,
+  anexoId: string,
+  companyId: string,
+  idDoAutor: string,
+  motivo: string,
+  relatorio?: RelatorioConferenciaArquivo
+) {
+  const resultado = await servicoDoPortalFornecedor.solicitarAjusteAnexo(
+    id,
+    anexoId,
+    companyId,
+    motivo,
+    relatorio
+  )
+
+  await registrarAuditoria({
+    usuarioId: idDoAutor,
+    acao: 'solicitar_ajuste_anexo_fornecedor',
+    entidade: 'pedido_compra',
+    entidadeId: id,
+    valoresDepois: { anexoId, motivo, avisoEmailEnviado: resultado.avisoEmailEnviado },
+  })
+
+  return resultado
+}
+
+async function baixarAnexoFornecedor(id: string, anexoId: string, companyId: string) {
+  const pedido = await repositorioDePedidosCompra.buscarPorId(id)
+  if (!pedido || pedido.companyId !== companyId) {
+    throw new ErroDaAplicacao('Pedido de compra não encontrado', 404)
+  }
+
+  const anexo = pedido.anexosFornecedor.find((a) => a.id === anexoId)
+  if (!anexo) {
+    throw new ErroDaAplicacao('Anexo não encontrado', 404)
+  }
+
+  return {
+    caminhoAbsoluto: caminhoAbsolutoAnexo(anexo.caminhoArquivo),
+    nomeArquivo: anexo.nomeArquivo,
+    mimeType: anexo.mimeType,
+  }
+}
+
+async function baixarRelatorioConferenciaAnexo(id: string, anexoId: string, companyId: string) {
+  const pedido = await repositorioDePedidosCompra.buscarPorId(id)
+  if (!pedido || pedido.companyId !== companyId) {
+    throw new ErroDaAplicacao('Pedido de compra não encontrado', 404)
+  }
+
+  const anexo = pedido.anexosFornecedor.find((a) => a.id === anexoId)
+  if (!anexo) {
+    throw new ErroDaAplicacao('Anexo não encontrado', 404)
+  }
+
+  if (!anexo.relatorioConferenciaJson) {
+    throw new ErroDaAplicacao('Este anexo ainda não foi conferido com a IA.', 404)
+  }
+
+  const relatorio = anexo.relatorioConferenciaJson as unknown as RelatorioConferenciaArquivo
+  const buffer = await gerarPdfRelatorioConferencia(relatorio, {
+    numeroPedido: pedido.numero,
+    nomeArquivo: anexo.nomeArquivo,
+    statusConferencia: anexo.statusConferencia as 'pendente' | 'aprovado' | 'ajuste_solicitado',
+    motivoAjuste: anexo.motivoAjuste,
+  })
+
+  return { buffer, nomeArquivo: `relatorio-conferencia-pedido-${pedido.numero}.pdf` }
+}
+
+async function conferirAnexoComIa(id: string, anexoId: string, companyId: string, idDoAutor: string) {
+  const relatorio = await servicoDeConferenciaArquivo.conferirAnexoComIa(id, anexoId, companyId)
+
+  await repositorioDePedidosCompra.salvarRelatorioConferenciaAnexo(anexoId, relatorio)
+
+  await registrarAuditoria({
+    usuarioId: idDoAutor,
+    acao: 'conferir_anexo_ia',
+    entidade: 'pedido_compra',
+    entidadeId: id,
+    valoresDepois: { anexoId, statusGeral: relatorio.statusGeral, provider: relatorio.provider },
+  })
+
+  return relatorio
+}
+
 async function baixarCreditoNaEntrada(pedidoCompraId: string, companyId: string) {
   return clientePrisma.$transaction(async (tx) => {
     const pedido = await tx.pedidoCompra.findFirst({
@@ -437,4 +574,11 @@ export const servicoDePedidosCompra = {
   compararComPdf,
   historicoProduto,
   baixarCreditoNaEntrada,
+  liberarParaPortalFornecedor,
+  bloquearPortalFornecedor,
+  aprovarAnexoFornecedor,
+  solicitarAjusteAnexoFornecedor,
+  baixarAnexoFornecedor,
+  baixarRelatorioConferenciaAnexo,
+  conferirAnexoComIa,
 }

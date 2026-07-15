@@ -6,6 +6,7 @@ import {
   textoCadastroObrigatorio,
   textoCadastroOpcional,
 } from '../../compartilhado/normalizacao/esquema-texto-cadastro.js'
+import { esquemaRelatorioConferenciaArquivo } from './conferencia-arquivo/tipos-conferencia.js'
 
 const decimalObrigatorio = z.union([z.number(), z.string()]).transform((v) => {
   const n = typeof v === 'number' ? v : Number(String(v).replace(',', '.'))
@@ -223,9 +224,15 @@ export const esquemaCompararPdf = z.object({
   base64Pdf: z.string().min(100, 'PDF inválido'),
 })
 
+export const esquemaSolicitarAjusteAnexo = z.object({
+  motivo: textoCadastroObrigatorio(3, 500),
+  relatorio: esquemaRelatorioConferenciaArquivo.optional(),
+})
+
 export type DadosParaCriarPedidoCompra = z.infer<typeof esquemaDeCriacaoDePedidoCompra>
 export type DadosParaEditarPedidoCompra = z.infer<typeof esquemaDeEdicaoDePedidoCompra>
 export type DadosConferenciaEntrada = z.infer<typeof esquemaConferenciaEntrada>
 export type DadosCancelarPedidoCompra = z.infer<typeof esquemaCancelarPedidoCompra>
 export type DadosCompararPdf = z.infer<typeof esquemaCompararPdf>
+export type DadosSolicitarAjusteAnexo = z.infer<typeof esquemaSolicitarAjusteAnexo>
 export type PrazoPagamento = z.infer<typeof esquemaPrazoPagamento>

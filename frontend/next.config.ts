@@ -37,6 +37,13 @@ if (
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: diretorioFrontend,
+  // Default do proxy interno do Next é 30s (hardcoded) — insuficiente para a
+  // conferência por IA, que pode levar bem mais que isso com retry + fallback
+  // de modelo (ver src/compartilhado/ia/provedor-resiliente.ts). Pior caso hoje:
+  // 2x timeout de 60s no modelo principal + 1x timeout de 60s no fallback = ~182s.
+  experimental: {
+    proxyTimeout: 200_000,
+  },
   env: {
     NEXT_PUBLIC_API_URL: urlPublicaDaApi || process.env.NEXT_PUBLIC_API_URL,
     NEXT_PUBLIC_APP_URL:

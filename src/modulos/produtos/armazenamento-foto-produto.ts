@@ -18,6 +18,19 @@ export function urlPublicaFoto(
   return `/uploads/produtos/${companyId}/${produtoId}/${arquivo}`
 }
 
+/**
+ * Reconstrói o caminho absoluto no disco a partir da URL pública gerada por
+ * urlPublicaFoto. Usado pelo gerador de PDF do relatório de conferência, que
+ * só tem a URL (persistida dentro do relatório salvo) e não os IDs separados.
+ */
+export function caminhoAbsolutoPorUrlPublica(url: string): string | null {
+  const prefixo = '/uploads/produtos/'
+  if (!url.startsWith(prefixo)) return null
+  const partes = url.slice(prefixo.length).split('/')
+  if (partes.length < 2) return null
+  return path.join(PASTA_UPLOADS, ...partes)
+}
+
 function extrairBufferDeDataUrl(dataUrl: string): Buffer {
   const match = dataUrl.match(/^data:image\/\w+;base64,(.+)$/)
   if (!match) {

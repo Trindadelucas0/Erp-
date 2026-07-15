@@ -44,7 +44,8 @@ clienteHttp.interceptors.response.use(
       if (
         erro.response?.status === 401 &&
         !window.location.pathname.includes('/login') &&
-        !window.location.pathname.startsWith('/assinatura')
+        !window.location.pathname.startsWith('/assinatura') &&
+        !window.location.pathname.startsWith('/portal-fornecedor')
       ) {
         limparSessaoLocal()
         window.location.href = '/login'

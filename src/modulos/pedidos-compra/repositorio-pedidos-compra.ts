@@ -11,18 +11,30 @@ import type {
   DadosParaCriarPedidoCompra,
   DadosParaEditarPedidoCompra,
 } from './esquema-pedidos-compra.js'
+import type { RelatorioConferenciaArquivo } from './conferencia-arquivo/tipos-conferencia.js'
 
 const includeCompleto = {
-  fornecedor: { select: { id: true, nome: true } },
+  fornecedor: { select: { id: true, nome: true, cnpj: true } },
   transportadora: { select: { id: true, nome: true } },
   itens: {
     include: {
       produto: {
-        select: { id: true, nomeVenda: true, sku: true, marca: true, unidade: true, ativo: true },
+        select: {
+          id: true,
+          nomeVenda: true,
+          sku: true,
+          marca: true,
+          unidade: true,
+          ativo: true,
+          codigoBarras: true,
+          codigoOrigem: true,
+          fotos: { where: { tipo: 'miniatura' }, select: { arquivo: true }, take: 1 },
+        },
       },
     },
     orderBy: { ordem: 'asc' as const },
   },
+  anexosFornecedor: { orderBy: { enviadoEm: 'desc' as const } },
 } as const
 
 type PedidoDb = Prisma.PedidoCompraGetPayload<{ include: typeof includeCompleto }>
@@ -37,6 +49,9 @@ function mapearItem(item: PedidoDb['itens'][number]) {
     produtoSku: item.produto.sku,
     produtoMarca: item.produto.marca,
     produtoAtivo: item.produto.ativo,
+    produtoCodigoBarras: item.produto.codigoBarras,
+    produtoCodigoOrigem: item.produto.codigoOrigem,
+    produtoFotoArquivo: item.produto.fotos.length > 0 ? item.produto.fotos[0].arquivo : null,
     codigoOriginal: item.codigoOriginal,
     quantidade: Number(item.quantidade),
     unidade: item.unidade,
@@ -86,6 +101,20 @@ function mapearPedido(pedido: PedidoDb) {
         ? totalPedido + frete - Number(pedido.creditoAplicado)
         : totalPedido + frete,
     itens,
+    portalLiberadoEm: pedido.portalLiberadoEm,
+    portalBloqueadoEm: pedido.portalBloqueadoEm,
+    anexosFornecedor: pedido.anexosFornecedor.map((anexo) => ({
+      id: anexo.id,
+      nomeArquivo: anexo.nomeArquivo,
+      mimeType: anexo.mimeType,
+      tamanhoBytes: anexo.tamanhoBytes,
+      enviadoEm: anexo.enviadoEm,
+      statusConferencia: anexo.statusConferencia,
+      motivoAjuste: anexo.motivoAjuste,
+      decididoEm: anexo.decididoEm,
+      relatorioConferencia:
+        (anexo.relatorioConferenciaJson as unknown as RelatorioConferenciaArquivo | null) ?? null,
+    })),
     createdAt: pedido.createdAt,
     updatedAt: pedido.updatedAt,
   }
@@ -501,6 +530,16 @@ async function historicoComprasProduto(produtoId: string, companyId: string) {
   }))
 }
 
+async function salvarRelatorioConferenciaAnexo(
+  anexoId: string,
+  relatorio: RelatorioConferenciaArquivo
+) {
+  return clientePrisma.pedidoCompraAnexoFornecedor.update({
+    where: { id: anexoId },
+    data: { relatorioConferenciaJson: relatorio },
+  })
+}
+
 export const repositorioDePedidosCompra = {
   listarPorEmpresa,
   buscarPorId,
@@ -508,6 +547,7 @@ export const repositorioDePedidosCompra = {
   copiar,
   atualizar,
   cancelar,
+  salvarRelatorioConferenciaAnexo,
   listarCreditosFornecedor,
   listarPendenciasFornecedor,
   listarUltimasEntradasFornecedor,

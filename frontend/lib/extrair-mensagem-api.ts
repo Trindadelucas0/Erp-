@@ -23,19 +23,34 @@ export function extrairMensagemApi(erro: unknown, mensagemPadrao: string): strin
     if (dados.message) return dados.message
   }
 
-  if (typeof dados === 'string' && dados.trim() && dados.length <= 300) {
-    return dados
+  // ECONNRESET/socket hang up e 500 sem corpo estruturado (ex.: página de erro
+  // genérica do proxy do Next) devem usar a mensagem amigável abaixo, mesmo
+  // quando o corpo da resposta é uma string curta como "Internal Server Error" —
+  // por isso essas checagens vêm antes do fallback de string genérica.
+  if (
+    axiosErro.code === 'ECONNRESET' ||
+    axiosErro.message?.toLowerCase().includes('socket hang up')
+  ) {
+    return 'A API interrompeu a operação antes de responder. Verifique o terminal da API e tente novamente.'
   }
 
   const status = axiosErro.response?.status
   if (status === 401) return 'Sessão expirada. Faça login novamente.'
   if (status === 403) return 'Sem permissão para realizar esta ação.'
   if (status === 404) {
-    return 'Rota da API não encontrada. Reinicie o servidor backend (npm run dev).'
+    return mensagemPadrao || 'Não encontramos o item solicitado. Atualize a página e tente novamente.'
   }
   if (status === 502 || status === 503) {
     return 'Servidor ZapSign indisponível. Tente novamente em instantes.'
   }
+  if (status === 500) {
+    return 'A API interrompeu a operação antes de responder. Verifique o terminal da API e tente novamente.'
+  }
+
+  if (typeof dados === 'string' && dados.trim() && dados.length <= 300) {
+    return dados
+  }
+
   if (status) {
     return `Erro ${status}: ${axiosErro.response?.statusText || mensagemPadrao}`
   }

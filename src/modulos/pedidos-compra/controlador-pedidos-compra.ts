@@ -2,6 +2,7 @@
  * Controlador de pedidos de compra.
  */
 import { FastifyReply, FastifyRequest } from 'fastify'
+import { readFile } from 'node:fs/promises'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { servicoDePedidosCompra } from './servico-pedidos-compra.js'
 import { parsearStatusesQuery } from './filtro-status-pedido.js'
@@ -11,6 +12,7 @@ import {
   esquemaConferenciaEntrada,
   esquemaDeCriacaoDePedidoCompra,
   esquemaDeEdicaoDePedidoCompra,
+  esquemaSolicitarAjusteAnexo,
 } from './esquema-pedidos-compra.js'
 
 async function listarPedidosCompra(requisicao: FastifyRequest, resposta: FastifyReply) {
@@ -179,6 +181,102 @@ async function historicoProduto(requisicao: FastifyRequest, resposta: FastifyRep
   return resposta.send({ historico })
 }
 
+async function liberarParaPortalFornecedor(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id } = requisicao.params as { id: string }
+  const companyId = requisicao.empresaAtivaId || ''
+  const resultado = await servicoDePedidosCompra.liberarParaPortalFornecedor(
+    id,
+    companyId,
+    requisicao.idDoUsuario!
+  )
+  return resposta.send(resultado)
+}
+
+async function bloquearPortalFornecedor(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id } = requisicao.params as { id: string }
+  const companyId = requisicao.empresaAtivaId || ''
+  await servicoDePedidosCompra.bloquearPortalFornecedor(id, companyId, requisicao.idDoUsuario!)
+  return resposta.send({ sucesso: true })
+}
+
+async function aprovarAnexoFornecedor(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id, anexoId } = requisicao.params as { id: string; anexoId: string }
+  const companyId = requisicao.empresaAtivaId || ''
+  const resultado = await servicoDePedidosCompra.aprovarAnexoFornecedor(
+    id,
+    anexoId,
+    companyId,
+    requisicao.idDoUsuario!
+  )
+  return resposta.send(resultado)
+}
+
+async function solicitarAjusteAnexoFornecedor(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id, anexoId } = requisicao.params as { id: string; anexoId: string }
+  const resultado = esquemaSolicitarAjusteAnexo.safeParse(requisicao.body)
+  if (!resultado.success) {
+    throw new ErroDaAplicacao(resultado.error.errors[0].message, 400)
+  }
+
+  const companyId = requisicao.empresaAtivaId || ''
+  const resultadoAjuste = await servicoDePedidosCompra.solicitarAjusteAnexoFornecedor(
+    id,
+    anexoId,
+    companyId,
+    requisicao.idDoUsuario!,
+    resultado.data.motivo,
+    resultado.data.relatorio
+  )
+  return resposta.send(resultadoAjuste)
+}
+
+async function baixarAnexoFornecedor(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id, anexoId } = requisicao.params as { id: string; anexoId: string }
+  const companyId = requisicao.empresaAtivaId || ''
+  const { caminhoAbsoluto, nomeArquivo, mimeType } = await servicoDePedidosCompra.baixarAnexoFornecedor(
+    id,
+    anexoId,
+    companyId
+  )
+
+  const buffer = await readFile(caminhoAbsoluto)
+  resposta.header('Content-Disposition', `attachment; filename="${nomeArquivo}"`)
+  return resposta.type(mimeType).send(buffer)
+}
+
+async function baixarRelatorioConferenciaAnexo(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id, anexoId } = requisicao.params as { id: string; anexoId: string }
+  const companyId = requisicao.empresaAtivaId || ''
+  const { buffer, nomeArquivo } = await servicoDePedidosCompra.baixarRelatorioConferenciaAnexo(
+    id,
+    anexoId,
+    companyId
+  )
+
+  resposta.header('Content-Disposition', `attachment; filename="${nomeArquivo}"`)
+  return resposta.type('application/pdf').send(buffer)
+}
+
+async function conferirAnexoComIa(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id, anexoId } = requisicao.params as { id: string; anexoId: string }
+  const companyId = requisicao.empresaAtivaId || ''
+  try {
+    const relatorio = await servicoDePedidosCompra.conferirAnexoComIa(
+      id,
+      anexoId,
+      companyId,
+      requisicao.idDoUsuario!
+    )
+    return resposta.send({ relatorio })
+  } catch (erro) {
+    if (erro instanceof ErroDaAplicacao) {
+      return resposta.status(erro.codigoHttp).send({ mensagem: erro.message })
+    }
+    requisicao.log.error(erro)
+    return resposta.status(500).send({ mensagem: 'Erro inesperado ao conferir o documento com a IA.' })
+  }
+}
+
 export const controladorDePedidosCompra = {
   listarPedidosCompra,
   buscarPedidoCompra,
@@ -190,4 +288,11 @@ export const controladorDePedidosCompra = {
   conferirEntrada,
   compararPdf,
   historicoProduto,
+  liberarParaPortalFornecedor,
+  bloquearPortalFornecedor,
+  aprovarAnexoFornecedor,
+  solicitarAjusteAnexoFornecedor,
+  baixarAnexoFornecedor,
+  baixarRelatorioConferenciaAnexo,
+  conferirAnexoComIa,
 }
