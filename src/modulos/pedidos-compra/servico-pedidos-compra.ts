@@ -10,9 +10,10 @@ import { conferirPedidoCompraComEntrada } from './conferencia-po-entrada.js'
 import { compararPedidoComPdf } from './comparador-pdf-pedido.js'
 import { baixarReservaPedido } from './servico-movimentacao-credito.js'
 import { servicoDoPortalFornecedor } from '../portal-fornecedor/servico-portal-fornecedor.js'
-import { caminhoAbsolutoAnexo } from '../portal-fornecedor/armazenamento-anexo-fornecedor.js'
+import { caminhoAbsolutoAnexo, salvarBufferAnexoFornecedor } from '../portal-fornecedor/armazenamento-anexo-fornecedor.js'
 import { servicoDeConferenciaArquivo } from './conferencia-arquivo/servico-conferencia-arquivo.js'
 import { gerarPdfRelatorioConferencia } from './conferencia-arquivo/gerador-pdf-relatorio-conferencia.js'
+import { nomeArquivoCopiaConferenciaIa } from './conferencia-arquivo/nome-arquivo-copia-conferencia-ia.js'
 import {
   calcularTotalLiquidoPedido,
   normalizarPrazosPagamento,
@@ -29,6 +30,7 @@ import type {
   DadosConferenciaEntrada,
 } from './esquema-pedidos-compra.js'
 import type { RelatorioConferenciaArquivo } from './conferencia-arquivo/tipos-conferencia.js'
+import type { DadosUploadPortalFornecedor } from '../portal-fornecedor/esquema-portal-fornecedor.js'
 
 async function validarFornecedor(fornecedorPessoaId: string, companyId: string) {
   const pessoa = await clientePrisma.pessoa.findFirst({
@@ -202,7 +204,7 @@ async function editarPedidoCompra(
     throw new ErroDaAplicacao('Pedido de compra não encontrado', 404)
   }
 
-  if (existente.status === 'cancelado' || existente.status === 'recebido') {
+  if (['cancelado', 'recebido', 'aprovado'].includes(existente.status)) {
     throw new ErroDaAplicacao('Pedido não pode ser editado neste status', 400)
   }
 
@@ -301,7 +303,25 @@ async function editarPedidoCompra(
     valoresDepois: { numero: pedido.numero, status: pedido.status },
   })
 
-  return pedido
+  // Ao concluir o pedido pela primeira vez, libera o portal e avisa o fornecedor
+  // automaticamente — evita depender de um segundo clique manual em "Liberar para fornecedor".
+  let avisoPortal: { avisoEmailEnviado: boolean; mensagemAviso?: string } | undefined
+  if (novoStatus === 'enviado' && !existente.portalLiberadoEm) {
+    try {
+      avisoPortal = await servicoDoPortalFornecedor.liberarParaFornecedor(id, companyId)
+      await registrarAuditoria({
+        usuarioId: idDoAutor,
+        acao: 'liberar_portal',
+        entidade: 'pedido_compra',
+        entidadeId: id,
+        valoresDepois: { avisoEmailEnviado: avisoPortal.avisoEmailEnviado, automatico: true },
+      })
+    } catch (erro) {
+      avisoPortal = { avisoEmailEnviado: false, mensagemAviso: (erro as Error).message }
+    }
+  }
+
+  return { ...pedido, avisoPortal }
 }
 
 async function cancelarPedidoCompra(
@@ -331,6 +351,40 @@ async function cancelarPedidoCompra(
     entidade: 'pedido_compra',
     entidadeId: id,
     valoresDepois: { motivo },
+  })
+
+  return pedido
+}
+
+async function aprovarPedidoCompra(id: string, companyId: string, idDoAutor: string) {
+  const existente = await repositorioDePedidosCompra.buscarPorId(id)
+  if (!existente || existente.companyId !== companyId) {
+    throw new ErroDaAplicacao('Pedido de compra não encontrado', 404)
+  }
+
+  if (existente.status !== 'enviado') {
+    throw new ErroDaAplicacao('Só é possível aprovar pedidos com status Enviado', 400)
+  }
+
+  const temAnexoAprovado = existente.anexosFornecedor.some(
+    (anexo) =>
+      anexo.tipoAnexo === 'documento_fornecedor' && anexo.statusConferencia === 'aprovado'
+  )
+  if (!temAnexoAprovado) {
+    throw new ErroDaAplicacao(
+      'Aprove ao menos um documento do fornecedor antes de aprovar o pedido.',
+      400
+    )
+  }
+
+  const pedido = await repositorioDePedidosCompra.aprovar(id)
+
+  await registrarAuditoria({
+    usuarioId: idDoAutor,
+    acao: 'aprovar_pedido',
+    entidade: 'pedido_compra',
+    entidadeId: id,
+    valoresDepois: { numero: pedido.numero, status: pedido.status },
   })
 
   return pedido
@@ -432,6 +486,25 @@ async function liberarParaPortalFornecedor(id: string, companyId: string, idDoAu
   return resultado
 }
 
+async function enviarAnexoFornecedor(
+  id: string,
+  companyId: string,
+  idDoAutor: string,
+  arquivo: DadosUploadPortalFornecedor
+) {
+  const resultado = await servicoDoPortalFornecedor.registrarUploadInterno(id, companyId, arquivo)
+
+  await registrarAuditoria({
+    usuarioId: idDoAutor,
+    acao: 'enviar_anexo_fornecedor_interno',
+    entidade: 'pedido_compra',
+    entidadeId: id,
+    valoresDepois: { anexoId: resultado.anexo.id, nomeArquivo: resultado.anexo.nomeArquivo },
+  })
+
+  return resultado
+}
+
 async function bloquearPortalFornecedor(id: string, companyId: string, idDoAutor: string) {
   await servicoDoPortalFornecedor.bloquearPortal(id, companyId)
 
@@ -441,6 +514,33 @@ async function bloquearPortalFornecedor(id: string, companyId: string, idDoAutor
     entidade: 'pedido_compra',
     entidadeId: id,
   })
+}
+
+async function voltarPedidoParaRascunho(id: string, companyId: string, idDoAutor: string) {
+  const existente = await repositorioDePedidosCompra.buscarPorId(id)
+  if (!existente || existente.companyId !== companyId) {
+    throw new ErroDaAplicacao('Pedido de compra não encontrado', 404)
+  }
+
+  if (existente.status !== 'enviado') {
+    throw new ErroDaAplicacao(
+      'Só é possível voltar para rascunho pedidos com status Enviado.',
+      400
+    )
+  }
+
+  const pedido = await repositorioDePedidosCompra.voltarParaRascunho(id)
+  await servicoDoPortalFornecedor.bloquearPortal(id, companyId)
+
+  await registrarAuditoria({
+    usuarioId: idDoAutor,
+    acao: 'voltar_para_rascunho',
+    entidade: 'pedido_compra',
+    entidadeId: id,
+    valoresDepois: { statusAnterior: 'enviado', status: 'rascunho', portalBloqueado: true },
+  })
+
+  return pedido
 }
 
 async function aprovarAnexoFornecedor(
@@ -460,6 +560,23 @@ async function aprovarAnexoFornecedor(
   })
 
   return resultado
+}
+
+async function excluirAnexoFornecedor(
+  id: string,
+  anexoId: string,
+  companyId: string,
+  idDoAutor: string
+) {
+  await servicoDoPortalFornecedor.excluirAnexo(id, anexoId, companyId)
+
+  await registrarAuditoria({
+    usuarioId: idDoAutor,
+    acao: 'excluir_anexo_fornecedor',
+    entidade: 'pedido_compra',
+    entidadeId: id,
+    valoresDepois: { anexoId },
+  })
 }
 
 async function solicitarAjusteAnexoFornecedor(
@@ -534,9 +651,40 @@ async function baixarRelatorioConferenciaAnexo(id: string, anexoId: string, comp
 }
 
 async function conferirAnexoComIa(id: string, anexoId: string, companyId: string, idDoAutor: string) {
-  const relatorio = await servicoDeConferenciaArquivo.conferirAnexoComIa(id, anexoId, companyId)
+  const pedido = await repositorioDePedidosCompra.buscarPorId(id)
+  if (!pedido || pedido.companyId !== companyId) {
+    throw new ErroDaAplicacao('Pedido de compra não encontrado', 404)
+  }
 
-  await repositorioDePedidosCompra.salvarRelatorioConferenciaAnexo(anexoId, relatorio)
+  const anexo = pedido.anexosFornecedor.find((a) => a.id === anexoId)
+  if (!anexo) {
+    throw new ErroDaAplicacao('Anexo não encontrado', 404)
+  }
+  if (anexo.tipoAnexo === 'relatorio_conferencia_ia') {
+    throw new ErroDaAplicacao('Relatórios de conferência não podem ser conferidos com a IA.', 422)
+  }
+
+  const relatorio = await servicoDeConferenciaArquivo.conferirAnexoComIa(id, anexoId, companyId)
+  const conferidoEm = new Date()
+
+  await repositorioDePedidosCompra.salvarRelatorioConferenciaAnexo(anexoId, relatorio, conferidoEm)
+
+  const bufferPdf = await gerarPdfRelatorioConferencia(relatorio, {
+    numeroPedido: pedido.numero,
+    nomeArquivo: anexo.nomeArquivo,
+    statusConferencia: anexo.statusConferencia as 'pendente' | 'aprovado' | 'ajuste_solicitado',
+    motivoAjuste: anexo.motivoAjuste,
+  })
+
+  const { caminhoArquivo, tamanhoBytes } = await salvarBufferAnexoFornecedor(id, bufferPdf, '.pdf')
+  await repositorioDePedidosCompra.criarAnexoRelatorioConferencia({
+    pedidoCompraId: id,
+    anexoOrigemId: anexoId,
+    nomeArquivo: nomeArquivoCopiaConferenciaIa(anexo.nomeArquivo, conferidoEm),
+    caminhoArquivo,
+    tamanhoBytes,
+    enviadoEm: conferidoEm,
+  })
 
   await registrarAuditoria({
     usuarioId: idDoAutor,
@@ -569,14 +717,18 @@ export const servicoDePedidosCompra = {
   copiarPedidoCompra,
   editarPedidoCompra,
   cancelarPedidoCompra,
+  aprovarPedidoCompra,
   obterContextoFornecedor,
   conferirComEntrada,
   compararComPdf,
   historicoProduto,
   baixarCreditoNaEntrada,
   liberarParaPortalFornecedor,
+  enviarAnexoFornecedor,
   bloquearPortalFornecedor,
+  voltarPedidoParaRascunho,
   aprovarAnexoFornecedor,
+  excluirAnexoFornecedor,
   solicitarAjusteAnexoFornecedor,
   baixarAnexoFornecedor,
   baixarRelatorioConferenciaAnexo,

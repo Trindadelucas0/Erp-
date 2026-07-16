@@ -3,6 +3,7 @@ import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 export const STATUSES_PEDIDO_PERMITIDOS = [
   'rascunho',
   'enviado',
+  'aprovado',
   'parcial',
   'recebido',
   'cancelado',

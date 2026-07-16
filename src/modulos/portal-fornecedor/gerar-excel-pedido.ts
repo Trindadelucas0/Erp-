@@ -1,5 +1,8 @@
 /**
  * Gera o .xlsx do pedido de compra para o fornecedor baixar no portal.
+ * Não mostra preço — só os dados necessários para o fornecedor montar o
+ * documento oficial (código de barras, código original, produto, unidade
+ * e quantidade).
  */
 import ExcelJS from 'exceljs'
 import type { PedidoCompraView } from '../pedidos-compra/repositorio-pedidos-compra.js'
@@ -19,28 +22,23 @@ export async function gerarExcelPedidoCompra(pedido: PedidoCompraView): Promise<
   planilha.addRow([])
 
   const linhaCabecalho = planilha.addRow([
-    'Código',
+    'Código de barras',
+    'Código original',
     'Produto',
     'Unidade',
     'Quantidade',
-    'Preço unitário',
-    'Total',
   ])
   linhaCabecalho.font = { bold: true }
 
   for (const item of pedido.itens) {
     planilha.addRow([
+      item.produtoCodigoBarras ?? '',
       item.codigoOriginal ?? item.produtoSku ?? '',
       item.produtoNome,
       item.unidade,
       item.quantidade,
-      item.precoUnitario,
-      item.totalLiquido,
     ])
   }
-
-  planilha.addRow([])
-  planilha.addRow(['', '', '', '', 'Total do pedido', pedido.totalLiquido])
 
   planilha.columns.forEach((coluna) => {
     coluna.width = 24

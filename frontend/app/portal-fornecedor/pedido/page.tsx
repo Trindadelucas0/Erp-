@@ -5,39 +5,30 @@
  * Mostra itens/condições do pedido, permite baixar o Excel e enviar o
  * documento oficial do fornecedor (PDF/XLSX/XLS/CSV) para conferência.
  */
-import { ChangeEvent, FormEvent, useCallback, useEffect, useState } from 'react'
+import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { clienteHttp } from '@/services/api'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
-import { BadgeStatus } from '@/components/ui/badge-status'
 import {
-  RelatorioConferenciaVisual,
-  type RelatorioConferencia,
-} from '@/components/conferencia-arquivo/relatorio-conferencia-visual'
+  CardDocumentoFornecedor,
+  formatarDataHoraDocumento,
+  rotuloStatusConferencia,
+} from '@/components/pedidos-compra/lista-documentos-fornecedor'
 import { limparTokenPortalFornecedor, obterTokenPortalFornecedor } from '@/lib/portal-fornecedor'
+import { validarArquivoAnexoFornecedor } from '@/lib/anexo-fornecedor'
 import { resolverUrlUpload } from '@/lib/resolver-url-upload'
 import { cn } from '@/lib/utils'
 
 type StatusConferenciaAnexo = 'pendente' | 'aprovado' | 'ajuste_solicitado'
 
-const ROTULO_STATUS_CONFERENCIA: Record<
-  StatusConferenciaAnexo,
-  { texto: string; variante: 'ativo' | 'pendente' | 'reprovado' }
-> = {
-  pendente: { texto: 'Em conferência', variante: 'pendente' },
-  aprovado: { texto: 'Aprovado', variante: 'ativo' },
-  ajuste_solicitado: { texto: 'Ajuste solicitado', variante: 'reprovado' },
-}
-
 type ItemPedidoPortal = {
-  codigo: string | null
+  codigoOriginal: string | null
+  codigoBarras: string | null
   produtoNome: string
   unidade: string
   quantidade: number
-  precoUnitario: number
-  total: number
   urlFotoMiniatura: string | null
 }
 
@@ -47,7 +38,6 @@ type AnexoPortal = {
   enviadoEm: string
   statusConferencia: StatusConferenciaAnexo
   motivoAjuste: string | null
-  temRelatorioPdf: boolean
 }
 
 type PedidoPortal = {
@@ -72,10 +62,6 @@ function extrairErro(erro: unknown, padrao: string): string {
   return padrao
 }
 
-function formatarMoeda(valor: number): string {
-  return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
-
 function lerArquivoComoBase64(arquivo: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -96,10 +82,7 @@ export default function PaginaPedidoPortalFornecedor() {
   const [arquivo, setArquivo] = useState<File | null>(null)
   const [enviandoUpload, setEnviandoUpload] = useState(false)
   const [mensagemUpload, setMensagemUpload] = useState('')
-  const [relatorioAbertoId, setRelatorioAbertoId] = useState<string | null>(null)
-  const [relatorios, setRelatorios] = useState<Record<string, RelatorioConferencia>>({})
-  const [carregandoRelatorioId, setCarregandoRelatorioId] = useState<string | null>(null)
-  const [erroRelatorio, setErroRelatorio] = useState('')
+  const inputArquivoRef = useRef<HTMLInputElement>(null)
 
   const carregarPedido = useCallback(async () => {
     const token = obterTokenPortalFornecedor()
@@ -133,65 +116,22 @@ export default function PaginaPedidoPortalFornecedor() {
     router.replace('/portal-fornecedor/login')
   }
 
-  async function baixarExcel() {
+  async function baixarArquivoDoPedido(formato: 'excel' | 'pdf') {
     const token = obterTokenPortalFornecedor()
     if (!token) return
-    const resposta = await clienteHttp.get('/portal-fornecedor/pedido/excel', {
+    const extensao = formato === 'excel' ? 'xlsx' : 'pdf'
+    const resposta = await clienteHttp.get(`/portal-fornecedor/pedido/${formato}`, {
       headers: { 'X-Portal-Token': token },
       responseType: 'blob',
     })
     const url = window.URL.createObjectURL(new Blob([resposta.data]))
     const link = document.createElement('a')
     link.href = url
-    link.download = `pedido-${pedido?.numero ?? ''}.xlsx`
+    link.download = `pedido-${pedido?.numero ?? ''}.${extensao}`
     document.body.appendChild(link)
     link.click()
     link.remove()
     window.URL.revokeObjectURL(url)
-  }
-
-  async function baixarRelatorioConferencia(anexo: AnexoPortal) {
-    const token = obterTokenPortalFornecedor()
-    if (!token) return
-    const resposta = await clienteHttp.get(
-      `/portal-fornecedor/anexos/${anexo.id}/relatorio-pdf`,
-      { headers: { 'X-Portal-Token': token }, responseType: 'blob' }
-    )
-    const url = window.URL.createObjectURL(new Blob([resposta.data]))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `relatorio-conferencia-pedido-${pedido?.numero ?? ''}.pdf`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    window.URL.revokeObjectURL(url)
-  }
-
-  async function alternarRelatorio(anexo: AnexoPortal) {
-    if (relatorioAbertoId === anexo.id) {
-      setRelatorioAbertoId(null)
-      return
-    }
-
-    setRelatorioAbertoId(anexo.id)
-    setErroRelatorio('')
-
-    if (relatorios[anexo.id]) return
-
-    const token = obterTokenPortalFornecedor()
-    if (!token) return
-
-    setCarregandoRelatorioId(anexo.id)
-    try {
-      const { data } = await clienteHttp.get(`/portal-fornecedor/anexos/${anexo.id}/relatorio-json`, {
-        headers: { 'X-Portal-Token': token },
-      })
-      setRelatorios((atual) => ({ ...atual, [anexo.id]: data.relatorio }))
-    } catch (e) {
-      setErroRelatorio(extrairErro(e, 'Erro ao carregar o relatório da conferência.'))
-    } finally {
-      setCarregandoRelatorioId(null)
-    }
   }
 
   function aoSelecionarArquivo(evento: ChangeEvent<HTMLInputElement>) {
@@ -204,6 +144,12 @@ export default function PaginaPedidoPortalFornecedor() {
     const token = obterTokenPortalFornecedor()
     if (!token || !arquivo) return
 
+    const validacao = validarArquivoAnexoFornecedor(arquivo.name, arquivo.type)
+    if ('erro' in validacao) {
+      setErro(validacao.erro)
+      return
+    }
+
     setEnviandoUpload(true)
     setMensagemUpload('')
     setErro('')
@@ -211,11 +157,12 @@ export default function PaginaPedidoPortalFornecedor() {
       const base64Arquivo = await lerArquivoComoBase64(arquivo)
       await clienteHttp.post(
         '/portal-fornecedor/upload',
-        { nomeArquivo: arquivo.name, mimeType: arquivo.type, base64Arquivo },
+        { nomeArquivo: arquivo.name, mimeType: validacao.mimeType, base64Arquivo },
         { headers: { 'X-Portal-Token': token } }
       )
       setMensagemUpload('Documento enviado com sucesso. Nossa equipe vai conferir em breve.')
       setArquivo(null)
+      if (inputArquivoRef.current) inputArquivoRef.current.value = ''
       await carregarPedido()
     } catch (e) {
       setErro(extrairErro(e, 'Erro ao enviar o documento.'))
@@ -277,21 +224,25 @@ export default function PaginaPedidoPortalFornecedor() {
       <CardPadrao
         titulo="Itens"
         acoes={
-          <Button variant="outline" size="sm" onClick={baixarExcel}>
-            Baixar Excel
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => baixarArquivoDoPedido('pdf')}>
+              Baixar PDF
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => baixarArquivoDoPedido('excel')}>
+              Baixar Excel
+            </Button>
+          </div>
         }
       >
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b text-left text-muted-foreground">
-                <th className="w-24 py-2 pr-2">Código</th>
+                <th className="w-32 py-2 pr-2">Código de barras</th>
+                <th className="w-24 py-2 pr-2">Código original</th>
                 <th className="py-2 pr-2">Produto</th>
                 <th className="w-16 py-2 pr-2">Un.</th>
-                <th className="w-20 py-2 pr-2 text-right">Qtd.</th>
-                <th className="w-28 py-2 pr-2 text-right">Preço unit.</th>
-                <th className="w-28 py-2 text-right">Total</th>
+                <th className="w-20 py-2 text-right">Qtd.</th>
               </tr>
             </thead>
             <tbody>
@@ -299,7 +250,8 @@ export default function PaginaPedidoPortalFornecedor() {
                 const urlFoto = resolverUrlUpload(item.urlFotoMiniatura)
                 return (
                 <tr key={indice} className="border-b last:border-0">
-                  <td className="whitespace-nowrap py-2 pr-2">{item.codigo ?? '—'}</td>
+                  <td className="whitespace-nowrap py-2 pr-2">{item.codigoBarras ?? '—'}</td>
+                  <td className="whitespace-nowrap py-2 pr-2">{item.codigoOriginal ?? '—'}</td>
                   <td className="min-w-0 py-2 pr-2">
                     <div className="flex items-center gap-2">
                       {urlFoto ? (
@@ -319,11 +271,7 @@ export default function PaginaPedidoPortalFornecedor() {
                     </div>
                   </td>
                   <td className="whitespace-nowrap py-2 pr-2">{item.unidade}</td>
-                  <td className="whitespace-nowrap py-2 pr-2 text-right">{item.quantidade}</td>
-                  <td className="whitespace-nowrap py-2 pr-2 text-right">
-                    {formatarMoeda(item.precoUnitario)}
-                  </td>
-                  <td className="whitespace-nowrap py-2 text-right">{formatarMoeda(item.total)}</td>
+                  <td className="whitespace-nowrap py-2 text-right">{item.quantidade}</td>
                 </tr>
                 )
               })}
@@ -337,12 +285,28 @@ export default function PaginaPedidoPortalFornecedor() {
         descricao="Envie o pedido, nota ou proposta oficial (PDF, XLSX, XLS ou CSV) para conferência"
       >
         <form onSubmit={enviarDocumento} className="space-y-3">
-          <input
-            type="file"
-            accept=".pdf,.xlsx,.xls,.csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
-            onChange={aoSelecionarArquivo}
-            className="block w-full text-sm"
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              ref={inputArquivoRef}
+              type="file"
+              accept=".pdf,.xlsx,.xls,.csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+              onChange={aoSelecionarArquivo}
+              className="hidden"
+              disabled={enviandoUpload}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={enviandoUpload}
+              onClick={() => inputArquivoRef.current?.click()}
+            >
+              Escolher arquivo
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              {arquivo ? arquivo.name : 'Nenhum arquivo escolhido'}
+            </span>
+          </div>
 
           {erro && <p className="text-sm text-destructive">{erro}</p>}
           {mensagemUpload && <p className="text-sm text-primary">{mensagemUpload}</p>}
@@ -353,55 +317,29 @@ export default function PaginaPedidoPortalFornecedor() {
         </form>
 
         {pedido.anexos.length > 0 && (
-          <div className="mt-4 space-y-2 border-t pt-3 text-sm">
-            <p className="font-medium">Documentos já enviados</p>
-            {pedido.anexos.map((anexo) => (
-              <div key={anexo.id} className="space-y-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-muted-foreground">
-                    {anexo.nomeArquivo} — {new Date(anexo.enviadoEm).toLocaleString('pt-BR')}
-                  </span>
-                  <BadgeStatus variante={ROTULO_STATUS_CONFERENCIA[anexo.statusConferencia].variante}>
-                    {ROTULO_STATUS_CONFERENCIA[anexo.statusConferencia].texto}
-                  </BadgeStatus>
-                </div>
-                {anexo.statusConferencia === 'ajuste_solicitado' && anexo.motivoAjuste && (
-                  <p className="rounded-md bg-destructive/10 px-3 py-2 text-destructive">
-                    Motivo do ajuste: {anexo.motivoAjuste}
-                  </p>
-                )}
-                {anexo.temRelatorioPdf && (
-                  <div className="flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      className="text-primary hover:underline"
-                      onClick={() => alternarRelatorio(anexo)}
-                    >
-                      {relatorioAbertoId === anexo.id ? 'Ocultar relatório da conferência' : 'Ver relatório da conferência'}
-                    </button>
-                    <button
-                      type="button"
-                      className="text-primary hover:underline"
-                      onClick={() => baixarRelatorioConferencia(anexo)}
-                    >
-                      Baixar PDF
-                    </button>
-                  </div>
-                )}
-
-                {relatorioAbertoId === anexo.id && (
-                  <div className="mt-2 space-y-3 rounded-md border p-3">
-                    {carregandoRelatorioId === anexo.id && (
-                      <p className="text-muted-foreground">Carregando relatório...</p>
-                    )}
-                    {erroRelatorio && carregandoRelatorioId !== anexo.id && !relatorios[anexo.id] && (
-                      <p className="text-destructive">{erroRelatorio}</p>
-                    )}
-                    {relatorios[anexo.id] && <RelatorioConferenciaVisual relatorio={relatorios[anexo.id]} />}
-                  </div>
-                )}
-              </div>
-            ))}
+          <div className="mt-4 space-y-3 border-t pt-3">
+            <p className="text-sm font-medium">Documentos já enviados</p>
+            {[...pedido.anexos]
+              .sort((a, b) => {
+                const aAprovado = a.statusConferencia === 'aprovado' ? 0 : 1
+                const bAprovado = b.statusConferencia === 'aprovado' ? 0 : 1
+                if (aAprovado !== bAprovado) return aAprovado - bAprovado
+                return new Date(b.enviadoEm).getTime() - new Date(a.enviadoEm).getTime()
+              })
+              .map((anexo) => (
+                <CardDocumentoFornecedor
+                  key={anexo.id}
+                  nomeArquivo={anexo.nomeArquivo}
+                  metadados={`enviado ${formatarDataHoraDocumento(anexo.enviadoEm)}`}
+                  status={rotuloStatusConferencia(anexo.statusConferencia, {
+                    contexto: 'portal',
+                  })}
+                  destaque={anexo.statusConferencia === 'aprovado'}
+                  motivoAjuste={
+                    anexo.statusConferencia === 'ajuste_solicitado' ? anexo.motivoAjuste : null
+                  }
+                />
+              ))}
           </div>
         )}
       </CardPadrao>

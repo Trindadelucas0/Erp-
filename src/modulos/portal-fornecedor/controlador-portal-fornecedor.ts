@@ -45,23 +45,12 @@ async function baixarExcelPedido(requisicao: FastifyRequest, resposta: FastifyRe
     .send(buffer)
 }
 
-async function baixarRelatorioConferencia(requisicao: FastifyRequest, resposta: FastifyReply) {
+async function baixarPdfPedido(requisicao: FastifyRequest, resposta: FastifyReply) {
   const token = extrairTokenDaSessao(requisicao)
-  const { anexoId } = requisicao.params as { anexoId: string }
-  const { buffer, nomeArquivo } = await servicoDoPortalFornecedor.baixarRelatorioConferenciaAnexo(
-    token,
-    anexoId
-  )
+  const { buffer, nomeArquivo } = await servicoDoPortalFornecedor.gerarPdfPedido(token)
 
   resposta.header('Content-Disposition', `attachment; filename="${nomeArquivo}"`)
   return resposta.type('application/pdf').send(buffer)
-}
-
-async function buscarRelatorioConferencia(requisicao: FastifyRequest, resposta: FastifyReply) {
-  const token = extrairTokenDaSessao(requisicao)
-  const { anexoId } = requisicao.params as { anexoId: string }
-  const dados = await servicoDoPortalFornecedor.buscarRelatorioConferenciaAnexo(token, anexoId)
-  return resposta.send(dados)
 }
 
 async function upload(requisicao: FastifyRequest, resposta: FastifyReply) {
@@ -79,7 +68,6 @@ export const controladorDoPortalFornecedor = {
   login,
   buscarPedido,
   baixarExcelPedido,
-  baixarRelatorioConferencia,
-  buscarRelatorioConferencia,
+  baixarPdfPedido,
   upload,
 }

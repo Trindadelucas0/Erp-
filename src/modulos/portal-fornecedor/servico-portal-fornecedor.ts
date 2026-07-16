@@ -5,8 +5,9 @@
  */
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { repositorioDoPortalFornecedor } from './repositorio-portal-fornecedor.js'
-import { salvarAnexoFornecedor } from './armazenamento-anexo-fornecedor.js'
+import { salvarAnexoFornecedor, removerAnexoFornecedor } from './armazenamento-anexo-fornecedor.js'
 import { gerarExcelPedidoCompra } from './gerar-excel-pedido.js'
+import { gerarPdfPedidoCompra } from './gerar-pdf-pedido.js'
 import { repositorioDePedidosCompra } from '../pedidos-compra/repositorio-pedidos-compra.js'
 import { servicoDeNotificacoesEmail } from '../notificacoes-email/servico-notificacoes-email.js'
 import {
@@ -19,7 +20,6 @@ import type {
   DadosUploadPortalFornecedor,
 } from './esquema-portal-fornecedor.js'
 import type { RelatorioConferenciaArquivo } from '../pedidos-compra/conferencia-arquivo/tipos-conferencia.js'
-import { gerarPdfRelatorioConferencia } from '../pedidos-compra/conferencia-arquivo/gerador-pdf-relatorio-conferencia.js'
 import { urlPublicaFoto } from '../produtos/armazenamento-foto-produto.js'
 
 async function login(dados: DadosLoginPortalFornecedor) {
@@ -86,23 +86,23 @@ function mapearPedidoParaPortal(pedido: PedidoCompletoPortal) {
     observacoes: pedido.observacoes,
     status: pedido.status,
     itens: pedido.itens.map((item) => ({
-      codigo: item.codigoOriginal ?? item.produto.sku ?? null,
+      codigoOriginal: item.codigoOriginal ?? item.produto.sku ?? null,
+      codigoBarras: item.produto.codigoBarras,
       produtoNome: item.produto.nomeVenda,
       unidade: item.unidade,
       quantidade: Number(item.quantidade),
-      precoUnitario: Number(item.precoUnitario),
-      total: Number(item.totalLiquido ?? item.total),
       urlFotoMiniatura: item.produto.fotos[0]
         ? urlPublicaFoto(pedido.companyId, item.produtoId, item.produto.fotos[0].arquivo)
         : null,
     })),
-    anexos: pedido.anexosFornecedor.map((anexo) => ({
+    anexos: pedido.anexosFornecedor
+      .filter((anexo) => anexo.tipoAnexo === 'documento_fornecedor')
+      .map((anexo) => ({
       id: anexo.id,
       nomeArquivo: anexo.nomeArquivo,
       enviadoEm: anexo.enviadoEm,
       statusConferencia: anexo.statusConferencia,
       motivoAjuste: anexo.motivoAjuste,
-      temRelatorioPdf: anexo.statusConferencia === 'ajuste_solicitado' && !!anexo.relatorioConferenciaJson,
     })),
   }
 }
@@ -122,6 +122,13 @@ async function gerarExcelPedido(token: string) {
   const pedidoView = repositorioDePedidosCompra.mapearPedido(pedidoDbCompleto)
   const buffer = await gerarExcelPedidoCompra(pedidoView)
   return { buffer, nomeArquivo: `pedido-${pedido.numero}.xlsx` }
+}
+
+async function gerarPdfPedido(token: string) {
+  const pedido = await pedidoDaSessaoValida(token)
+  const pedidoView = mapearPedidoParaPortal(pedido)
+  const buffer = await gerarPdfPedidoCompra(pedidoView)
+  return { buffer, nomeArquivo: `pedido-${pedido.numero}.pdf` }
 }
 
 async function registrarUpload(token: string, arquivo: DadosUploadPortalFornecedor) {
@@ -154,6 +161,33 @@ async function registrarUpload(token: string, arquivo: DadosUploadPortalForneced
     anexo: { id: anexo.id, nomeArquivo: anexo.nomeArquivo, enviadoEm: anexo.enviadoEm },
     avisoEmailEnviado: avisoEmail.sucesso,
   }
+}
+
+async function registrarUploadInterno(
+  pedidoCompraId: string,
+  companyId: string,
+  arquivo: DadosUploadPortalFornecedor
+) {
+  const pedido = await repositorioDoPortalFornecedor.buscarPedidoParaLiberar(pedidoCompraId, companyId)
+  if (!pedido) {
+    throw new ErroDaAplicacao('Pedido de compra não encontrado', 404)
+  }
+
+  const { caminhoArquivo, tamanhoBytes } = await salvarAnexoFornecedor(
+    pedidoCompraId,
+    arquivo.mimeType,
+    arquivo.base64Arquivo
+  )
+
+  const anexo = await repositorioDoPortalFornecedor.criarAnexo({
+    pedidoCompraId,
+    nomeArquivo: arquivo.nomeArquivo,
+    mimeType: arquivo.mimeType,
+    caminhoArquivo,
+    tamanhoBytes,
+  })
+
+  return { anexo: { id: anexo.id, nomeArquivo: anexo.nomeArquivo, enviadoEm: anexo.enviadoEm } }
 }
 
 async function liberarParaFornecedor(pedidoCompraId: string, companyId: string) {
@@ -247,6 +281,20 @@ async function aprovarAnexo(pedidoCompraId: string, anexoId: string, companyId: 
   }
 }
 
+async function excluirAnexo(pedidoCompraId: string, anexoId: string, companyId: string) {
+  const { anexo } = await validarAnexoDoPedido(pedidoCompraId, anexoId, companyId)
+
+  if (anexo.statusConferencia === 'aprovado') {
+    throw new ErroDaAplicacao(
+      'Documento já aprovado não pode ser excluído. Solicite ajuste para substituí-lo.',
+      400
+    )
+  }
+
+  await removerAnexoFornecedor(anexo.caminhoArquivo)
+  await repositorioDoPortalFornecedor.excluirAnexo(anexoId)
+}
+
 async function solicitarAjusteAnexo(
   pedidoCompraId: string,
   anexoId: string,
@@ -282,55 +330,16 @@ async function solicitarAjusteAnexo(
   }
 }
 
-async function buscarRelatorioValidado(token: string, anexoId: string) {
-  const pedido = await pedidoDaSessaoValida(token)
-
-  const anexo = await repositorioDoPortalFornecedor.buscarAnexoPorId(anexoId)
-  if (!anexo || anexo.pedidoCompraId !== pedido.id) {
-    throw new ErroDaAplicacao('Anexo não encontrado', 404)
-  }
-
-  if (anexo.statusConferencia !== 'ajuste_solicitado' || !anexo.relatorioConferenciaJson) {
-    throw new ErroDaAplicacao('Relatório da conferência não disponível para este documento.', 404)
-  }
-
-  const relatorio = anexo.relatorioConferenciaJson as unknown as RelatorioConferenciaArquivo
-  return { pedido, anexo, relatorio }
-}
-
-async function baixarRelatorioConferenciaAnexo(token: string, anexoId: string) {
-  const { pedido, anexo, relatorio } = await buscarRelatorioValidado(token, anexoId)
-
-  const buffer = await gerarPdfRelatorioConferencia(relatorio, {
-    numeroPedido: pedido.numero,
-    nomeArquivo: anexo.nomeArquivo,
-    statusConferencia: anexo.statusConferencia as 'pendente' | 'aprovado' | 'ajuste_solicitado',
-    motivoAjuste: anexo.motivoAjuste,
-  })
-
-  return { buffer, nomeArquivo: `relatorio-conferencia-pedido-${pedido.numero}.pdf` }
-}
-
-async function buscarRelatorioConferenciaAnexo(token: string, anexoId: string) {
-  const { pedido, anexo, relatorio } = await buscarRelatorioValidado(token, anexoId)
-
-  return {
-    relatorio,
-    numeroPedido: pedido.numero,
-    nomeArquivo: anexo.nomeArquivo,
-    motivoAjuste: anexo.motivoAjuste,
-  }
-}
-
 export const servicoDoPortalFornecedor = {
   login,
   buscarPedidoParaPortal,
   gerarExcelPedido,
+  gerarPdfPedido,
   registrarUpload,
+  registrarUploadInterno,
   liberarParaFornecedor,
   bloquearPortal,
   aprovarAnexo,
+  excluirAnexo,
   solicitarAjusteAnexo,
-  baixarRelatorioConferenciaAnexo,
-  buscarRelatorioConferenciaAnexo,
 }

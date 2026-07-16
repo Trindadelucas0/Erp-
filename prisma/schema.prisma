@@ -694,12 +694,16 @@ model PedidoCompraAnexoFornecedor {
   caminhoArquivo           String
   tamanhoBytes             Int
   enviadoEm                DateTime     @default(now())
+  tipoAnexo                String       @default("documento_fornecedor")
+  anexoOrigemId            String?
   statusConferencia        String       @default("pendente")
   motivoAjuste             String?
   decididoEm               DateTime?
+  conferidoEm              DateTime?
   relatorioConferenciaJson Json?
 
   @@index([pedidoCompraId])
+  @@index([anexoOrigemId])
 }
 
 model PedidoCompraItem {

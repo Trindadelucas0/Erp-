@@ -86,7 +86,7 @@ export function Modal({
     >
       <div
         className={cn(
-          'flex w-full min-w-0 flex-col',
+          'flex w-full min-w-0 flex-col overflow-hidden',
           larguras[largura],
           'max-h-[100dvh] max-h-[90vh] rounded-lg border border-border bg-card shadow-xl'
         )}
@@ -115,7 +115,7 @@ export function Modal({
         {/* Conteúdo rolável */}
         <div
           className={cn(
-            'min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-3 sm:px-6 sm:py-4',
+            'min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-3 sm:px-6 sm:py-4',
             alturaMinimaConteudo && classeAlturaMinima
           )}
         >

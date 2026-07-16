@@ -2,10 +2,9 @@
 
 /**
  * Visual do relatório de conferência (KPIs, avisos, divergências de
- * cabeçalho e tabela de itens com foto do produto). Compartilhado entre o
- * modal "Conferir com IA" do ERP e a seção de relatório no portal do
- * fornecedor — não inclui ações de decisão (Aprovar/Solicitar ajuste),
- * que são exclusivas do ERP.
+ * cabeçalho e tabela de itens com foto do produto). Uso exclusivo do modal
+ * "Conferir com IA" no painel interno do ERP — o portal do fornecedor não
+ * exibe o relatório, só o motivo do ajuste em texto.
  */
 import { BadgeStatus } from '@/components/ui/badge-status'
 import { resolverUrlUpload } from '@/lib/resolver-url-upload'

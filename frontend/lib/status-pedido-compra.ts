@@ -4,6 +4,8 @@ export function rotuloStatusUi(status: string): string {
       return 'Rascunho'
     case 'enviado':
       return 'Enviado'
+    case 'aprovado':
+      return 'Aprovado'
     case 'parcial':
       return 'Recebimento parcial'
     case 'recebido':
@@ -23,6 +25,8 @@ export function varianteStatusUi(
       return 'inativo'
     case 'enviado':
       return 'aguardando'
+    case 'aprovado':
+      return 'ativo'
     case 'parcial':
       return 'pendente'
     case 'recebido':

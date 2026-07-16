@@ -49,8 +49,29 @@ export async function salvarAnexoFornecedor(
   }
 }
 
+export async function salvarBufferAnexoFornecedor(
+  pedidoCompraId: string,
+  buffer: Buffer,
+  extensao: string
+): Promise<{ caminhoArquivo: string; tamanhoBytes: number }> {
+  const pasta = pastaDoPedido(pedidoCompraId)
+  await mkdir(pasta, { recursive: true })
+
+  const nomeNoDisco = `${randomUUID()}${extensao}`
+  await writeFile(path.join(pasta, nomeNoDisco), buffer)
+
+  return {
+    caminhoArquivo: path.join(PASTA_BASE, pedidoCompraId, nomeNoDisco),
+    tamanhoBytes: buffer.length,
+  }
+}
+
 export function caminhoAbsolutoAnexo(caminhoRelativo: string): string {
   return path.join(process.cwd(), 'uploads', caminhoRelativo)
+}
+
+export async function removerAnexoFornecedor(caminhoRelativo: string): Promise<void> {
+  await rm(caminhoAbsolutoAnexo(caminhoRelativo), { force: true })
 }
 
 export async function removerPastaAnexosDoPedido(pedidoCompraId: string): Promise<void> {

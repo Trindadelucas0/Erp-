@@ -14,6 +14,7 @@ import {
   esquemaDeEdicaoDePedidoCompra,
   esquemaSolicitarAjusteAnexo,
 } from './esquema-pedidos-compra.js'
+import { esquemaUploadPortalFornecedor } from '../portal-fornecedor/esquema-portal-fornecedor.js'
 
 async function listarPedidosCompra(requisicao: FastifyRequest, resposta: FastifyReply) {
   const companyId = requisicao.empresaAtivaId || ''
@@ -135,6 +136,17 @@ async function cancelarPedidoCompra(requisicao: FastifyRequest, resposta: Fastif
   return resposta.send({ pedido })
 }
 
+async function aprovarPedidoCompra(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id } = requisicao.params as { id: string }
+  const companyId = requisicao.empresaAtivaId || ''
+  const pedido = await servicoDePedidosCompra.aprovarPedidoCompra(
+    id,
+    companyId,
+    requisicao.idDoUsuario!
+  )
+  return resposta.send({ pedido })
+}
+
 async function contextoFornecedor(requisicao: FastifyRequest, resposta: FastifyReply) {
   const { fornecedorId } = requisicao.params as { fornecedorId: string }
   const companyId = requisicao.empresaAtivaId || ''
@@ -192,11 +204,39 @@ async function liberarParaPortalFornecedor(requisicao: FastifyRequest, resposta:
   return resposta.send(resultado)
 }
 
+async function enviarAnexoFornecedor(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id } = requisicao.params as { id: string }
+  const resultado = esquemaUploadPortalFornecedor.safeParse(requisicao.body)
+  if (!resultado.success) {
+    throw new ErroDaAplicacao(resultado.error.errors[0].message, 400)
+  }
+
+  const companyId = requisicao.empresaAtivaId || ''
+  const dados = await servicoDePedidosCompra.enviarAnexoFornecedor(
+    id,
+    companyId,
+    requisicao.idDoUsuario!,
+    resultado.data
+  )
+  return resposta.status(201).send(dados)
+}
+
 async function bloquearPortalFornecedor(requisicao: FastifyRequest, resposta: FastifyReply) {
   const { id } = requisicao.params as { id: string }
   const companyId = requisicao.empresaAtivaId || ''
   await servicoDePedidosCompra.bloquearPortalFornecedor(id, companyId, requisicao.idDoUsuario!)
   return resposta.send({ sucesso: true })
+}
+
+async function voltarPedidoParaRascunho(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id } = requisicao.params as { id: string }
+  const companyId = requisicao.empresaAtivaId || ''
+  const pedido = await servicoDePedidosCompra.voltarPedidoParaRascunho(
+    id,
+    companyId,
+    requisicao.idDoUsuario!
+  )
+  return resposta.send({ pedido })
 }
 
 async function aprovarAnexoFornecedor(requisicao: FastifyRequest, resposta: FastifyReply) {
@@ -209,6 +249,13 @@ async function aprovarAnexoFornecedor(requisicao: FastifyRequest, resposta: Fast
     requisicao.idDoUsuario!
   )
   return resposta.send(resultado)
+}
+
+async function excluirAnexoFornecedor(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id, anexoId } = requisicao.params as { id: string; anexoId: string }
+  const companyId = requisicao.empresaAtivaId || ''
+  await servicoDePedidosCompra.excluirAnexoFornecedor(id, anexoId, companyId, requisicao.idDoUsuario!)
+  return resposta.send({ sucesso: true })
 }
 
 async function solicitarAjusteAnexoFornecedor(requisicao: FastifyRequest, resposta: FastifyReply) {
@@ -284,13 +331,17 @@ export const controladorDePedidosCompra = {
   copiarPedidoCompra,
   editarPedidoCompra,
   cancelarPedidoCompra,
+  aprovarPedidoCompra,
   contextoFornecedor,
   conferirEntrada,
   compararPdf,
   historicoProduto,
   liberarParaPortalFornecedor,
+  enviarAnexoFornecedor,
   bloquearPortalFornecedor,
+  voltarPedidoParaRascunho,
   aprovarAnexoFornecedor,
+  excluirAnexoFornecedor,
   solicitarAjusteAnexoFornecedor,
   baixarAnexoFornecedor,
   baixarRelatorioConferenciaAnexo,

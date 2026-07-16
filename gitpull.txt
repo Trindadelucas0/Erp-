@@ -14,6 +14,9 @@ npm run db:generate
 npm run build
 
 pm2 restart ecosystem.config.cjs
+
+pm2 restart erp-api erp-web
+
 pm2 restart all
 # --- Conferir (opcional) ---
 # npx tsx scripts/executar-prisma.ts migrate status

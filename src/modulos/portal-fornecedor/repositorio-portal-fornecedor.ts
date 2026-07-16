@@ -79,6 +79,7 @@ async function buscarPedidoCompletoPorId(pedidoCompraId: string) {
             select: {
               nomeVenda: true,
               sku: true,
+              codigoBarras: true,
               fotos: { where: { tipo: 'miniatura' }, select: { arquivo: true }, take: 1 },
             },
           },
@@ -127,6 +128,10 @@ async function aprovarAnexo(anexoId: string) {
   })
 }
 
+async function excluirAnexo(anexoId: string) {
+  return clientePrisma.pedidoCompraAnexoFornecedor.delete({ where: { id: anexoId } })
+}
+
 async function solicitarAjusteAnexo(anexoId: string, motivo: string, relatorioJson?: object) {
   return clientePrisma.pedidoCompraAnexoFornecedor.update({
     where: { id: anexoId },
@@ -151,5 +156,6 @@ export const repositorioDoPortalFornecedor = {
   bloquearPortal,
   buscarAnexoPorId,
   aprovarAnexo,
+  excluirAnexo,
   solicitarAjusteAnexo,
 }

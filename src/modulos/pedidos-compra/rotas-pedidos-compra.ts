@@ -84,6 +84,12 @@ export async function rotasDePedidosCompra(aplicacao: FastifyInstance): Promise<
   )
 
   aplicacao.post(
+    '/:id/aprovar',
+    { preHandler: [...auth, middlewareDeAutorizacao('compras:edit')] },
+    controladorDePedidosCompra.aprovarPedidoCompra
+  )
+
+  aplicacao.post(
     '/:id/copiar',
     { preHandler: [...auth, middlewareDeAutorizacao('compras:create')] },
     controladorDePedidosCompra.copiarPedidoCompra
@@ -113,10 +119,28 @@ export async function rotasDePedidosCompra(aplicacao: FastifyInstance): Promise<
     controladorDePedidosCompra.bloquearPortalFornecedor
   )
 
+  aplicacao.post(
+    '/:id/voltar-para-rascunho',
+    { preHandler: [...auth, middlewareDeAutorizacao('compras:edit')] },
+    controladorDePedidosCompra.voltarPedidoParaRascunho
+  )
+
+  aplicacao.post(
+    '/:id/anexos-fornecedor',
+    { preHandler: [...auth, middlewareDeAutorizacao('compras:edit')] },
+    controladorDePedidosCompra.enviarAnexoFornecedor
+  )
+
   aplicacao.get(
     '/:id/anexos-fornecedor/:anexoId/download',
     { preHandler: [...auth, middlewareDeAutorizacao('compras:view')] },
     controladorDePedidosCompra.baixarAnexoFornecedor
+  )
+
+  aplicacao.delete(
+    '/:id/anexos-fornecedor/:anexoId',
+    { preHandler: [...auth, middlewareDeAutorizacao('compras:edit')] },
+    controladorDePedidosCompra.excluirAnexoFornecedor
   )
 
   aplicacao.get(

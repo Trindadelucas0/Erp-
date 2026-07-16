@@ -28,11 +28,15 @@ type Props = {
   relatorioInicial?: RelatorioConferencia | null
   aoFechar: () => void
   aoDecidir: () => void
+  aoConferirConcluida: () => void
 }
 
-const ROTULO_STATUS_DECISAO: Record<StatusConferenciaAnexo, { texto: string; variante: 'ativo' | 'pendente' | 'reprovado' }> = {
-  pendente: { texto: 'Pendente de decisão', variante: 'pendente' },
-  aprovado: { texto: 'Aprovado', variante: 'ativo' },
+const ROTULO_STATUS_DECISAO: Record<
+  StatusConferenciaAnexo,
+  { texto: string; variante: 'ativo' | 'pendente' | 'reprovado' | 'sucesso' }
+> = {
+  pendente: { texto: 'Em conferência', variante: 'pendente' },
+  aprovado: { texto: 'Aprovado', variante: 'sucesso' },
   ajuste_solicitado: { texto: 'Ajuste solicitado', variante: 'reprovado' },
 }
 
@@ -60,6 +64,7 @@ export function ModalConferenciaIa({
   relatorioInicial,
   aoFechar,
   aoDecidir,
+  aoConferirConcluida,
 }: Props) {
   const [carregando, setCarregando] = useState(false)
   const [progresso, setProgresso] = useState(0)
@@ -91,7 +96,6 @@ export function ModalConferenciaIa({
 
   function fechar() {
     setErro('')
-    setRelatorio(null)
     setMostrandoSenha(false)
     setMostrandoFormAjuste(false)
     setMotivoDigitado('')
@@ -115,6 +119,7 @@ export function ModalConferenciaIa({
       )
       setProgresso(100)
       setRelatorio(data.relatorio)
+      aoConferirConcluida()
     } catch (e: unknown) {
       setProgresso(100)
       setErro(extrairMensagemApi(e, 'Erro ao conferir o documento com a IA.'))
@@ -206,7 +211,7 @@ export function ModalConferenciaIa({
       titulo="Conferir com IA"
       descricao={`Documento: ${nomeArquivo}`}
       largura="4xl"
-      alturaMinimaConteudo="lg"
+      alturaMinimaConteudo={carregando || relatorio ? 'lg' : undefined}
       rodape={
         <div className="flex w-full justify-end gap-2">
           <Button type="button" variant="outline" onClick={fechar} disabled={carregando}>

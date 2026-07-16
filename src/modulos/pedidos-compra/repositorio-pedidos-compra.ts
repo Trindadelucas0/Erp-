@@ -109,9 +109,12 @@ function mapearPedido(pedido: PedidoDb) {
       mimeType: anexo.mimeType,
       tamanhoBytes: anexo.tamanhoBytes,
       enviadoEm: anexo.enviadoEm,
+      tipoAnexo: anexo.tipoAnexo,
+      anexoOrigemId: anexo.anexoOrigemId,
       statusConferencia: anexo.statusConferencia,
       motivoAjuste: anexo.motivoAjuste,
       decididoEm: anexo.decididoEm,
+      conferidoEm: anexo.conferidoEm,
       relatorioConferencia:
         (anexo.relatorioConferenciaJson as unknown as RelatorioConferenciaArquivo | null) ?? null,
     })),
@@ -235,9 +238,9 @@ async function listarPorEmpresa(
   if (filtros?.statusIn?.length) {
     where.status = { in: filtros.statusIn }
   } else if (filtros?.statusAberto) {
-    where.status = { in: ['rascunho', 'enviado', 'parcial'] }
+    where.status = { in: ['rascunho', 'enviado', 'aprovado', 'parcial'] }
   } else if (filtros?.status === 'feito') {
-    where.status = { in: ['enviado', 'parcial', 'recebido'] }
+    where.status = { in: ['enviado', 'aprovado', 'parcial', 'recebido'] }
   } else if (filtros?.status) {
     where.status = filtros.status
   }
@@ -460,6 +463,26 @@ async function cancelar(id: string, motivo: string) {
   })
 }
 
+async function aprovar(id: string) {
+  const pedido = await clientePrisma.pedidoCompra.update({
+    where: { id },
+    data: { status: 'aprovado' },
+    include: includeCompleto,
+  })
+
+  return mapearPedido(pedido)
+}
+
+async function voltarParaRascunho(id: string) {
+  const pedido = await clientePrisma.pedidoCompra.update({
+    where: { id },
+    data: { status: 'rascunho' },
+    include: includeCompleto,
+  })
+
+  return mapearPedido(pedido)
+}
+
 async function listarCreditosFornecedor(companyId: string, fornecedorPessoaId: string) {
   return clientePrisma.creditoFornecedor.findMany({
     where: { companyId, fornecedorPessoaId, saldo: { gt: 0 } },
@@ -504,7 +527,7 @@ async function historicoComprasProduto(produtoId: string, companyId: string) {
       produtoId,
       pedidoCompra: {
         companyId,
-        status: { in: ['recebido', 'parcial', 'enviado'] },
+        status: { in: ['recebido', 'parcial', 'enviado', 'aprovado'] },
       },
     },
     include: {
@@ -532,11 +555,35 @@ async function historicoComprasProduto(produtoId: string, companyId: string) {
 
 async function salvarRelatorioConferenciaAnexo(
   anexoId: string,
-  relatorio: RelatorioConferenciaArquivo
+  relatorio: RelatorioConferenciaArquivo,
+  conferidoEm: Date
 ) {
   return clientePrisma.pedidoCompraAnexoFornecedor.update({
     where: { id: anexoId },
-    data: { relatorioConferenciaJson: relatorio },
+    data: { relatorioConferenciaJson: relatorio, conferidoEm },
+  })
+}
+
+async function criarAnexoRelatorioConferencia(dados: {
+  pedidoCompraId: string
+  anexoOrigemId: string
+  nomeArquivo: string
+  caminhoArquivo: string
+  tamanhoBytes: number
+  enviadoEm: Date
+}) {
+  return clientePrisma.pedidoCompraAnexoFornecedor.create({
+    data: {
+      pedidoCompraId: dados.pedidoCompraId,
+      anexoOrigemId: dados.anexoOrigemId,
+      nomeArquivo: dados.nomeArquivo,
+      mimeType: 'application/pdf',
+      caminhoArquivo: dados.caminhoArquivo,
+      tamanhoBytes: dados.tamanhoBytes,
+      enviadoEm: dados.enviadoEm,
+      tipoAnexo: 'relatorio_conferencia_ia',
+      statusConferencia: 'pendente',
+    },
   })
 }
 
@@ -547,7 +594,10 @@ export const repositorioDePedidosCompra = {
   copiar,
   atualizar,
   cancelar,
+  aprovar,
+  voltarParaRascunho,
   salvarRelatorioConferenciaAnexo,
+  criarAnexoRelatorioConferencia,
   listarCreditosFornecedor,
   listarPendenciasFornecedor,
   listarUltimasEntradasFornecedor,

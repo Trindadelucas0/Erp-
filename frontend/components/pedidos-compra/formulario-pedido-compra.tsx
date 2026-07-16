@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft,
@@ -15,11 +15,11 @@ import { BlocoPagamentoPrazos, type PrazoPagamento } from '@/components/pedidos-
 import { ComboboxPessoa } from '@/components/pedidos-compra/combobox-pessoa'
 import { LancamentoItensPedido } from '@/components/pedidos-compra/lancamento-itens-pedido'
 import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
+import { ModalConferenciaIa } from '@/components/pedidos-compra/modal-conferencia-ia'
 import {
-  ModalConferenciaIa,
-  type StatusConferenciaAnexo,
-  type RelatorioConferencia,
-} from '@/components/pedidos-compra/modal-conferencia-ia'
+  AbaAvaliacaoPedido,
+  type AnexoFornecedor,
+} from '@/components/pedidos-compra/aba-avaliacao-pedido'
 import { clienteHttp } from '@/services/api'
 import { usePermissao } from '@/hooks/use-permissao'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
@@ -34,6 +34,7 @@ import { cn } from '@/lib/utils'
 import { BadgeStatus } from '@/components/ui/badge-status'
 import { Abas } from '@/components/ui/abas'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
+import { validarArquivoAnexoFornecedor } from '@/lib/anexo-fornecedor'
 import {
   montarPrazosParaPayload,
   prazosValoresIguais,
@@ -73,6 +74,7 @@ import {
   aplicarModalidadeTransportePadraoNoForm,
   parseNum,
   pedidoEditavel,
+  pedidoExibeAbaAvaliacao,
   pendenciaVazia,
   substituirItemProdutoNosItens,
   validarCamposObrigatoriosLancamento,
@@ -86,23 +88,6 @@ import {
 import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
 import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
 import { ordenarLista } from '@/lib/ordenacao-lista'
-
-type AnexoFornecedor = {
-  id: string
-  nomeArquivo: string
-  mimeType: string
-  tamanhoBytes: number
-  enviadoEm: string
-  statusConferencia: StatusConferenciaAnexo
-  motivoAjuste: string | null
-  relatorioConferencia: RelatorioConferencia | null
-}
-
-const ROTULO_STATUS_CONFERENCIA: Record<StatusConferenciaAnexo, { texto: string; variante: 'ativo' | 'pendente' | 'reprovado' }> = {
-  pendente: { texto: 'Pendente de decisão', variante: 'pendente' },
-  aprovado: { texto: 'Aprovado', variante: 'ativo' },
-  ajuste_solicitado: { texto: 'Ajuste solicitado', variante: 'reprovado' },
-}
 
 type Props = {
   modo: ModoPedidoCompra
@@ -144,8 +129,10 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   const [portalBloqueadoEm, setPortalBloqueadoEm] = useState<string | null>(null)
   const [anexosFornecedor, setAnexosFornecedor] = useState<AnexoFornecedor[]>([])
   const [liberandoPortal, setLiberandoPortal] = useState(false)
-  const [bloqueandoPortal, setBloqueandoPortal] = useState(false)
+  const [voltandoParaRascunho, setVoltandoParaRascunho] = useState(false)
   const [mensagemPortal, setMensagemPortal] = useState('')
+  const [mensagemDocumentos, setMensagemDocumentos] = useState('')
+  const [enviandoAnexo, setEnviandoAnexo] = useState(false)
   const [anexoEmConferencia, setAnexoEmConferencia] = useState<AnexoFornecedor | null>(null)
   const [form, setForm] = useState(formVazio)
   const [salvando, setSalvando] = useState(false)
@@ -157,8 +144,11 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   const [historicoProdutos, setHistoricoProdutos] = useState<Record<string, HistoricoCompra[]>>({})
   const { ordenacao: ordenacaoHistorico, alternarOrdenacao: alternarOrdenacaoHistorico } =
     useOrdenacaoColunas<'pedido' | 'fornecedor' | 'data' | 'quantidade' | 'preco' | 'custo'>()
-  const [abaAtiva, setAbaAtiva] = useState<'dados-gerais' | 'itens' | 'pagamento'>('dados-gerais')
+  const [abaAtiva, setAbaAtiva] = useState<'dados-gerais' | 'itens' | 'pagamento' | 'avaliacao'>(
+    'dados-gerais'
+  )
   const requisicaoContextoRef = useRef(0)
+  const abaInicialDefinidaRef = useRef(false)
   const deveAplicarPrazosFornecedorRef = useRef(false)
   const formRef = useRef(form)
   const produtosRef = useRef(produtos)
@@ -166,7 +156,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   produtosRef.current = produtos
 
   const modoEdicao = modo !== 'novo'
-  const pedidoBloqueado = modoEdicao && ['cancelado', 'recebido'].includes(form.status)
+  const pedidoBloqueado = modoEdicao && ['cancelado', 'recebido', 'aprovado'].includes(form.status)
   const modoVisualizacao =
     modo === 'visualizar' || (modo === 'editar' && (!pedidoEditavel(form.status) || !podeEditar))
   const somenteLeitura = modoVisualizacao || pedidoBloqueado
@@ -176,6 +166,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   const podeCancelarPedido = modoEdicao && podeCancelar && pedidoEditavel(form.status)
   const statusExibido = modoEdicao ? form.status : 'rascunho'
   const idAtual = pedidoId ?? ''
+  const exibeAbaAvaliacao = modoEdicao && pedidoExibeAbaAvaliacao(form.status)
 
   const carregarCatalogos = useCallback(async () => {
     try {
@@ -287,22 +278,22 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
       const { data } = await clienteHttp.get(`/pedidos-compra/${id}`)
       const p = data.pedido
       const modalidadeTransporte = normalizarModalidadeTransporte(p.modalidadeTransporte)
-      const exibeDadosTransporte = exigeDadosTransporte(modalidadeTransporte)
+      // Não zerar frete/transportadora no estado: a UI já oculta quando CIF.
+      deveAplicarPrazosFornecedorRef.current = false
       setNumeroPedido(p.numero)
       setPortalLiberadoEm(p.portalLiberadoEm ?? null)
       setPortalBloqueadoEm(p.portalBloqueadoEm ?? null)
       setAnexosFornecedor(p.anexosFornecedor ?? [])
       setForm({
         fornecedorPessoaId: p.fornecedorPessoaId,
-        transportadoraPessoaId: exibeDadosTransporte ? (p.transportadoraPessoaId ?? '') : '',
+        transportadoraPessoaId: p.transportadoraPessoaId ?? '',
         modalidadeTransporte,
         condicaoPagamento: p.condicaoPagamento ?? '',
         tipoCompra: p.tipoCompra ?? 'revenda',
         dataFaturamento: formatarDataIso(p.dataFaturamento),
         previsaoEntrega: formatarDataIso(p.previsaoEntrega),
-        valorFrete: exibeDadosTransporte && p.valorFrete != null ? String(p.valorFrete) : '',
-        valorFreteSugerido:
-          exibeDadosTransporte && p.valorFreteSugerido != null ? String(p.valorFreteSugerido) : '0',
+        valorFrete: p.valorFrete != null ? String(p.valorFrete) : '',
+        valorFreteSugerido: p.valorFreteSugerido != null ? String(p.valorFreteSugerido) : '0',
         rateioParcelas: p.rateioParcelas ?? 'igual',
         prazos: Array.isArray(p.prazosPagamento) && p.prazosPagamento.length > 0
           ? mapearPrazosDoPedido(p.prazosPagamento as PrazoPagamento[], formatarDataIso(p.dataFaturamento))
@@ -343,6 +334,14 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
           void carregarHistoricoProduto(item.produtoId)
         }
       }
+      // Ao abrir um pedido já enviado ao fornecedor, foca direto na avaliação —
+      // é o que o comprador precisa resolver, sem depender do fornecedor conferir antes.
+      if (!abaInicialDefinidaRef.current) {
+        abaInicialDefinidaRef.current = true
+        if (p.status === 'enviado') {
+          setAbaAtiva('avaliacao')
+        }
+      }
       return p
     },
     [carregarHistoricoProduto]
@@ -368,18 +367,93 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     }
   }
 
-  async function bloquearPortalFornecedor() {
+  async function voltarPedidoParaRascunho() {
     if (!pedidoId) return
-    setBloqueandoPortal(true)
+    setVoltandoParaRascunho(true)
     setMensagemPortal('')
     try {
-      await clienteHttp.post(`/pedidos-compra/${pedidoId}/bloquear-portal`)
-      setPortalBloqueadoEm(new Date().toISOString())
-      setMensagemPortal('Portal bloqueado. O fornecedor não consegue mais acessar este pedido.')
+      const { data } = await clienteHttp.post(`/pedidos-compra/${pedidoId}/voltar-para-rascunho`)
+      const p = data.pedido as {
+        status?: string
+        portalLiberadoEm?: string | null
+        portalBloqueadoEm?: string | null
+        anexosFornecedor?: AnexoFornecedor[]
+      } | undefined
+      // Preserva o formulário atual — só sincroniza status/portal (e anexos se vierem).
+      setForm((f) => ({ ...f, status: p?.status ?? 'rascunho' }))
+      if (p?.portalLiberadoEm !== undefined) {
+        setPortalLiberadoEm(p.portalLiberadoEm ?? null)
+      }
+      setPortalBloqueadoEm(p?.portalBloqueadoEm ?? new Date().toISOString())
+      if (Array.isArray(p?.anexosFornecedor)) {
+        setAnexosFornecedor(p.anexosFornecedor)
+      }
+      setAbaAtiva('dados-gerais')
+      setMensagemPainelFornecedor(
+        'Pedido voltou para rascunho. O portal do fornecedor foi bloqueado — libere novamente após concluir.'
+      )
     } catch (e: unknown) {
-      setMensagemPortal(extrairMensagemApi(e, 'Erro ao bloquear o portal do fornecedor.'))
+      setMensagemPortal(extrairMensagemApi(e, 'Erro ao voltar o pedido para rascunho.'))
     } finally {
-      setBloqueandoPortal(false)
+      setVoltandoParaRascunho(false)
+    }
+  }
+
+  function lerArquivoComoBase64(arquivo: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const resultado = reader.result as string
+        resolve(resultado.includes(',') ? resultado.split(',')[1] : resultado)
+      }
+      reader.onerror = () => reject(new Error('Erro ao ler arquivo'))
+      reader.readAsDataURL(arquivo)
+    })
+  }
+
+  async function enviarAnexoFornecedorInterno(e: ChangeEvent<HTMLInputElement>) {
+    const arquivo = e.target.files?.[0]
+    e.target.value = ''
+    if (!arquivo || !pedidoId) return
+
+    const validacao = validarArquivoAnexoFornecedor(arquivo.name, arquivo.type)
+    if ('erro' in validacao) {
+      setMensagemDocumentos(validacao.erro)
+      return
+    }
+
+    setEnviandoAnexo(true)
+    setMensagemDocumentos('')
+    try {
+      const base64Arquivo = await lerArquivoComoBase64(arquivo)
+      const { data } = await clienteHttp.post(`/pedidos-compra/${pedidoId}/anexos-fornecedor`, {
+        nomeArquivo: arquivo.name,
+        mimeType: validacao.mimeType,
+        base64Arquivo,
+      })
+      setAnexosFornecedor((atual) => [
+        {
+          id: data.anexo.id,
+          nomeArquivo: data.anexo.nomeArquivo,
+          mimeType: validacao.mimeType,
+          tamanhoBytes: arquivo.size,
+          enviadoEm: data.anexo.enviadoEm,
+          tipoAnexo: 'documento_fornecedor',
+          anexoOrigemId: null,
+          conferidoEm: null,
+          statusConferencia: 'pendente',
+          motivoAjuste: null,
+          relatorioConferencia: null,
+        },
+        ...atual,
+      ])
+      setMensagemDocumentos(
+        'Documento anexado. Você pode baixar, aprovar, solicitar ajuste ou conferir com IA (opcional).'
+      )
+    } catch (erro: unknown) {
+      setMensagemDocumentos(extrairMensagemApi(erro, 'Erro ao enviar o documento.'))
+    } finally {
+      setEnviandoAnexo(false)
     }
   }
 
@@ -397,6 +471,15 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     link.click()
     link.remove()
     window.URL.revokeObjectURL(url)
+  }
+
+  function removerAnexoDaLista(anexoId: string) {
+    setAnexosFornecedor((atual) => atual.filter((a) => a.id !== anexoId))
+  }
+
+  async function aoAprovarPedido() {
+    if (!pedidoId) return
+    await carregarPedidoNoForm(pedidoId)
   }
 
   useEffect(() => {
@@ -673,7 +756,6 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
       rateioParcelas: form.rateioParcelas,
       observacoes: form.observacoes || undefined,
       observacoesInternas: form.observacoesInternas || undefined,
-      descricao: '',
       concluir,
       creditoFornecedorId: form.creditoFornecedorId || null,
       creditoAplicado:
@@ -701,13 +783,37 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     try {
       const payload = montarPayload(concluir)
       if (modoEdicao && idAtual) {
-        await clienteHttp.put(`/pedidos-compra/${idAtual}`, payload)
-        voltarParaLista(`${formatarPedido(numeroPedido ?? 0)} atualizado.`)
+        const { data } = await clienteHttp.put(`/pedidos-compra/${idAtual}`, payload)
+        const avisoPortal = data?.pedido?.avisoPortal as
+          | { avisoEmailEnviado: boolean; mensagemAviso?: string }
+          | undefined
+        if (concluir) {
+          abaInicialDefinidaRef.current = true
+          await carregarPedidoNoForm(idAtual)
+          setAbaAtiva('avaliacao')
+          if (avisoPortal) {
+            setMensagemPortal(
+              avisoPortal.avisoEmailEnviado
+                ? 'Portal liberado. E-mail com CNPJ e senha enviado ao fornecedor.'
+                : `Portal liberado. ${avisoPortal.mensagemAviso ?? 'Não foi possível enviar o e-mail — avise o fornecedor manualmente.'}`
+            )
+          }
+        } else {
+          const mensagemBase = `${formatarPedido(numeroPedido ?? 0)} atualizado.`
+          const mensagem = avisoPortal
+            ? avisoPortal.avisoEmailEnviado
+              ? `${mensagemBase} Portal liberado e e-mail enviado ao fornecedor.`
+              : `${mensagemBase} Portal liberado, mas ${avisoPortal.mensagemAviso ?? 'não foi possível enviar o e-mail'}.`
+            : mensagemBase
+          voltarParaLista(mensagem)
+        }
       } else {
         const { data } = await clienteHttp.post('/pedidos-compra', payload)
-        voltarParaLista(
-          `${formatarPedido(data.pedido.numero)} criado.`
-        )
+        if (concluir && data.pedido?.id) {
+          roteador.push(`/pedidos-compra/${data.pedido.id}?modo=editar`)
+        } else {
+          voltarParaLista(`${formatarPedido(data.pedido.numero)} criado.`)
+        }
       }
     } catch (err: unknown) {
       setErro(extrairMensagemApi(err, 'Erro ao salvar pedido'))
@@ -977,88 +1083,6 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{erro}</p>
       )}
 
-      {modoEdicao && (
-        <CardPadrao
-          compacto
-          titulo="Portal do fornecedor"
-          descricao={
-            portalBloqueadoEm
-              ? `Bloqueado em ${formatarData(portalBloqueadoEm)}`
-              : portalLiberadoEm
-                ? `Liberado em ${formatarData(portalLiberadoEm)}`
-                : 'O fornecedor acessa com CNPJ + senha (número do pedido) e envia o documento oficial.'
-          }
-          acoes={
-            podeEditar &&
-            ((!portalLiberadoEm || portalBloqueadoEm) ? (
-              <BotaoPrimario type="button" onClick={liberarPortalFornecedor} disabled={liberandoPortal}>
-                {liberandoPortal ? 'Liberando...' : 'Liberar para fornecedor'}
-              </BotaoPrimario>
-            ) : (
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={bloquearPortalFornecedor}
-                disabled={bloqueandoPortal}
-              >
-                {bloqueandoPortal ? 'Bloqueando...' : 'Bloquear portal'}
-              </Button>
-            ))
-          }
-        >
-          {mensagemPortal && <p className="mb-2 text-sm text-muted-foreground">{mensagemPortal}</p>}
-          {anexosFornecedor.length > 0 ? (
-            <ul className="space-y-2 text-sm">
-              {anexosFornecedor.map((anexo) => (
-                <li key={anexo.id} className="space-y-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span className="truncate">
-                        {anexo.nomeArquivo} — {formatarData(anexo.enviadoEm)}
-                      </span>
-                      <BadgeStatus variante={ROTULO_STATUS_CONFERENCIA[anexo.statusConferencia].variante}>
-                        {ROTULO_STATUS_CONFERENCIA[anexo.statusConferencia].texto}
-                      </BadgeStatus>
-                    </span>
-                    <span className="flex shrink-0 items-center gap-3">
-                      <button
-                        type="button"
-                        className="text-primary hover:underline"
-                        onClick={() => baixarAnexoFornecedor(anexo)}
-                      >
-                        Baixar
-                      </button>
-                      {podeEditar && anexo.statusConferencia === 'pendente' && (
-                        <button
-                          type="button"
-                          className={
-                            anexo.relatorioConferencia
-                              ? 'text-muted-foreground hover:underline'
-                              : 'text-primary hover:underline'
-                          }
-                          onClick={() => setAnexoEmConferencia(anexo)}
-                        >
-                          {anexo.relatorioConferencia ? 'Conferido com IA' : 'Conferir com IA'}
-                        </button>
-                      )}
-                    </span>
-                  </div>
-                  {anexo.statusConferencia === 'ajuste_solicitado' && anexo.motivoAjuste && (
-                    <p className="text-xs text-destructive">Motivo do ajuste: {anexo.motivoAjuste}</p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            portalLiberadoEm && (
-              <p className="text-sm text-muted-foreground">
-                Nenhum documento enviado pelo fornecedor ainda.
-              </p>
-            )
-          )}
-        </CardPadrao>
-      )}
-
       <CardPadrao compacto>
         <form
           id="form-pedido-compra"
@@ -1097,11 +1121,14 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
           <Abas
             className="mb-6"
             abaAtiva={abaAtiva}
-            aoMudar={(id) => setAbaAtiva(id as 'dados-gerais' | 'itens' | 'pagamento')}
+            aoMudar={(id) =>
+              setAbaAtiva(id as 'dados-gerais' | 'itens' | 'pagamento' | 'avaliacao')
+            }
             abas={[
               { id: 'dados-gerais', rotulo: 'Dados gerais' },
               { id: 'pagamento', rotulo: 'Pagamento e prazos' },
               { id: 'itens', rotulo: 'Lançamento de produtos', contador: itensPreenchidos },
+              ...(exibeAbaAvaliacao ? [{ id: 'avaliacao', rotulo: 'Avaliação do pedido' }] : []),
             ]}
           />
 
@@ -1349,6 +1376,31 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
               onRemoverVarios={removerItensLancados}
               onSubstituirProduto={substituirProdutoLancado}
               onAbrirHistorico={abrirHistoricoProduto}
+            />
+          )}
+
+          {abaAtiva === 'avaliacao' && exibeAbaAvaliacao && idAtual && (
+            <AbaAvaliacaoPedido
+              pedidoId={idAtual}
+              status={form.status}
+              podeEditar={podeEditar}
+              portalLiberadoEm={portalLiberadoEm}
+              portalBloqueadoEm={portalBloqueadoEm}
+              anexosFornecedor={anexosFornecedor}
+              mensagemPortal={mensagemPortal}
+              mensagemDocumentos={mensagemDocumentos}
+              liberandoPortal={liberandoPortal}
+              voltandoParaRascunho={voltandoParaRascunho}
+              enviandoAnexo={enviandoAnexo}
+              formatarData={formatarData}
+              onLiberarPortal={liberarPortalFornecedor}
+              onVoltarParaRascunho={() => void voltarPedidoParaRascunho()}
+              onEnviarAnexo={enviarAnexoFornecedorInterno}
+              onBaixarAnexo={baixarAnexoFornecedor}
+              onAbrirConferencia={setAnexoEmConferencia}
+              onAnexoExcluido={removerAnexoDaLista}
+              onAnexoDecidido={() => void carregarPedidoNoForm(idAtual)}
+              onPedidoAprovado={() => void aoAprovarPedido()}
             />
           )}
 
@@ -1810,6 +1862,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
           relatorioInicial={anexoEmConferencia.relatorioConferencia}
           aoFechar={() => setAnexoEmConferencia(null)}
           aoDecidir={() => void carregarPedidoNoForm(pedidoId)}
+          aoConferirConcluida={() => void carregarPedidoNoForm(pedidoId)}
         />
       )}
     </div>

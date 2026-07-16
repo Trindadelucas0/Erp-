@@ -5,6 +5,7 @@ describe('status-pedido-compra', () => {
   it('exibe rótulos distintos por status do banco', () => {
     expect(rotuloStatusUi('rascunho')).toBe('Rascunho')
     expect(rotuloStatusUi('enviado')).toBe('Enviado')
+    expect(rotuloStatusUi('aprovado')).toBe('Aprovado')
     expect(rotuloStatusUi('parcial')).toBe('Recebimento parcial')
     expect(rotuloStatusUi('recebido')).toBe('Recebido')
     expect(rotuloStatusUi('cancelado')).toBe('Cancelado')
@@ -13,6 +14,7 @@ describe('status-pedido-compra', () => {
   it('usa variantes distintas por status', () => {
     expect(varianteStatusUi('rascunho')).toBe('inativo')
     expect(varianteStatusUi('enviado')).toBe('aguardando')
+    expect(varianteStatusUi('aprovado')).toBe('ativo')
     expect(varianteStatusUi('parcial')).toBe('pendente')
     expect(varianteStatusUi('recebido')).toBe('ativo')
     expect(varianteStatusUi('cancelado')).toBe('reprovado')
@@ -21,6 +23,7 @@ describe('status-pedido-compra', () => {
   it('permite concluir apenas rascunho', () => {
     expect(podeConcluirPedido('rascunho')).toBe(true)
     expect(podeConcluirPedido('enviado')).toBe(false)
+    expect(podeConcluirPedido('aprovado')).toBe(false)
     expect(podeConcluirPedido('parcial')).toBe(false)
     expect(podeConcluirPedido('recebido')).toBe(false)
   })

@@ -10,13 +10,6 @@ export async function rotasDoPortalFornecedor(aplicacao: FastifyInstance): Promi
   aplicacao.post('/login', controladorDoPortalFornecedor.login)
   aplicacao.get('/pedido', controladorDoPortalFornecedor.buscarPedido)
   aplicacao.get('/pedido/excel', controladorDoPortalFornecedor.baixarExcelPedido)
-  aplicacao.get(
-    '/anexos/:anexoId/relatorio-pdf',
-    controladorDoPortalFornecedor.baixarRelatorioConferencia
-  )
-  aplicacao.get(
-    '/anexos/:anexoId/relatorio-json',
-    controladorDoPortalFornecedor.buscarRelatorioConferencia
-  )
+  aplicacao.get('/pedido/pdf', controladorDoPortalFornecedor.baixarPdfPedido)
   aplicacao.post('/upload', controladorDoPortalFornecedor.upload)
 }

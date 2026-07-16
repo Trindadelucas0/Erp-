@@ -100,6 +100,7 @@ export type ModoPedidoCompra = 'novo' | 'visualizar' | 'editar'
 export type StatusPedidoFiltravel =
   | 'rascunho'
   | 'enviado'
+  | 'aprovado'
   | 'parcial'
   | 'recebido'
   | 'cancelado'
@@ -107,6 +108,7 @@ export type StatusPedidoFiltravel =
 export const STATUS_PEDIDO_FILTRAVEL = [
   { value: 'rascunho' as const, label: 'Rascunho' },
   { value: 'enviado' as const, label: 'Enviado' },
+  { value: 'aprovado' as const, label: 'Aprovado' },
   { value: 'parcial' as const, label: 'Recebimento parcial' },
   { value: 'recebido' as const, label: 'Recebido' },
   { value: 'cancelado' as const, label: 'Cancelado' },
@@ -115,6 +117,7 @@ export const STATUS_PEDIDO_FILTRAVEL = [
 export const STATUS_FILTRO_PADRAO: StatusPedidoFiltravel[] = [
   'rascunho',
   'enviado',
+  'aprovado',
   'parcial',
 ]
 
@@ -162,6 +165,7 @@ export type FiltroStatus =
   | 'aberto'
   | 'rascunho'
   | 'enviado'
+  | 'aprovado'
   | 'parcial'
   | 'recebido'
   | 'cancelado'
@@ -171,6 +175,7 @@ export const FILTRO_STATUS_OPCOES: { value: FiltroStatus; label: string }[] = [
   { value: 'aberto', label: 'Em aberto' },
   { value: 'rascunho', label: 'Rascunho' },
   { value: 'enviado', label: 'Enviado' },
+  { value: 'aprovado', label: 'Aprovado' },
   { value: 'parcial', label: 'Recebimento parcial' },
   { value: 'recebido', label: 'Recebido' },
   { value: 'cancelado', label: 'Cancelado' },
@@ -328,12 +333,15 @@ export function mapearPrazosDoPedido(
   prazos: PrazoPagamento[],
   dataFaturamento: string
 ): PrazoPagamento[] {
-  return prazos.map((pr) => ({
-    numero: pr.numero,
-    vencimento: pr.vencimento,
-    valor: pr.valor != null ? String(pr.valor) : '',
-    dias: pr.dias ?? calcularDiasEntreDatas(dataFaturamento, pr.vencimento),
-  }))
+  return prazos.map((pr) => {
+    const vencimento = formatarDataIso(pr.vencimento)
+    return {
+      numero: pr.numero,
+      vencimento,
+      valor: pr.valor != null ? String(pr.valor) : '',
+      dias: pr.dias ?? calcularDiasEntreDatas(dataFaturamento, vencimento),
+    }
+  })
 }
 
 export function calcularTotalItem(item: ItemPedido): { bruto: number; liquido: number } {
@@ -367,8 +375,19 @@ export function formatarData(iso: string) {
   return d.toLocaleDateString('pt-BR')
 }
 
+export const STATUS_COM_AVALIACAO_PEDIDO = [
+  'enviado',
+  'aprovado',
+  'parcial',
+  'recebido',
+] as const
+
+export function pedidoExibeAbaAvaliacao(status: string): boolean {
+  return (STATUS_COM_AVALIACAO_PEDIDO as readonly string[]).includes(status)
+}
+
 export function pedidoEditavel(status: string) {
-  return !['cancelado', 'recebido'].includes(status)
+  return !['cancelado', 'recebido', 'aprovado'].includes(status)
 }
 
 export function montarCondicaoPagamentoDePrazos(prazos: number[]): string {
