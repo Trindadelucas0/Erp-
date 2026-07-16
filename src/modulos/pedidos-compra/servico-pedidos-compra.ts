@@ -303,9 +303,16 @@ async function editarPedidoCompra(
     valoresDepois: { numero: pedido.numero, status: pedido.status },
   })
 
-  // Ao concluir o pedido pela primeira vez, libera o portal e avisa o fornecedor
+  // Ao concluir o pedido pela primeira vez, libera o portal e prepara o WhatsApp
   // automaticamente — evita depender de um segundo clique manual em "Liberar para fornecedor".
-  let avisoPortal: { avisoEmailEnviado: boolean; mensagemAviso?: string } | undefined
+  let avisoPortal:
+    | {
+        avisoWhatsappDisponivel: boolean
+        telefonesWhatsapp: { id: string; valor: string; valorFormatado: string }[]
+        textoWhatsapp: string
+        mensagemAviso?: string
+      }
+    | undefined
   if (novoStatus === 'enviado' && !existente.portalLiberadoEm) {
     try {
       avisoPortal = await servicoDoPortalFornecedor.liberarParaFornecedor(id, companyId)
@@ -314,10 +321,19 @@ async function editarPedidoCompra(
         acao: 'liberar_portal',
         entidade: 'pedido_compra',
         entidadeId: id,
-        valoresDepois: { avisoEmailEnviado: avisoPortal.avisoEmailEnviado, automatico: true },
+        valoresDepois: {
+          avisoWhatsappDisponivel: avisoPortal.avisoWhatsappDisponivel,
+          qtdTelefones: avisoPortal.telefonesWhatsapp.length,
+          automatico: true,
+        },
       })
     } catch (erro) {
-      avisoPortal = { avisoEmailEnviado: false, mensagemAviso: (erro as Error).message }
+      avisoPortal = {
+        avisoWhatsappDisponivel: false,
+        telefonesWhatsapp: [],
+        textoWhatsapp: '',
+        mensagemAviso: (erro as Error).message,
+      }
     }
   }
 
@@ -480,7 +496,10 @@ async function liberarParaPortalFornecedor(id: string, companyId: string, idDoAu
     acao: 'liberar_portal',
     entidade: 'pedido_compra',
     entidadeId: id,
-    valoresDepois: { avisoEmailEnviado: resultado.avisoEmailEnviado },
+    valoresDepois: {
+      avisoWhatsappDisponivel: resultado.avisoWhatsappDisponivel,
+      qtdTelefones: resultado.telefonesWhatsapp.length,
+    },
   })
 
   return resultado
@@ -556,7 +575,11 @@ async function aprovarAnexoFornecedor(
     acao: 'aprovar_anexo_fornecedor',
     entidade: 'pedido_compra',
     entidadeId: id,
-    valoresDepois: { anexoId, avisoEmailEnviado: resultado.avisoEmailEnviado },
+    valoresDepois: {
+      anexoId,
+      avisoWhatsappDisponivel: resultado.avisoWhatsappDisponivel,
+      qtdTelefones: resultado.telefonesWhatsapp.length,
+    },
   })
 
   return resultado
@@ -600,7 +623,12 @@ async function solicitarAjusteAnexoFornecedor(
     acao: 'solicitar_ajuste_anexo_fornecedor',
     entidade: 'pedido_compra',
     entidadeId: id,
-    valoresDepois: { anexoId, motivo, avisoEmailEnviado: resultado.avisoEmailEnviado },
+    valoresDepois: {
+      anexoId,
+      motivo,
+      avisoWhatsappDisponivel: resultado.avisoWhatsappDisponivel,
+      qtdTelefones: resultado.telefonesWhatsapp.length,
+    },
   })
 
   return resultado

@@ -20,7 +20,10 @@ async function buscarPedidoParaLiberar(pedidoCompraId: string, companyId: string
           id: true,
           nome: true,
           cnpj: true,
-          contatos: { where: { tipo: 'email' }, orderBy: { principal: 'desc' } },
+          contatos: {
+            where: { tipo: { in: ['telefone', 'email'] } },
+            orderBy: [{ principal: 'desc' }, { createdAt: 'asc' }],
+          },
         },
       },
     },

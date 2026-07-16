@@ -11,6 +11,12 @@ import { gerarPdfPedidoCompra } from './gerar-pdf-pedido.js'
 import { repositorioDePedidosCompra } from '../pedidos-compra/repositorio-pedidos-compra.js'
 import { servicoDeNotificacoesEmail } from '../notificacoes-email/servico-notificacoes-email.js'
 import {
+  montarResultadoAvisoWhatsapp,
+  montarTextoAjusteNecessario,
+  montarTextoCredenciaisPortal,
+  montarTextoDocumentoAprovado,
+} from '../notificacoes-whatsapp/mensagens-whatsapp-portal.js'
+import {
   limparTentativas,
   registrarTentativaFalha,
   verificarBloqueio,
@@ -205,29 +211,18 @@ async function liberarParaFornecedor(pedidoCompraId: string, companyId: string) 
 
   await repositorioDoPortalFornecedor.liberarPedidoParaPortal(pedidoCompraId)
 
-  const emailFornecedor = pedido.fornecedor.contatos[0]?.valor
-  if (!emailFornecedor) {
-    return {
-      avisoEmailEnviado: false,
-      mensagemAviso:
-        'Fornecedor sem e-mail cadastrado. Portal liberado — avise manualmente o CNPJ e o número do pedido.',
-    }
-  }
-
-  const resultado = await servicoDeNotificacoesEmail
-    .enviarCredenciaisPortal({
-      emailFornecedor,
+  const telefones = pedido.fornecedor.contatos.filter((c) => c.tipo === 'telefone')
+  return montarResultadoAvisoWhatsapp({
+    contatos: telefones,
+    textoWhatsapp: montarTextoCredenciaisPortal({
       fornecedorNome: pedido.fornecedor.nome,
       nomeEmpresa: pedido.company.name,
       cnpj: pedido.fornecedor.cnpj,
       numeroPedido: pedido.numero,
-    })
-    .catch((erro: unknown) => ({ sucesso: false, mensagem: (erro as Error).message }))
-
-  return {
-    avisoEmailEnviado: resultado.sucesso,
-    mensagemAviso: resultado.sucesso ? undefined : resultado.mensagem,
-  }
+    }),
+    mensagemSemTelefone:
+      'Fornecedor sem telefone cadastrado. Portal liberado — avise manualmente o CNPJ e o número do pedido.',
+  })
 }
 
 async function bloquearPortal(pedidoCompraId: string, companyId: string) {
@@ -258,27 +253,17 @@ async function aprovarAnexo(pedidoCompraId: string, anexoId: string, companyId: 
 
   await repositorioDoPortalFornecedor.aprovarAnexo(anexoId)
 
-  const emailFornecedor = pedido.fornecedor.contatos[0]?.valor
-  if (!emailFornecedor) {
-    return {
-      avisoEmailEnviado: false,
-      mensagemAviso: 'Fornecedor sem e-mail cadastrado. Documento aprovado — avise manualmente.',
-    }
-  }
-
-  const resultado = await servicoDeNotificacoesEmail
-    .avisarDocumentoAprovado({
-      emailFornecedor,
+  const telefones = pedido.fornecedor.contatos.filter((c) => c.tipo === 'telefone')
+  return montarResultadoAvisoWhatsapp({
+    contatos: telefones,
+    textoWhatsapp: montarTextoDocumentoAprovado({
       fornecedorNome: pedido.fornecedor.nome,
       nomeEmpresa: pedido.company.name,
       numeroPedido: pedido.numero,
-    })
-    .catch((erro: unknown) => ({ sucesso: false, mensagem: (erro as Error).message }))
-
-  return {
-    avisoEmailEnviado: resultado.sucesso,
-    mensagemAviso: resultado.sucesso ? undefined : resultado.mensagem,
-  }
+    }),
+    mensagemSemTelefone:
+      'Fornecedor sem telefone cadastrado. Documento aprovado — avise manualmente.',
+  })
 }
 
 async function excluirAnexo(pedidoCompraId: string, anexoId: string, companyId: string) {
@@ -306,28 +291,18 @@ async function solicitarAjusteAnexo(
 
   await repositorioDoPortalFornecedor.solicitarAjusteAnexo(anexoId, motivo, relatorio)
 
-  const emailFornecedor = pedido.fornecedor.contatos[0]?.valor
-  if (!emailFornecedor) {
-    return {
-      avisoEmailEnviado: false,
-      mensagemAviso: 'Fornecedor sem e-mail cadastrado. Ajuste solicitado — avise manualmente.',
-    }
-  }
-
-  const resultado = await servicoDeNotificacoesEmail
-    .avisarAjusteNecessario({
-      emailFornecedor,
+  const telefones = pedido.fornecedor.contatos.filter((c) => c.tipo === 'telefone')
+  return montarResultadoAvisoWhatsapp({
+    contatos: telefones,
+    textoWhatsapp: montarTextoAjusteNecessario({
       fornecedorNome: pedido.fornecedor.nome,
       nomeEmpresa: pedido.company.name,
       numeroPedido: pedido.numero,
       motivo,
-    })
-    .catch((erro: unknown) => ({ sucesso: false, mensagem: (erro as Error).message }))
-
-  return {
-    avisoEmailEnviado: resultado.sucesso,
-    mensagemAviso: resultado.sucesso ? undefined : resultado.mensagem,
-  }
+    }),
+    mensagemSemTelefone:
+      'Fornecedor sem telefone cadastrado. Ajuste solicitado — avise manualmente.',
+  })
 }
 
 export const servicoDoPortalFornecedor = {

@@ -14,6 +14,15 @@ import {
 } from '@/components/conferencia-arquivo/relatorio-conferencia-visual'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
+import {
+  ModalEscolherTelefoneWhatsapp,
+  processarAvisoWhatsappPortal,
+} from '@/components/pedidos-compra/modal-escolher-telefone-whatsapp'
+import {
+  mensagemToastAvisoWhatsapp,
+  type AvisoWhatsappPortal,
+  type TelefoneWhatsappAviso,
+} from '@/lib/whatsapp-portal'
 
 export type StatusConferenciaAnexo = 'pendente' | 'aprovado' | 'ajuste_solicitado'
 export type { RelatorioConferencia }
@@ -80,6 +89,10 @@ export function ModalConferenciaIa({
   const [erroDecisao, setErroDecisao] = useState('')
   const [decidindo, setDecidindo] = useState(false)
   const [mensagemDecisao, setMensagemDecisao] = useState('')
+  const [escolhaWhatsapp, setEscolhaWhatsapp] = useState<{
+    telefones: TelefoneWhatsappAviso[]
+    texto: string
+  } | null>(null)
 
   useEffect(() => {
     if (!carregando) return
@@ -162,11 +175,9 @@ export function ModalConferenciaIa({
       )
       setStatusAtual('aprovado')
       setMotivoAtual(null)
-      setMensagemDecisao(
-        data.avisoEmailEnviado
-          ? 'Documento aprovado. E-mail enviado ao fornecedor.'
-          : `Documento aprovado. ${data.mensagemAviso ?? 'Não foi possível enviar o e-mail — avise o fornecedor manualmente.'}`
-      )
+      const aviso = data as AvisoWhatsappPortal
+      processarAvisoWhatsappPortal(aviso, setEscolhaWhatsapp)
+      setMensagemDecisao(mensagemToastAvisoWhatsapp(aviso, 'Documento aprovado'))
       aoDecidir()
     } catch (e: unknown) {
       setErroDecisao(extrairMensagemApi(e, 'Erro ao aprovar o documento.'))
@@ -191,11 +202,9 @@ export function ModalConferenciaIa({
       setMotivoAtual(motivoDigitado.trim())
       setMostrandoFormAjuste(false)
       setMotivoDigitado('')
-      setMensagemDecisao(
-        data.avisoEmailEnviado
-          ? 'Ajuste solicitado. E-mail enviado ao fornecedor com o motivo.'
-          : `Ajuste solicitado. ${data.mensagemAviso ?? 'Não foi possível enviar o e-mail — avise o fornecedor manualmente.'}`
-      )
+      const aviso = data as AvisoWhatsappPortal
+      processarAvisoWhatsappPortal(aviso, setEscolhaWhatsapp)
+      setMensagemDecisao(mensagemToastAvisoWhatsapp(aviso, 'Ajuste solicitado'))
       aoDecidir()
     } catch (e: unknown) {
       setErroDecisao(extrairMensagemApi(e, 'Erro ao solicitar o ajuste.'))
@@ -205,6 +214,7 @@ export function ModalConferenciaIa({
   }
 
   return (
+    <>
     <Modal
       aberto={aberto}
       aoFechar={fechar}
@@ -351,5 +361,13 @@ export function ModalConferenciaIa({
         )}
       </div>
     </Modal>
+
+    <ModalEscolherTelefoneWhatsapp
+      aberto={Boolean(escolhaWhatsapp)}
+      telefones={escolhaWhatsapp?.telefones ?? []}
+      texto={escolhaWhatsapp?.texto ?? ''}
+      aoFechar={() => setEscolhaWhatsapp(null)}
+    />
+    </>
   )
 }

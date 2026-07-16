@@ -20,6 +20,15 @@ import {
   AbaAvaliacaoPedido,
   type AnexoFornecedor,
 } from '@/components/pedidos-compra/aba-avaliacao-pedido'
+import {
+  ModalEscolherTelefoneWhatsapp,
+  processarAvisoWhatsappPortal,
+} from '@/components/pedidos-compra/modal-escolher-telefone-whatsapp'
+import {
+  mensagemToastAvisoWhatsapp,
+  type AvisoWhatsappPortal,
+  type TelefoneWhatsappAviso,
+} from '@/lib/whatsapp-portal'
 import { clienteHttp } from '@/services/api'
 import { usePermissao } from '@/hooks/use-permissao'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
@@ -131,6 +140,10 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   const [liberandoPortal, setLiberandoPortal] = useState(false)
   const [voltandoParaRascunho, setVoltandoParaRascunho] = useState(false)
   const [mensagemPortal, setMensagemPortal] = useState('')
+  const [escolhaWhatsapp, setEscolhaWhatsapp] = useState<{
+    telefones: TelefoneWhatsappAviso[]
+    texto: string
+  } | null>(null)
   const [mensagemDocumentos, setMensagemDocumentos] = useState('')
   const [enviandoAnexo, setEnviandoAnexo] = useState(false)
   const [anexoEmConferencia, setAnexoEmConferencia] = useState<AnexoFornecedor | null>(null)
@@ -355,11 +368,9 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
       const { data } = await clienteHttp.post(`/pedidos-compra/${pedidoId}/liberar-portal`)
       setPortalLiberadoEm(new Date().toISOString())
       setPortalBloqueadoEm(null)
-      setMensagemPortal(
-        data.avisoEmailEnviado
-          ? 'Portal liberado. E-mail com CNPJ e senha enviado ao fornecedor.'
-          : `Portal liberado. ${data.mensagemAviso ?? 'Não foi possível enviar o e-mail — avise o fornecedor manualmente.'}`
-      )
+      const aviso = data as AvisoWhatsappPortal
+      processarAvisoWhatsappPortal(aviso, setEscolhaWhatsapp)
+      setMensagemPortal(mensagemToastAvisoWhatsapp(aviso, 'Portal liberado'))
     } catch (e: unknown) {
       setMensagemPortal(extrairMensagemApi(e, 'Erro ao liberar o portal para o fornecedor.'))
     } finally {
@@ -784,27 +795,23 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
       const payload = montarPayload(concluir)
       if (modoEdicao && idAtual) {
         const { data } = await clienteHttp.put(`/pedidos-compra/${idAtual}`, payload)
-        const avisoPortal = data?.pedido?.avisoPortal as
-          | { avisoEmailEnviado: boolean; mensagemAviso?: string }
-          | undefined
+        const avisoPortal = data?.pedido?.avisoPortal as AvisoWhatsappPortal | undefined
         if (concluir) {
           abaInicialDefinidaRef.current = true
           await carregarPedidoNoForm(idAtual)
           setAbaAtiva('avaliacao')
           if (avisoPortal) {
-            setMensagemPortal(
-              avisoPortal.avisoEmailEnviado
-                ? 'Portal liberado. E-mail com CNPJ e senha enviado ao fornecedor.'
-                : `Portal liberado. ${avisoPortal.mensagemAviso ?? 'Não foi possível enviar o e-mail — avise o fornecedor manualmente.'}`
-            )
+            processarAvisoWhatsappPortal(avisoPortal, setEscolhaWhatsapp)
+            setMensagemPortal(mensagemToastAvisoWhatsapp(avisoPortal, 'Portal liberado'))
           }
         } else {
           const mensagemBase = `${formatarPedido(numeroPedido ?? 0)} atualizado.`
           const mensagem = avisoPortal
-            ? avisoPortal.avisoEmailEnviado
-              ? `${mensagemBase} Portal liberado e e-mail enviado ao fornecedor.`
-              : `${mensagemBase} Portal liberado, mas ${avisoPortal.mensagemAviso ?? 'não foi possível enviar o e-mail'}.`
+            ? mensagemToastAvisoWhatsapp(avisoPortal, `${mensagemBase} Portal liberado`)
             : mensagemBase
+          if (avisoPortal) {
+            processarAvisoWhatsappPortal(avisoPortal, setEscolhaWhatsapp)
+          }
           voltarParaLista(mensagem)
         }
       } else {
@@ -1865,6 +1872,13 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
           aoConferirConcluida={() => void carregarPedidoNoForm(pedidoId)}
         />
       )}
+
+      <ModalEscolherTelefoneWhatsapp
+        aberto={Boolean(escolhaWhatsapp)}
+        telefones={escolhaWhatsapp?.telefones ?? []}
+        texto={escolhaWhatsapp?.texto ?? ''}
+        aoFechar={() => setEscolhaWhatsapp(null)}
+      />
     </div>
   )
 }
