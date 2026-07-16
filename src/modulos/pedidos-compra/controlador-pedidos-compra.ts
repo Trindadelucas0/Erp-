@@ -204,6 +204,13 @@ async function liberarParaPortalFornecedor(requisicao: FastifyRequest, resposta:
   return resposta.send(resultado)
 }
 
+async function avisoWhatsappCredenciais(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id } = requisicao.params as { id: string }
+  const companyId = requisicao.empresaAtivaId || ''
+  const resultado = await servicoDePedidosCompra.obterAvisoWhatsappCredenciais(id, companyId)
+  return resposta.send(resultado)
+}
+
 async function enviarAnexoFornecedor(requisicao: FastifyRequest, resposta: FastifyReply) {
   const { id } = requisicao.params as { id: string }
   const resultado = esquemaUploadPortalFornecedor.safeParse(requisicao.body)
@@ -337,6 +344,7 @@ export const controladorDePedidosCompra = {
   compararPdf,
   historicoProduto,
   liberarParaPortalFornecedor,
+  avisoWhatsappCredenciais,
   enviarAnexoFornecedor,
   bloquearPortalFornecedor,
   voltarPedidoParaRascunho,

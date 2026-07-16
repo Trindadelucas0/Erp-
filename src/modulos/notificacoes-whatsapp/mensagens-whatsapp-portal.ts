@@ -20,17 +20,17 @@ export type ContatoTelefoneFonte = {
 
 export function normalizarTelefoneWhatsapp(valor: string): string | null {
   const digitos = valor.replace(/\D/g, '')
-  if (!digitos) return null
+  if (!digitos || digitos.length < 8) return null
 
-  if (digitos.startsWith('55') && (digitos.length === 12 || digitos.length === 13)) {
+  if (digitos.startsWith('55') && digitos.length >= 12) {
     return digitos
   }
 
-  if (digitos.length === 10 || digitos.length === 11) {
+  if (digitos.length >= 8 && digitos.length <= 11) {
     return `55${digitos}`
   }
 
-  if (digitos.length >= 12 && digitos.length <= 15) {
+  if (digitos.length <= 15) {
     return digitos
   }
 
@@ -75,6 +75,9 @@ export function listarTelefonesParaWhatsapp(contatos: ContatoTelefoneFonte[]): T
 
 export function montarUrlWhatsapp(dados: { telefone: string; texto: string }): string {
   const telefone = normalizarTelefoneWhatsapp(dados.telefone) ?? dados.telefone.replace(/\D/g, '')
+  if (!telefone || telefone.length < 8) {
+    throw new Error('Telefone do fornecedor inválido para WhatsApp')
+  }
   return `https://wa.me/${telefone}?text=${encodeURIComponent(dados.texto)}`
 }
 
@@ -146,12 +149,21 @@ export type ResultadoAvisoWhatsappPortal = {
   mensagemAviso?: string
 }
 
+/** Se houver telefone(s) marcados como WhatsApp, usa só esses; senão, todos os válidos. */
+export function selecionarTelefonesParaAviso(
+  contatos: ContatoTelefoneFonte[]
+): TelefoneWhatsapp[] {
+  const lista = listarTelefonesParaWhatsapp(contatos)
+  const marcados = lista.filter((t) => t.whatsapp)
+  return marcados.length > 0 ? marcados : lista
+}
+
 export function montarResultadoAvisoWhatsapp(dados: {
   contatos: ContatoTelefoneFonte[]
   textoWhatsapp: string
   mensagemSemTelefone: string
 }): ResultadoAvisoWhatsappPortal {
-  const telefonesWhatsapp = listarTelefonesParaWhatsapp(dados.contatos)
+  const telefonesWhatsapp = selecionarTelefonesParaAviso(dados.contatos)
   if (telefonesWhatsapp.length === 0) {
     return {
       avisoWhatsappDisponivel: false,

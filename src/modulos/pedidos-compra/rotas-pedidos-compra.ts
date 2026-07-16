@@ -113,6 +113,12 @@ export async function rotasDePedidosCompra(aplicacao: FastifyInstance): Promise<
     controladorDePedidosCompra.liberarParaPortalFornecedor
   )
 
+  aplicacao.get(
+    '/:id/whatsapp-credenciais',
+    { preHandler: [...auth, middlewareDeAutorizacao('compras:view')] },
+    controladorDePedidosCompra.avisoWhatsappCredenciais
+  )
+
   aplicacao.post(
     '/:id/bloquear-portal',
     { preHandler: [...auth, middlewareDeAutorizacao('compras:edit')] },

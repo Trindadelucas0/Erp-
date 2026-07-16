@@ -525,6 +525,8 @@ async function buscarPessoaPorDocumentoNaEmpresa(
 type TxCliente = Parameters<Parameters<typeof clientePrisma.$transaction>[0]>[0]
 
 async function criarContatos(tx: TxCliente, pessoaId: string, campos: CamposNormalizados) {
+  const telefonesJaGravados = new Set<string>()
+
   if (campos.contatosArray && campos.contatosArray.length > 0) {
     for (const contato of campos.contatosArray) {
       await tx.pessoaContato.create({
@@ -537,15 +539,18 @@ async function criarContatos(tx: TxCliente, pessoaId: string, campos: CamposNorm
           principal: contato.principal ?? false,
         },
       })
+      if (contato.tipo === 'telefone') {
+        telefonesJaGravados.add(contato.valor.replace(/\D/g, ''))
+      }
     }
-    return
-  }
-  if (campos.email) {
+  } else if (campos.email) {
     await tx.pessoaContato.create({
       data: { pessoaId, tipo: 'email', valor: campos.email, principal: true },
     })
   }
-  if (campos.telefone) {
+
+  const telefoneSimples = campos.telefone ? campos.telefone.replace(/\D/g, '') : ''
+  if (campos.telefone && telefoneSimples && !telefonesJaGravados.has(telefoneSimples)) {
     await tx.pessoaContato.create({
       data: {
         pessoaId,
@@ -555,9 +560,16 @@ async function criarContatos(tx: TxCliente, pessoaId: string, campos: CamposNorm
         whatsapp: campos.celularWhatsapp,
       },
     })
-    return
+    telefonesJaGravados.add(telefoneSimples)
   }
-  if (campos.celular && campos.celular !== campos.telefone) {
+
+  const celularSimples = campos.celular ? campos.celular.replace(/\D/g, '') : ''
+  if (
+    campos.celular &&
+    celularSimples &&
+    celularSimples !== telefoneSimples &&
+    !telefonesJaGravados.has(celularSimples)
+  ) {
     await tx.pessoaContato.create({
       data: {
         pessoaId,

@@ -5,6 +5,7 @@ import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
 import {
   abrirWhatsappComMensagem,
+  selecionarTelefonesParaAvisoFront,
   type AvisoWhatsappPortal,
   type TelefoneWhatsappAviso,
 } from '@/lib/whatsapp-portal'
@@ -76,22 +77,28 @@ export function ModalEscolherTelefoneWhatsapp({ aberto, telefones, texto, aoFech
 }
 
 /**
- * Processa o retorno da API: abre direto (1 telefone) ou devolve dados para o modal (2+).
- * Retorna true se o modal de escolha deve ser aberto.
+ * Processa o retorno da API: abre no número do fornecedor (1 telefone / 1 WhatsApp)
+ * ou modal (2+). Preferência pelo telefone marcado como WhatsApp.
+ * Sem telefone cadastrado: não abre nada.
  */
 export function processarAvisoWhatsappPortal(
   aviso: AvisoWhatsappPortal | null | undefined,
   aoPrecisarEscolher: (dados: { telefones: TelefoneWhatsappAviso[]; texto: string }) => void
 ): boolean {
-  if (!aviso?.avisoWhatsappDisponivel || !aviso.telefonesWhatsapp?.length || !aviso.textoWhatsapp) {
+  if (!aviso?.avisoWhatsappDisponivel || !aviso.textoWhatsapp) {
     return false
   }
 
-  if (aviso.telefonesWhatsapp.length === 1) {
-    abrirWhatsappComMensagem(aviso.telefonesWhatsapp[0].valor, aviso.textoWhatsapp)
+  const telefones = selecionarTelefonesParaAvisoFront(aviso.telefonesWhatsapp ?? [])
+  if (telefones.length === 0) {
     return false
   }
 
-  aoPrecisarEscolher({ telefones: aviso.telefonesWhatsapp, texto: aviso.textoWhatsapp })
+  if (telefones.length === 1) {
+    abrirWhatsappComMensagem(telefones[0].valor, aviso.textoWhatsapp)
+    return false
+  }
+
+  aoPrecisarEscolher({ telefones, texto: aviso.textoWhatsapp })
   return true
 }

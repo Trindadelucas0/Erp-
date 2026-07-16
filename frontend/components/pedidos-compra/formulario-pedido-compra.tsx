@@ -10,6 +10,7 @@ import {
   Package,
   Plus,
   Truck,
+  MessageCircle,
 } from 'lucide-react'
 import { BlocoPagamentoPrazos, type PrazoPagamento } from '@/components/pedidos-compra/bloco-pagamento-prazos'
 import { ComboboxPessoa } from '@/components/pedidos-compra/combobox-pessoa'
@@ -138,12 +139,14 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   const [portalBloqueadoEm, setPortalBloqueadoEm] = useState<string | null>(null)
   const [anexosFornecedor, setAnexosFornecedor] = useState<AnexoFornecedor[]>([])
   const [liberandoPortal, setLiberandoPortal] = useState(false)
+  const [bloqueandoPortal, setBloqueandoPortal] = useState(false)
   const [voltandoParaRascunho, setVoltandoParaRascunho] = useState(false)
   const [mensagemPortal, setMensagemPortal] = useState('')
   const [escolhaWhatsapp, setEscolhaWhatsapp] = useState<{
     telefones: TelefoneWhatsappAviso[]
     texto: string
   } | null>(null)
+  const [abrindoWhatsapp, setAbrindoWhatsapp] = useState(false)
   const [mensagemDocumentos, setMensagemDocumentos] = useState('')
   const [enviandoAnexo, setEnviandoAnexo] = useState(false)
   const [anexoEmConferencia, setAnexoEmConferencia] = useState<AnexoFornecedor | null>(null)
@@ -375,6 +378,46 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
       setMensagemPortal(extrairMensagemApi(e, 'Erro ao liberar o portal para o fornecedor.'))
     } finally {
       setLiberandoPortal(false)
+    }
+  }
+
+  async function abrirWhatsappCredenciaisFornecedor() {
+    if (!pedidoId) {
+      setErro('Salve o pedido antes de avisar o fornecedor pelo WhatsApp.')
+      return
+    }
+    setAbrindoWhatsapp(true)
+    setErro('')
+    setMensagemPortal('')
+    try {
+      const { data } = await clienteHttp.get(`/pedidos-compra/${pedidoId}/whatsapp-credenciais`)
+      const aviso = data as AvisoWhatsappPortal
+      processarAvisoWhatsappPortal(aviso, setEscolhaWhatsapp)
+      if (!aviso.avisoWhatsappDisponivel || !aviso.telefonesWhatsapp?.length) {
+        setMensagemPortal(
+          aviso.mensagemAviso ??
+            'Cadastre o telefone do fornecedor para enviar pelo WhatsApp.'
+        )
+      }
+    } catch (e: unknown) {
+      setErro(extrairMensagemApi(e, 'Erro ao abrir o WhatsApp do fornecedor.'))
+    } finally {
+      setAbrindoWhatsapp(false)
+    }
+  }
+
+  async function bloquearPortalFornecedor() {
+    if (!pedidoId) return
+    setBloqueandoPortal(true)
+    setMensagemPortal('')
+    try {
+      await clienteHttp.post(`/pedidos-compra/${pedidoId}/bloquear-portal`)
+      setPortalBloqueadoEm(new Date().toISOString())
+      setMensagemPortal('Portal do fornecedor bloqueado.')
+    } catch (e: unknown) {
+      setMensagemPortal(extrairMensagemApi(e, 'Erro ao bloquear o portal do fornecedor.'))
+    } finally {
+      setBloqueandoPortal(false)
     }
   }
 
@@ -1144,15 +1187,33 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
             <div className="min-w-0 space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="sm:col-span-2">
-                  <ComboboxPessoa
-                    rotulo="Fornecedor"
-                    pessoas={fornecedores}
-                    valor={form.fornecedorPessoaId}
-                    aoMudar={selecionarFornecedor}
-                    disabled={camposDesabilitados}
-                    placeholder="Digite o nome do fornecedor..."
-                    obrigatorio
-                  />
+                  <div className="flex items-end gap-2">
+                    <div className="min-w-0 flex-1">
+                      <ComboboxPessoa
+                        rotulo="Fornecedor"
+                        pessoas={fornecedores}
+                        valor={form.fornecedorPessoaId}
+                        aoMudar={selecionarFornecedor}
+                        disabled={camposDesabilitados}
+                        placeholder="Digite o nome do fornecedor..."
+                        obrigatorio
+                      />
+                    </div>
+                    {form.fornecedorPessoaId && pedidoId ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="mb-0.5 shrink-0 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                        title="Abrir WhatsApp com mensagem do pedido"
+                        disabled={abrindoWhatsapp}
+                        onClick={() => void abrirWhatsappCredenciaisFornecedor()}
+                      >
+                        <MessageCircle className="size-5" />
+                        <span className="sr-only">WhatsApp do fornecedor</span>
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
                 <SelectPadrao
                   rotulo="Tipo de frete"
@@ -1397,10 +1458,14 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
               mensagemPortal={mensagemPortal}
               mensagemDocumentos={mensagemDocumentos}
               liberandoPortal={liberandoPortal}
+              bloqueandoPortal={bloqueandoPortal}
               voltandoParaRascunho={voltandoParaRascunho}
+              enviandoCredenciais={abrindoWhatsapp}
               enviandoAnexo={enviandoAnexo}
               formatarData={formatarData}
               onLiberarPortal={liberarPortalFornecedor}
+              onEnviarCredenciaisWhatsapp={() => void abrirWhatsappCredenciaisFornecedor()}
+              onBloquearPortal={() => void bloquearPortalFornecedor()}
               onVoltarParaRascunho={() => void voltarPedidoParaRascunho()}
               onEnviarAnexo={enviarAnexoFornecedorInterno}
               onBaixarAnexo={baixarAnexoFornecedor}

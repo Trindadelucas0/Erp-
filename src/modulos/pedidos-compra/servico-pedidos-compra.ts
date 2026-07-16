@@ -505,6 +505,10 @@ async function liberarParaPortalFornecedor(id: string, companyId: string, idDoAu
   return resultado
 }
 
+async function obterAvisoWhatsappCredenciais(id: string, companyId: string) {
+  return servicoDoPortalFornecedor.montarAvisoWhatsappCredenciais(id, companyId)
+}
+
 async function enviarAnexoFornecedor(
   id: string,
   companyId: string,
@@ -752,6 +756,7 @@ export const servicoDePedidosCompra = {
   historicoProduto,
   baixarCreditoNaEntrada,
   liberarParaPortalFornecedor,
+  obterAvisoWhatsappCredenciais,
   enviarAnexoFornecedor,
   bloquearPortalFornecedor,
   voltarPedidoParaRascunho,

@@ -68,10 +68,14 @@ type Props = {
   mensagemPortal: string
   mensagemDocumentos: string
   liberandoPortal: boolean
+  bloqueandoPortal: boolean
   voltandoParaRascunho: boolean
+  enviandoCredenciais: boolean
   enviandoAnexo: boolean
   formatarData: (iso: string) => string
   onLiberarPortal: () => void
+  onEnviarCredenciaisWhatsapp: () => void
+  onBloquearPortal: () => void
   onVoltarParaRascunho: () => void
   onEnviarAnexo: (e: ChangeEvent<HTMLInputElement>) => void
   onBaixarAnexo: (anexo: AnexoFornecedor) => void
@@ -91,10 +95,14 @@ export function AbaAvaliacaoPedido({
   mensagemPortal,
   mensagemDocumentos,
   liberandoPortal,
+  bloqueandoPortal,
   voltandoParaRascunho,
+  enviandoCredenciais,
   enviandoAnexo,
   formatarData,
   onLiberarPortal,
+  onEnviarCredenciaisWhatsapp,
+  onBloquearPortal,
   onVoltarParaRascunho,
   onEnviarAnexo,
   onBaixarAnexo,
@@ -110,6 +118,7 @@ export function AbaAvaliacaoPedido({
   const [aprovandoPedido, setAprovandoPedido] = useState(false)
   const [erroAprovacao, setErroAprovacao] = useState('')
   const [confirmandoVoltarRascunho, setConfirmandoVoltarRascunho] = useState(false)
+  const [confirmandoBloquearPortal, setConfirmandoBloquearPortal] = useState(false)
 
   const [anexoDecisaoId, setAnexoDecisaoId] = useState<string | null>(null)
   const [modoDecisao, setModoDecisao] = useState<ModoDecisaoAnexo | null>(null)
@@ -126,11 +135,9 @@ export function AbaAvaliacaoPedido({
     (a) => isDocumentoFornecedor(a) && a.statusConferencia === 'aprovado'
   )
   const podeAprovarPedido = podeEditar && status === 'enviado'
-  const podeVoltarParaRascunho =
-    podeEditar &&
-    status === 'enviado' &&
-    !!portalLiberadoEm &&
-    !portalBloqueadoEm
+  const portalAberto =
+    podeEditar && !!portalLiberadoEm && !portalBloqueadoEm
+  const podeVoltarParaRascunho = portalAberto && status === 'enviado'
 
   const { documentos, relatoriosAvulsos } = useMemo(
     () => organizarAnexosPorDocumento(anexosFornecedor),
@@ -401,15 +408,34 @@ export function AbaAvaliacaoPedido({
             <BotaoPrimario type="button" onClick={onLiberarPortal} disabled={liberandoPortal}>
               {liberandoPortal ? 'Liberando...' : 'Liberar para fornecedor'}
             </BotaoPrimario>
-          ) : podeVoltarParaRascunho ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setConfirmandoVoltarRascunho(true)}
-              disabled={voltandoParaRascunho}
-            >
-              {voltandoParaRascunho ? 'Voltando...' : 'Voltar pedido para rascunho'}
-            </Button>
+          ) : portalAberto ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <BotaoPrimario
+                type="button"
+                onClick={onEnviarCredenciaisWhatsapp}
+                disabled={enviandoCredenciais || bloqueandoPortal || voltandoParaRascunho}
+              >
+                {enviandoCredenciais ? 'Abrindo...' : 'Enviar credenciais'}
+              </BotaoPrimario>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setConfirmandoBloquearPortal(true)}
+                disabled={bloqueandoPortal || enviandoCredenciais || voltandoParaRascunho}
+              >
+                {bloqueandoPortal ? 'Bloqueando...' : 'Bloquear portal'}
+              </Button>
+              {podeVoltarParaRascunho ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setConfirmandoVoltarRascunho(true)}
+                  disabled={voltandoParaRascunho || enviandoCredenciais || bloqueandoPortal}
+                >
+                  {voltandoParaRascunho ? 'Voltando...' : 'Voltar pedido para rascunho'}
+                </Button>
+              ) : null}
+            </div>
           ) : null)
         }
       >
@@ -547,6 +573,19 @@ export function AbaAvaliacaoPedido({
         textoCancelar="Cancelar"
         aoConfirmar={() => void confirmarExclusaoAnexo()}
         aoCancelar={() => setAnexoParaExcluir(null)}
+      />
+
+      <ModalConfirmacao
+        aberto={confirmandoBloquearPortal}
+        titulo="Bloquear portal"
+        mensagem="O fornecedor não poderá mais acessar este pedido no portal até você liberar novamente. Quer continuar?"
+        textoConfirmar={bloqueandoPortal ? 'Bloqueando...' : 'Bloquear'}
+        textoCancelar="Cancelar"
+        aoConfirmar={() => {
+          setConfirmandoBloquearPortal(false)
+          onBloquearPortal()
+        }}
+        aoCancelar={() => setConfirmandoBloquearPortal(false)}
       />
 
       <ModalConfirmacao

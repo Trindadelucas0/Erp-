@@ -220,8 +220,7 @@ async function liberarParaFornecedor(pedidoCompraId: string, companyId: string) 
       cnpj: pedido.fornecedor.cnpj,
       numeroPedido: pedido.numero,
     }),
-    mensagemSemTelefone:
-      'Fornecedor sem telefone cadastrado. Portal liberado — avise manualmente o CNPJ e o número do pedido.',
+    mensagemSemTelefone: 'Cadastre o telefone do fornecedor para enviar pelo WhatsApp.',
   })
 }
 
@@ -261,8 +260,7 @@ async function aprovarAnexo(pedidoCompraId: string, anexoId: string, companyId: 
       nomeEmpresa: pedido.company.name,
       numeroPedido: pedido.numero,
     }),
-    mensagemSemTelefone:
-      'Fornecedor sem telefone cadastrado. Documento aprovado — avise manualmente.',
+    mensagemSemTelefone: 'Cadastre o telefone do fornecedor para enviar pelo WhatsApp.',
   })
 }
 
@@ -300,8 +298,33 @@ async function solicitarAjusteAnexo(
       numeroPedido: pedido.numero,
       motivo,
     }),
-    mensagemSemTelefone:
-      'Fornecedor sem telefone cadastrado. Ajuste solicitado — avise manualmente.',
+    mensagemSemTelefone: 'Cadastre o telefone do fornecedor para enviar pelo WhatsApp.',
+  })
+}
+
+async function montarAvisoWhatsappCredenciais(pedidoCompraId: string, companyId: string) {
+  const pedido = await repositorioDoPortalFornecedor.buscarPedidoParaLiberar(pedidoCompraId, companyId)
+  if (!pedido) {
+    throw new ErroDaAplicacao('Pedido de compra não encontrado', 404)
+  }
+
+  if (!pedido.fornecedor.cnpj) {
+    throw new ErroDaAplicacao(
+      'Fornecedor sem CNPJ cadastrado — cadastre o CNPJ antes de avisar pelo WhatsApp.',
+      400
+    )
+  }
+
+  const telefones = pedido.fornecedor.contatos.filter((c) => c.tipo === 'telefone')
+  return montarResultadoAvisoWhatsapp({
+    contatos: telefones,
+    textoWhatsapp: montarTextoCredenciaisPortal({
+      fornecedorNome: pedido.fornecedor.nome,
+      nomeEmpresa: pedido.company.name,
+      cnpj: pedido.fornecedor.cnpj,
+      numeroPedido: pedido.numero,
+    }),
+    mensagemSemTelefone: 'Cadastre o telefone do fornecedor para enviar pelo WhatsApp.',
   })
 }
 
@@ -317,4 +340,5 @@ export const servicoDoPortalFornecedor = {
   aprovarAnexo,
   excluirAnexo,
   solicitarAjusteAnexo,
+  montarAvisoWhatsappCredenciais,
 }
