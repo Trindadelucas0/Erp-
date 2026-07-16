@@ -24,6 +24,10 @@ import { Abas } from '@/components/ui/abas'
 import { BadgeStatus } from '@/components/ui/badge-status'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
+import {
+  ControlesPaginacao,
+  type ItensPorPagina,
+} from '@/components/ui/controles-paginacao'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/ui/modal'
@@ -325,6 +329,8 @@ function ConteudoDaPagina() {
   const [produtosParaDuplicar, setProdutosParaDuplicar] = useState<ProdutoOpcao[]>([])
   const [carregandoCatalogoDuplicar, setCarregandoCatalogoDuplicar] = useState(false)
   const [produtoIdFotoOrigem, setProdutoIdFotoOrigem] = useState('')
+  const [pagina, setPagina] = useState(1)
+  const [itensPorPagina, setItensPorPagina] = useState<ItensPorPagina>(10)
   const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<
     'sku' | 'nome' | 'marca' | 'unidade' | 'situacao'
   >()
@@ -963,6 +969,17 @@ function ConteudoDaPagina() {
     [lista, ordenacao]
   )
 
+  useEffect(() => {
+    setPagina(1)
+  }, [buscaDebounced, ordenacao, itensPorPagina])
+
+  const totalPaginas = Math.max(1, Math.ceil(listaExibida.length / itensPorPagina))
+  const paginaAtual = Math.min(pagina, totalPaginas)
+  const listaPaginada = useMemo(() => {
+    const inicio = (paginaAtual - 1) * itensPorPagina
+    return listaExibida.slice(inicio, inicio + itensPorPagina)
+  }, [listaExibida, paginaAtual, itensPorPagina])
+
   return (
     <div className="min-w-0 space-y-6">
       <div>
@@ -1024,7 +1041,7 @@ function ConteudoDaPagina() {
                   </td>
                 </tr>
               )}
-              {listaExibida.map((p: {
+              {listaPaginada.map((p: {
                 id: string
                 sku: string | null
                 nomeVenda: string
@@ -1078,6 +1095,14 @@ function ConteudoDaPagina() {
             </tbody>
           </table>
         </div>
+
+        <ControlesPaginacao
+          total={listaExibida.length}
+          pagina={paginaAtual}
+          itensPorPagina={itensPorPagina}
+          onPaginaChange={setPagina}
+          onItensPorPaginaChange={setItensPorPagina}
+        />
       </CardPadrao>
 
       <Modal

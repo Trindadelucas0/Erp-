@@ -32,6 +32,10 @@ import {
 } from '@/lib/pedido-compra-shared'
 import { FiltroStatusMultiplo } from '@/components/pedidos-compra/filtro-status-multiplo'
 import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
+import {
+  ControlesPaginacao,
+  type ItensPorPagina,
+} from '@/components/ui/controles-paginacao'
 import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
 import { ordenarLista } from '@/lib/ordenacao-lista'
 
@@ -56,6 +60,8 @@ function ConteudoDaPagina() {
   const [mensagem, setMensagem] = useState('')
   const [erro, setErro] = useState('')
   const [filtros, setFiltros] = useState(FILTROS_VAZIOS)
+  const [pagina, setPagina] = useState(1)
+  const [itensPorPagina, setItensPorPagina] = useState<ItensPorPagina>(10)
   const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<ColunaPedido>()
 
   const filtrosAtivos = filtrosDiferentesDoPadrao(filtros)
@@ -192,6 +198,17 @@ function ConteudoDaPagina() {
     [lista, ordenacao]
   )
 
+  useEffect(() => {
+    setPagina(1)
+  }, [filtros, ordenacao, itensPorPagina])
+
+  const totalPaginas = Math.max(1, Math.ceil(listaExibida.length / itensPorPagina))
+  const paginaAtual = Math.min(pagina, totalPaginas)
+  const listaPaginada = useMemo(() => {
+    const inicio = (paginaAtual - 1) * itensPorPagina
+    return listaExibida.slice(inicio, inicio + itensPorPagina)
+  }, [listaExibida, paginaAtual, itensPorPagina])
+
   return (
     <div className="min-w-0 space-y-6">
       <div>
@@ -301,7 +318,7 @@ function ConteudoDaPagina() {
                   </td>
                 </tr>
               )}
-              {listaExibida.map((p) => (
+              {listaPaginada.map((p) => (
                 <tr
                   key={p.id}
                   className="cursor-pointer border-b border-border hover:bg-muted/30"
@@ -366,6 +383,14 @@ function ConteudoDaPagina() {
             </tbody>
           </table>
         </div>
+
+        <ControlesPaginacao
+          total={listaExibida.length}
+          pagina={paginaAtual}
+          itensPorPagina={itensPorPagina}
+          onPaginaChange={setPagina}
+          onItensPorPaginaChange={setItensPorPagina}
+        />
       </CardPadrao>
 
       <Modal

@@ -6,9 +6,14 @@
 import { obterConfigNotificacoesEmail } from './config-notificacoes-email.js'
 import { enviarEmailResend } from './cliente-resend.js'
 import {
+  escaparHtml,
+  montarBadgeStatus,
   montarBlocoCredenciais,
+  montarBlocoDestaque,
   montarBotaoCta,
   montarLayoutEmailCorporativo,
+  montarParagrafo,
+  montarPassos,
 } from './template-email-corporativo.js'
 
 export type ResultadoEnvioEmail = { sucesso: boolean; mensagem?: string }
@@ -28,23 +33,38 @@ async function enviarCredenciaisPortal(dados: {
 }): Promise<ResultadoEnvioEmail> {
   const config = obterConfigNotificacoesEmail()
   const urlPortal = `${config.urlPortalFornecedor}/portal-fornecedor/login`
+  const nomeEmpresa = escaparHtml(dados.nomeEmpresa)
+  const fornecedorNome = escaparHtml(dados.fornecedorNome)
+  const cnpjFormatado = escaparHtml(formatarCnpj(dados.cnpj))
 
   const corpoHtml = `
-    <p style="margin:0 0 12px;font-size:14px;color:#1a1a1a;">Olá, ${dados.fornecedorNome}.</p>
-    <p style="margin:0 0 12px;font-size:14px;color:#1a1a1a;">Use os dados abaixo para acessar o portal e enviar seu documento (pedido, nota ou proposta):</p>
+    ${montarBadgeStatus({ tom: 'info', texto: 'Acesso liberado' })}
+    ${montarParagrafo(`Olá, <strong>${fornecedorNome}</strong>.`)}
+    ${montarParagrafo(
+      'Seu acesso ao portal foi liberado. Use as credenciais abaixo para consultar o pedido e enviar o documento oficial (pedido, nota ou proposta).'
+    )}
     ${montarBlocoCredenciais({
+      titulo: 'Dados de acesso',
       itens: [
-        { rotulo: 'CNPJ', valor: formatarCnpj(dados.cnpj) },
+        { rotulo: 'CNPJ', valor: cnpjFormatado },
         { rotulo: 'Senha (nº do pedido)', valor: String(dados.numeroPedido) },
       ],
     })}
+    ${montarPassos({
+      itens: [
+        'Acesse o portal com o CNPJ e a senha informados acima',
+        'Consulte os itens do pedido',
+        'Envie o documento oficial para conferência',
+      ],
+    })}
     ${montarBotaoCta({ texto: 'Acessar portal do fornecedor', url: urlPortal })}
-    <p style="margin:0;font-size:12px;color:#666;">O acesso expira em 7 dias ou quando o comprador bloquear o portal.</p>
   `.trim()
 
   const html = montarLayoutEmailCorporativo({
-    titulo: `Acesso ao portal — Pedido #${dados.numeroPedido}`,
-    nomeEmpresa: dados.nomeEmpresa,
+    titulo: 'Acesso ao portal liberado',
+    nomeEmpresa,
+    numeroPedido: dados.numeroPedido,
+    preheader: `Pedido #${dados.numeroPedido} — use CNPJ e senha para acessar o portal.`,
     corpoHtml,
   })
 
@@ -78,20 +98,33 @@ async function avisarUploadFornecedor(dados: {
     return { sucesso: false, mensagem: 'RESEND_AVISO_PARA não configurado no .env' }
   }
 
+  const nomeEmpresa = escaparHtml(dados.nomeEmpresa)
+  const fornecedorNome = escaparHtml(dados.fornecedorNome)
+  const nomeArquivo = escaparHtml(dados.nomeArquivo)
+
   const corpoHtml = `
+    ${montarBadgeStatus({ tom: 'neutro', texto: 'Ação necessária' })}
+    ${montarParagrafo('Um novo documento do fornecedor foi recebido e está disponível para conferência no painel do pedido.')}
     ${montarBlocoCredenciais({
+      titulo: 'Resumo do envio',
       itens: [
         { rotulo: 'Pedido', valor: `#${dados.numeroPedido}` },
-        { rotulo: 'Fornecedor', valor: dados.fornecedorNome },
-        { rotulo: 'Arquivo', valor: dados.nomeArquivo },
+        { rotulo: 'Fornecedor', valor: fornecedorNome },
+        { rotulo: 'Arquivo', valor: nomeArquivo },
       ],
     })}
-    <p style="margin:0;font-size:14px;color:#1a1a1a;">Acesse o painel do pedido para conferir com a IA.</p>
+    ${montarBlocoDestaque({
+      tom: 'info',
+      titulo: 'Próximo passo',
+      html: 'Abra o pedido no ERP, acesse a aba Avaliação do pedido e use Conferir com IA ou decida diretamente (Aprovar / Solicitar ajuste).',
+    })}
   `.trim()
 
   const html = montarLayoutEmailCorporativo({
-    titulo: `Novo documento recebido — Pedido #${dados.numeroPedido}`,
-    nomeEmpresa: dados.nomeEmpresa,
+    titulo: 'Novo documento recebido',
+    nomeEmpresa,
+    numeroPedido: dados.numeroPedido,
+    preheader: `Pedido #${dados.numeroPedido} — ${dados.fornecedorNome} enviou ${dados.nomeArquivo}.`,
     corpoHtml,
   })
 
@@ -113,15 +146,27 @@ async function avisarDocumentoAprovado(dados: {
   numeroPedido: number
 }): Promise<ResultadoEnvioEmail> {
   const config = obterConfigNotificacoesEmail()
+  const nomeEmpresa = escaparHtml(dados.nomeEmpresa)
+  const fornecedorNome = escaparHtml(dados.fornecedorNome)
 
   const corpoHtml = `
-    <p style="margin:0 0 12px;font-size:14px;color:#1a1a1a;">Olá, ${dados.fornecedorNome}.</p>
-    <p style="margin:0;font-size:14px;color:#1a1a1a;">O documento enviado para o pedido #${dados.numeroPedido} foi conferido e está tudo certo. Não é necessária nenhuma ação adicional.</p>
+    ${montarBadgeStatus({ tom: 'sucesso', texto: 'Documento aprovado' })}
+    ${montarParagrafo(`Olá, <strong>${fornecedorNome}</strong>.`)}
+    ${montarParagrafo(
+      `O documento enviado para o pedido <strong>#${dados.numeroPedido}</strong> foi conferido e está tudo certo.`
+    )}
+    ${montarBlocoDestaque({
+      tom: 'sucesso',
+      titulo: 'Sem ação necessária',
+      html: 'Não é necessário reenviar documento nem acessar o portal por causa desta aprovação.',
+    })}
   `.trim()
 
   const html = montarLayoutEmailCorporativo({
-    titulo: `Documento aprovado — Pedido #${dados.numeroPedido}`,
-    nomeEmpresa: dados.nomeEmpresa,
+    titulo: 'Documento aprovado',
+    nomeEmpresa,
+    numeroPedido: dados.numeroPedido,
+    preheader: `Pedido #${dados.numeroPedido} — documento conferido e aprovado.`,
     corpoHtml,
   })
 
@@ -151,18 +196,30 @@ async function avisarAjusteNecessario(dados: {
 }): Promise<ResultadoEnvioEmail> {
   const config = obterConfigNotificacoesEmail()
   const urlPortal = `${config.urlPortalFornecedor}/portal-fornecedor/login`
+  const nomeEmpresa = escaparHtml(dados.nomeEmpresa)
+  const fornecedorNome = escaparHtml(dados.fornecedorNome)
+  const motivo = escaparHtml(dados.motivo)
 
   const corpoHtml = `
-    <p style="margin:0 0 12px;font-size:14px;color:#1a1a1a;">Olá, ${dados.fornecedorNome}.</p>
-    <p style="margin:0 0 12px;font-size:14px;color:#1a1a1a;">Foram identificadas divergências no documento enviado para o pedido #${dados.numeroPedido}:</p>
-    <p style="margin:0 0 16px;background:#fff3cd;border-radius:6px;padding:8px 12px;font-size:14px;color:#1a1a1a;">${dados.motivo}</p>
-    <p style="margin:0 0 12px;font-size:14px;color:#1a1a1a;">Acesse o portal e envie um novo documento corrigido:</p>
+    ${montarBadgeStatus({ tom: 'atencao', texto: 'Ajuste necessário' })}
+    ${montarParagrafo(`Olá, <strong>${fornecedorNome}</strong>.`)}
+    ${montarParagrafo(
+      `Foram identificadas divergências no documento enviado para o pedido <strong>#${dados.numeroPedido}</strong>.`
+    )}
+    ${montarBlocoDestaque({
+      tom: 'atencao',
+      titulo: 'Motivo do ajuste',
+      html: motivo,
+    })}
+    ${montarParagrafo('Acesse o portal e envie um novo documento corrigido.')}
     ${montarBotaoCta({ texto: 'Acessar portal do fornecedor', url: urlPortal })}
   `.trim()
 
   const html = montarLayoutEmailCorporativo({
-    titulo: `Ajuste necessário — Pedido #${dados.numeroPedido}`,
-    nomeEmpresa: dados.nomeEmpresa,
+    titulo: 'Ajuste necessário no documento',
+    nomeEmpresa,
+    numeroPedido: dados.numeroPedido,
+    preheader: `Pedido #${dados.numeroPedido} — reenvie o documento pelo portal.`,
     corpoHtml,
   })
 
