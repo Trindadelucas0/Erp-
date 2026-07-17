@@ -22,13 +22,9 @@ import {
   type AnexoFornecedor,
 } from '@/components/pedidos-compra/aba-avaliacao-pedido'
 import {
-  ModalEscolherTelefoneWhatsapp,
-  processarAvisoWhatsappPortal,
-} from '@/components/pedidos-compra/modal-escolher-telefone-whatsapp'
-import {
   mensagemToastAvisoWhatsapp,
+  processarAvisoWhatsappPortal,
   type AvisoWhatsappPortal,
-  type TelefoneWhatsappAviso,
 } from '@/lib/whatsapp-portal'
 import { clienteHttp } from '@/services/api'
 import { usePermissao } from '@/hooks/use-permissao'
@@ -142,10 +138,6 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   const [bloqueandoPortal, setBloqueandoPortal] = useState(false)
   const [voltandoParaRascunho, setVoltandoParaRascunho] = useState(false)
   const [mensagemPortal, setMensagemPortal] = useState('')
-  const [escolhaWhatsapp, setEscolhaWhatsapp] = useState<{
-    telefones: TelefoneWhatsappAviso[]
-    texto: string
-  } | null>(null)
   const [abrindoWhatsapp, setAbrindoWhatsapp] = useState(false)
   const [mensagemDocumentos, setMensagemDocumentos] = useState('')
   const [enviandoAnexo, setEnviandoAnexo] = useState(false)
@@ -372,10 +364,10 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
       setPortalLiberadoEm(new Date().toISOString())
       setPortalBloqueadoEm(null)
       const aviso = data as AvisoWhatsappPortal
-      processarAvisoWhatsappPortal(aviso, setEscolhaWhatsapp)
-      setMensagemPortal(mensagemToastAvisoWhatsapp(aviso, 'Portal liberado'))
+      processarAvisoWhatsappPortal(aviso)
+      setMensagemPortal(mensagemToastAvisoWhatsapp(aviso, 'Enviado ao fornecedor'))
     } catch (e: unknown) {
-      setMensagemPortal(extrairMensagemApi(e, 'Erro ao liberar o portal para o fornecedor.'))
+      setMensagemPortal(extrairMensagemApi(e, 'Erro ao enviar o pedido ao fornecedor.'))
     } finally {
       setLiberandoPortal(false)
     }
@@ -392,11 +384,11 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     try {
       const { data } = await clienteHttp.get(`/pedidos-compra/${pedidoId}/whatsapp-credenciais`)
       const aviso = data as AvisoWhatsappPortal
-      processarAvisoWhatsappPortal(aviso, setEscolhaWhatsapp)
+      processarAvisoWhatsappPortal(aviso)
       if (!aviso.avisoWhatsappDisponivel || !aviso.telefonesWhatsapp?.length) {
         setMensagemPortal(
           aviso.mensagemAviso ??
-            'Cadastre o telefone do fornecedor para enviar pelo WhatsApp.'
+            'Marque a opção WhatsApp em pelo menos um telefone do fornecedor.'
         )
       }
     } catch (e: unknown) {
@@ -444,7 +436,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
       }
       setAbaAtiva('dados-gerais')
       setMensagemPainelFornecedor(
-        'Pedido voltou para rascunho. O portal do fornecedor foi bloqueado — libere novamente após concluir.'
+        'Pedido voltou para rascunho. O portal do fornecedor foi bloqueado — envie novamente ao fornecedor após aprovar o pedido.'
       )
     } catch (e: unknown) {
       setMensagemPortal(extrairMensagemApi(e, 'Erro ao voltar o pedido para rascunho.'))
@@ -837,25 +829,14 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     try {
       const payload = montarPayload(concluir)
       if (modoEdicao && idAtual) {
-        const { data } = await clienteHttp.put(`/pedidos-compra/${idAtual}`, payload)
-        const avisoPortal = data?.pedido?.avisoPortal as AvisoWhatsappPortal | undefined
+        await clienteHttp.put(`/pedidos-compra/${idAtual}`, payload)
         if (concluir) {
           abaInicialDefinidaRef.current = true
           await carregarPedidoNoForm(idAtual)
           setAbaAtiva('avaliacao')
-          if (avisoPortal) {
-            processarAvisoWhatsappPortal(avisoPortal, setEscolhaWhatsapp)
-            setMensagemPortal(mensagemToastAvisoWhatsapp(avisoPortal, 'Portal liberado'))
-          }
+          setMensagemPortal('Pedido aprovado (enviado). Use Enviar ao fornecedor para liberar o portal.')
         } else {
-          const mensagemBase = `${formatarPedido(numeroPedido ?? 0)} atualizado.`
-          const mensagem = avisoPortal
-            ? mensagemToastAvisoWhatsapp(avisoPortal, `${mensagemBase} Portal liberado`)
-            : mensagemBase
-          if (avisoPortal) {
-            processarAvisoWhatsappPortal(avisoPortal, setEscolhaWhatsapp)
-          }
-          voltarParaLista(mensagem)
+          voltarParaLista(`${formatarPedido(numeroPedido ?? 0)} atualizado.`)
         }
       } else {
         const { data } = await clienteHttp.post('/pedidos-compra', payload)
@@ -1554,7 +1535,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
                         onClick={() => void aoSalvar(undefined, true)}
                         disabled={salvando}
                       >
-                        {salvando ? 'Salvando...' : 'Concluir pedido'}
+                        {salvando ? 'Salvando...' : 'Aprovar pedido'}
                       </BotaoPrimario>
                     )}
                   </>
@@ -1937,13 +1918,6 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
           aoConferirConcluida={() => void carregarPedidoNoForm(pedidoId)}
         />
       )}
-
-      <ModalEscolherTelefoneWhatsapp
-        aberto={Boolean(escolhaWhatsapp)}
-        telefones={escolhaWhatsapp?.telefones ?? []}
-        texto={escolhaWhatsapp?.texto ?? ''}
-        aoFechar={() => setEscolhaWhatsapp(null)}
-      />
     </div>
   )
 }

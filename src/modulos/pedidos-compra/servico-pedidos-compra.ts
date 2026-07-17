@@ -303,41 +303,7 @@ async function editarPedidoCompra(
     valoresDepois: { numero: pedido.numero, status: pedido.status },
   })
 
-  // Ao concluir o pedido pela primeira vez, libera o portal e prepara o WhatsApp
-  // automaticamente — evita depender de um segundo clique manual em "Liberar para fornecedor".
-  let avisoPortal:
-    | {
-        avisoWhatsappDisponivel: boolean
-        telefonesWhatsapp: { id: string; valor: string; valorFormatado: string }[]
-        textoWhatsapp: string
-        mensagemAviso?: string
-      }
-    | undefined
-  if (novoStatus === 'enviado' && !existente.portalLiberadoEm) {
-    try {
-      avisoPortal = await servicoDoPortalFornecedor.liberarParaFornecedor(id, companyId)
-      await registrarAuditoria({
-        usuarioId: idDoAutor,
-        acao: 'liberar_portal',
-        entidade: 'pedido_compra',
-        entidadeId: id,
-        valoresDepois: {
-          avisoWhatsappDisponivel: avisoPortal.avisoWhatsappDisponivel,
-          qtdTelefones: avisoPortal.telefonesWhatsapp.length,
-          automatico: true,
-        },
-      })
-    } catch (erro) {
-      avisoPortal = {
-        avisoWhatsappDisponivel: false,
-        telefonesWhatsapp: [],
-        textoWhatsapp: '',
-        mensagemAviso: (erro as Error).message,
-      }
-    }
-  }
-
-  return { ...pedido, avisoPortal }
+  return pedido
 }
 
 async function cancelarPedidoCompra(

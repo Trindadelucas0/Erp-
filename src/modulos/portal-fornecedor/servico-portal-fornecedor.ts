@@ -220,7 +220,6 @@ async function liberarParaFornecedor(pedidoCompraId: string, companyId: string) 
       cnpj: pedido.fornecedor.cnpj,
       numeroPedido: pedido.numero,
     }),
-    mensagemSemTelefone: 'Cadastre o telefone do fornecedor para enviar pelo WhatsApp.',
   })
 }
 
@@ -260,7 +259,6 @@ async function aprovarAnexo(pedidoCompraId: string, anexoId: string, companyId: 
       nomeEmpresa: pedido.company.name,
       numeroPedido: pedido.numero,
     }),
-    mensagemSemTelefone: 'Cadastre o telefone do fornecedor para enviar pelo WhatsApp.',
   })
 }
 
@@ -298,7 +296,6 @@ async function solicitarAjusteAnexo(
       numeroPedido: pedido.numero,
       motivo,
     }),
-    mensagemSemTelefone: 'Cadastre o telefone do fornecedor para enviar pelo WhatsApp.',
   })
 }
 
@@ -324,7 +321,6 @@ async function montarAvisoWhatsappCredenciais(pedidoCompraId: string, companyId:
       cnpj: pedido.fornecedor.cnpj,
       numeroPedido: pedido.numero,
     }),
-    mensagemSemTelefone: 'Cadastre o telefone do fornecedor para enviar pelo WhatsApp.',
   })
 }
 

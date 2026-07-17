@@ -1,5 +1,6 @@
 /**
- * Helpers para abrir WhatsApp (wa.me) com mensagem pronta no número do fornecedor.
+ * Helpers para abrir WhatsApp (wa.me) com mensagem pronta nos números
+ * marcados como WhatsApp no cadastro do fornecedor.
  */
 
 export type TelefoneWhatsappAviso = {
@@ -36,25 +37,50 @@ export function abrirWhatsappComMensagem(telefone: string, texto: string): void 
   window.open(url, '_blank', 'noopener,noreferrer')
 }
 
+/** Abre wa.me em todos os telefones (mesmo clique; o navegador pode bloquear pop-ups extras). */
+export function abrirWhatsappEmTodos(
+  telefones: TelefoneWhatsappAviso[],
+  texto: string
+): void {
+  for (const telefone of telefones) {
+    abrirWhatsappComMensagem(telefone.valor, texto)
+  }
+}
+
 /**
- * Toast após ação com aviso WhatsApp: só retorna texto em falha (sem telefone)
- * ou quando o comprador ainda precisa escolher o número. Sucesso com abertura
- * automática = só a ação concluída, sem "WhatsApp aberto…".
+ * Toast após ação com aviso WhatsApp: só acrescenta texto em falha
+ * (sem telefone / sem marca WhatsApp). Sucesso = só a ação concluída.
  */
 export function mensagemToastAvisoWhatsapp(aviso: AvisoWhatsappPortal, acaoConcluida: string): string {
   if (!aviso.avisoWhatsappDisponivel || !aviso.telefonesWhatsapp?.length) {
-    return `${acaoConcluida}. ${aviso.mensagemAviso ?? 'Cadastre o telefone do fornecedor para enviar pelo WhatsApp.'}`
-  }
-  if (aviso.telefonesWhatsapp.length > 1) {
-    return `${acaoConcluida}. Escolha o telefone do fornecedor para abrir o WhatsApp.`
+    return `${acaoConcluida}. ${aviso.mensagemAviso ?? 'Marque a opção WhatsApp em pelo menos um telefone do fornecedor.'}`
   }
   return acaoConcluida
 }
 
-/** Preferência: só números marcados como WhatsApp, se houver. */
+/** Só números marcados como WhatsApp no cadastro. */
 export function selecionarTelefonesParaAvisoFront(
   telefones: TelefoneWhatsappAviso[]
 ): TelefoneWhatsappAviso[] {
-  const marcados = telefones.filter((t) => t.whatsapp)
-  return marcados.length > 0 ? marcados : telefones
+  return telefones.filter((t) => t.whatsapp)
+}
+
+/**
+ * Abre wa.me em todos os telefones marcados como WhatsApp.
+ * Sem telefone marcado: não abre nada.
+ */
+export function processarAvisoWhatsappPortal(
+  aviso: AvisoWhatsappPortal | null | undefined
+): boolean {
+  if (!aviso?.avisoWhatsappDisponivel || !aviso.textoWhatsapp) {
+    return false
+  }
+
+  const telefones = selecionarTelefonesParaAvisoFront(aviso.telefonesWhatsapp ?? [])
+  if (telefones.length === 0) {
+    return false
+  }
+
+  abrirWhatsappEmTodos(telefones, aviso.textoWhatsapp)
+  return true
 }

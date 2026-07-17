@@ -8,5 +8,7 @@ declare module 'fastify' {
   interface FastifyRequest {
     idDoUsuario?: string
     empresaAtivaId?: string
+    /** Mensagem de erro anexada ao log HTTP em desenvolvimento */
+    logErroMensagem?: string
   }
 }

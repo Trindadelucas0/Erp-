@@ -27,13 +27,9 @@ import {
   rotuloStatusConferencia,
 } from '@/components/pedidos-compra/lista-documentos-fornecedor'
 import {
-  ModalEscolherTelefoneWhatsapp,
-  processarAvisoWhatsappPortal,
-} from '@/components/pedidos-compra/modal-escolher-telefone-whatsapp'
-import {
   mensagemToastAvisoWhatsapp,
+  processarAvisoWhatsappPortal,
   type AvisoWhatsappPortal,
-  type TelefoneWhatsappAviso,
 } from '@/lib/whatsapp-portal'
 
 export type TipoAnexoFornecedor = 'documento_fornecedor' | 'relatorio_conferencia_ia'
@@ -126,10 +122,6 @@ export function AbaAvaliacaoPedido({
   const [decidindoAnexo, setDecidindoAnexo] = useState(false)
   const [erroDecisaoAnexo, setErroDecisaoAnexo] = useState('')
   const [mensagemDecisaoAnexo, setMensagemDecisaoAnexo] = useState('')
-  const [escolhaWhatsapp, setEscolhaWhatsapp] = useState<{
-    telefones: TelefoneWhatsappAviso[]
-    texto: string
-  } | null>(null)
 
   const temAnexoAprovado = anexosFornecedor.some(
     (a) => isDocumentoFornecedor(a) && a.statusConferencia === 'aprovado'
@@ -201,7 +193,7 @@ export function AbaAvaliacaoPedido({
         `/pedidos-compra/${pedidoId}/anexos-fornecedor/${anexoId}/aprovar`
       )
       const aviso = data as AvisoWhatsappPortal
-      processarAvisoWhatsappPortal(aviso, setEscolhaWhatsapp)
+      processarAvisoWhatsappPortal(aviso)
       const mensagem = mensagemToastAvisoWhatsapp(aviso, 'Documento aprovado')
       fecharPainelDecisao()
       setMensagemDecisaoAnexo(mensagem)
@@ -226,7 +218,7 @@ export function AbaAvaliacaoPedido({
         { motivo: motivoAjusteDigitado.trim() }
       )
       const aviso = data as AvisoWhatsappPortal
-      processarAvisoWhatsappPortal(aviso, setEscolhaWhatsapp)
+      processarAvisoWhatsappPortal(aviso)
       const mensagem = mensagemToastAvisoWhatsapp(aviso, 'Ajuste solicitado')
       fecharPainelDecisao()
       setMensagemDecisaoAnexo(mensagem)
@@ -406,7 +398,7 @@ export function AbaAvaliacaoPedido({
           podeEditar &&
           (!portalLiberadoEm || portalBloqueadoEm ? (
             <BotaoPrimario type="button" onClick={onLiberarPortal} disabled={liberandoPortal}>
-              {liberandoPortal ? 'Liberando...' : 'Liberar para fornecedor'}
+              {liberandoPortal ? 'Enviando...' : 'Enviar ao fornecedor'}
             </BotaoPrimario>
           ) : portalAberto ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -599,13 +591,6 @@ export function AbaAvaliacaoPedido({
           onVoltarParaRascunho()
         }}
         aoCancelar={() => setConfirmandoVoltarRascunho(false)}
-      />
-
-      <ModalEscolherTelefoneWhatsapp
-        aberto={Boolean(escolhaWhatsapp)}
-        telefones={escolhaWhatsapp?.telefones ?? []}
-        texto={escolhaWhatsapp?.texto ?? ''}
-        aoFechar={() => setEscolhaWhatsapp(null)}
       />
     </div>
   )

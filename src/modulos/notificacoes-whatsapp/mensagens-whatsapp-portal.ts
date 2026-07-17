@@ -149,27 +149,39 @@ export type ResultadoAvisoWhatsappPortal = {
   mensagemAviso?: string
 }
 
-/** Se houver telefone(s) marcados como WhatsApp, usa só esses; senão, todos os válidos. */
+/** Só telefones com a opção WhatsApp marcada no cadastro do fornecedor. */
 export function selecionarTelefonesParaAviso(
   contatos: ContatoTelefoneFonte[]
 ): TelefoneWhatsapp[] {
-  const lista = listarTelefonesParaWhatsapp(contatos)
-  const marcados = lista.filter((t) => t.whatsapp)
-  return marcados.length > 0 ? marcados : lista
+  return listarTelefonesParaWhatsapp(contatos).filter((t) => t.whatsapp)
 }
+
+export const MENSAGEM_SEM_TELEFONE_WHATSAPP =
+  'Cadastre o telefone do fornecedor para enviar pelo WhatsApp.'
+
+export const MENSAGEM_SEM_MARCA_WHATSAPP =
+  'Marque a opção WhatsApp em pelo menos um telefone do fornecedor.'
 
 export function montarResultadoAvisoWhatsapp(dados: {
   contatos: ContatoTelefoneFonte[]
   textoWhatsapp: string
-  mensagemSemTelefone: string
+  mensagemSemTelefone?: string
+  mensagemSemMarcaWhatsapp?: string
 }): ResultadoAvisoWhatsappPortal {
-  const telefonesWhatsapp = selecionarTelefonesParaAviso(dados.contatos)
+  const todosValidos = listarTelefonesParaWhatsapp(dados.contatos)
+  const telefonesWhatsapp = todosValidos.filter((t) => t.whatsapp)
+
   if (telefonesWhatsapp.length === 0) {
+    const mensagemAviso =
+      todosValidos.length > 0
+        ? (dados.mensagemSemMarcaWhatsapp ?? MENSAGEM_SEM_MARCA_WHATSAPP)
+        : (dados.mensagemSemTelefone ?? MENSAGEM_SEM_TELEFONE_WHATSAPP)
+
     return {
       avisoWhatsappDisponivel: false,
       telefonesWhatsapp: [],
       textoWhatsapp: dados.textoWhatsapp,
-      mensagemAviso: dados.mensagemSemTelefone,
+      mensagemAviso,
     }
   }
 

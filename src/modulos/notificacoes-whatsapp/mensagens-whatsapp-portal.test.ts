@@ -5,6 +5,7 @@ import {
   montarTextoCredenciaisPortal,
   montarUrlWhatsapp,
   normalizarTelefoneWhatsapp,
+  selecionarTelefonesParaAviso,
 } from './mensagens-whatsapp-portal.js'
 
 describe('notificacoes-whatsapp', () => {
@@ -39,6 +40,16 @@ describe('notificacoes-whatsapp', () => {
     expect(lista[0].whatsapp).toBe(true)
   })
 
+  it('selecionarTelefonesParaAviso retorna só os marcados como WhatsApp', () => {
+    const selecionados = selecionarTelefonesParaAviso([
+      { id: '1', valor: '1133334444', whatsapp: false, principal: true },
+      { id: '2', valor: '11999998888', whatsapp: true, principal: false },
+      { id: '3', valor: '11988887777', whatsapp: true, principal: false },
+    ])
+    expect(selecionados).toHaveLength(2)
+    expect(selecionados.map((t) => t.valor)).toEqual(['5511999998888', '5511988887777'])
+  })
+
   it('resultado do aviso usa só o telefone marcado como WhatsApp', () => {
     const resultado = montarResultadoAvisoWhatsapp({
       contatos: [
@@ -46,7 +57,6 @@ describe('notificacoes-whatsapp', () => {
         { id: '2', valor: '11999998888', whatsapp: true, principal: false },
       ],
       textoWhatsapp: 'texto',
-      mensagemSemTelefone: 'Cadastre o telefone do fornecedor para enviar pelo WhatsApp.',
     })
     expect(resultado.avisoWhatsappDisponivel).toBe(true)
     expect(resultado.telefonesWhatsapp).toHaveLength(1)
@@ -54,23 +64,35 @@ describe('notificacoes-whatsapp', () => {
     expect(resultado.telefonesWhatsapp[0].whatsapp).toBe(true)
   })
 
-  it('sem telefone marcado WhatsApp mantém todos os válidos', () => {
+  it('vários marcados WhatsApp retorna todos', () => {
+    const resultado = montarResultadoAvisoWhatsapp({
+      contatos: [
+        { id: '1', valor: '11999998888', whatsapp: true, principal: true },
+        { id: '2', valor: '11988887777', whatsapp: true, principal: false },
+      ],
+      textoWhatsapp: 'texto',
+    })
+    expect(resultado.avisoWhatsappDisponivel).toBe(true)
+    expect(resultado.telefonesWhatsapp).toHaveLength(2)
+  })
+
+  it('sem telefone marcado WhatsApp não libera aviso', () => {
     const resultado = montarResultadoAvisoWhatsapp({
       contatos: [
         { id: '1', valor: '1133334444', whatsapp: false, principal: true },
         { id: '2', valor: '11988887777', whatsapp: false, principal: false },
       ],
       textoWhatsapp: 'texto',
-      mensagemSemTelefone: 'Cadastre o telefone do fornecedor para enviar pelo WhatsApp.',
     })
-    expect(resultado.telefonesWhatsapp).toHaveLength(2)
+    expect(resultado.avisoWhatsappDisponivel).toBe(false)
+    expect(resultado.telefonesWhatsapp).toHaveLength(0)
+    expect(resultado.mensagemAviso).toContain('Marque a opção WhatsApp')
   })
 
   it('sem telefone não libera WhatsApp', () => {
     const resultado = montarResultadoAvisoWhatsapp({
       contatos: [],
       textoWhatsapp: 'texto',
-      mensagemSemTelefone: 'Cadastre o telefone do fornecedor para enviar pelo WhatsApp.',
     })
     expect(resultado.avisoWhatsappDisponivel).toBe(false)
     expect(resultado.telefonesWhatsapp).toHaveLength(0)
