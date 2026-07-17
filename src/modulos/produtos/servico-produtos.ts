@@ -113,11 +113,21 @@ async function sugerirProximoSku(companyId: string) {
   return { sku }
 }
 
-async function listarProdutos(companyId: string, busca?: string, incluirInativos?: boolean) {
+async function listarProdutos(
+  companyId: string,
+  busca?: string,
+  incluirInativos?: boolean,
+  resumo?: boolean
+) {
   if (!companyId) {
     throw new ErroDaAplicacao('Empresa ativa não informada.', 400)
   }
-  return repositorioDeProdutos.listarPorEmpresa(companyId, busca, incluirInativos)
+  return repositorioDeProdutos.listarPorEmpresa(
+    companyId,
+    busca,
+    incluirInativos,
+    resumo
+  )
 }
 
 async function buscarProduto(id: string, companyId: string) {

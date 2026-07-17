@@ -1,7 +1,7 @@
 'use client'
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
-import { Copy, Plus } from 'lucide-react'
+import { Copy, Loader2, Plus } from 'lucide-react'
 import {
   ComboboxProduto,
   type ProdutoOpcao,
@@ -36,6 +36,7 @@ import { TextareaPadrao } from '@/components/ui/textarea-padrao'
 import { SelectPadrao } from '@/components/ui/select-padrao'
 import { CampoFotoProduto } from '@/components/produtos/campo-foto-produto'
 import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
+import { LinhasSkeletonTabela } from '@/components/ui/linhas-skeleton-tabela'
 import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
 import { ordenarLista } from '@/lib/ordenacao-lista'
 import { ComboboxMarca } from '@/components/produtos/combobox-marca'
@@ -330,6 +331,7 @@ function ConteudoDaPagina() {
   const [duplicando, setDuplicando] = useState(false)
   const [produtosParaDuplicar, setProdutosParaDuplicar] = useState<ProdutoOpcao[]>([])
   const [carregandoCatalogoDuplicar, setCarregandoCatalogoDuplicar] = useState(false)
+  const [carregandoLista, setCarregandoLista] = useState(true)
   const [produtoIdFotoOrigem, setProdutoIdFotoOrigem] = useState('')
   const [pagina, setPagina] = useState(1)
   const [itensPorPagina, setItensPorPagina] = useState<ItensPorPagina>(10)
@@ -418,13 +420,21 @@ function ConteudoDaPagina() {
   }, [busca])
 
   const carregar = useCallback(async () => {
+    setCarregandoLista(true)
+    setErro('')
     try {
-      const params = new URLSearchParams({ incluirInativos: 'true' })
+      const params = new URLSearchParams({
+        incluirInativos: 'true',
+        resumo: 'true',
+      })
       if (buscaDebounced.trim()) params.set('q', buscaDebounced.trim())
       const { data } = await clienteHttp.get(`/produtos?${params}`)
       setLista(data.produtos ?? [])
     } catch {
-      setErro('Erro ao carregar produtos.')
+      setErro('Erro ao carregar produtos. Aguarde e tente novamente.')
+      setLista([])
+    } finally {
+      setCarregandoLista(false)
     }
   }, [buscaDebounced])
 
@@ -1024,7 +1034,25 @@ function ConteudoDaPagina() {
           />
         </div>
 
-        <div className="overflow-x-auto rounded-lg border border-border bg-card">
+        <div className="relative min-h-[280px] overflow-x-auto rounded-lg border border-border bg-card">
+          {carregandoLista && (
+            <div
+              className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-background/85 px-4 backdrop-blur-[1px]"
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
+            >
+              <Loader2 className="size-8 animate-spin text-primary" aria-hidden />
+              <div className="max-w-sm text-center">
+                <p className="text-sm font-medium text-foreground">
+                  Carregando catálogo de produtos...
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Com milhares de itens isso pode levar alguns segundos. Não feche a página.
+                </p>
+              </div>
+            </div>
+          )}
           <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
@@ -1038,64 +1066,66 @@ function ConteudoDaPagina() {
               </tr>
             </thead>
             <tbody>
-              {listaExibida.length === 0 && (
+              {carregandoLista && <LinhasSkeletonTabela colunas={7} linhas={8} />}
+              {!carregandoLista && listaExibida.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                     Nenhum produto encontrado.
                   </td>
                 </tr>
               )}
-              {listaPaginada.map((p: {
-                id: string
-                sku: string | null
-                nomeVenda: string
-                marca: string | null
-                unidade: string
-                ativo: boolean
-                urlFotoMiniatura?: string | null
-              }) => (
-                <tr
-                  key={p.id}
-                  className="cursor-pointer border-b border-border hover:bg-muted/30"
-                  onClick={() => abrirVisualizacao(p)}
-                >
-                  <td className="px-4 py-2">
-                    {urlFoto(p.urlFotoMiniatura) ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={urlFoto(p.urlFotoMiniatura)!}
-                        alt=""
-                        className="size-10 rounded object-cover"
-                      />
-                    ) : (
-                      <div className="size-10 rounded bg-muted" />
-                    )}
-                  </td>
-                  <td className="px-4 py-2">{p.sku ?? '—'}</td>
-                  <td className="px-4 py-2 font-medium">{p.nomeVenda}</td>
-                  <td className="px-4 py-2">{p.marca ?? '—'}</td>
-                  <td className="px-4 py-2">{p.unidade}</td>
-                  <td className="px-4 py-2">
-                    <BadgeStatus variante={p.ativo ? 'ativo' : 'inativo'}>
-                      {p.ativo ? 'Ativo' : 'Inativo'}
-                    </BadgeStatus>
-                  </td>
-                  <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex flex-wrap justify-end gap-1">
-                      {podeDesativar && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => alternarAtivo(p)}
-                        >
-                          {p.ativo ? 'Desativar' : 'Reativar'}
-                        </Button>
+              {!carregandoLista &&
+                listaPaginada.map((p: {
+                  id: string
+                  sku: string | null
+                  nomeVenda: string
+                  marca: string | null
+                  unidade: string
+                  ativo: boolean
+                  urlFotoMiniatura?: string | null
+                }) => (
+                  <tr
+                    key={p.id}
+                    className="cursor-pointer border-b border-border hover:bg-muted/30"
+                    onClick={() => abrirVisualizacao(p)}
+                  >
+                    <td className="px-4 py-2">
+                      {urlFoto(p.urlFotoMiniatura) ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={urlFoto(p.urlFotoMiniatura)!}
+                          alt=""
+                          className="size-10 rounded object-cover"
+                        />
+                      ) : (
+                        <div className="size-10 rounded bg-muted" />
                       )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-4 py-2">{p.sku ?? '—'}</td>
+                    <td className="px-4 py-2 font-medium">{p.nomeVenda}</td>
+                    <td className="px-4 py-2">{p.marca ?? '—'}</td>
+                    <td className="px-4 py-2">{p.unidade}</td>
+                    <td className="px-4 py-2">
+                      <BadgeStatus variante={p.ativo ? 'ativo' : 'inativo'}>
+                        {p.ativo ? 'Ativo' : 'Inativo'}
+                      </BadgeStatus>
+                    </td>
+                    <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex flex-wrap justify-end gap-1">
+                        {podeDesativar && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => alternarAtivo(p)}
+                          >
+                            {p.ativo ? 'Desativar' : 'Reativar'}
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>

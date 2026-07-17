@@ -35,11 +35,16 @@ async function sugerirProximoSku(requisicao: FastifyRequest, resposta: FastifyRe
 
 async function listarProdutos(requisicao: FastifyRequest, resposta: FastifyReply) {
   const companyId = requisicao.empresaAtivaId || ''
-  const { q, incluirInativos } = requisicao.query as { q?: string; incluirInativos?: string }
+  const { q, incluirInativos, resumo } = requisicao.query as {
+    q?: string
+    incluirInativos?: string
+    resumo?: string
+  }
   const produtos = await servicoDeProdutos.listarProdutos(
     companyId,
     q,
-    incluirInativos === 'true'
+    incluirInativos === 'true',
+    resumo === 'true'
   )
   return resposta.send({ produtos })
 }

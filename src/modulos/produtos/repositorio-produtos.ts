@@ -281,7 +281,12 @@ function mapearProdutoLista(produto: ProdutoListaDb, companyId: string) {
   }
 }
 
-async function listarPorEmpresa(companyId: string, busca?: string, incluirInativos = false) {
+async function listarPorEmpresa(
+  companyId: string,
+  busca?: string,
+  incluirInativos = false,
+  resumo = false
+) {
   const where: Prisma.ProdutoWhereInput = {
     companyId,
     ...(incluirInativos ? {} : { ativo: true }),
@@ -295,6 +300,38 @@ async function listarPorEmpresa(companyId: string, busca?: string, incluirInativ
           ],
         }
       : {}),
+  }
+
+  if (resumo) {
+    const produtos = await clientePrisma.produto.findMany({
+      where,
+      select: {
+        id: true,
+        sku: true,
+        ativo: true,
+        nomeVenda: true,
+        marca: true,
+        unidade: true,
+        fotos: {
+          where: { tipo: 'miniatura' },
+          take: 1,
+          select: { arquivo: true },
+        },
+      },
+      orderBy: { nomeVenda: 'asc' },
+    })
+
+    return produtos.map((p) => ({
+      id: p.id,
+      sku: p.sku,
+      ativo: p.ativo,
+      nomeVenda: p.nomeVenda,
+      marca: p.marca,
+      unidade: p.unidade,
+      urlFotoMiniatura: p.fotos[0]
+        ? urlPublicaFoto(companyId, p.id, p.fotos[0].arquivo)
+        : null,
+    }))
   }
 
   const produtos = await clientePrisma.produto.findMany({
