@@ -47,6 +47,7 @@ export type FormProdutoDuplicavel = {
   embalagensMaster: EmbalagemMasterForm[]
   enderecosEstoque: EnderecoEstoqueForm[]
   nomeCompra: string
+  precoCusto: string
   fornecedores: FornecedorProdutoForm[]
   similares: ProdutoSimilarItem[]
   agruparSimilaresRuptura: boolean
