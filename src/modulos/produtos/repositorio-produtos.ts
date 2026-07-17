@@ -214,6 +214,73 @@ async function sincronizarRelacoes(
   }
 }
 
+/** Include leve para listagem / combobox / pedido (evita similares e endereços). */
+const includeLista = {
+  fotos: { orderBy: { ordem: 'asc' as const } },
+  fornecedores: {
+    orderBy: { ordem: 'asc' as const },
+    include: { fornecedor: { select: { id: true, nome: true } } },
+  },
+  embalagensMaster: {
+    orderBy: { ordem: 'asc' as const },
+    select: {
+      id: true,
+      quantidade: true,
+      codigoBarras: true,
+      alturaCm: true,
+      larguraCm: true,
+      comprimentoCm: true,
+      ordem: true,
+    },
+  },
+} as const
+
+type ProdutoListaDb = Prisma.ProdutoGetPayload<{ include: typeof includeLista }>
+
+function mapearProdutoLista(produto: ProdutoListaDb, companyId: string) {
+  const principal = produto.fotos.find((f) => f.tipo === 'principal')
+  const miniatura = produto.fotos.find((f) => f.tipo === 'miniatura')
+  return {
+    id: produto.id,
+    sku: produto.sku,
+    ativo: produto.ativo,
+    nomeVenda: produto.nomeVenda,
+    marca: produto.marca,
+    unidade: produto.unidade,
+    codigoBarras: produto.codigoBarras,
+    codigoOrigem: produto.codigoOrigem,
+    precoCusto: produto.precoCusto ? Number(produto.precoCusto) : null,
+    bloqueadoCompra: produto.bloqueadoCompra,
+    urlFotoPrincipal: principal
+      ? urlPublicaFoto(companyId, produto.id, principal.arquivo)
+      : null,
+    urlFotoMiniatura: miniatura
+      ? urlPublicaFoto(companyId, produto.id, miniatura.arquivo)
+      : null,
+    fornecedores: produto.fornecedores.map((f) => ({
+      id: f.id,
+      fornecedorPessoaId: f.fornecedorPessoaId,
+      fornecedorNome: f.fornecedor.nome,
+      codigoFornecedor: f.codigoFornecedor,
+      multiploEntrada: f.multiploEntrada ? Number(f.multiploEntrada) : null,
+      multiplicadorEntrada: f.multiplicadorEntrada
+        ? Number(f.multiplicadorEntrada)
+        : null,
+      unidadeEntrada: f.unidadeEntrada,
+      ordem: f.ordem,
+    })),
+    embalagensMaster: produto.embalagensMaster.map((e) => ({
+      id: e.id,
+      quantidade: Number(e.quantidade),
+      codigoBarras: e.codigoBarras,
+      alturaCm: e.alturaCm ? Number(e.alturaCm) : null,
+      larguraCm: e.larguraCm ? Number(e.larguraCm) : null,
+      comprimentoCm: e.comprimentoCm ? Number(e.comprimentoCm) : null,
+      ordem: e.ordem,
+    })),
+  }
+}
+
 async function listarPorEmpresa(companyId: string, busca?: string, incluirInativos = false) {
   const where: Prisma.ProdutoWhereInput = {
     companyId,
@@ -232,11 +299,11 @@ async function listarPorEmpresa(companyId: string, busca?: string, incluirInativ
 
   const produtos = await clientePrisma.produto.findMany({
     where,
-    include: includeCompleto,
+    include: includeLista,
     orderBy: { nomeVenda: 'asc' },
   })
 
-  return produtos.map((p) => mapearProduto(p, companyId))
+  return produtos.map((p) => mapearProdutoLista(p, companyId))
 }
 
 async function buscarPorId(id: string) {
