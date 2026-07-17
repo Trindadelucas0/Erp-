@@ -285,7 +285,7 @@ function ConteudoDaPagina() {
         </p>
 
         <div className="overflow-x-auto rounded-lg border border-border bg-card">
-          <table className="w-full min-w-[900px] text-sm">
+          <table className="w-full min-w-[800px] text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
                 <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Nº" coluna="numero" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />

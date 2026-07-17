@@ -129,6 +129,7 @@
     cursor: pointer;
   }
   html {
+    font-size: 14px;
     @apply font-sans;
   }
 

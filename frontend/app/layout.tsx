@@ -11,7 +11,6 @@ const manrope = Manrope({ subsets: ['latin'], variable: '--font-sans' })
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
 }
 
 const scriptTemaInicial = `

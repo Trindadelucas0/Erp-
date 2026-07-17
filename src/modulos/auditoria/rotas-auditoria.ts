@@ -11,13 +11,14 @@ export async function rotasDeAuditoria(aplicacao: FastifyInstance): Promise<void
     '/',
     { preHandler: [middlewareDeAutenticacao, middlewareSomenteAdmin] },
     async (requisicao: FastifyRequest, resposta: FastifyReply) => {
-      const { entidade, usuarioId, dataInicio, dataFim, pagina } =
+      const { entidade, usuarioId, dataInicio, dataFim, pagina, limite } =
         requisicao.query as {
           entidade?: string
           usuarioId?: string
           dataInicio?: string
           dataFim?: string
           pagina?: string
+          limite?: string
         }
 
       const filtros = {
@@ -25,7 +26,8 @@ export async function rotasDeAuditoria(aplicacao: FastifyInstance): Promise<void
         usuarioId,
         dataInicio: dataInicio ? new Date(dataInicio) : undefined,
         dataFim: dataFim ? new Date(dataFim) : undefined,
-        pagina: pagina ? parseInt(pagina) : 1,
+        pagina: pagina ? parseInt(pagina, 10) : 1,
+        limite: limite ? parseInt(limite, 10) : undefined,
       }
 
       const [logs, total] = await Promise.all([
@@ -33,7 +35,11 @@ export async function rotasDeAuditoria(aplicacao: FastifyInstance): Promise<void
         repositorioDeAuditoria.contarTotal(filtros),
       ])
 
-      return resposta.send({ logs, total })
+      return resposta.send({
+        logs,
+        total,
+        limite: repositorioDeAuditoria.normalizarLimite(filtros.limite),
+      })
     }
   )
 }

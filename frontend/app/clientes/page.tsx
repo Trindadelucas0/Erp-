@@ -1916,7 +1916,7 @@ function ConteudoDaPaginaDeClientes() {
         </div>
 
         <div className="overflow-x-auto rounded-md border border-border">
-          <table className="w-full min-w-[960px] text-sm">
+          <table className="w-full min-w-[800px] text-sm">
             <colgroup>
               <col className="w-[3rem]" />
               <col />

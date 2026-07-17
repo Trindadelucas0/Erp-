@@ -36,7 +36,7 @@ export function LayoutPrincipal({ children }: Props) {
 
       <div className="flex min-h-screen min-w-0 flex-1 flex-col overflow-x-hidden md:pl-64">
         <Cabecalho aoAbrirMenuMobile={() => setMenuMobileAberto(true)} />
-        <main className="min-w-0 flex-1 p-4 md:p-6">
+        <main className="min-w-0 flex-1 p-3 md:p-4">
           <div className="mx-auto w-full min-w-0 max-w-7xl">{children}</div>
         </main>
       </div>

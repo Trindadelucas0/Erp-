@@ -13,6 +13,10 @@ import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
 import { ordenarLista } from '@/lib/ordenacao-lista'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Button } from '@/components/ui/button'
+import {
+  ControlesPaginacao,
+  type ItensPorPagina,
+} from '@/components/ui/controles-paginacao'
 
 type UsuarioDoLog = {
   id: string
@@ -58,6 +62,7 @@ function ConteudoDaPaginaDeAuditoria() {
   const [logs, setLogs] = useState<LogDeAuditoria[]>([])
   const [total, setTotal] = useState(0)
   const [pagina, setPagina] = useState(1)
+  const [itensPorPagina, setItensPorPagina] = useState<ItensPorPagina>(10)
   const [carregando, setCarregando] = useState(false)
 
   const [filtroEntidade, setFiltroEntidade] = useState('')
@@ -89,13 +94,15 @@ function ConteudoDaPaginaDeAuditoria() {
 
   useEffect(() => {
     carregarLogs()
-  }, [pagina])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- recarrega ao mudar página ou limite
+  }, [pagina, itensPorPagina])
 
   async function carregarLogs() {
     setCarregando(true)
     try {
       const params = new URLSearchParams()
       params.set('pagina', String(pagina))
+      params.set('limite', String(itensPorPagina))
       if (filtroEntidade) params.set('entidade', filtroEntidade)
       if (filtroUsuarioId) params.set('usuarioId', filtroUsuarioId)
       if (filtroDataInicio) params.set('dataInicio', filtroDataInicio)
@@ -112,17 +119,37 @@ function ConteudoDaPaginaDeAuditoria() {
   }
 
   function aplicarFiltros() {
-    setPagina(1)
+    if (pagina !== 1) {
+      setPagina(1)
+      return
+    }
     carregarLogs()
   }
 
-  function limparFiltros() {
+  async function limparFiltros() {
     setFiltroEntidade('')
     setFiltroUsuarioId('')
     setFiltroDataInicio('')
     setFiltroDataFim('')
     setPagina(1)
-    setTimeout(() => carregarLogs(), 0)
+    setCarregando(true)
+    try {
+      const params = new URLSearchParams()
+      params.set('pagina', '1')
+      params.set('limite', String(itensPorPagina))
+      const { data } = await clienteHttp.get(`/auditoria?${params.toString()}`)
+      setLogs(data.logs)
+      setTotal(data.total)
+    } catch {
+      // silencioso
+    } finally {
+      setCarregando(false)
+    }
+  }
+
+  function aoMudarItensPorPagina(itens: ItensPorPagina) {
+    setItensPorPagina(itens)
+    setPagina(1)
   }
 
   useRegistrarAtalhos(
@@ -136,8 +163,6 @@ function ConteudoDaPaginaDeAuditoria() {
       atualizar: !carregando,
     }
   )
-
-  const totalPaginas = Math.max(1, Math.ceil(total / 50))
 
   return (
     <div className="min-w-0 space-y-6">
@@ -232,33 +257,13 @@ function ConteudoDaPaginaDeAuditoria() {
               </table>
             </div>
 
-            {totalPaginas > 1 && (
-              <div className="mt-4 flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">
-                  Página {pagina} de {totalPaginas}
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={pagina === 1}
-                    onClick={() => setPagina((p) => p - 1)}
-                  >
-                    Anterior
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={pagina === totalPaginas}
-                    onClick={() => setPagina((p) => p + 1)}
-                  >
-                    Próxima
-                  </Button>
-                </div>
-              </div>
-            )}
+            <ControlesPaginacao
+              total={total}
+              pagina={pagina}
+              itensPorPagina={itensPorPagina}
+              onPaginaChange={setPagina}
+              onItensPorPaginaChange={aoMudarItensPorPagina}
+            />
           </>
         )}
       </CardPadrao>

@@ -699,7 +699,7 @@ export function LancamentoItensPedido({
       )}
 
       <div className="min-w-0 overflow-x-auto rounded-md border border-border">
-        <table className="w-full min-w-[88rem] text-sm">
+        <table className="w-full min-w-[40rem] text-sm lg:min-w-[56rem] xl:min-w-[72rem]">
           <thead>
             <tr className="border-b border-border bg-muted/40 text-left">
               <th className="w-10 px-2 py-1.5">
@@ -721,14 +721,14 @@ export function LancamentoItensPedido({
                 onOrdenar={alternarOrdenacao}
               />
               <CabecalhoColunaOrdenavel
-                className="px-2 py-1.5"
+                className="hidden px-2 py-1.5 lg:table-cell"
                 rotulo="Marca"
                 coluna="marca"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
               <CabecalhoColunaOrdenavel
-                className="px-2 py-1.5"
+                className="hidden px-2 py-1.5 lg:table-cell"
                 rotulo="Cód. orig."
                 coluna="codigoOriginal"
                 ordenacao={ordenacao}
@@ -749,14 +749,14 @@ export function LancamentoItensPedido({
                 onOrdenar={alternarOrdenacao}
               />
               <CabecalhoColunaOrdenavel
-                className="px-2 py-1.5"
+                className="hidden px-2 py-1.5 xl:table-cell"
                 rotulo="Itens por Embalagem"
                 coluna="itensPorEmbalagem"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
               <CabecalhoColunaOrdenavel
-                className="px-2 py-1.5"
+                className="hidden px-2 py-1.5 xl:table-cell"
                 rotulo="Qtd total UN de Venda"
                 coluna="qtdTotalUnVenda"
                 ordenacao={ordenacao}
@@ -770,28 +770,28 @@ export function LancamentoItensPedido({
                 onOrdenar={alternarOrdenacao}
               />
               <CabecalhoColunaOrdenavel
-                className="px-2 py-1.5"
+                className="hidden px-2 py-1.5 lg:table-cell"
                 rotulo="% desc."
                 coluna="pctDesconto"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
               <CabecalhoColunaOrdenavel
-                className="px-2 py-1.5"
+                className="hidden px-2 py-1.5 xl:table-cell"
                 rotulo="R$ desc."
                 coluna="valorDesconto"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
               <CabecalhoColunaOrdenavel
-                className="px-2 py-1.5"
+                className="hidden px-2 py-1.5 xl:table-cell"
                 rotulo="Outras"
                 coluna="outras"
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
               <CabecalhoColunaOrdenavel
-                className="px-2 py-1.5"
+                className="hidden px-2 py-1.5 lg:table-cell"
                 rotulo="T. bruto"
                 coluna="totalBruto"
                 ordenacao={ordenacao}
@@ -805,7 +805,7 @@ export function LancamentoItensPedido({
                 onOrdenar={alternarOrdenacao}
               />
               <CabecalhoColunaOrdenavel
-                className="px-2 py-1.5"
+                className="hidden px-2 py-1.5 lg:table-cell"
                 rotulo="Prev. ent."
                 coluna="previsaoEntrega"
                 ordenacao={ordenacao}
@@ -878,29 +878,39 @@ export function LancamentoItensPedido({
                         </div>
                       </div>
                     </td>
-                    <td className="px-2 py-1.5">{marcaDoItem(linha.item, produtos)}</td>
-                    <td className="px-2 py-1.5">
+                    <td className="hidden px-2 py-1.5 lg:table-cell">
+                      {marcaDoItem(linha.item, produtos)}
+                    </td>
+                    <td className="hidden px-2 py-1.5 lg:table-cell">
                       {codigoOriginalDoItem(linha.item, produtos, fornecedorPessoaId) || '—'}
                     </td>
                     <td className="px-2 py-1.5">{linha.item.unidade || '—'}</td>
                     <td className="px-2 py-1.5 tabular-nums">{linha.item.quantidade}</td>
-                    <td className="px-2 py-1.5 tabular-nums">{embalagem.itensPorEmbalagem}</td>
-                    <td className="px-2 py-1.5 tabular-nums">{embalagem.qtdTotalUnVenda}</td>
+                    <td className="hidden px-2 py-1.5 tabular-nums xl:table-cell">
+                      {embalagem.itensPorEmbalagem}
+                    </td>
+                    <td className="hidden px-2 py-1.5 tabular-nums xl:table-cell">
+                      {embalagem.qtdTotalUnVenda}
+                    </td>
                     <td className="px-2 py-1.5 tabular-nums">
                       {formatarMoeda(parseNum(linha.item.precoUnitario))}
                     </td>
-                    <td className="px-2 py-1.5 tabular-nums">{linha.item.percentualDesconto || '0'}</td>
-                    <td className="px-2 py-1.5 tabular-nums">
+                    <td className="hidden px-2 py-1.5 tabular-nums lg:table-cell">
+                      {linha.item.percentualDesconto || '0'}
+                    </td>
+                    <td className="hidden px-2 py-1.5 tabular-nums xl:table-cell">
                       {formatarMoeda(parseNum(linha.item.valorDesconto))}
                     </td>
-                    <td className="px-2 py-1.5 tabular-nums">
+                    <td className="hidden px-2 py-1.5 tabular-nums xl:table-cell">
                       {formatarMoeda(parseNum(linha.item.outrasDespesas))}
                     </td>
-                    <td className="px-2 py-1.5 tabular-nums">{formatarMoeda(totais.bruto)}</td>
+                    <td className="hidden px-2 py-1.5 tabular-nums lg:table-cell">
+                      {formatarMoeda(totais.bruto)}
+                    </td>
                     <td className="px-2 py-1.5 font-medium tabular-nums">
                       {formatarMoeda(totais.liquido)}
                     </td>
-                    <td className="px-2 py-1.5 whitespace-nowrap">
+                    <td className="hidden px-2 py-1.5 whitespace-nowrap lg:table-cell">
                       {linha.item.previsaoEntrega
                         ? formatarData(
                             /^\d{4}-\d{2}-\d{2}$/.test(linha.item.previsaoEntrega)
