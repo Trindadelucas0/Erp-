@@ -1045,10 +1045,10 @@ function ConteudoDaPagina() {
               <Loader2 className="size-8 animate-spin text-primary" aria-hidden />
               <div className="max-w-sm text-center">
                 <p className="text-sm font-medium text-foreground">
-                  Carregando catálogo de produtos...
+                  Carregando produtos...
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Com milhares de itens isso pode levar alguns segundos. Não feche a página.
+                  Isso pode levar alguns segundos se houver muitos itens.
                 </p>
               </div>
             </div>
