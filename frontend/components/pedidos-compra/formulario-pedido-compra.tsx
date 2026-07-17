@@ -7,6 +7,7 @@ import {
   CircleDollarSign,
   AlertCircle,
   History,
+  Loader2,
   Package,
   Plus,
   Truck,
@@ -149,6 +150,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   const [form, setForm] = useState(formVazio)
   const [salvando, setSalvando] = useState(false)
   const [carregandoPedido, setCarregandoPedido] = useState(modo !== 'novo')
+  const [carregandoCatalogos, setCarregandoCatalogos] = useState(true)
   const [erro, setErro] = useState('')
   const [confirmacaoParcelasAberta, setConfirmacaoParcelasAberta] = useState(false)
   const [concluirPendente, setConcluirPendente] = useState(false)
@@ -162,6 +164,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   const requisicaoContextoRef = useRef(0)
   const abaInicialDefinidaRef = useRef(false)
   const deveAplicarPrazosFornecedorRef = useRef(false)
+  const catalogosProntosRef = useRef(false)
   const formRef = useRef(form)
   const produtosRef = useRef(produtos)
   formRef.current = form
@@ -172,7 +175,8 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   const modoVisualizacao =
     modo === 'visualizar' || (modo === 'editar' && (!pedidoEditavel(form.status) || !podeEditar))
   const somenteLeitura = modoVisualizacao || pedidoBloqueado
-  const camposDesabilitados = somenteLeitura || (modoEdicao ? !podeEditar : !podeCriar)
+  const camposDesabilitados =
+    somenteLeitura || carregandoCatalogos || (modoEdicao ? !podeEditar : !podeCriar)
   const podeSalvar = modoEdicao ? podeEditar : podeCriar
   const podeGerenciarCreditoPendencia = podeCriar || podeEditar
   const podeCancelarPedido = modoEdicao && podeCancelar && pedidoEditavel(form.status)
@@ -181,6 +185,8 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   const exibeAbaAvaliacao = modoEdicao && pedidoExibeAbaAvaliacao(form.status)
 
   const carregarCatalogos = useCallback(async () => {
+    const mostrarLoading = !catalogosProntosRef.current
+    if (mostrarLoading) setCarregandoCatalogos(true)
     try {
       const [resForn, resTrans, resProd] = await Promise.all([
         clienteHttp.get('/fornecedores'),
@@ -246,8 +252,11 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
             })),
           }))
       )
+      catalogosProntosRef.current = true
     } catch {
       setErro('Erro ao carregar catálogos.')
+    } finally {
+      if (mostrarLoading) setCarregandoCatalogos(false)
     }
   }, [])
 
@@ -1081,7 +1090,12 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   }, [produtoHistoricoModal, historicoProdutos, ordenacaoHistorico])
 
   if (carregandoPedido) {
-    return <p className="text-sm text-muted-foreground">Carregando pedido...</p>
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+        <Loader2 className="size-6 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Carregando pedido...</p>
+      </div>
+    )
   }
 
   return (
@@ -1112,6 +1126,13 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
           )}
         </div>
       </div>
+
+      {carregandoCatalogos && (
+        <div className="flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+          <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
+          Carregando produtos, fornecedores e transportadoras...
+        </div>
+      )}
 
       {erro && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{erro}</p>
@@ -1419,7 +1440,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
               fornecedorPessoaId={form.fornecedorPessoaId}
               itens={form.itens}
               produtos={produtos}
-              disabled={somenteLeitura || !podeSalvar}
+              disabled={somenteLeitura || !podeSalvar || carregandoCatalogos}
               formatarMoeda={formatarMoeda}
               formatarData={formatarData}
               onPreencherProduto={preencherProdutoRascunho}

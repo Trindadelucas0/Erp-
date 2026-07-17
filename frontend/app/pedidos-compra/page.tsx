@@ -14,6 +14,7 @@ import { Modal } from '@/components/ui/modal'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { BadgeStatus } from '@/components/ui/badge-status'
+import { LinhasSkeletonTabela } from '@/components/ui/linhas-skeleton-tabela'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import {
   formatarPedido,
@@ -50,6 +51,7 @@ function ConteudoDaPagina() {
   const podeCancelar = usePermissao('compras:delete')
 
   const [lista, setLista] = useState<PedidoCompra[]>([])
+  const [carregandoLista, setCarregandoLista] = useState(true)
   const [fornecedores, setFornecedores] = useState<PessoaOpcao[]>([])
   const [modalCancelarAberto, setModalCancelarAberto] = useState(false)
   const [idPedidoCancelando, setIdPedidoCancelando] = useState('')
@@ -75,6 +77,7 @@ function ConteudoDaPagina() {
   }, [searchParams, roteador])
 
   const carregar = useCallback(async (filtrosAtuais = filtros) => {
+    setCarregandoLista(true)
     try {
       const params = new URLSearchParams()
       if (filtrosAtuais.fornecedorId) {
@@ -98,6 +101,8 @@ function ConteudoDaPagina() {
       setLista(data.pedidos ?? [])
     } catch {
       setErro('Erro ao carregar pedidos de compra.')
+    } finally {
+      setCarregandoLista(false)
     }
   }, [filtros])
 
@@ -281,7 +286,9 @@ function ConteudoDaPagina() {
         </div>
 
         <p className="mb-3 text-sm text-muted-foreground">
-          {listaExibida.length} pedido{listaExibida.length !== 1 ? 's' : ''}
+          {carregandoLista
+            ? 'Carregando...'
+            : `${listaExibida.length} pedido${listaExibida.length !== 1 ? 's' : ''}`}
         </p>
 
         <div className="overflow-x-auto rounded-lg border border-border bg-card">
@@ -298,7 +305,8 @@ function ConteudoDaPagina() {
               </tr>
             </thead>
             <tbody>
-              {listaExibida.length === 0 && (
+              {carregandoLista && <LinhasSkeletonTabela colunas={7} />}
+              {!carregandoLista && listaExibida.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                     {filtrosAtivos ? (
@@ -318,68 +326,69 @@ function ConteudoDaPagina() {
                   </td>
                 </tr>
               )}
-              {listaPaginada.map((p) => (
-                <tr
-                  key={p.id}
-                  className="cursor-pointer border-b border-border hover:bg-muted/30"
-                  onClick={() => roteador.push(`/pedidos-compra/${p.id}`)}
-                >
-                  <td className="px-4 py-2 font-medium">{formatarPedido(p.numero)}</td>
-                  <td className="px-4 py-2">{formatarData(p.createdAt)}</td>
-                  <td className="px-4 py-2">{p.fornecedorNome}</td>
-                  <td className="px-4 py-2">
-                    <BadgeStatus
-                      variante={varianteStatusUi(p.status)}
-                      title={
-                        p.status === 'cancelado' && p.motivoCancelamento
-                          ? p.motivoCancelamento
-                          : undefined
-                      }
-                    >
-                      {rotuloStatusUi(p.status)}
-                    </BadgeStatus>
-                  </td>
-                  <td className="px-4 py-2">{formatarMoeda(p.totalLiquido)}</td>
-                  <td className="px-4 py-2">{p.condicaoPagamento ?? '—'}</td>
-                  <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex gap-1">
-                      {podeCriar && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          title="Duplicar"
-                          disabled={copiando}
-                          onClick={() => void duplicarPedido(p.id)}
-                        >
-                          <Copy className="size-4" />
-                        </Button>
-                      )}
-                      {podeEditar && pedidoEditavel(p.status) && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          title="Editar"
-                          onClick={() => roteador.push(`/pedidos-compra/${p.id}?modo=editar`)}
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
-                      )}
-                      {podeCancelar && pedidoEditavel(p.status) && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => abrirCancelamentoPedido(p.id)}
-                        >
-                          Cancelar
-                        </Button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {!carregandoLista &&
+                listaPaginada.map((p) => (
+                  <tr
+                    key={p.id}
+                    className="cursor-pointer border-b border-border hover:bg-muted/30"
+                    onClick={() => roteador.push(`/pedidos-compra/${p.id}`)}
+                  >
+                    <td className="px-4 py-2 font-medium">{formatarPedido(p.numero)}</td>
+                    <td className="px-4 py-2">{formatarData(p.createdAt)}</td>
+                    <td className="px-4 py-2">{p.fornecedorNome}</td>
+                    <td className="px-4 py-2">
+                      <BadgeStatus
+                        variante={varianteStatusUi(p.status)}
+                        title={
+                          p.status === 'cancelado' && p.motivoCancelamento
+                            ? p.motivoCancelamento
+                            : undefined
+                        }
+                      >
+                        {rotuloStatusUi(p.status)}
+                      </BadgeStatus>
+                    </td>
+                    <td className="px-4 py-2">{formatarMoeda(p.totalLiquido)}</td>
+                    <td className="px-4 py-2">{p.condicaoPagamento ?? '—'}</td>
+                    <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex gap-1">
+                        {podeCriar && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            title="Duplicar"
+                            disabled={copiando}
+                            onClick={() => void duplicarPedido(p.id)}
+                          >
+                            <Copy className="size-4" />
+                          </Button>
+                        )}
+                        {podeEditar && pedidoEditavel(p.status) && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            title="Editar"
+                            onClick={() => roteador.push(`/pedidos-compra/${p.id}?modo=editar`)}
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                        )}
+                        {podeCancelar && pedidoEditavel(p.status) && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => abrirCancelamentoPedido(p.id)}
+                          >
+                            Cancelar
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>

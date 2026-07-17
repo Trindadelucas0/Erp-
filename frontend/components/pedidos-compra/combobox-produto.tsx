@@ -43,7 +43,6 @@ type Props = {
   disabled?: boolean
 }
 
-const LIMITE = 80
 const ALTURA_MAXIMA_LISTA = 240
 
 function rotuloProduto(p: ProdutoOpcao) {
@@ -61,18 +60,16 @@ function codigoBarrasCorresponde(codigo: string | null | undefined, termo: strin
 }
 
 export function filtrarProdutos(produtos: ProdutoOpcao[], termo: string) {
-  if (!normalizarTermoBusca(termo)) return produtos.slice(0, LIMITE)
-  return produtos
-    .filter((p) => {
-      if (textoContemTermo(p.nomeVenda, termo)) return true
-      if (p.sku && textoContemTermo(p.sku, termo)) return true
-      if (codigoBarrasCorresponde(p.codigoBarras, termo)) return true
-      if (p.codigosBarrasEmbalagem?.some((codigo) => codigoBarrasCorresponde(codigo, termo))) {
-        return true
-      }
-      return false
-    })
-    .slice(0, LIMITE)
+  if (!normalizarTermoBusca(termo)) return produtos
+  return produtos.filter((p) => {
+    if (textoContemTermo(p.nomeVenda, termo)) return true
+    if (p.sku && textoContemTermo(p.sku, termo)) return true
+    if (codigoBarrasCorresponde(p.codigoBarras, termo)) return true
+    if (p.codigosBarrasEmbalagem?.some((codigo) => codigoBarrasCorresponde(codigo, termo))) {
+      return true
+    }
+    return false
+  })
 }
 
 export function ComboboxProduto({

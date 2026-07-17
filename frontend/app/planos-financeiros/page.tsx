@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, DollarSign, Filter, Plus } from 'lucide-react'
+import { ChevronDown, DollarSign, Filter, Loader2, Plus } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { clienteHttp } from '@/services/api'
@@ -58,6 +58,7 @@ function ConteudoDaPagina() {
   const [planoEmEdicao, setPlanoEmEdicao] = useState<PlanoFinanceiroNo | null>(null)
   const [mensagem, setMensagem] = useState('')
   const [erro, setErro] = useState('')
+  const [carregandoLista, setCarregandoLista] = useState(true)
   const [movendoId, setMovendoId] = useState<string | null>(null)
   const [paiPreSelecionadoId, setPaiPreSelecionadoId] = useState<string | null>(null)
   const [idsParaExpandir, setIdsParaExpandir] = useState<string[]>([])
@@ -71,6 +72,7 @@ function ConteudoDaPagina() {
         : arvoreReceitas
 
   const carregarPlanos = useCallback(async () => {
+    setCarregandoLista(true)
     try {
       const [resReceitas, resDespesas, resResultado] = await Promise.all([
         clienteHttp.get('/planos-financeiros?incluirInativos=true&tipo=receita'),
@@ -85,6 +87,8 @@ function ConteudoDaPagina() {
         (e as { response?: { data?: { mensagem?: string } } })?.response?.data?.mensagem ||
         'Erro ao carregar planos financeiros.'
       setErro(msg)
+    } finally {
+      setCarregandoLista(false)
     }
   }, [])
 
@@ -255,24 +259,31 @@ function ConteudoDaPagina() {
           </div>
         }
       >
-        <ArvorePlanosFinanceiros
-          arvore={arvoreAtual}
-          busca={busca}
-          filtroSituacao={filtroSituacao}
-          podeEditar={podeEditar}
-          podeDesativar={podeEditar}
-          podeCriar={podeCriar}
-          movendoId={movendoId}
-          idsParaExpandir={idsParaExpandir}
-          aoEditar={abrirEdicao}
-          aoAlternarAtivo={alternarAtivo}
-          aoAviso={(mensagem) => {
-            setMensagem('')
-            setErro(mensagem)
-          }}
-          aoAdicionarSubgrupo={podeCriar ? abrirSubgrupo : undefined}
-          aoMover={podeEditar ? moverPlano : undefined}
-        />
+        {carregandoLista ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+            <Loader2 className="size-6 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Carregando planos financeiros...</p>
+          </div>
+        ) : (
+          <ArvorePlanosFinanceiros
+            arvore={arvoreAtual}
+            busca={busca}
+            filtroSituacao={filtroSituacao}
+            podeEditar={podeEditar}
+            podeDesativar={podeEditar}
+            podeCriar={podeCriar}
+            movendoId={movendoId}
+            idsParaExpandir={idsParaExpandir}
+            aoEditar={abrirEdicao}
+            aoAlternarAtivo={alternarAtivo}
+            aoAviso={(mensagem) => {
+              setMensagem('')
+              setErro(mensagem)
+            }}
+            aoAdicionarSubgrupo={podeCriar ? abrirSubgrupo : undefined}
+            aoMover={podeEditar ? moverPlano : undefined}
+          />
+        )}
       </CardPadrao>
 
       <ModalPlanoFinanceiro

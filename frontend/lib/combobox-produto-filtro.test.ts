@@ -20,6 +20,17 @@ const produtos: ProdutoOpcao[] = [
   },
 ]
 
+function gerarProdutos(quantidade: number): ProdutoOpcao[] {
+  return Array.from({ length: quantidade }, (_, i) => ({
+    id: String(i + 1),
+    nomeVenda: `PRODUTO TESTE ${i + 1}`,
+    sku: String(10000 + i),
+    unidade: 'UN',
+    codigoBarras: null,
+    codigosBarrasEmbalagem: [],
+  }))
+}
+
 describe('filtrarProdutos', () => {
   it('filtra por nome sem diferenciar maiúsculas', () => {
     expect(filtrarProdutos(produtos, 'COLANTE')).toHaveLength(1)
@@ -44,5 +55,15 @@ describe('filtrarProdutos', () => {
   it('filtra por código de barras da embalagem master', () => {
     expect(filtrarProdutos(produtos, '10614141000415')).toHaveLength(1)
     expect(filtrarProdutos(produtos, '10614141000415')[0]?.id).toBe('1')
+  })
+
+  it('sem termo retorna todos os produtos sem truncar em 80', () => {
+    const lista = gerarProdutos(100)
+    expect(filtrarProdutos(lista, '')).toHaveLength(100)
+  })
+
+  it('com termo amplo retorna todos os matches sem truncar em 80', () => {
+    const lista = gerarProdutos(100)
+    expect(filtrarProdutos(lista, 'PRODUTO TESTE')).toHaveLength(100)
   })
 })

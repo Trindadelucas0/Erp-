@@ -24,6 +24,7 @@ import { SecaoFormularioErp } from '@/components/compartilhado/secao-formulario-
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { Abas } from '@/components/ui/abas'
 import { BadgeStatus } from '@/components/ui/badge-status'
+import { LinhasSkeletonTabela } from '@/components/ui/linhas-skeleton-tabela'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -65,6 +66,7 @@ function ConteudoDaPagina() {
   const podeEditar = usePermissao('financeiro:edit')
 
   const [lista, setLista] = useState<Cfop[]>([])
+  const [carregandoLista, setCarregandoLista] = useState(true)
   const [busca, setBusca] = useState('')
   const [buscaDebounced, setBuscaDebounced] = useState('')
   const [modalAberto, setModalAberto] = useState(false)
@@ -90,6 +92,7 @@ function ConteudoDaPagina() {
   }, [busca])
 
   const carregar = useCallback(async () => {
+    setCarregandoLista(true)
     try {
       const params = new URLSearchParams({ incluirInativos: 'true' })
       if (buscaDebounced.trim()) params.set('q', buscaDebounced.trim())
@@ -97,6 +100,8 @@ function ConteudoDaPagina() {
       setLista(data.cfops ?? [])
     } catch {
       setErro('Erro ao carregar CFOPs.')
+    } finally {
+      setCarregandoLista(false)
     }
   }, [buscaDebounced])
 
@@ -254,43 +259,45 @@ function ConteudoDaPagina() {
               </tr>
             </thead>
             <tbody>
-              {listaExibida.length === 0 && (
+              {carregandoLista && <LinhasSkeletonTabela colunas={5} />}
+              {!carregandoLista && listaExibida.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
                     Nenhum CFOP encontrado.
                   </td>
                 </tr>
               )}
-              {listaExibida.map((cfop) => {
-                const rotuloTipo = rotuloExibicaoCfop(
-                  cfop.natureza,
-                  cfop.abrangencia,
-                  cfop.subtipoCfop
-                )
-                return (
-                  <tr key={cfop.id} className="border-b border-border/60 last:border-0 hover:bg-muted/20">
-                    <td className="px-4 py-3 font-medium font-mono">{cfop.codigo}</td>
-                    <td className="max-w-0 truncate px-4 py-3" title={cfop.nome}>
-                      {cfop.nome}
-                    </td>
-                    <td className="max-w-0 truncate px-4 py-3 text-muted-foreground" title={rotuloTipo}>
-                      {rotuloTipo}
-                    </td>
-                    <td className="px-4 py-3">
-                      <BadgeStatus variante={cfop.ativo ? 'ativo' : 'reprovado'}>
-                        {cfop.ativo ? 'Ativo' : 'Inativo'}
-                      </BadgeStatus>
-                    </td>
-                    <td className="px-2 py-3">
-                      {podeEditar && (
-                        <Button type="button" variant="ghost" size="sm" onClick={() => abrirEdicao(cfop)}>
-                          Editar
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
+              {!carregandoLista &&
+                listaExibida.map((cfop) => {
+                  const rotuloTipo = rotuloExibicaoCfop(
+                    cfop.natureza,
+                    cfop.abrangencia,
+                    cfop.subtipoCfop
+                  )
+                  return (
+                    <tr key={cfop.id} className="border-b border-border/60 last:border-0 hover:bg-muted/20">
+                      <td className="px-4 py-3 font-medium font-mono">{cfop.codigo}</td>
+                      <td className="max-w-0 truncate px-4 py-3" title={cfop.nome}>
+                        {cfop.nome}
+                      </td>
+                      <td className="max-w-0 truncate px-4 py-3 text-muted-foreground" title={rotuloTipo}>
+                        {rotuloTipo}
+                      </td>
+                      <td className="px-4 py-3">
+                        <BadgeStatus variante={cfop.ativo ? 'ativo' : 'reprovado'}>
+                          {cfop.ativo ? 'Ativo' : 'Inativo'}
+                        </BadgeStatus>
+                      </td>
+                      <td className="px-2 py-3">
+                        {podeEditar && (
+                          <Button type="button" variant="ghost" size="sm" onClick={() => abrirEdicao(cfop)}>
+                            Editar
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
             </tbody>
           </table>
         </div>

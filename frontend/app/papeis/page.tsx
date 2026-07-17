@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, Loader2 } from 'lucide-react'
 import { clienteHttp } from '@/services/api'
 import {
   GradePermissoes,
@@ -34,6 +34,7 @@ function ConteudoDaPaginaDePapeis() {
     useSessaoDoUsuario()
   const [listaDePapeis, setListaDePapeis] = useState<Papel[]>([])
   const [listaDePermissoes, setListaDePermissoes] = useState<Permissao[]>([])
+  const [carregandoLista, setCarregandoLista] = useState(true)
   const [papelSelecionado, setPapelSelecionado] = useState<Papel | null>(null)
   const [idsDasPermissoes, setIdsDasPermissoes] = useState<string[]>([])
   const [mensagem, setMensagem] = useState('')
@@ -53,6 +54,7 @@ function ConteudoDaPaginaDePapeis() {
   }, [carregandoSessao, estaAutenticado, perfil])
 
   async function carregarDados() {
+    setCarregandoLista(true)
     try {
       const [respostaPapeis, respostaPermissoes] = await Promise.all([
         clienteHttp.get('/roles'),
@@ -62,6 +64,8 @@ function ConteudoDaPaginaDePapeis() {
       setListaDePermissoes(respostaPermissoes.data.permissoes)
     } catch {
       setMensagem('Erro ao carregar dados.')
+    } finally {
+      setCarregandoLista(false)
     }
   }
 
@@ -185,46 +189,55 @@ function ConteudoDaPaginaDePapeis() {
         descricao="Selecione um papel para editar permissões"
       >
         <div className="mb-4 flex flex-wrap gap-2">
-          {listaDePapeis.map((papel) => (
-            <div key={papel.id} className="flex items-center gap-1">
-              <Button
-                type="button"
-                variant={papelSelecionado?.id === papel.id ? 'default' : 'outline'}
-                onClick={() => selecionarPapel(papel)}
-              >
-                {papel.name}
-              </Button>
-              {papel.name !== PAPEL_PROTEGIDO && (
+          {carregandoLista && (
+            <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin text-primary" />
+              Carregando papéis...
+            </div>
+          )}
+          {!carregandoLista &&
+            listaDePapeis.map((papel) => (
+              <div key={papel.id} className="flex items-center gap-1">
                 <Button
                   type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                  title={`Excluir papel ${papel.name}`}
-                  onClick={() => {
-                    setPapelParaExcluir(papel)
-                    setMensagem('')
-                  }}
+                  variant={papelSelecionado?.id === papel.id ? 'default' : 'outline'}
+                  onClick={() => selecionarPapel(papel)}
                 >
-                  <Trash2 className="size-4" />
+                  {papel.name}
                 </Button>
-              )}
-            </div>
-          ))}
+                {papel.name !== PAPEL_PROTEGIDO && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                    title={`Excluir papel ${papel.name}`}
+                    onClick={() => {
+                      setPapelParaExcluir(papel)
+                      setMensagem('')
+                    }}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                )}
+              </div>
+            ))}
 
-          <Button
-            type="button"
-            variant="outline"
-            className="gap-1.5"
-            onClick={() => {
-              setCriandoPapel((v) => !v)
-              setNomeDoPapel('')
-              setDescricaoDoPapel('')
-            }}
-          >
-            <Plus className="size-4" />
-            Novo papel
-          </Button>
+          {!carregandoLista && (
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-1.5"
+              onClick={() => {
+                setCriandoPapel((v) => !v)
+                setNomeDoPapel('')
+                setDescricaoDoPapel('')
+              }}
+            >
+              <Plus className="size-4" />
+              Novo papel
+            </Button>
+          )}
         </div>
 
         {/* Formulário de criação */}
