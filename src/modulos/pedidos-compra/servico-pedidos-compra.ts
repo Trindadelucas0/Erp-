@@ -360,13 +360,18 @@ async function aprovarPedidoCompra(id: string, companyId: string, idDoAutor: str
   }
 
   const pedido = await repositorioDePedidosCompra.aprovar(id)
+  await servicoDoPortalFornecedor.bloquearPortal(id, companyId)
 
   await registrarAuditoria({
     usuarioId: idDoAutor,
     acao: 'aprovar_pedido',
     entidade: 'pedido_compra',
     entidadeId: id,
-    valoresDepois: { numero: pedido.numero, status: pedido.status },
+    valoresDepois: {
+      numero: pedido.numero,
+      status: pedido.status,
+      portalBloqueado: true,
+    },
   })
 
   return pedido
@@ -492,17 +497,6 @@ async function enviarAnexoFornecedor(
   })
 
   return resultado
-}
-
-async function bloquearPortalFornecedor(id: string, companyId: string, idDoAutor: string) {
-  await servicoDoPortalFornecedor.bloquearPortal(id, companyId)
-
-  await registrarAuditoria({
-    usuarioId: idDoAutor,
-    acao: 'bloquear_portal',
-    entidade: 'pedido_compra',
-    entidadeId: id,
-  })
 }
 
 async function voltarPedidoParaRascunho(id: string, companyId: string, idDoAutor: string) {
@@ -724,7 +718,6 @@ export const servicoDePedidosCompra = {
   liberarParaPortalFornecedor,
   obterAvisoWhatsappCredenciais,
   enviarAnexoFornecedor,
-  bloquearPortalFornecedor,
   voltarPedidoParaRascunho,
   aprovarAnexoFornecedor,
   excluirAnexoFornecedor,

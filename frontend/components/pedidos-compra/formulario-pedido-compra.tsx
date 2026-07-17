@@ -15,6 +15,7 @@ import {
 import { BlocoPagamentoPrazos, type PrazoPagamento } from '@/components/pedidos-compra/bloco-pagamento-prazos'
 import { ComboboxPessoa } from '@/components/pedidos-compra/combobox-pessoa'
 import { LancamentoItensPedido } from '@/components/pedidos-compra/lancamento-itens-pedido'
+import { ConfirmacaoComSenha } from '@/components/compartilhado/confirmacao-com-senha'
 import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
 import { ModalConferenciaIa } from '@/components/pedidos-compra/modal-conferencia-ia'
 import {
@@ -135,8 +136,11 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   const [portalBloqueadoEm, setPortalBloqueadoEm] = useState<string | null>(null)
   const [anexosFornecedor, setAnexosFornecedor] = useState<AnexoFornecedor[]>([])
   const [liberandoPortal, setLiberandoPortal] = useState(false)
-  const [bloqueandoPortal, setBloqueandoPortal] = useState(false)
   const [voltandoParaRascunho, setVoltandoParaRascunho] = useState(false)
+  const [confirmandoVoltarRascunho, setConfirmandoVoltarRascunho] = useState(false)
+  const [mostrandoSenhaAprovacao, setMostrandoSenhaAprovacao] = useState(false)
+  const [aprovandoPedido, setAprovandoPedido] = useState(false)
+  const [erroAprovacao, setErroAprovacao] = useState('')
   const [mensagemPortal, setMensagemPortal] = useState('')
   const [abrindoWhatsapp, setAbrindoWhatsapp] = useState(false)
   const [mensagemDocumentos, setMensagemDocumentos] = useState('')
@@ -398,21 +402,6 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     }
   }
 
-  async function bloquearPortalFornecedor() {
-    if (!pedidoId) return
-    setBloqueandoPortal(true)
-    setMensagemPortal('')
-    try {
-      await clienteHttp.post(`/pedidos-compra/${pedidoId}/bloquear-portal`)
-      setPortalBloqueadoEm(new Date().toISOString())
-      setMensagemPortal('Portal do fornecedor bloqueado.')
-    } catch (e: unknown) {
-      setMensagemPortal(extrairMensagemApi(e, 'Erro ao bloquear o portal do fornecedor.'))
-    } finally {
-      setBloqueandoPortal(false)
-    }
-  }
-
   async function voltarPedidoParaRascunho() {
     if (!pedidoId) return
     setVoltandoParaRascunho(true)
@@ -523,9 +512,23 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     setAnexosFornecedor((atual) => atual.filter((a) => a.id !== anexoId))
   }
 
-  async function aoAprovarPedido() {
+  async function confirmarAprovacaoPedido() {
     if (!pedidoId) return
-    await carregarPedidoNoForm(pedidoId)
+    setAprovandoPedido(true)
+    setErroAprovacao('')
+    try {
+      await clienteHttp.post(`/pedidos-compra/${pedidoId}/aprovar`)
+      setMostrandoSenhaAprovacao(false)
+      setPortalBloqueadoEm(new Date().toISOString())
+      setMensagemPortal(
+        'Pedido aprovado. O fornecedor não tem mais acesso ao portal e o pedido segue no sistema.'
+      )
+      await carregarPedidoNoForm(pedidoId)
+    } catch (e: unknown) {
+      setErroAprovacao(extrairMensagemApi(e, 'Erro ao aprovar o pedido.'))
+    } finally {
+      setAprovandoPedido(false)
+    }
   }
 
   useEffect(() => {
@@ -1431,30 +1434,26 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
           {abaAtiva === 'avaliacao' && exibeAbaAvaliacao && idAtual && (
             <AbaAvaliacaoPedido
               pedidoId={idAtual}
-              status={form.status}
               podeEditar={podeEditar}
-              portalLiberadoEm={portalLiberadoEm}
-              portalBloqueadoEm={portalBloqueadoEm}
               anexosFornecedor={anexosFornecedor}
-              mensagemPortal={mensagemPortal}
               mensagemDocumentos={mensagemDocumentos}
-              liberandoPortal={liberandoPortal}
-              bloqueandoPortal={bloqueandoPortal}
-              voltandoParaRascunho={voltandoParaRascunho}
-              enviandoCredenciais={abrindoWhatsapp}
               enviandoAnexo={enviandoAnexo}
               formatarData={formatarData}
-              onLiberarPortal={liberarPortalFornecedor}
-              onEnviarCredenciaisWhatsapp={() => void abrirWhatsappCredenciaisFornecedor()}
-              onBloquearPortal={() => void bloquearPortalFornecedor()}
-              onVoltarParaRascunho={() => void voltarPedidoParaRascunho()}
               onEnviarAnexo={enviarAnexoFornecedorInterno}
               onBaixarAnexo={baixarAnexoFornecedor}
               onAbrirConferencia={setAnexoEmConferencia}
               onAnexoExcluido={removerAnexoDaLista}
               onAnexoDecidido={() => void carregarPedidoNoForm(idAtual)}
-              onPedidoAprovado={() => void aoAprovarPedido()}
             />
+          )}
+
+          {abaAtiva === 'avaliacao' && mensagemPortal && (
+            <p className="mt-2 text-sm text-muted-foreground">{mensagemPortal}</p>
+          )}
+          {abaAtiva === 'avaliacao' && erroAprovacao && (
+            <p className="mt-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {erroAprovacao}
+            </p>
           )}
 
           <div className="mt-4 flex flex-col gap-3 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1507,6 +1506,51 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
                         Voltar
                       </Button>
                     )}
+                    {abaAtiva === 'avaliacao' &&
+                      podeEditar &&
+                      form.status === 'enviado' &&
+                      !!portalLiberadoEm &&
+                      !portalBloqueadoEm && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setConfirmandoVoltarRascunho(true)}
+                          disabled={
+                            voltandoParaRascunho || liberandoPortal || abrindoWhatsapp || aprovandoPedido
+                          }
+                        >
+                          {voltandoParaRascunho ? 'Voltando...' : 'Rascunho'}
+                        </Button>
+                      )}
+                    {abaAtiva === 'avaliacao' &&
+                      podeEditar &&
+                      form.status === 'enviado' &&
+                      (!portalLiberadoEm || portalBloqueadoEm) && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => void liberarPortalFornecedor()}
+                          disabled={liberandoPortal || voltandoParaRascunho || aprovandoPedido}
+                        >
+                          {liberandoPortal ? 'Enviando...' : 'Enviar ao fornecedor'}
+                        </Button>
+                      )}
+                    {abaAtiva === 'avaliacao' &&
+                      podeEditar &&
+                      form.status === 'enviado' &&
+                      !!portalLiberadoEm &&
+                      !portalBloqueadoEm && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => void abrirWhatsappCredenciaisFornecedor()}
+                          disabled={
+                            abrindoWhatsapp || liberandoPortal || voltandoParaRascunho || aprovandoPedido
+                          }
+                        >
+                          {abrindoWhatsapp ? 'Abrindo...' : 'Enviar credenciais'}
+                        </Button>
+                      )}
                     <Button
                       type="button"
                       variant="outline"
@@ -1538,6 +1582,27 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
                         {salvando ? 'Salvando...' : 'Aprovar pedido'}
                       </BotaoPrimario>
                     )}
+                    {abaAtiva === 'avaliacao' && podeEditar && form.status === 'enviado' && (
+                      <BotaoPrimario
+                        type="button"
+                        onClick={() => {
+                          setErroAprovacao('')
+                          setMostrandoSenhaAprovacao(true)
+                        }}
+                        disabled={
+                          !anexosFornecedor.some(
+                            (a) =>
+                              a.tipoAnexo === 'documento_fornecedor' &&
+                              a.statusConferencia === 'aprovado'
+                          ) ||
+                          aprovandoPedido ||
+                          liberandoPortal ||
+                          voltandoParaRascunho
+                        }
+                      >
+                        Aprovar pedido
+                      </BotaoPrimario>
+                    )}
                   </>
                 )}
               </div>
@@ -1555,6 +1620,52 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
         aoConfirmar={() => void confirmarSalvarParcelas()}
         aoCancelar={cancelarConfirmacaoParcelas}
       />
+
+      <ModalConfirmacao
+        aberto={confirmandoVoltarRascunho}
+        titulo="Voltar pedido para rascunho"
+        mensagem="Este pedido não ficará mais disponível ao fornecedor no portal. Quer continuar?"
+        textoConfirmar={voltandoParaRascunho ? 'Voltando...' : 'Continuar'}
+        textoCancelar="Cancelar"
+        aoConfirmar={() => {
+          setConfirmandoVoltarRascunho(false)
+          void voltarPedidoParaRascunho()
+        }}
+        aoCancelar={() => setConfirmandoVoltarRascunho(false)}
+      />
+
+      <Modal
+        aberto={mostrandoSenhaAprovacao}
+        aoFechar={() => {
+          if (!aprovandoPedido) {
+            setMostrandoSenhaAprovacao(false)
+            setErroAprovacao('')
+          }
+        }}
+        titulo="Aprovar pedido"
+        largura="md"
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Uma vez aprovado, o fornecedor não terá mais acesso ao portal deste pedido e o pedido
+            seguirá no sistema como aprovado.
+          </p>
+          {erroAprovacao && (
+            <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {erroAprovacao}
+            </p>
+          )}
+          <ConfirmacaoComSenha
+            mensagem="Confirme sua senha para aprovar este pedido."
+            onConfirmar={confirmarAprovacaoPedido}
+            onCancelar={() => {
+              setMostrandoSenhaAprovacao(false)
+              setErroAprovacao('')
+            }}
+            carregandoExterno={aprovandoPedido}
+          />
+        </div>
+      </Modal>
 
       <Modal
         aberto={modalCancelarAberto}

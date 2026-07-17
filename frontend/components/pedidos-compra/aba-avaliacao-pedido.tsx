@@ -50,71 +50,36 @@ export type AnexoFornecedor = {
 
 type ModoDecisaoAnexo = 'aprovar' | 'ajuste'
 
-function isDocumentoFornecedor(anexo: AnexoFornecedor): boolean {
-  return anexo.tipoAnexo === 'documento_fornecedor'
-}
-
 type Props = {
   pedidoId: string
-  status: string
   podeEditar: boolean
-  portalLiberadoEm: string | null
-  portalBloqueadoEm: string | null
   anexosFornecedor: AnexoFornecedor[]
-  mensagemPortal: string
   mensagemDocumentos: string
-  liberandoPortal: boolean
-  bloqueandoPortal: boolean
-  voltandoParaRascunho: boolean
-  enviandoCredenciais: boolean
   enviandoAnexo: boolean
   formatarData: (iso: string) => string
-  onLiberarPortal: () => void
-  onEnviarCredenciaisWhatsapp: () => void
-  onBloquearPortal: () => void
-  onVoltarParaRascunho: () => void
   onEnviarAnexo: (e: ChangeEvent<HTMLInputElement>) => void
   onBaixarAnexo: (anexo: AnexoFornecedor) => void
   onAbrirConferencia: (anexo: AnexoFornecedor) => void
   onAnexoExcluido: (anexoId: string) => void
   onAnexoDecidido: () => void
-  onPedidoAprovado: () => void
 }
 
 export function AbaAvaliacaoPedido({
   pedidoId,
-  status,
   podeEditar,
-  portalLiberadoEm,
-  portalBloqueadoEm,
   anexosFornecedor,
-  mensagemPortal,
   mensagemDocumentos,
-  liberandoPortal,
-  bloqueandoPortal,
-  voltandoParaRascunho,
-  enviandoCredenciais,
   enviandoAnexo,
   formatarData,
-  onLiberarPortal,
-  onEnviarCredenciaisWhatsapp,
-  onBloquearPortal,
-  onVoltarParaRascunho,
   onEnviarAnexo,
   onBaixarAnexo,
   onAbrirConferencia,
   onAnexoExcluido,
   onAnexoDecidido,
-  onPedidoAprovado,
 }: Props) {
   const [anexoParaExcluir, setAnexoParaExcluir] = useState<AnexoFornecedor | null>(null)
   const [excluindoAnexo, setExcluindoAnexo] = useState(false)
   const [erroExclusao, setErroExclusao] = useState('')
-  const [mostrandoSenhaAprovacao, setMostrandoSenhaAprovacao] = useState(false)
-  const [aprovandoPedido, setAprovandoPedido] = useState(false)
-  const [erroAprovacao, setErroAprovacao] = useState('')
-  const [confirmandoVoltarRascunho, setConfirmandoVoltarRascunho] = useState(false)
-  const [confirmandoBloquearPortal, setConfirmandoBloquearPortal] = useState(false)
 
   const [anexoDecisaoId, setAnexoDecisaoId] = useState<string | null>(null)
   const [modoDecisao, setModoDecisao] = useState<ModoDecisaoAnexo | null>(null)
@@ -122,14 +87,6 @@ export function AbaAvaliacaoPedido({
   const [decidindoAnexo, setDecidindoAnexo] = useState(false)
   const [erroDecisaoAnexo, setErroDecisaoAnexo] = useState('')
   const [mensagemDecisaoAnexo, setMensagemDecisaoAnexo] = useState('')
-
-  const temAnexoAprovado = anexosFornecedor.some(
-    (a) => isDocumentoFornecedor(a) && a.statusConferencia === 'aprovado'
-  )
-  const podeAprovarPedido = podeEditar && status === 'enviado'
-  const portalAberto =
-    podeEditar && !!portalLiberadoEm && !portalBloqueadoEm
-  const podeVoltarParaRascunho = portalAberto && status === 'enviado'
 
   const { documentos, relatoriosAvulsos } = useMemo(
     () => organizarAnexosPorDocumento(anexosFornecedor),
@@ -159,29 +116,12 @@ export function AbaAvaliacaoPedido({
       await clienteHttp.delete(
         `/pedidos-compra/${pedidoId}/anexos-fornecedor/${anexoParaExcluir.id}`
       )
-      if (anexoDecisaoId === anexoParaExcluir.id) {
-        fecharPainelDecisao()
-      }
       onAnexoExcluido(anexoParaExcluir.id)
       setAnexoParaExcluir(null)
     } catch (e: unknown) {
       setErroExclusao(extrairMensagemApi(e, 'Erro ao excluir o documento.'))
     } finally {
       setExcluindoAnexo(false)
-    }
-  }
-
-  async function confirmarAprovacaoPedido() {
-    setAprovandoPedido(true)
-    setErroAprovacao('')
-    try {
-      await clienteHttp.post(`/pedidos-compra/${pedidoId}/aprovar`)
-      setMostrandoSenhaAprovacao(false)
-      onPedidoAprovado()
-    } catch (e: unknown) {
-      setErroAprovacao(extrairMensagemApi(e, 'Erro ao aprovar o pedido.'))
-    } finally {
-      setAprovandoPedido(false)
     }
   }
 
@@ -386,56 +326,6 @@ export function AbaAvaliacaoPedido({
     <div className="space-y-4">
       <CardPadrao
         compacto
-        titulo="Portal do fornecedor"
-        descricao={
-          portalBloqueadoEm
-            ? `Bloqueado em ${formatarData(portalBloqueadoEm)}`
-            : portalLiberadoEm
-              ? `Liberado em ${formatarData(portalLiberadoEm)}`
-              : 'O fornecedor acessa com CNPJ + senha (número do pedido) e envia o documento oficial.'
-        }
-        acoes={
-          podeEditar &&
-          (!portalLiberadoEm || portalBloqueadoEm ? (
-            <BotaoPrimario type="button" onClick={onLiberarPortal} disabled={liberandoPortal}>
-              {liberandoPortal ? 'Enviando...' : 'Enviar ao fornecedor'}
-            </BotaoPrimario>
-          ) : portalAberto ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <BotaoPrimario
-                type="button"
-                onClick={onEnviarCredenciaisWhatsapp}
-                disabled={enviandoCredenciais || bloqueandoPortal || voltandoParaRascunho}
-              >
-                {enviandoCredenciais ? 'Abrindo...' : 'Enviar credenciais'}
-              </BotaoPrimario>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setConfirmandoBloquearPortal(true)}
-                disabled={bloqueandoPortal || enviandoCredenciais || voltandoParaRascunho}
-              >
-                {bloqueandoPortal ? 'Bloqueando...' : 'Bloquear portal'}
-              </Button>
-              {podeVoltarParaRascunho ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setConfirmandoVoltarRascunho(true)}
-                  disabled={voltandoParaRascunho || enviandoCredenciais || bloqueandoPortal}
-                >
-                  {voltandoParaRascunho ? 'Voltando...' : 'Voltar pedido para rascunho'}
-                </Button>
-              ) : null}
-            </div>
-          ) : null)
-        }
-      >
-        {mensagemPortal && <p className="text-sm text-muted-foreground">{mensagemPortal}</p>}
-      </CardPadrao>
-
-      <CardPadrao
-        compacto
         titulo="Documentos do fornecedor"
         descricao="Documentos enviados pelo fornecedor no portal ou anexados por você. Baixe para conferir manualmente, aprove ou solicite ajuste — Conferir com IA é opcional."
       >
@@ -458,21 +348,17 @@ export function AbaAvaliacaoPedido({
         {mensagemDocumentos && (
           <p className="mb-2 text-sm text-muted-foreground">{mensagemDocumentos}</p>
         )}
-
         {mensagemDecisaoAnexo && (
-          <p className="mb-2 rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">
-            {mensagemDecisaoAnexo}
-          </p>
+          <p className="mb-2 text-sm text-muted-foreground">{mensagemDecisaoAnexo}</p>
         )}
-
         {erroExclusao && (
           <p className="mb-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
             {erroExclusao}
           </p>
         )}
 
-        {anexosFornecedor.length > 0 ? (
-          <div className="space-y-3">
+        {documentos.length > 0 || relatoriosAvulsos.length > 0 ? (
+          <div className="space-y-2">
             {documentos.map(({ documento, relatorios }) => (
               <CardDocumentoFornecedor
                 key={documento.id}
@@ -523,40 +409,6 @@ export function AbaAvaliacaoPedido({
         )}
       </CardPadrao>
 
-      {podeAprovarPedido && (
-        <CardPadrao
-          compacto
-          titulo="Aprovar pedido"
-          descricao={
-            temAnexoAprovado
-              ? 'Documento aceito. O pedido pode ser aprovado e seguir para o sistema.'
-              : 'Aprove ao menos um documento do fornecedor antes de aprovar o pedido.'
-          }
-        >
-          {erroAprovacao && (
-            <p className="mb-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {erroAprovacao}
-            </p>
-          )}
-          {mostrandoSenhaAprovacao ? (
-            <ConfirmacaoComSenha
-              mensagem="Confirme sua senha para aprovar este pedido."
-              onConfirmar={confirmarAprovacaoPedido}
-              onCancelar={() => setMostrandoSenhaAprovacao(false)}
-              carregandoExterno={aprovandoPedido}
-            />
-          ) : (
-            <BotaoPrimario
-              type="button"
-              onClick={() => setMostrandoSenhaAprovacao(true)}
-              disabled={!temAnexoAprovado}
-            >
-              Aprovar pedido
-            </BotaoPrimario>
-          )}
-        </CardPadrao>
-      )}
-
       <ModalConfirmacao
         aberto={!!anexoParaExcluir}
         titulo="Excluir documento"
@@ -566,33 +418,6 @@ export function AbaAvaliacaoPedido({
         aoConfirmar={() => void confirmarExclusaoAnexo()}
         aoCancelar={() => setAnexoParaExcluir(null)}
       />
-
-      <ModalConfirmacao
-        aberto={confirmandoBloquearPortal}
-        titulo="Bloquear portal"
-        mensagem="O fornecedor não poderá mais acessar este pedido no portal até você liberar novamente. Quer continuar?"
-        textoConfirmar={bloqueandoPortal ? 'Bloqueando...' : 'Bloquear'}
-        textoCancelar="Cancelar"
-        aoConfirmar={() => {
-          setConfirmandoBloquearPortal(false)
-          onBloquearPortal()
-        }}
-        aoCancelar={() => setConfirmandoBloquearPortal(false)}
-      />
-
-      <ModalConfirmacao
-        aberto={confirmandoVoltarRascunho}
-        titulo="Voltar pedido para rascunho"
-        mensagem="Este pedido não ficará mais disponível ao fornecedor no portal. Quer continuar?"
-        textoConfirmar={voltandoParaRascunho ? 'Voltando...' : 'Continuar'}
-        textoCancelar="Cancelar"
-        aoConfirmar={() => {
-          setConfirmandoVoltarRascunho(false)
-          onVoltarParaRascunho()
-        }}
-        aoCancelar={() => setConfirmandoVoltarRascunho(false)}
-      />
     </div>
   )
 }
-

@@ -120,12 +120,6 @@ export async function rotasDePedidosCompra(aplicacao: FastifyInstance): Promise<
   )
 
   aplicacao.post(
-    '/:id/bloquear-portal',
-    { preHandler: [...auth, middlewareDeAutorizacao('compras:edit')] },
-    controladorDePedidosCompra.bloquearPortalFornecedor
-  )
-
-  aplicacao.post(
     '/:id/voltar-para-rascunho',
     { preHandler: [...auth, middlewareDeAutorizacao('compras:edit')] },
     controladorDePedidosCompra.voltarPedidoParaRascunho

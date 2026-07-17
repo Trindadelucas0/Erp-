@@ -228,13 +228,6 @@ async function enviarAnexoFornecedor(requisicao: FastifyRequest, resposta: Fasti
   return resposta.status(201).send(dados)
 }
 
-async function bloquearPortalFornecedor(requisicao: FastifyRequest, resposta: FastifyReply) {
-  const { id } = requisicao.params as { id: string }
-  const companyId = requisicao.empresaAtivaId || ''
-  await servicoDePedidosCompra.bloquearPortalFornecedor(id, companyId, requisicao.idDoUsuario!)
-  return resposta.send({ sucesso: true })
-}
-
 async function voltarPedidoParaRascunho(requisicao: FastifyRequest, resposta: FastifyReply) {
   const { id } = requisicao.params as { id: string }
   const companyId = requisicao.empresaAtivaId || ''
@@ -346,7 +339,6 @@ export const controladorDePedidosCompra = {
   liberarParaPortalFornecedor,
   avisoWhatsappCredenciais,
   enviarAnexoFornecedor,
-  bloquearPortalFornecedor,
   voltarPedidoParaRascunho,
   aprovarAnexoFornecedor,
   excluirAnexoFornecedor,
