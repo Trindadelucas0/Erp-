@@ -35,18 +35,38 @@ async function sugerirProximoSku(requisicao: FastifyRequest, resposta: FastifyRe
 
 async function listarProdutos(requisicao: FastifyRequest, resposta: FastifyReply) {
   const companyId = requisicao.empresaAtivaId || ''
-  const { q, incluirInativos, resumo } = requisicao.query as {
+  const {
+    q,
+    incluirInativos,
+    resumo,
+    pagina,
+    limite,
+    ids,
+    ordenarPor,
+    direcao,
+  } = requisicao.query as {
     q?: string
     incluirInativos?: string
     resumo?: string
+    pagina?: string
+    limite?: string
+    ids?: string
+    ordenarPor?: string
+    direcao?: string
   }
-  const produtos = await servicoDeProdutos.listarProdutos(
-    companyId,
-    q,
-    incluirInativos === 'true',
-    resumo === 'true'
-  )
-  return resposta.send({ produtos })
+
+  const resultado = await servicoDeProdutos.listarProdutos(companyId, {
+    busca: q,
+    incluirInativos: incluirInativos === 'true',
+    resumo: resumo === 'true',
+    pagina: pagina ? parseInt(pagina, 10) : undefined,
+    limite: limite ? parseInt(limite, 10) : undefined,
+    ids,
+    ordenarPor,
+    direcao,
+  })
+
+  return resposta.send(resultado)
 }
 
 async function buscarProduto(requisicao: FastifyRequest, resposta: FastifyReply) {

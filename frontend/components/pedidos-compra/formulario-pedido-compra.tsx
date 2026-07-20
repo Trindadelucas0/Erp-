@@ -112,6 +112,8 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
   const [fornecedores, setFornecedores] = useState<PessoaOpcao[]>([])
   const [transportadoras, setTransportadoras] = useState<PessoaOpcao[]>([])
   const [produtos, setProdutos] = useState<ProdutoOpcao[]>([])
+  const [produtosBusca, setProdutosBusca] = useState<ProdutoOpcao[]>([])
+  const [carregandoBuscaProdutos, setCarregandoBuscaProdutos] = useState(false)
   const [contexto, setContexto] = useState<ContextoFornecedor | null>(null)
   const [modalPendenciaAberto, setModalPendenciaAberto] = useState(false)
   const [modalCreditoAberto, setModalCreditoAberto] = useState(false)
@@ -188,10 +190,9 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     const mostrarLoading = !catalogosProntosRef.current
     if (mostrarLoading) setCarregandoCatalogos(true)
     try {
-      const [resForn, resTrans, resProd] = await Promise.all([
+      const [resForn, resTrans] = await Promise.all([
         clienteHttp.get('/fornecedores'),
         clienteHttp.get('/transportadoras'),
-        clienteHttp.get('/produtos'),
       ])
       setFornecedores(
         (resForn.data.fornecedores ?? [])
@@ -203,55 +204,6 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
           .filter((t: { ativo: boolean }) => t.ativo)
           .map((t: { id: string; nome: string }) => ({ id: t.id, nome: t.nome }))
       )
-      setProdutos(
-        (resProd.data.produtos ?? [])
-          .filter((p: { ativo: boolean }) => p.ativo)
-          .map((p: {
-            id: string
-            nomeVenda: string
-            sku: string | null
-            urlFotoMiniatura?: string | null
-            marca?: string | null
-            unidade: string
-            codigoBarras?: string | null
-            embalagensMaster?: { codigoBarras?: string | null; quantidade?: number | null }[]
-            codigoOrigem: string | null
-            precoCusto: number | null
-            bloqueadoCompra: boolean
-            fornecedores: {
-              fornecedorPessoaId: string
-              codigoFornecedor: string | null
-              unidadeEntrada: string | null
-              multiploEntrada?: number | null
-              multiplicadorEntrada?: number | null
-            }[]
-          }) => ({
-            id: p.id,
-            nomeVenda: p.nomeVenda,
-            sku: p.sku,
-            urlFotoMiniatura: p.urlFotoMiniatura ?? null,
-            marca: p.marca ?? '',
-            unidade: p.unidade,
-            codigoBarras: p.codigoBarras ?? null,
-            codigosBarrasEmbalagem: (p.embalagensMaster ?? []).map((e) => e.codigoBarras ?? null),
-            embalagensMaster: (p.embalagensMaster ?? []).map((e) => ({
-              quantidade:
-                e.quantidade == null || !Number.isFinite(Number(e.quantidade))
-                  ? null
-                  : Number(e.quantidade),
-            })),
-            codigoOrigem: p.codigoOrigem ?? null,
-            precoCusto: p.precoCusto ?? null,
-            bloqueadoCompra: p.bloqueadoCompra ?? false,
-            fornecedores: (p.fornecedores ?? []).map((f) => ({
-              fornecedorPessoaId: f.fornecedorPessoaId,
-              codigoFornecedor: f.codigoFornecedor ?? null,
-              unidadeEntrada: f.unidadeEntrada ?? null,
-              multiploEntrada: f.multiploEntrada ?? null,
-              multiplicadorEntrada: f.multiplicadorEntrada ?? null,
-            })),
-          }))
-      )
       catalogosProntosRef.current = true
     } catch {
       setErro('Erro ao carregar catálogos.')
@@ -260,6 +212,108 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     }
   }, [])
 
+  function mapearProdutoApiParaOpcao(p: {
+    id: string
+    nomeVenda: string
+    sku: string | null
+    urlFotoMiniatura?: string | null
+    marca?: string | null
+    unidade: string
+    codigoBarras?: string | null
+    embalagensMaster?: { codigoBarras?: string | null; quantidade?: number | null }[]
+    codigoOrigem?: string | null
+    precoCusto?: number | null
+    bloqueadoCompra?: boolean
+    fornecedores?: {
+      fornecedorPessoaId: string
+      codigoFornecedor: string | null
+      unidadeEntrada: string | null
+      multiploEntrada?: number | null
+      multiplicadorEntrada?: number | null
+    }[]
+  }): ProdutoOpcao {
+    return {
+      id: p.id,
+      nomeVenda: p.nomeVenda,
+      sku: p.sku,
+      urlFotoMiniatura: p.urlFotoMiniatura ?? null,
+      marca: p.marca ?? '',
+      unidade: p.unidade,
+      codigoBarras: p.codigoBarras ?? null,
+      codigosBarrasEmbalagem: (p.embalagensMaster ?? []).map((e) => e.codigoBarras ?? null),
+      embalagensMaster: (p.embalagensMaster ?? []).map((e) => ({
+        quantidade:
+          e.quantidade == null || !Number.isFinite(Number(e.quantidade))
+            ? null
+            : Number(e.quantidade),
+      })),
+      codigoOrigem: p.codigoOrigem ?? null,
+      precoCusto: p.precoCusto ?? null,
+      bloqueadoCompra: p.bloqueadoCompra ?? false,
+      fornecedores: (p.fornecedores ?? []).map((f) => ({
+        fornecedorPessoaId: f.fornecedorPessoaId,
+        codigoFornecedor: f.codigoFornecedor ?? null,
+        unidadeEntrada: f.unidadeEntrada ?? null,
+        multiploEntrada: f.multiploEntrada ?? null,
+        multiplicadorEntrada: f.multiplicadorEntrada ?? null,
+      })),
+    }
+  }
+
+  const mesclarProdutosNoCache = useCallback((novos: ProdutoOpcao[]) => {
+    if (!novos.length) return
+    setProdutos((prev) => {
+      const mapa = new Map(prev.map((p) => [p.id, p]))
+      for (const produto of novos) {
+        mapa.set(produto.id, produto)
+      }
+      return [...mapa.values()]
+    })
+  }, [])
+
+  const buscarProdutosPedido = useCallback(
+    async (termo: string) => {
+      setCarregandoBuscaProdutos(true)
+      try {
+        const params = new URLSearchParams({
+          pagina: '1',
+          limite: '50',
+          incluirInativos: 'false',
+        })
+        if (termo.trim()) params.set('q', termo.trim())
+        const { data } = await clienteHttp.get(`/produtos?${params}`)
+        const mapeados = (data.produtos ?? [])
+          .filter((p: { ativo?: boolean; bloqueadoCompra?: boolean }) => p.ativo !== false)
+          .map(mapearProdutoApiParaOpcao)
+        setProdutosBusca(mapeados)
+        mesclarProdutosNoCache(mapeados)
+      } catch {
+        setProdutosBusca([])
+      } finally {
+        setCarregandoBuscaProdutos(false)
+      }
+    },
+    [mesclarProdutosNoCache]
+  )
+
+  const hidratarProdutosPorIds = useCallback(
+    async (ids: string[]) => {
+      const unicos = [...new Set(ids.filter(Boolean))]
+      if (!unicos.length) return
+      try {
+        const params = new URLSearchParams({
+          ids: unicos.join(','),
+          incluirInativos: 'true',
+        })
+        const { data } = await clienteHttp.get(`/produtos?${params}`)
+        const mapeados = (data.produtos ?? []).map(mapearProdutoApiParaOpcao)
+        mesclarProdutosNoCache(mapeados)
+      } catch {
+        // mantém cache atual; itens ainda exibem produtoNome do pedido
+      }
+    },
+    [mesclarProdutosNoCache]
+  )
   const carregarContexto = useCallback(async (fornecedorId: string, aplicarPrazos = false) => {
     if (!fornecedorId) {
       setContexto(null)
@@ -355,6 +409,10 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
           void carregarHistoricoProduto(item.produtoId)
         }
       }
+      const idsItens = (p.itens as { produtoId?: string }[])
+        .map((i) => i.produtoId)
+        .filter((id): id is string => Boolean(id))
+      void hidratarProdutosPorIds(idsItens)
       // Ao abrir um pedido já enviado ao fornecedor, foca direto na avaliação —
       // é o que o comprador precisa resolver, sem depender do fornecedor conferir antes.
       if (!abaInicialDefinidaRef.current) {
@@ -365,7 +423,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
       }
       return p
     },
-    [carregarHistoricoProduto]
+    [carregarHistoricoProduto, hidratarProdutosPorIds]
   )
 
   async function liberarPortalFornecedor() {
@@ -571,10 +629,13 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
     const aplicarPrazos = deveAplicarPrazosFornecedorRef.current
     deveAplicarPrazosFornecedorRef.current = false
     void carregarContexto(form.fornecedorPessoaId, aplicarPrazos)
-    // Recarrega produtos para refletir embalagem/múltiplo recém-cadastrados.
-    void carregarCatalogos()
-  }, [form.fornecedorPessoaId, carregarContexto, carregarCatalogos])
-
+    // Re-hidrata produtos já usados para refletir vínculo/embalagem atualizados.
+    const ids = [
+      ...formRef.current.itens.map((i) => i.produtoId),
+      ...produtosRef.current.map((p) => p.id),
+    ]
+    void hidratarProdutosPorIds(ids)
+  }, [form.fornecedorPessoaId, carregarContexto, hidratarProdutosPorIds])
   function selecionarFornecedor(fornecedorId: string) {
     const mudou = fornecedorId !== form.fornecedorPessoaId
     if (!mudou) return
@@ -1130,7 +1191,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
       {carregandoCatalogos && (
         <div className="flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
           <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
-          Carregando produtos, fornecedores e transportadoras...
+          Carregando fornecedores e transportadoras...
         </div>
       )}
 
@@ -1440,6 +1501,9 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
               fornecedorPessoaId={form.fornecedorPessoaId}
               itens={form.itens}
               produtos={produtos}
+              produtosBusca={produtosBusca}
+              onBuscarProdutos={buscarProdutosPedido}
+              carregandoBuscaProdutos={carregandoBuscaProdutos}
               disabled={somenteLeitura || !podeSalvar || carregandoCatalogos}
               formatarMoeda={formatarMoeda}
               formatarData={formatarData}

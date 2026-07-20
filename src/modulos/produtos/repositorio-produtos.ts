@@ -6,6 +6,33 @@ import type { Prisma } from '@prisma/client'
 import type { DadosParaCriarProduto, DadosParaEditarProduto } from './esquema-produtos.js'
 import { urlPublicaFoto } from './armazenamento-foto-produto.js'
 import { proximoSkuNumerico } from './sku-sequencial.js'
+import {
+  calcularSkipProdutos,
+  normalizarLimiteProdutos,
+  normalizarOrdenacaoProdutos,
+  normalizarPaginaProdutos,
+  parseIdsProdutos,
+  type CampoOrdenacaoProdutos,
+  type DirecaoOrdenacaoProdutos,
+} from './paginacao-produtos.js'
+
+export type FiltrosListagemProdutos = {
+  busca?: string
+  incluirInativos?: boolean
+  resumo?: boolean
+  pagina?: number
+  limite?: number
+  ids?: string | string[]
+  ordenarPor?: string
+  direcao?: string
+}
+
+export type ResultadoListagemProdutos = {
+  produtos: unknown[]
+  total: number
+  pagina: number
+  limite: number
+}
 
 const includeCompleto = {
   fotos: { orderBy: { ordem: 'asc' as const } },
@@ -281,15 +308,17 @@ function mapearProdutoLista(produto: ProdutoListaDb, companyId: string) {
   }
 }
 
-async function listarPorEmpresa(
+function montarWhereListagem(
   companyId: string,
-  busca?: string,
-  incluirInativos = false,
-  resumo = false
-) {
-  const where: Prisma.ProdutoWhereInput = {
+  filtros: FiltrosListagemProdutos
+): Prisma.ProdutoWhereInput {
+  const ids = parseIdsProdutos(filtros.ids)
+  const busca = filtros.busca?.trim()
+
+  return {
     companyId,
-    ...(incluirInativos ? {} : { ativo: true }),
+    ...(ids.length ? { id: { in: ids } } : {}),
+    ...(filtros.incluirInativos ? {} : { ativo: true }),
     ...(busca
       ? {
           OR: [
@@ -297,50 +326,159 @@ async function listarPorEmpresa(
             { sku: { contains: busca, mode: 'insensitive' } },
             { codigoBarras: { contains: busca, mode: 'insensitive' } },
             { marca: { contains: busca, mode: 'insensitive' } },
+            {
+              embalagensMaster: {
+                some: {
+                  codigoBarras: { contains: busca, mode: 'insensitive' },
+                },
+              },
+            },
           ],
         }
       : {}),
   }
+}
 
-  if (resumo) {
-    const produtos = await clientePrisma.produto.findMany({
-      where,
-      select: {
-        id: true,
-        sku: true,
-        ativo: true,
-        nomeVenda: true,
-        marca: true,
-        unidade: true,
-        fotos: {
-          where: { tipo: 'miniatura' },
-          take: 1,
-          select: { arquivo: true },
-        },
-      },
-      orderBy: { nomeVenda: 'asc' },
-    })
+function montarOrderBy(
+  ordenarPor: CampoOrdenacaoProdutos,
+  direcao: DirecaoOrdenacaoProdutos
+): Prisma.ProdutoOrderByWithRelationInput {
+  return { [ordenarPor]: direcao }
+}
 
-    return produtos.map((p) => ({
-      id: p.id,
-      sku: p.sku,
-      ativo: p.ativo,
-      nomeVenda: p.nomeVenda,
-      marca: p.marca,
-      unidade: p.unidade,
-      urlFotoMiniatura: p.fotos[0]
-        ? urlPublicaFoto(companyId, p.id, p.fotos[0].arquivo)
-        : null,
-    }))
+async function listarPorEmpresa(
+  companyId: string,
+  filtros: FiltrosListagemProdutos = {}
+): Promise<ResultadoListagemProdutos> {
+  const where = montarWhereListagem(companyId, filtros)
+  const ids = parseIdsProdutos(filtros.ids)
+  const { ordenarPor, direcao } = normalizarOrdenacaoProdutos(
+    filtros.ordenarPor,
+    filtros.direcao
+  )
+  const orderBy = montarOrderBy(ordenarPor, direcao)
+
+  // Hidratação por ids: retorna só esses produtos (até 200), sem paginar o catálogo.
+  if (ids.length) {
+    const [produtosDb, total] = await Promise.all([
+      filtros.resumo
+        ? clientePrisma.produto.findMany({
+            where,
+            select: {
+              id: true,
+              sku: true,
+              ativo: true,
+              nomeVenda: true,
+              marca: true,
+              unidade: true,
+              fotos: {
+                where: { tipo: 'miniatura' },
+                take: 1,
+                select: { arquivo: true },
+              },
+            },
+            orderBy,
+          })
+        : clientePrisma.produto.findMany({
+            where,
+            include: includeLista,
+            orderBy,
+          }),
+      clientePrisma.produto.count({ where }),
+    ])
+
+    const produtos = filtros.resumo
+      ? (
+          produtosDb as Array<{
+            id: string
+            sku: string | null
+            ativo: boolean
+            nomeVenda: string
+            marca: string
+            unidade: string
+            fotos: { arquivo: string }[]
+          }>
+        ).map((p) => ({
+          id: p.id,
+          sku: p.sku,
+          ativo: p.ativo,
+          nomeVenda: p.nomeVenda,
+          marca: p.marca,
+          unidade: p.unidade,
+          urlFotoMiniatura: p.fotos[0]
+            ? urlPublicaFoto(companyId, p.id, p.fotos[0].arquivo)
+            : null,
+        }))
+      : (produtosDb as ProdutoListaDb[]).map((p) => mapearProdutoLista(p, companyId))
+
+    return {
+      produtos,
+      total,
+      pagina: 1,
+      limite: total,
+    }
   }
 
-  const produtos = await clientePrisma.produto.findMany({
-    where,
-    include: includeLista,
-    orderBy: { nomeVenda: 'asc' },
-  })
+  const pagina = normalizarPaginaProdutos(filtros.pagina)
+  const limite = normalizarLimiteProdutos(filtros.limite)
+  const skip = calcularSkipProdutos(pagina, limite)
 
-  return produtos.map((p) => mapearProdutoLista(p, companyId))
+  const [produtosDb, total] = await Promise.all([
+    filtros.resumo
+      ? clientePrisma.produto.findMany({
+          where,
+          select: {
+            id: true,
+            sku: true,
+            ativo: true,
+            nomeVenda: true,
+            marca: true,
+            unidade: true,
+            fotos: {
+              where: { tipo: 'miniatura' },
+              take: 1,
+              select: { arquivo: true },
+            },
+          },
+          orderBy,
+          take: limite,
+          skip,
+        })
+      : clientePrisma.produto.findMany({
+          where,
+          include: includeLista,
+          orderBy,
+          take: limite,
+          skip,
+        }),
+    clientePrisma.produto.count({ where }),
+  ])
+
+  const produtos = filtros.resumo
+    ? (
+        produtosDb as Array<{
+          id: string
+          sku: string | null
+          ativo: boolean
+          nomeVenda: string
+          marca: string
+          unidade: string
+          fotos: { arquivo: string }[]
+        }>
+      ).map((p) => ({
+        id: p.id,
+        sku: p.sku,
+        ativo: p.ativo,
+        nomeVenda: p.nomeVenda,
+        marca: p.marca,
+        unidade: p.unidade,
+        urlFotoMiniatura: p.fotos[0]
+          ? urlPublicaFoto(companyId, p.id, p.fotos[0].arquivo)
+          : null,
+      }))
+    : (produtosDb as ProdutoListaDb[]).map((p) => mapearProdutoLista(p, companyId))
+
+  return { produtos, total, pagina, limite }
 }
 
 async function buscarPorId(id: string) {
@@ -509,5 +647,6 @@ export const repositorioDeProdutos = {
   sincronizarFotos,
   removerFotosDoBanco,
   mapearProduto,
+  normalizarLimiteProdutos,
 }
 

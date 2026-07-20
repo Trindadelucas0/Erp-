@@ -58,7 +58,12 @@ type LinhaExibida = {
 type Props = {
   fornecedorPessoaId: string
   itens: ItemPedido[]
+  /** Cache de produtos já carregados (vínculo, foto, preenchimento). */
   produtos: ProdutoOpcao[]
+  /** Resultado da última busca no servidor para o combobox. */
+  produtosBusca?: ProdutoOpcao[]
+  onBuscarProdutos?: (termo: string) => void | Promise<void>
+  carregandoBuscaProdutos?: boolean
   disabled: boolean
   formatarMoeda: (v: number) => string
   formatarData: (iso: string) => string
@@ -118,6 +123,9 @@ export function LancamentoItensPedido({
   fornecedorPessoaId,
   itens,
   produtos,
+  produtosBusca,
+  onBuscarProdutos,
+  carregandoBuscaProdutos = false,
   disabled,
   formatarMoeda,
   formatarData,
@@ -234,6 +242,12 @@ export function LancamentoItensPedido({
   const totaisRascunho = calcularTotalItem(rascunho)
   const origemPrecoLabel = rotuloOrigemPreco(rascunho.origemPreco)
   const produtoRascunho = produtos.find((p) => p.id === rascunho.produtoId)
+  const produtosParaCombobox = useMemo(() => {
+    const base = produtosBusca ?? produtos
+    if (!produtoRascunho) return base
+    if (base.some((p) => p.id === produtoRascunho.id)) return base
+    return [produtoRascunho, ...base]
+  }, [produtosBusca, produtos, produtoRascunho])
   const vinculoRascunho = produtoRascunho
     ? obterVinculoFornecedor(produtoRascunho, fornecedorPessoaId)
     : undefined
@@ -519,9 +533,11 @@ export function LancamentoItensPedido({
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
             <div className="sm:col-span-2 lg:col-span-3 2xl:col-span-2">
               <ComboboxProduto
-                produtos={produtos}
+                produtos={produtosParaCombobox}
                 valor={rascunho.produtoId}
                 aoMudar={(v) => void aoSelecionarProduto(v)}
+                aoBuscar={onBuscarProdutos}
+                carregandoBusca={carregandoBuscaProdutos}
                 disabled={preenchendoProduto}
               />
             </div>

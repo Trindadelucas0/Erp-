@@ -34,11 +34,16 @@ export function SelecaoProdutosSimilares({ selecionados, aoMudar, excluirId, dis
 
   const buscar = useCallback(async () => {
     try {
-      const params = new URLSearchParams({ incluirInativos: 'false' })
+      const params = new URLSearchParams({
+        incluirInativos: 'false',
+        resumo: 'true',
+        limite: '50',
+        pagina: '1',
+      })
       if (busca.trim()) params.set('q', busca.trim())
       const { data } = await clienteHttp.get(`/produtos?${params}`)
       const lista = (data.produtos ?? [])
-        .filter((p: { id: string; ativo: boolean }) => p.ativo && p.id !== excluirId)
+        .filter((p: { id: string; ativo?: boolean }) => p.id !== excluirId)
         .map(
           (p: {
             id: string

@@ -38,7 +38,6 @@ import { CampoFotoProduto } from '@/components/produtos/campo-foto-produto'
 import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
 import { LinhasSkeletonTabela } from '@/components/ui/linhas-skeleton-tabela'
 import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
-import { ordenarLista } from '@/lib/ordenacao-lista'
 import { ComboboxMarca } from '@/components/produtos/combobox-marca'
 import {
   ListaEmbalagensMaster,
@@ -335,10 +334,29 @@ function ConteudoDaPagina() {
   const [produtoIdFotoOrigem, setProdutoIdFotoOrigem] = useState('')
   const [pagina, setPagina] = useState(1)
   const [itensPorPagina, setItensPorPagina] = useState<ItensPorPagina>(10)
+  const [totalLista, setTotalLista] = useState(0)
   const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<
     'sku' | 'nome' | 'marca' | 'unidade' | 'situacao'
   >()
 
+  function mapearColunaOrdenacaoApi(
+    coluna: 'sku' | 'nome' | 'marca' | 'unidade' | 'situacao' | undefined
+  ): string | undefined {
+    switch (coluna) {
+      case 'sku':
+        return 'sku'
+      case 'nome':
+        return 'nomeVenda'
+      case 'marca':
+        return 'marca'
+      case 'unidade':
+        return 'unidade'
+      case 'situacao':
+        return 'ativo'
+      default:
+        return undefined
+    }
+  }
   const configAbas: ConfigDeAba[] = useMemo(
     () => [
       {
@@ -426,17 +444,26 @@ function ConteudoDaPagina() {
       const params = new URLSearchParams({
         incluirInativos: 'true',
         resumo: 'true',
+        pagina: String(pagina),
+        limite: String(itensPorPagina),
       })
       if (buscaDebounced.trim()) params.set('q', buscaDebounced.trim())
+      const ordenarPor = mapearColunaOrdenacaoApi(ordenacao?.coluna)
+      if (ordenarPor) {
+        params.set('ordenarPor', ordenarPor)
+        params.set('direcao', ordenacao?.direcao === 'desc' ? 'desc' : 'asc')
+      }
       const { data } = await clienteHttp.get(`/produtos?${params}`)
       setLista(data.produtos ?? [])
+      setTotalLista(typeof data.total === 'number' ? data.total : (data.produtos ?? []).length)
     } catch {
       setErro('Erro ao carregar produtos. Aguarde e tente novamente.')
       setLista([])
+      setTotalLista(0)
     } finally {
       setCarregandoLista(false)
     }
-  }, [buscaDebounced])
+  }, [buscaDebounced, pagina, itensPorPagina, ordenacao])
 
   const carregarFornecedores = useCallback(async () => {
     try {
@@ -452,11 +479,18 @@ function ConteudoDaPagina() {
   }, [])
 
   useEffect(() => {
+    setPagina(1)
+  }, [buscaDebounced, ordenacao, itensPorPagina])
+
+  useEffect(() => {
     if (carregandoSessao || !estaAutenticado) return
     carregar()
-    carregarFornecedores()
-  }, [carregandoSessao, estaAutenticado, carregar, carregarFornecedores])
+  }, [carregandoSessao, estaAutenticado, carregar])
 
+  useEffect(() => {
+    if (carregandoSessao || !estaAutenticado) return
+    carregarFornecedores()
+  }, [carregandoSessao, estaAutenticado, carregarFornecedores])
   function abrirNovo() {
     setForm(formVazio)
     setModoEdicao(false)
@@ -493,15 +527,24 @@ function ConteudoDaPagina() {
     if (!podeCriar) return
     setProdutoIdParaDuplicar('')
     setNomeDuplicacao('')
+    setProdutosParaDuplicar([])
     setModalDuplicarAberto(true)
     setErro('')
-    setCarregandoCatalogoDuplicar(true)
-    try {
-      const { data } = await clienteHttp.get('/produtos', {
-        params: { incluirInativos: true },
-      })
-      setProdutosParaDuplicar(
-        (data.produtos ?? []).map(
+  }
+
+  const buscarProdutosDuplicar = useCallback(
+    async (termo: string) => {
+      setCarregandoCatalogoDuplicar(true)
+      try {
+        const params = new URLSearchParams({
+          incluirInativos: 'true',
+          resumo: 'true',
+          pagina: '1',
+          limite: '50',
+        })
+        if (termo.trim()) params.set('q', termo.trim())
+        const { data } = await clienteHttp.get(`/produtos?${params}`)
+        const encontrados = (data.produtos ?? []).map(
           (p: {
             id: string
             nomeVenda: string
@@ -516,13 +559,22 @@ function ConteudoDaPagina() {
             urlFotoMiniatura: p.urlFotoMiniatura ?? null,
           })
         )
-      )
-    } catch {
-      setErro('Erro ao carregar produtos.')
-    } finally {
-      setCarregandoCatalogoDuplicar(false)
-    }
-  }
+        setProdutosParaDuplicar((prev) => {
+          const selecionado = prev.find((p) => p.id === produtoIdParaDuplicar)
+          if (selecionado && !encontrados.some((p: ProdutoOpcao) => p.id === selecionado.id)) {
+            return [selecionado, ...encontrados]
+          }
+          return encontrados
+        })
+      } catch {
+        setErro('Erro ao buscar produtos.')
+        setProdutosParaDuplicar([])
+      } finally {
+        setCarregandoCatalogoDuplicar(false)
+      }
+    },
+    [produtoIdParaDuplicar]
+  )
 
   function aoSelecionarProdutoOrigem(produtoId: string) {
     setProdutoIdParaDuplicar(produtoId)
@@ -964,35 +1016,9 @@ function ConteudoDaPagina() {
       ? MENSAGEM_NCM_INVALIDO
       : undefined
 
-  const listaExibida = useMemo(
-    () =>
-      ordenarLista(lista, ordenacao, (produto, coluna) => {
-        switch (coluna) {
-          case 'sku':
-            return produto.sku ?? ''
-          case 'nome':
-            return produto.nomeVenda
-          case 'marca':
-            return produto.marca ?? ''
-          case 'unidade':
-            return produto.unidade
-          case 'situacao':
-            return produto.ativo ? 'Ativo' : 'Inativo'
-        }
-      }),
-    [lista, ordenacao]
-  )
-
-  useEffect(() => {
-    setPagina(1)
-  }, [buscaDebounced, ordenacao, itensPorPagina])
-
-  const totalPaginas = Math.max(1, Math.ceil(listaExibida.length / itensPorPagina))
-  const paginaAtual = Math.min(pagina, totalPaginas)
-  const listaPaginada = useMemo(() => {
-    const inicio = (paginaAtual - 1) * itensPorPagina
-    return listaExibida.slice(inicio, inicio + itensPorPagina)
-  }, [listaExibida, paginaAtual, itensPorPagina])
+  const listaExibida = lista
+  const paginaAtual = pagina
+  const listaPaginada = listaExibida
 
   return (
     <div className="min-w-0 space-y-6">
@@ -1048,7 +1074,7 @@ function ConteudoDaPagina() {
                   Carregando produtos...
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Isso pode levar alguns segundos se houver muitos itens.
+                  Aguarde o retorno da página atual.
                 </p>
               </div>
             </div>
@@ -1131,7 +1157,7 @@ function ConteudoDaPagina() {
         </div>
 
         <ControlesPaginacao
-          total={listaExibida.length}
+          total={totalLista}
           pagina={paginaAtual}
           itensPorPagina={itensPorPagina}
           onPaginaChange={setPagina}
@@ -1155,7 +1181,6 @@ function ConteudoDaPagina() {
               form="form-duplicar-produto"
               disabled={
                 duplicando ||
-                carregandoCatalogoDuplicar ||
                 !produtoIdParaDuplicar ||
                 !nomeDuplicacao.trim()
               }
@@ -1171,10 +1196,12 @@ function ConteudoDaPagina() {
             produtos={produtosParaDuplicar}
             valor={produtoIdParaDuplicar}
             aoMudar={aoSelecionarProdutoOrigem}
-            disabled={carregandoCatalogoDuplicar || duplicando}
+            aoBuscar={buscarProdutosDuplicar}
+            carregandoBusca={carregandoCatalogoDuplicar}
+            disabled={duplicando}
           />
           {carregandoCatalogoDuplicar && (
-            <p className="text-sm text-muted-foreground">Carregando produtos...</p>
+            <p className="text-sm text-muted-foreground">Buscando produtos...</p>
           )}
           <InputPadrao
             rotulo="Nome de venda *"

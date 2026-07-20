@@ -115,19 +115,21 @@ async function sugerirProximoSku(companyId: string) {
 
 async function listarProdutos(
   companyId: string,
-  busca?: string,
-  incluirInativos?: boolean,
-  resumo?: boolean
+  filtros: {
+    busca?: string
+    incluirInativos?: boolean
+    resumo?: boolean
+    pagina?: number
+    limite?: number
+    ids?: string | string[]
+    ordenarPor?: string
+    direcao?: string
+  } = {}
 ) {
   if (!companyId) {
     throw new ErroDaAplicacao('Empresa ativa não informada.', 400)
   }
-  return repositorioDeProdutos.listarPorEmpresa(
-    companyId,
-    busca,
-    incluirInativos,
-    resumo
-  )
+  return repositorioDeProdutos.listarPorEmpresa(companyId, filtros)
 }
 
 async function buscarProduto(id: string, companyId: string) {

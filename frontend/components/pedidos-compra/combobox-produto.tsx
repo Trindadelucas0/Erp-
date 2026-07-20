@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Search, X } from 'lucide-react'
+import { Loader2, Search, X } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
 import {
@@ -40,10 +40,17 @@ type Props = {
   aoMudar: (produtoId: string) => void
   /** Quando informado, Enter com produto já selecionado e lista fechada dispara esta ação (ex.: adicionar item). */
   aoEnterComProdutoSelecionado?: () => void
+  /**
+   * Busca no servidor (debounce). Quando presente, a lista `produtos` é tratada
+   * como resultado/cache da última busca — não como catálogo completo.
+   */
+  aoBuscar?: (termo: string) => void | Promise<void>
+  carregandoBusca?: boolean
   disabled?: boolean
 }
 
 const ALTURA_MAXIMA_LISTA = 240
+const DEBOUNCE_BUSCA_MS = 300
 
 function rotuloProduto(p: ProdutoOpcao) {
   return p.sku ? `${p.sku} — ${p.nomeVenda}` : p.nomeVenda
@@ -78,6 +85,8 @@ export function ComboboxProduto({
   valor,
   aoMudar,
   aoEnterComProdutoSelecionado,
+  aoBuscar,
+  carregandoBusca = false,
   disabled,
 }: Props) {
   const [aberto, setAberto] = useState(false)
@@ -102,6 +111,14 @@ export function ComboboxProduto({
   useEffect(() => {
     setMontado(true)
   }, [])
+
+  useEffect(() => {
+    if (!aberto || !aoBuscar) return
+    const timer = setTimeout(() => {
+      void aoBuscar(busca)
+    }, DEBOUNCE_BUSCA_MS)
+    return () => clearTimeout(timer)
+  }, [aberto, busca, aoBuscar])
 
   const atualizarPosicao = useCallback(() => {
     const linha = inputRowRef.current
@@ -177,6 +194,7 @@ export function ComboboxProduto({
     }
   }
 
+  // Com busca no servidor, a lista já veio filtrada; filtro local só afina a página atual.
   const filtrados = filtrarProdutos(produtos, aberto ? busca : '')
   const textoExibido = selecionado ? rotuloProduto(selecionado) : ''
 
@@ -193,7 +211,12 @@ export function ComboboxProduto({
       }}
       {...zonaHover}
     >
-      {filtrados.length === 0 ? (
+      {carregandoBusca && filtrados.length === 0 ? (
+        <li className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" aria-hidden />
+          Buscando...
+        </li>
+      ) : filtrados.length === 0 ? (
         <li className="px-3 py-2 text-muted-foreground">Nenhum produto encontrado</li>
       ) : (
         filtrados.map((p) => {
