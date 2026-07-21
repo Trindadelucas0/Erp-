@@ -22,6 +22,8 @@ type ResultadoEtapa = {
   status: string
   avisos: string[]
   bloqueios: string[]
+  bloqueiosNaoLiberaveis?: string[]
+  exigeManifesto?: boolean
 }
 
 type Analise = {
@@ -76,6 +78,21 @@ type DetalheNota = {
 }
 
 type ProdutoBusca = { id: string; nomeVenda: string; sku?: string | null; codigoBarras?: string | null }
+
+function normalizarNcm(valor?: string | null): string {
+  return (valor ?? '').replace(/\D/g, '').trim()
+}
+
+function itemPrecisaImportarFiscal(item: ItemNota): boolean {
+  if (!item.produtoId || !item.produto) return false
+  const ncmNf = normalizarNcm(item.ncm)
+  const ncmProd = normalizarNcm(item.produto.ncm)
+  if (ncmNf && ncmNf !== ncmProd) return true
+  const origNf = (item.origem ?? '').trim()
+  const origProd = (item.produto.codigoOrigem ?? '').trim()
+  if (origNf && origNf !== origProd) return true
+  return false
+}
 
 function EtapaCard({ titulo, etapa }: { titulo: string; etapa: ResultadoEtapa | undefined }) {
   if (!etapa) return null
@@ -291,14 +308,31 @@ function ConteudoDetalheEntrada() {
     nota?.statusEntrada === 'cancelada'
 
   const ehNfse = nota?.tipoDocumento === 'nfse'
+  const fiscalExigeManifesto =
+    nota?.analise?.fiscal?.exigeManifesto === true ||
+    (nota?.analise?.fiscal?.bloqueiosNaoLiberaveis?.length ?? 0) > 0 ||
+    (nota?.analise?.fiscal?.bloqueios ?? []).some((m) =>
+      /sem CFOP|sem CST|desconhecimento da opera/i.test(m)
+    )
+  const cadastroBloqueante = nota?.analise?.cadastro?.status === 'bloqueante'
+  const podeLiberarCriticas = !cadastroBloqueante && !fiscalExigeManifesto
+  const motivoBloqueioLiberacao = cadastroBloqueante
+    ? 'Cadastro bloqueante não libera por senha — cadastre o fornecedor e vincule produtos, depois reanalise.'
+    : fiscalExigeManifesto
+      ? 'CST/CFOP impeditivo não libera por senha — use desconhecimento da operação ou devolução.'
+      : null
 
   if (carregando) {
-    return <p className="p-6 text-sm text-muted-foreground">Carregando nota…</p>
+    return (
+      <div className="min-w-0 space-y-6">
+        <p className="text-sm text-muted-foreground">Carregando nota…</p>
+      </div>
+    )
   }
 
   if (!nota) {
     return (
-      <div className="space-y-3 p-6">
+      <div className="min-w-0 space-y-3">
         <p className="text-sm text-destructive">{erro || 'Nota não encontrada.'}</p>
         <Button asChild variant="outline">
           <Link href="/entrada-notas">Voltar</Link>
@@ -308,7 +342,7 @@ function ConteudoDetalheEntrada() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4 p-4 md:p-6">
+    <div className="min-w-0 space-y-6">
       <BarraCarregamentoDownload ativo={xmlBusy} rotulo={downloadRotulo || 'Carregando…'} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
@@ -436,17 +470,21 @@ function ConteudoDetalheEntrada() {
       </div>
       {nota.analise?.fiscal?.bloqueios?.length && !ehNfse ? (
         <p className="text-sm text-muted-foreground">
-          Divergência de NCM ou origem: importe da NF para o produto. Problema de CST/CFOP: não
-          prossiga — use desconhecimento da operação ou devolução.
+          Divergência de NCM ou origem: importe da NF para o produto (ou liberar críticas com senha).
+          Problema de CST/CFOP: não prossiga — use desconhecimento da operação ou devolução.
         </p>
       ) : null}
 
       {!finalizada && (
         <CardPadrao titulo="Controles (caminho humano)">
           <p className="mb-3 text-sm text-muted-foreground">
-            Liberar críticas exige senha de gerente (divergência fiscal ou de negociação). Contato
-            coloca a NF em stand-by. Desconhecimento / não realizada = manifesto Focus.
+            Liberar críticas (senha de gerente) cobre divergência de NCM/origem e de negociação. Não
+            cobre cadastro nem CST/CFOP. Contato coloca a NF em stand-by. Desconhecimento / não
+            realizada = manifesto Focus.
           </p>
+          {motivoBloqueioLiberacao && (
+            <p className="mb-3 text-sm text-amber-700 dark:text-amber-400">{motivoBloqueioLiberacao}</p>
+          )}
           <div className="flex flex-wrap gap-2">
             <div className="flex flex-wrap items-end gap-2">
               <div>
@@ -454,16 +492,17 @@ function ConteudoDetalheEntrada() {
                 <input
                   id="senha-criticas"
                   type="password"
-                  className="mt-1 block rounded-md border bg-background px-3 py-2 text-sm"
+                  className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
                   value={senha}
                   onChange={(e) => setSenha(e.target.value)}
                   autoComplete="current-password"
+                  disabled={!podeLiberarCriticas}
                 />
               </div>
               <Button
                 type="button"
                 size="sm"
-                disabled={acao || !senha.trim()}
+                disabled={acao || !senha.trim() || !podeLiberarCriticas}
                 onClick={() => postAcao('/liberar-criticas', { senha })}
               >
                 Liberar críticas
@@ -527,7 +566,7 @@ function ConteudoDetalheEntrada() {
           <div>
             <Label>Pedido de compra</Label>
             <select
-              className="mt-1 block rounded-md border bg-background px-3 py-2"
+              className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
               value={nota.pedidoCompraId ?? ''}
               disabled={finalizada || acao}
               onChange={(e) => {
@@ -546,7 +585,7 @@ function ConteudoDetalheEntrada() {
             <Label htmlFor="prazo">Prazo (se NF sem prazo)</Label>
             <input
               id="prazo"
-              className="mt-1 block rounded-md border bg-background px-3 py-2"
+              className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
               value={prazo}
               disabled={finalizada}
               onChange={(e) => setPrazo(e.target.value)}
@@ -626,7 +665,7 @@ function ConteudoDetalheEntrada() {
                       Gravar código original no vínculo
                     </Button>
                   )}
-                  {item.produtoId && (
+                  {item.produtoId && itemPrecisaImportarFiscal(item) && (
                     <Button
                       type="button"
                       size="sm"
@@ -709,7 +748,7 @@ function ConteudoDetalheEntrada() {
               <input
                 id="senha-consolidar"
                 type="password"
-                className="mt-1 block rounded-md border bg-background px-3 py-2 text-sm"
+                className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
                 value={senha}
                 onChange={(e) => setSenha(e.target.value)}
                 autoComplete="current-password"

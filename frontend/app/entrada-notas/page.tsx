@@ -617,8 +617,8 @@ function ConteudoEntradaNotas() {
           </>
         }
       >
-        <div className="mb-3 flex flex-wrap items-end gap-3">
-          <div className="min-w-[12rem] flex-1 space-y-1 sm:min-w-[16rem]">
+        <div className="mb-3 flex min-w-0 flex-wrap items-end gap-3">
+          <div className="min-w-0 w-full flex-1 space-y-1 sm:min-w-[12rem]">
             <Label htmlFor="filtro-busca">Buscar</Label>
             <input
               id="filtro-busca"
@@ -626,10 +626,10 @@ function ConteudoEntradaNotas() {
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               placeholder="Emitente, valor ou chave (banco local)…"
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           </div>
-          <div className="space-y-1">
+          <div className="min-w-0 w-full space-y-1 sm:w-auto">
             <Label htmlFor="filtro-de">Emissão de</Label>
             <input
               id="filtro-de"
@@ -639,7 +639,7 @@ function ConteudoEntradaNotas() {
               className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:w-auto"
             />
           </div>
-          <div className="space-y-1">
+          <div className="min-w-0 w-full space-y-1 sm:w-auto">
             <Label htmlFor="filtro-ate">até</Label>
             <input
               id="filtro-ate"
@@ -687,17 +687,17 @@ function ConteudoEntradaNotas() {
         </p>
 
         <div className="overflow-x-auto rounded-lg border border-border bg-card">
-          <table className="w-full min-w-[1040px] text-sm">
+          <table className="w-full min-w-[800px] text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
                 <th className="px-4 py-3 font-medium">Emissão</th>
                 <th className="px-4 py-3 font-medium">Tipo</th>
                 <th className="px-4 py-3 font-medium">Emitente (quem emitiu)</th>
-                <th className="px-4 py-3 font-medium">Destinatário</th>
-                <th className="px-4 py-3 font-medium">Chave</th>
+                <th className="hidden px-4 py-3 font-medium md:table-cell">Destinatário</th>
+                <th className="hidden px-4 py-3 font-medium lg:table-cell">Chave</th>
                 <th className="px-4 py-3 text-right font-medium">Valor</th>
-                <th className="px-4 py-3 font-medium">Origem</th>
-                <th className="px-4 py-3 font-medium">Etapa</th>
+                <th className="hidden px-4 py-3 font-medium md:table-cell">Origem</th>
+                <th className="hidden px-4 py-3 font-medium md:table-cell">Etapa</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">XML</th>
               </tr>
@@ -751,7 +751,7 @@ function ConteudoEntradaNotas() {
                         {formatarDocCurto(n.documentoEmitente)}
                       </div>
                     </td>
-                    <td className="max-w-[12rem] px-4 py-3">
+                    <td className="hidden max-w-[12rem] px-4 py-3 md:table-cell">
                       <div className="truncate text-xs">
                         {formatarDocCurto(n.cnpjDestinatario)}
                       </div>
@@ -761,7 +761,7 @@ function ConteudoEntradaNotas() {
                         </BadgeStatus>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="hidden px-4 py-3 lg:table-cell">
                       <Link
                         href={`/entrada-notas/${n.id}`}
                         title={n.chaveNfe}
@@ -779,10 +779,10 @@ function ConteudoEntradaNotas() {
                           })
                         : '—'}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="hidden px-4 py-3 md:table-cell">
                       <BadgeStatus variante="inativo">{n.origem}</BadgeStatus>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="hidden px-4 py-3 md:table-cell">
                       <BadgeStatus variante="info">{n.etapaAtual}</BadgeStatus>
                     </td>
                     <td className="px-4 py-3" title={rotuloStatus(n.statusEntrada)}>

@@ -65,9 +65,75 @@ async function carregarRegras(companyId: string): Promise<RegrasFiscaisJson | nu
   return sanitizarRegrasFiscais(cfg.regrasFiscaisJson as Partial<RegrasFiscaisJson>)
 }
 
-function podeAvancar(etapa: ResultadoEtapa, criticasLiberadas: boolean): boolean {
+/** Cadastro nunca é liberável por senha — só vínculo/cadastro. */
+function podeAvancarCadastro(etapa: ResultadoEtapa): boolean {
+  return etapa.status !== 'bloqueante'
+}
+
+/**
+ * Fiscal: CST/CFOP (exigeManifesto) nunca libera; NCM/origem libera com senha.
+ */
+function podeAvancarFiscal(etapa: ResultadoEtapa, criticasLiberadas: boolean): boolean {
+  if (etapa.status !== 'bloqueante') return true
+  if (etapa.exigeManifesto || (etapa.bloqueiosNaoLiberaveis?.length ?? 0) > 0) {
+    return false
+  }
+  return criticasLiberadas
+}
+
+/** Negociação: senha de gerente libera críticas negativas. */
+function podeAvancarNegociacao(etapa: ResultadoEtapa, criticasLiberadas: boolean): boolean {
   if (etapa.status !== 'bloqueante') return true
   return criticasLiberadas
+}
+
+function fiscalExigeManifesto(etapa: ResultadoEtapa | null | undefined): boolean {
+  if (!etapa) return false
+  if (etapa.exigeManifesto === true || (etapa.bloqueiosNaoLiberaveis?.length ?? 0) > 0) {
+    return true
+  }
+  // Análises gravadas antes de exigeManifesto: detectar pelo texto do bloqueio
+  return (etapa.bloqueios ?? []).some(
+    (m) => /sem CFOP|sem CST|desconhecimento da opera/i.test(m)
+  )
+}
+
+function pipelineProntoParaLancar(
+  analise: AnaliseJson | null,
+  criticasLiberadas: boolean
+): { ok: true } | { ok: false; mensagem: string } {
+  if (!analise) {
+    return { ok: false, mensagem: 'Nota sem análise. Clique em Reanalisar antes de lançar.' }
+  }
+  if (!podeAvancarCadastro(analise.cadastro)) {
+    return {
+      ok: false,
+      mensagem:
+        'Cadastro bloqueante: cadastre o fornecedor e vincule os produtos antes de lançar.',
+    }
+  }
+  if (fiscalExigeManifesto(analise.fiscal)) {
+    return {
+      ok: false,
+      mensagem:
+        'Fiscal com CST/CFOP impeditivo: use desconhecimento da operação ou devolução — não é possível lançar.',
+    }
+  }
+  if (!podeAvancarFiscal(analise.fiscal, criticasLiberadas)) {
+    return {
+      ok: false,
+      mensagem:
+        'Fiscal bloqueante (NCM/origem): importe da NF para o produto ou liberar críticas com senha de gerente.',
+    }
+  }
+  if (!podeAvancarNegociacao(analise.negociacao, criticasLiberadas)) {
+    return {
+      ok: false,
+      mensagem:
+        'Negociação bloqueante: resolva o pedido/prazo ou liberar críticas com senha de gerente.',
+    }
+  }
+  return { ok: true }
 }
 
 async function lancarContagem(notaId: string, origem: 'automatica' | 'humana') {
@@ -122,7 +188,7 @@ async function analisarNotaNfse(companyId: string, notaId: string) {
     motivoParada: null,
   }
 
-  if (!podeAvancar(cadastro.resultado, nota.criticasLiberadas)) {
+  if (!podeAvancarCadastro(cadastro.resultado)) {
     analise.motivoParada = 'cadastro'
     await repositorioEntradaNotas.atualizarNota(notaId, {
       analiseJson: asJson(analise),
@@ -201,7 +267,7 @@ async function analisarNota(companyId: string, notaId: string, opcoes?: { forcar
     motivoParada: null,
   }
 
-  if (!podeAvancar(cadastro.resultado, nota.criticasLiberadas)) {
+  if (!podeAvancarCadastro(cadastro.resultado)) {
     analise.motivoParada = 'cadastro'
     await repositorioEntradaNotas.atualizarNota(notaId, {
       analiseJson: asJson(analise),
@@ -234,7 +300,7 @@ async function analisarNota(companyId: string, notaId: string, opcoes?: { forcar
   analise.fiscal = fiscal.resultado
   await repositorioEntradaNotas.atualizarNota(notaId, { etapaAtual: 'fiscal' })
 
-  if (!podeAvancar(fiscal.resultado, nota.criticasLiberadas)) {
+  if (!podeAvancarFiscal(fiscal.resultado, nota.criticasLiberadas)) {
     analise.motivoParada = 'fiscal'
     await repositorioEntradaNotas.atualizarNota(notaId, {
       analiseJson: asJson(analise),
@@ -294,7 +360,7 @@ async function analisarNota(companyId: string, notaId: string, opcoes?: { forcar
   analise.negociacao = negociacao.resultado
   await repositorioEntradaNotas.atualizarNota(notaId, { etapaAtual: 'negociacao' })
 
-  if (!podeAvancar(negociacao.resultado, nota.criticasLiberadas)) {
+  if (!podeAvancarNegociacao(negociacao.resultado, nota.criticasLiberadas)) {
     analise.motivoParada = 'negociacao'
     await repositorioEntradaNotas.atualizarNota(notaId, {
       analiseJson: asJson(analise),
@@ -476,10 +542,27 @@ async function importarFiscalProduto(
 async function liberarCriticas(companyId: string, notaId: string, usuarioId: string, senha: string) {
   if (!senha?.trim()) {
     throw new ErroDaAplicacao(
-      'Senha de gerente obrigatória para liberar críticas (divergência fiscal/negociação).',
+      'Senha de gerente obrigatória para liberar críticas (divergência NCM/origem ou negociação).',
       400
     )
   }
+  const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+
+  const analise = nota.analiseJson as AnaliseJson | null
+  if (analise?.cadastro?.status === 'bloqueante') {
+    throw new ErroDaAplicacao(
+      'Cadastro bloqueante não pode ser liberado por senha. Cadastre o fornecedor e vincule os produtos, depois reanalise.',
+      400
+    )
+  }
+  if (fiscalExigeManifesto(analise?.fiscal)) {
+    throw new ErroDaAplicacao(
+      'CST/CFOP impeditivo não pode ser liberado por senha. Use desconhecimento da operação ou devolução.',
+      400
+    )
+  }
+
   const ok = await servicoDeAutenticacao.verificarSenhaDoUsuario(usuarioId, senha)
   if (!ok) throw new ErroDaAplicacao('Senha inválida.', 403)
   await repositorioEntradaNotas.atualizarNota(notaId, { criticasLiberadas: true })
@@ -549,13 +632,24 @@ async function lancar(
   modo: 'contagem' | 'consolidar',
   senha?: string
 ) {
-  const nota = await repositorioEntradaNotas.buscarNotaPorId(companyId, notaId)
+  const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
   if (
     nota.statusEntrada === 'entrada_contagem' ||
     nota.statusEntrada === 'entrada_consolidada'
   ) {
     throw new ErroDaAplicacao('Nota já lançada.', 409)
+  }
+  if (nota.statusEntrada === 'cancelada') {
+    throw new ErroDaAplicacao('Nota cancelada — não é possível lançar.', 409)
+  }
+
+  const gate = pipelineProntoParaLancar(
+    nota.analiseJson as AnaliseJson | null,
+    nota.criticasLiberadas
+  )
+  if (!gate.ok) {
+    throw new ErroDaAplicacao(gate.mensagem, 400)
   }
 
   if (modo === 'consolidar') {

@@ -96,7 +96,50 @@ describe('fiscal itens', () => {
     expect(r.resultado.avisos.length).toBeGreaterThan(0)
   })
 
-  it('bloqueia CST/CFOP ausente com regras ativas e aponta desconhecimento', () => {
+  it('bloqueia NCM divergente como liberável (não exige manifesto)', () => {
+    const r = analisarFiscalItens({
+      regras: { ativo: true, checks: ['ncm', 'origem', 'cst_cfop'] },
+      itens: [
+        {
+          id: '1',
+          produtoId: 'p1',
+          ncm: '11111111',
+          cfop: '5102',
+          cst: '00',
+          origem: '0',
+          produtoNcm: '22222222',
+          produtoOrigem: '0',
+        },
+      ],
+    })
+    expect(r.resultado.status).toBe('bloqueante')
+    expect(r.resultado.exigeManifesto).toBe(false)
+    expect(r.resultado.bloqueiosNaoLiberaveis ?? []).toHaveLength(0)
+    expect(r.resultado.bloqueios.some((m) => /NCM diverge/i.test(m))).toBe(true)
+  })
+
+  it('bloqueia produto sem NCM quando NF tem NCM (liberável)', () => {
+    const r = analisarFiscalItens({
+      regras: { ativo: true, checks: ['ncm'] },
+      itens: [
+        {
+          id: '1',
+          produtoId: 'p1',
+          ncm: '22021000',
+          cfop: '5102',
+          cst: '00',
+          origem: '0',
+          produtoNcm: null,
+          produtoOrigem: '0',
+        },
+      ],
+    })
+    expect(r.resultado.status).toBe('bloqueante')
+    expect(r.resultado.exigeManifesto).toBe(false)
+    expect(r.resultado.bloqueios.some((m) => /Produto sem NCM/i.test(m))).toBe(true)
+  })
+
+  it('bloqueia CST/CFOP ausente com regras ativas e aponta desconhecimento (não liberável)', () => {
     const r = analisarFiscalItens({
       regras: { ativo: true, checks: ['cst_cfop'] },
       itens: [
@@ -113,6 +156,8 @@ describe('fiscal itens', () => {
       ],
     })
     expect(r.resultado.status).toBe('bloqueante')
+    expect(r.resultado.exigeManifesto).toBe(true)
+    expect((r.resultado.bloqueiosNaoLiberaveis ?? []).length).toBeGreaterThan(0)
     expect(r.resultado.bloqueios.some((m) => /desconhecimento/i.test(m))).toBe(true)
   })
 })

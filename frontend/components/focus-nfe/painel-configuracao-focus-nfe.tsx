@@ -369,7 +369,7 @@ export function PainelConfiguracaoFocusNfe() {
 
       <CardPadrao
         titulo="Análise fiscal (Entrada de Notas)"
-        descricao="Documento Entrada de Notas: conferir NCM, código de origem e CST/CFOP (NF × produto). Deixe ativo com os três checks. Divergência NCM/origem → importar da NF; CST/CFOP → desconhecimento ou devolução. Não se aplica a NFS-e."
+        descricao="Documento Entrada de Notas: mantenha ativo com os três checks. Divergência NCM/origem → importar da NF (ou senha gerente). CST/CFOP ausente → só desconhecimento/devolução (não libera por senha). Não se aplica a NFS-e."
       >
         <div className="space-y-4">
           {!podeSalvarFiscal && (

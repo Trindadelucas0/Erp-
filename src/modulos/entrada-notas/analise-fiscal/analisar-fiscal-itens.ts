@@ -1,5 +1,7 @@
 /**
  * Etapa 2 — Análise fiscal (NCM, origem; CST/CFOP com regras fiscais ativas).
+ * NCM/origem: bloqueio liberável (importar da NF ou senha gerente).
+ * CST/CFOP ausente: bloqueio não liberável (só desconhecimento/devolução).
  */
 import {
   analisarFiscalBasico,
@@ -31,7 +33,8 @@ export function analisarFiscalItens(params: {
 } {
   const gate = analisarFiscalBasico(params.regras)
   const avisos = [...gate.avisos]
-  const bloqueios = [...gate.bloqueios]
+  const bloqueios: string[] = []
+  const bloqueiosNaoLiberaveis: string[] = []
   const regrasAtivas = params.regras?.ativo === true
   const checks = params.regras?.checks ?? []
   const checaNcm = !regrasAtivas || checks.includes('ncm')
@@ -47,10 +50,12 @@ export function analisarFiscalItens(params: {
 
     const ncmNf = normalizar(item.ncm)
     const ncmProd = normalizar(item.produtoNcm)
-    if (checaNcm && ncmNf && ncmProd && ncmNf !== ncmProd) {
-      const msg = `NCM diverge (NF ${ncmNf} × produto ${ncmProd}).`
+    if (checaNcm && ncmNf && ncmNf !== ncmProd) {
+      const msg = ncmProd
+        ? `NCM diverge (NF ${ncmNf} × produto ${ncmProd}).`
+        : `Produto sem NCM (NF ${ncmNf}).`
       if (regrasAtivas) {
-        bloqueios.push(msg + ' Importe o NCM da NF para o produto ou não prossiga.')
+        bloqueios.push(msg + ' Importe o NCM da NF para o produto ou libere com senha de gerente.')
         critica = true
       } else {
         avisos.push(msg + ' Pode importar da NF para o produto.')
@@ -59,10 +64,14 @@ export function analisarFiscalItens(params: {
 
     const origNf = (item.origem ?? '').trim()
     const origProd = (item.produtoOrigem ?? '').trim()
-    if (checaOrigem && origNf && origProd && origNf !== origProd) {
-      const msg = `Código de origem diverge (NF ${origNf} × produto ${origProd}).`
+    if (checaOrigem && origNf && origNf !== origProd) {
+      const msg = origProd
+        ? `Código de origem diverge (NF ${origNf} × produto ${origProd}).`
+        : `Produto sem código de origem (NF ${origNf}).`
       if (regrasAtivas) {
-        bloqueios.push(msg + ' Importe a origem da NF para o produto ou não prossiga.')
+        bloqueios.push(
+          msg + ' Importe a origem da NF para o produto ou libere com senha de gerente.'
+        )
         critica = true
       } else {
         avisos.push(msg + ' Pode importar da NF para o produto.')
@@ -72,13 +81,13 @@ export function analisarFiscalItens(params: {
     if (regrasAtivas) {
       if (checks.includes('cst_cfop') || checks.includes('cfop') || checks.includes('cst')) {
         if (!item.cfop) {
-          bloqueios.push(
+          bloqueiosNaoLiberaveis.push(
             'Item sem CFOP na NF — não é possível prosseguir; use desconhecimento da operação ou devolução.'
           )
           critica = true
         }
         if (!item.cst) {
-          bloqueios.push(
+          bloqueiosNaoLiberaveis.push(
             'Item sem CST/CSOSN na NF — não é possível prosseguir; use desconhecimento da operação ou devolução.'
           )
           critica = true
@@ -89,8 +98,10 @@ export function analisarFiscalItens(params: {
     itensCritica.push({ id: item.id, criticaFiscal: critica })
   }
 
+  const todosBloqueios = [...bloqueios, ...bloqueiosNaoLiberaveis]
+  const exigeManifesto = bloqueiosNaoLiberaveis.length > 0
   const status =
-    bloqueios.length > 0
+    todosBloqueios.length > 0
       ? 'bloqueante'
       : avisos.length > 0
         ? 'aviso'
@@ -99,7 +110,13 @@ export function analisarFiscalItens(params: {
           : 'aviso'
 
   return {
-    resultado: { status, avisos, bloqueios },
+    resultado: {
+      status,
+      avisos,
+      bloqueios: todosBloqueios,
+      bloqueiosNaoLiberaveis,
+      exigeManifesto,
+    },
     itensCritica,
   }
 }
