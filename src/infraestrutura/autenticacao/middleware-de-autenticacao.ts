@@ -11,6 +11,7 @@ export async function middlewareDeAutenticacao(
   requisicao: FastifyRequest,
   _resposta: FastifyReply
 ): Promise<void> {
+  
   try {
     const { idDoUsuario, tokenVersion } = await verificarTokenDeAutenticacao(requisicao)
 

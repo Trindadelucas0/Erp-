@@ -49,6 +49,12 @@ export const PAGINAS_VINCULAVEIS: readonly PaginaDoSistema[] = [
     modulo: 'compras',
   },
   {
+    chave: 'entrada-notas',
+    caminho: '/entrada-notas',
+    rotulo: 'Entrada de Notas',
+    modulo: 'compras',
+  },
+  {
     chave: 'planos-financeiros',
     caminho: '/planos-financeiros',
     rotulo: 'Planos Financeiros',
@@ -70,6 +76,7 @@ export const PAGINAS_SOMENTE_ADMIN: readonly PaginaDoSistema[] = [
   { chave: 'clientes-aprovacao', caminho: '/clientes/aprovacao', rotulo: 'Aprovação de clientes' },
   { chave: 'configuracoes', caminho: '/configuracoes', rotulo: 'Configurações' },
   { chave: 'assinatura-digital', caminho: '/configuracoes/assinatura', rotulo: 'Assinatura Digital' },
+  { chave: 'focus-nfe', caminho: '/configuracoes/focus-nfe', rotulo: 'Focus NFe' },
 ]
 
 /** Rota de fallback para usuários sem páginas liberadas. */

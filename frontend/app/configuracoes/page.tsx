@@ -185,6 +185,22 @@ function ConteudoDaPaginaDeConfiguracoes() {
         </p>
       </CardPadrao>
 
+      <CardPadrao
+        titulo="Focus NFe"
+        descricao="Token para NFe recebidas (manifestador) usado na Entrada de Notas."
+        acoes={
+          <Link href="/configuracoes/focus-nfe">
+            <Button variant="outline" size="sm">
+              Acessar
+            </Button>
+          </Link>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          Homologação/produção, testar conexão e sync DistDFe. Ver MANUAL-FOCUS-NFE.md.
+        </p>
+      </CardPadrao>
+
       {mensagem && (
         <p className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">
           {mensagem}

@@ -23,6 +23,8 @@ export async function criarServidor() {
   const aplicacao = Fastify({
     logger: producao ? true : { level: 'warn' },
     disableRequestLogging: !producao,
+    // NFe XML completo pode passar de 1 MB (default Fastify)
+    bodyLimit: 15 * 1024 * 1024,
   })
 
   if (!producao) {

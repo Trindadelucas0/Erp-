@@ -15,6 +15,7 @@ const TITULOS_POR_ROTA: Record<string, string> = {
   '/auditoria': 'Auditoria',
   '/configuracoes': 'Configurações',
   '/configuracoes/assinatura': 'Assinatura digital',
+  '/configuracoes/focus-nfe': 'Focus NFe',
   '/clientes': 'Clientes',
   '/clientes/aprovacao': 'Aprovação de clientes',
   '/fornecedores': 'Fornecedores',
@@ -24,6 +25,7 @@ const TITULOS_POR_ROTA: Record<string, string> = {
   '/produtos': 'Produtos',
   '/pedidos-compra': 'Pedidos de compra',
   '/pedidos-compra/novo': 'Novo pedido de compra',
+  '/entrada-notas': 'Entrada de Notas',
 }
 
 const PREFIXOS_TITULO: { prefixo: string; titulo: string }[] = [

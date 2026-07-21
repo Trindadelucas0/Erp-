@@ -30,6 +30,9 @@ model Company {
   cfops                       Cfop[]
   configuracaoZapsign         ConfiguracaoZapsign?
   documentosZapsign           ZapsignDocumento[]
+  configuracaoFocusNfe        ConfiguracaoFocusNfe?
+  focusNfeJobs                FocusNfeJob[]
+  nfesRecebidas               NfeRecebida[]
   produtos                    Produto[]
   pedidosCompra               PedidoCompra[]
   creditosFornecedor          CreditoFornecedor[]
@@ -71,6 +74,127 @@ model ZapsignDocumento {
   clientePessoa   Pessoa?   @relation(fields: [clientePessoaId], references: [id])
   criadoEm        DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+}
+
+// ─── Focus NFe — NFe Recebidas / Entrada de Notas ─────────────────────────────
+
+model ConfiguracaoFocusNfe {
+  id                       String   @id @default(uuid())
+  companyId                String   @unique
+  company                  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  apiToken                 String
+  homologacao              Boolean  @default(true)
+  ativo                    Boolean  @default(true)
+  ultimaVersaoNfeRecebida  Int      @default(0)
+  /// Versão incremental Focus GET /nfsens_recebidas (independente da NFe 55)
+  ultimaVersaoNfseRecebida Int      @default(0)
+  /// Stub de regras fiscais de entrada (NCM, origem, CST/CFOP). ativo=false não bloqueia.
+  regrasFiscaisJson        Json?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+}
+
+model FocusNfeJob {
+  id          String    @id @default(uuid())
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// sync | import_xml | manifestar
+  tipo        String
+  status      String    @default("pendente")
+  progresso   Int       @default(0)
+  mensagem    String?
+  logResumo   String?
+  payloadJson Json?
+  iniciadoEm  DateTime?
+  finalizadoEm DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([companyId, status])
+  @@index([companyId, createdAt])
+}
+
+model NfeRecebida {
+  id                       String    @id @default(uuid())
+  companyId                String
+  company                  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  chaveNfe                 String
+  /// nfe55 | nfse
+  tipoDocumento            String    @default("nfe55")
+  nomeEmitente             String?
+  documentoEmitente        String?
+  cnpjDestinatario         String?
+  valorTotal               Decimal?  @db.Decimal(18, 2)
+  dataEmissao              DateTime?
+  situacao                 String?
+  manifestacaoDestinatario String?
+  nfeCompleta              Boolean   @default(false)
+  tipoNfe                  String?
+  versaoFocus              Int       @default(0)
+  /// pendente | em_analise | stand_by | entrada_contagem | entrada_consolidada | cancelada
+  statusEntrada            String    @default("pendente")
+  /// focus | xml
+  origem                   String    @default("focus")
+  /// automatica | humana | null
+  origemLancamento         String?
+  xmlConteudo              String?   @db.Text
+  /// Path relativo do PDF DANFE/DANFSe em disco (uploads/nfe-recebidas/…)
+  danfeCaminho             String?
+  /// ok | indisponivel | rate_limit | null
+  danfeStatus              String?
+  danfeAtualizadoEm        DateTime?
+  observacaoContato        String?
+  criticasLiberadas        Boolean   @default(false)
+  pedidoCompraId           String?
+  /// cadastro | fiscal | negociacao | lancamento
+  etapaAtual               String    @default("cadastro")
+  fornecedorPessoaId       String?
+  fornecedorPessoa         Pessoa?   @relation(fields: [fornecedorPessoaId], references: [id], onDelete: SetNull)
+  /// Resumo das 3 etapas (avisos, bloqueios, positivo/negativo)
+  analiseJson              Json?
+  /// Prazo da NF (XML) se houver
+  prazoPagamentoXml        String?
+  /// Preenchimento humano quando NF sem prazo
+  prazoPagamentoTexto      String?
+  itens                    NfeRecebidaItem[]
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  @@unique([companyId, chaveNfe])
+  @@index([companyId, statusEntrada])
+  @@index([companyId, versaoFocus])
+  @@index([companyId, fornecedorPessoaId])
+  @@index([companyId, tipoDocumento])
+}
+
+model NfeRecebidaItem {
+  id                 String      @id @default(uuid())
+  nfeRecebidaId      String
+  nfeRecebida        NfeRecebida @relation(fields: [nfeRecebidaId], references: [id], onDelete: Cascade)
+  nItem              Int
+  descricao          String?
+  gtin               String?
+  codigoProduto      String?
+  ncm                String?
+  cfop               String?
+  cst                String?
+  origem             String?
+  quantidade         Decimal?    @db.Decimal(18, 4)
+  valorUnitario      Decimal?    @db.Decimal(18, 4)
+  valorTotal         Decimal?    @db.Decimal(18, 2)
+  produtoId          String?
+  produto            Produto?    @relation(fields: [produtoId], references: [id], onDelete: SetNull)
+  /// barras | codigo_original | manual | null
+  vinculoModo        String?
+  criticaCadastro    Boolean     @default(false)
+  criticaFiscal      Boolean     @default(false)
+  criticaNegociacao  Boolean     @default(false)
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  @@unique([nfeRecebidaId, nItem])
+  @@index([nfeRecebidaId])
+  @@index([produtoId])
 }
 
 // ─── Cadastro Unificado de Pessoas ───────────────────────────────────────────
@@ -117,6 +241,7 @@ model Pessoa {
   pedidosCompraTransportadora PedidoCompra[]        @relation("TransportadoraPO")
   creditosFornecedor          CreditoFornecedor[]
   pendenciasFornecedor        PendenciaFornecedor[]
+  nfesRecebidasComoFornecedor NfeRecebida[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -551,6 +676,7 @@ model Produto {
   similaresDe       ProdutoSimilar[]         @relation("ProdutoSimilar")
   itensPedidoCompra PedidoCompraItem[]
   pendencias        PendenciaFornecedor[]
+  itensNfeRecebida  NfeRecebidaItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
