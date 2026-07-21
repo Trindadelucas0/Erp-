@@ -15,6 +15,8 @@ import {
   ConteudoVisualizacaoNota,
   type VisualizacaoNota,
 } from '@/components/entrada-notas/conteudo-visualizacao-nota'
+import { BarraCarregamentoDownload } from '@/components/entrada-notas/barra-carregamento-download'
+import { Loader2 } from 'lucide-react'
 
 type ResultadoEtapa = {
   status: string
@@ -129,6 +131,7 @@ function ConteudoDetalheEntrada() {
     visualizacao: VisualizacaoNota
   } | null>(null)
   const [xmlBusy, setXmlBusy] = useState(false)
+  const [downloadRotulo, setDownloadRotulo] = useState('')
   const [danfeBloqueado, setDanfeBloqueado] = useState(false)
 
   const aplicarResposta = useCallback((data: { nota: DetalheNota; pedidosDisponiveis?: typeof pedidos }) => {
@@ -160,6 +163,7 @@ function ConteudoDetalheEntrada() {
   async function visualizarXml() {
     if (!id) return
     setXmlBusy(true)
+    setDownloadRotulo('Abrindo nota…')
     setErro('')
     try {
       const { data } = await clienteHttp.get<{
@@ -178,12 +182,14 @@ function ConteudoDetalheEntrada() {
       setErro(extrairMensagemApi(err, 'Não foi possível visualizar a nota.'))
     } finally {
       setXmlBusy(false)
+      setDownloadRotulo('')
     }
   }
 
   async function baixarXml() {
     if (!id || !nota) return
     setXmlBusy(true)
+    setDownloadRotulo('Baixando XML…')
     setErro('')
     try {
       const { data } = await clienteHttp.get<string>(`/focus-nfe/nfe-recebidas/${id}/xml`, {
@@ -201,12 +207,14 @@ function ConteudoDetalheEntrada() {
       setErro(extrairMensagemApi(err, 'Não foi possível baixar o XML.'))
     } finally {
       setXmlBusy(false)
+      setDownloadRotulo('')
     }
   }
 
   async function baixarDanfe() {
     if (!id || !nota || danfeBloqueado) return
     setXmlBusy(true)
+    setDownloadRotulo('Baixando PDF…')
     setErro('')
     try {
       const { data } = await clienteHttp.get<ArrayBuffer>(`/focus-nfe/nfe-recebidas/${id}/danfe`, {
@@ -231,6 +239,7 @@ function ConteudoDetalheEntrada() {
       setErro(extrairMensagemApi(err, 'Não foi possível baixar o PDF.'))
     } finally {
       setXmlBusy(false)
+      setDownloadRotulo('')
     }
   }
 
@@ -300,6 +309,7 @@ function ConteudoDetalheEntrada() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-4 md:p-6">
+      <BarraCarregamentoDownload ativo={xmlBusy} rotulo={downloadRotulo || 'Carregando…'} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <Button asChild variant="ghost" size="sm">
@@ -310,10 +320,24 @@ function ConteudoDetalheEntrada() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" size="sm" disabled={xmlBusy} onClick={() => void visualizarXml()}>
-            {xmlBusy ? 'Abrindo…' : 'Ver nota'}
+            {xmlBusy && downloadRotulo.startsWith('Abrindo') ? (
+              <>
+                <Loader2 className="mr-1 size-3.5 animate-spin" aria-hidden />
+                Abrindo…
+              </>
+            ) : (
+              'Ver nota'
+            )}
           </Button>
           <Button type="button" variant="outline" size="sm" disabled={xmlBusy} onClick={() => void baixarXml()}>
-            Baixar XML
+            {xmlBusy && downloadRotulo.includes('XML') ? (
+              <>
+                <Loader2 className="mr-1 size-3.5 animate-spin" aria-hidden />
+                Baixando…
+              </>
+            ) : (
+              'Baixar XML'
+            )}
           </Button>
           <Button
             type="button"
@@ -323,7 +347,14 @@ function ConteudoDetalheEntrada() {
             title={danfeBloqueado ? 'PDF indisponível ou limite Focus — use Ver nota' : 'Baixar PDF (DANFE/DANFSe)'}
             onClick={() => void baixarDanfe()}
           >
-            Baixar PDF
+            {xmlBusy && downloadRotulo.includes('PDF') ? (
+              <>
+                <Loader2 className="mr-1 size-3.5 animate-spin" aria-hidden />
+                Baixando…
+              </>
+            ) : (
+              'Baixar PDF'
+            )}
           </Button>
           <Button type="button" variant="outline" size="sm" disabled={acao || finalizada} onClick={() => postAcao('/analisar', { forcarReparseItens: true })}>
             Reanalisar

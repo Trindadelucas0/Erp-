@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
@@ -12,11 +12,17 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { BadgeStatus } from '@/components/ui/badge-status'
 import { LinhasSkeletonTabela } from '@/components/ui/linhas-skeleton-tabela'
+import {
+  ControlesPaginacao,
+  type ItensPorPagina,
+} from '@/components/ui/controles-paginacao'
 import { Modal } from '@/components/ui/modal'
 import {
   ConteudoVisualizacaoNota,
   type VisualizacaoNota,
 } from '@/components/entrada-notas/conteudo-visualizacao-nota'
+import { BarraCarregamentoDownload } from '@/components/entrada-notas/barra-carregamento-download'
+import { Loader2 } from 'lucide-react'
 
 import { mascaraCnpj } from '@/lib/documentos'
 
@@ -207,6 +213,9 @@ function ConteudoEntradaNotas() {
   const [reprocessando, setReprocessando] = useState(false)
   const [xmlModal, setXmlModal] = useState<XmlVisualizacao | null>(null)
   const [xmlCarregandoId, setXmlCarregandoId] = useState<string | null>(null)
+  const [downloadRotulo, setDownloadRotulo] = useState('')
+  const [pagina, setPagina] = useState(1)
+  const [itensPorPagina, setItensPorPagina] = useState<ItensPorPagina>(10)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const inputArquivosRef = useRef<HTMLInputElement | null>(null)
   const painelAnalise = painel === 'analise'
@@ -232,6 +241,17 @@ function ConteudoEntradaNotas() {
     const t = setTimeout(() => setBuscaDebounced(busca.trim()), 300)
     return () => clearTimeout(t)
   }, [busca])
+
+  useEffect(() => {
+    setPagina(1)
+  }, [painel, dataDe, dataAte, buscaDebounced, itensPorPagina])
+
+  const totalPaginas = Math.max(1, Math.ceil(notas.length / itensPorPagina))
+  const paginaAtual = Math.min(pagina, totalPaginas)
+  const listaPaginada = useMemo(() => {
+    const inicio = (paginaAtual - 1) * itensPorPagina
+    return notas.slice(inicio, inicio + itensPorPagina)
+  }, [notas, paginaAtual, itensPorPagina])
 
   const carregar = useCallback(async (opcoes?: { silencioso?: boolean }) => {
     if (!opcoes?.silencioso) setCarregando(true)
@@ -288,6 +308,7 @@ function ConteudoEntradaNotas() {
 
   async function baixarXmlNota(id: string, chave: string) {
     setXmlCarregandoId(id)
+    setDownloadRotulo('Baixando XML…')
     setErro('')
     try {
       const { data } = await clienteHttp.get<string>(`/focus-nfe/nfe-recebidas/${id}/xml`, {
@@ -305,6 +326,7 @@ function ConteudoEntradaNotas() {
       setErro(extrairMensagemApi(err, 'Não foi possível baixar o XML.'))
     } finally {
       setXmlCarregandoId(null)
+      setDownloadRotulo('')
     }
   }
 
@@ -318,6 +340,7 @@ function ConteudoEntradaNotas() {
       return
     }
     setXmlCarregandoId(n.id)
+    setDownloadRotulo('Baixando PDF…')
     setErro('')
     try {
       const { data } = await clienteHttp.get<ArrayBuffer>(`/focus-nfe/nfe-recebidas/${n.id}/danfe`, {
@@ -336,11 +359,13 @@ function ConteudoEntradaNotas() {
       await carregar({ silencioso: true })
     } finally {
       setXmlCarregandoId(null)
+      setDownloadRotulo('')
     }
   }
 
   async function visualizarXmlNota(n: NotaPendente) {
     setXmlCarregandoId(n.id)
+    setDownloadRotulo('Abrindo nota…')
     setErro('')
     try {
       const { data } = await clienteHttp.get<XmlVisualizacao>(
@@ -352,6 +377,7 @@ function ConteudoEntradaNotas() {
       setErro(extrairMensagemApi(err, 'Não foi possível visualizar a nota.'))
     } finally {
       setXmlCarregandoId(null)
+      setDownloadRotulo('')
     }
   }
 
@@ -499,6 +525,10 @@ function ConteudoEntradaNotas() {
 
   return (
     <div className="min-w-0 space-y-6">
+      <BarraCarregamentoDownload
+        ativo={Boolean(xmlCarregandoId)}
+        rotulo={downloadRotulo || 'Carregando…'}
+      />
       <div>
         <p className="text-sm text-muted-foreground">Fiscal &gt; Entrada de Notas</p>
         <h1 className="mt-1 text-2xl font-bold tracking-tight">Entrada de Notas</h1>
@@ -684,7 +714,7 @@ function ConteudoEntradaNotas() {
                   </td>
                 </tr>
               ) : (
-                notas.map((n) => (
+                listaPaginada.map((n) => (
                   <tr
                     key={n.id}
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-muted/40"
@@ -769,7 +799,14 @@ function ConteudoEntradaNotas() {
                           disabled={xmlCarregandoId === n.id || ocupado}
                           onClick={() => void visualizarXmlNota(n)}
                         >
-                          {xmlCarregandoId === n.id ? '…' : 'Ver nota'}
+                          {xmlCarregandoId === n.id && downloadRotulo.startsWith('Abrindo') ? (
+                            <>
+                              <Loader2 className="mr-1 size-3.5 animate-spin" aria-hidden />
+                              Abrindo…
+                            </>
+                          ) : (
+                            'Ver nota'
+                          )}
                         </Button>
                         <Button
                           type="button"
@@ -778,7 +815,14 @@ function ConteudoEntradaNotas() {
                           disabled={xmlCarregandoId === n.id || ocupado}
                           onClick={() => void baixarXmlNota(n.id, n.chaveNfe)}
                         >
-                          XML
+                          {xmlCarregandoId === n.id && downloadRotulo.includes('XML') ? (
+                            <>
+                              <Loader2 className="mr-1 size-3.5 animate-spin" aria-hidden />
+                              …
+                            </>
+                          ) : (
+                            'XML'
+                          )}
                         </Button>
                         <Button
                           type="button"
@@ -801,7 +845,16 @@ function ConteudoEntradaNotas() {
                           }
                           onClick={() => void baixarDanfeNota(n)}
                         >
-                          {n.temDanfe ? 'PDF' : 'DANFE'}
+                          {xmlCarregandoId === n.id && downloadRotulo.includes('PDF') ? (
+                            <>
+                              <Loader2 className="mr-1 size-3.5 animate-spin" aria-hidden />
+                              …
+                            </>
+                          ) : n.temDanfe ? (
+                            'PDF'
+                          ) : (
+                            'DANFE'
+                          )}
                         </Button>
                       </div>
                     </td>
@@ -811,6 +864,14 @@ function ConteudoEntradaNotas() {
             </tbody>
           </table>
         </div>
+
+        <ControlesPaginacao
+          total={notas.length}
+          pagina={paginaAtual}
+          itensPorPagina={itensPorPagina}
+          onPaginaChange={setPagina}
+          onItensPorPaginaChange={setItensPorPagina}
+        />
       </CardPadrao>
 
       <Modal
