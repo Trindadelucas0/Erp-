@@ -8,6 +8,8 @@ export type PaginaDoSistema = {
   caminho: string
   rotulo: string
   modulo?: string
+  /** Se false, não aparece no menu lateral (acesso via outra tela). Default true. */
+  exibirNoMenu?: boolean
 }
 
 /** Páginas que o admin pode vincular a usuários comuns. */
@@ -55,16 +57,25 @@ export const PAGINAS_VINCULAVEIS: readonly PaginaDoSistema[] = [
     modulo: 'compras',
   },
   {
+    chave: 'configuracoes',
+    caminho: '/configuracoes',
+    rotulo: 'Configurações',
+    modulo: 'configuracoes',
+  },
+  /** Parâmetros — acesso via Configurações; mantidos para permissão/vínculo legado. */
+  {
     chave: 'planos-financeiros',
-    caminho: '/planos-financeiros',
+    caminho: '/configuracoes?aba=financeiro',
     rotulo: 'Planos Financeiros',
     modulo: 'financeiro',
+    exibirNoMenu: false,
   },
   {
     chave: 'cfops',
-    caminho: '/cfops',
+    caminho: '/configuracoes?aba=fiscal&secao=cfop',
     rotulo: 'CFOP',
     modulo: 'financeiro',
+    exibirNoMenu: false,
   },
 ]
 
@@ -75,15 +86,13 @@ export const PAGINAS_SOMENTE_ADMIN: readonly PaginaDoSistema[] = [
   { chave: 'auditoria', caminho: '/auditoria', rotulo: 'Auditoria' },
   { chave: 'clientes-aprovacao', caminho: '/clientes/aprovacao', rotulo: 'Aprovação de clientes' },
   { chave: 'configuracoes', caminho: '/configuracoes', rotulo: 'Configurações' },
-  { chave: 'assinatura-digital', caminho: '/configuracoes/assinatura', rotulo: 'Assinatura Digital' },
-  { chave: 'focus-nfe', caminho: '/configuracoes/focus-nfe', rotulo: 'Focus NFe' },
 ]
 
 /** Rota de fallback para usuários sem páginas liberadas. */
 export const CAMINHO_INICIO = '/inicio'
 
 export function listarPaginasVinculaveis(): PaginaDoSistema[] {
-  return [...PAGINAS_VINCULAVEIS]
+  return PAGINAS_VINCULAVEIS.filter((pagina) => pagina.exibirNoMenu !== false)
 }
 
 export function paginaVinculavelExiste(chave: string): boolean {
@@ -112,13 +121,24 @@ function paginaLiberadaPorPermissaoView(
   return permissoesEfetivas.includes(`${pagina.modulo}:view`)
 }
 
+function filtrarParaMenu(paginas: PaginaDoSistema[]): PaginaDoSistema[] {
+  const vistas = new Map<string, PaginaDoSistema>()
+  for (const pagina of paginas) {
+    if (pagina.exibirNoMenu === false) continue
+    if (!vistas.has(pagina.chave)) {
+      vistas.set(pagina.chave, pagina)
+    }
+  }
+  return [...vistas.values()]
+}
+
 export function montarPaginasPermitidasParaUsuario(
   ehAdmin: boolean,
   chavesDoUsuario: string[],
   permissoesEfetivas: string[] = []
 ): PaginaDoSistema[] {
   if (ehAdmin) {
-    return [...PAGINAS_SOMENTE_ADMIN, ...PAGINAS_VINCULAVEIS]
+    return filtrarParaMenu([...PAGINAS_SOMENTE_ADMIN, ...PAGINAS_VINCULAVEIS])
   }
 
   const paginasPorChave = new Map<string, PaginaDoSistema>()
@@ -134,5 +154,14 @@ export function montarPaginasPermitidasParaUsuario(
     }
   }
 
-  return [...paginasPorChave.values()]
+  const temParametroFinanceiro =
+    paginasPorChave.has('cfops') ||
+    paginasPorChave.has('planos-financeiros') ||
+    permissoesEfetivas.includes('financeiro:view')
+  if (temParametroFinanceiro && !paginasPorChave.has('configuracoes')) {
+    const config = resolverPaginaPorChave('configuracoes')
+    if (config) paginasPorChave.set('configuracoes', config)
+  }
+
+  return filtrarParaMenu([...paginasPorChave.values()])
 }

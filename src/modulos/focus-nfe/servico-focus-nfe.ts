@@ -2,7 +2,7 @@
  * Regras de negócio Focus NFe / Entrada de Notas (base).
  */
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
-import { clienteFocusNfe, type NfeRecebidaResumoFocus, type NfseRecebidaResumoFocus, type RespostaFocus } from './cliente-focus-nfe.js'
+import { clienteFocusNfe, type NfeRecebidaResumoFocus, type NfseRecebidaResumoFocus, type CteRecebidaResumoFocus, type RespostaFocus } from './cliente-focus-nfe.js'
 import { tentarTravarFocus, liberarTravaFocus } from './fila-focus-nfe.js'
 import { logFocus } from './logs-focus-nfe.js'
 import {
@@ -47,6 +47,7 @@ async function obterCredenciais(companyId: string) {
       homologacao: config.homologacao,
       ultimaVersao: config.ultimaVersaoNfeRecebida,
       ultimaVersaoNfse: config.ultimaVersaoNfseRecebida ?? 0,
+      ultimaVersaoCte: config.ultimaVersaoCteRecebida ?? 0,
       regrasFiscaisJson: sanitizarRegrasFiscais(
         (config.regrasFiscaisJson as Partial<DadosRegrasFiscais> | null) ?? null
       ),
@@ -61,6 +62,7 @@ async function obterCredenciais(companyId: string) {
       homologacao: lerHomologacaoEnvFocus(),
       ultimaVersao: config?.ultimaVersaoNfeRecebida ?? 0,
       ultimaVersaoNfse: config?.ultimaVersaoNfseRecebida ?? 0,
+      ultimaVersaoCte: config?.ultimaVersaoCteRecebida ?? 0,
       regrasFiscaisJson: sanitizarRegrasFiscais(
         (config?.regrasFiscaisJson as Partial<DadosRegrasFiscais> | null) ?? null
       ),
@@ -278,6 +280,34 @@ function mapearResumoNfse(item: NfseRecebidaResumoFocus) {
   }
 }
 
+function chaveCteFocus(item: CteRecebidaResumoFocus): string | null {
+  const raw = item.chave_cte ?? item.chave ?? item.chave_acesso
+  if (!raw) return null
+  return String(raw).trim() || null
+}
+
+function mapearResumoCte(item: CteRecebidaResumoFocus) {
+  const chave = chaveCteFocus(item)
+  const valorRaw = item.valor_prestacao ?? item.valor_total
+  const valor = valorRaw ? Number(valorRaw) : null
+  return {
+    chaveNfe: chave!,
+    tipoDocumento: 'cte' as const,
+    nomeEmitente: item.nome_emitente ?? null,
+    documentoEmitente: item.documento_emitente ?? null,
+    cnpjDestinatario:
+      item.documento_destinatario ?? item.cnpj_destinatario ?? item.documento_tomador ?? null,
+    valorTotal: Number.isFinite(valor as number) ? (valor as number) : null,
+    dataEmissao: item.data_emissao ? new Date(item.data_emissao) : null,
+    situacao: item.status ?? item.situacao ?? 'autorizada',
+    manifestacaoDestinatario: null,
+    nfeCompleta: false,
+    tipoNfe: null,
+    versaoFocus: item.versao ?? 0,
+    etapaAtual: 'servico',
+  }
+}
+
 const LIMITE_LOTE_SYNC = 10
 
 type ResultadoXml = {
@@ -326,11 +356,22 @@ async function executarSync(companyId: string, jobId: string) {
     let atualizadas = 0
     let novasNfse = 0
     let atualizadasNfse = 0
+    let novasCte = 0
+    let atualizadasCte = 0
     let rateLimit = false
     let versao = credenciais.ultimaVersao
     let maxVersao = versao
     let versaoNfse = credenciais.ultimaVersaoNfse
     let maxVersaoNfse = versaoNfse
+    let versaoCte = credenciais.ultimaVersaoCte
+    let maxVersaoCte = versaoCte
+    /** Qtd devolvida pela Focus na página deste lote (diagnóstico DistDFe vazio). */
+    let qtdNfePagina = 0
+    let qtdNfsePagina = 0
+    let qtdCtePagina = 0
+    let nfeListadaOk = false
+    let nfseListadaOk = false
+    let cteListadaOk = false
 
     // --- NFe 55 ---
     if (processados < LIMITE_LOTE_SYNC && !rateLimit) {
@@ -359,6 +400,8 @@ async function executarSync(companyId: string, jobId: string) {
         const lista = Array.isArray(resp.dados) ? resp.dados : []
         const headerMax = resp.headers['x-max-version']
         const maxDaPagina = headerMax ? Number(headerMax) : 0
+        nfeListadaOk = true
+        qtdNfePagina = lista.length
 
         logFocus('info', 'sync_pagina', {
           companyId,
@@ -369,6 +412,16 @@ async function executarSync(companyId: string, jobId: string) {
           limite: LIMITE_LOTE_SYNC,
         })
         pushLog(`nfe página: ${lista.length} (versão≥${versao}, processar até ${LIMITE_LOTE_SYNC})`)
+
+        if (lista.length === 0) {
+          logFocus('warn', 'sync_nfe_vazia', {
+            companyId,
+            cnpj: cnpjMascarado,
+            versaoDe: versao,
+            ambiente,
+          })
+          pushLog('nfe: Focus devolveu 0 documentos (DistDFe vazio neste cursor)')
+        }
 
         for (const item of lista) {
           if (processados >= LIMITE_LOTE_SYNC || rateLimit) break
@@ -443,6 +496,8 @@ async function executarSync(companyId: string, jobId: string) {
         const listaNfse = Array.isArray(respNfse.dados) ? respNfse.dados : []
         const headerMaxNfse = respNfse.headers['x-max-version']
         const maxDaPaginaNfse = headerMaxNfse ? Number(headerMaxNfse) : 0
+        nfseListadaOk = true
+        qtdNfsePagina = listaNfse.length
 
         logFocus('info', 'sync_pagina_nfse', {
           companyId,
@@ -506,33 +561,164 @@ async function executarSync(companyId: string, jobId: string) {
       }
     }
 
+    // --- CTe ---
+    if (processados < LIMITE_LOTE_SYNC && !rateLimit) {
+      const respCte = await clienteFocusNfe.listarCtesRecebidas(
+        credenciais.apiToken,
+        credenciais.homologacao,
+        cnpj,
+        versaoCte > 0 ? versaoCte : undefined
+      )
+
+      if (!respCte.sucesso) {
+        if (respCte.codigoHttp === 429) {
+          rateLimit = true
+          pushLog(`cte lista: rate limit — ${respCte.mensagem}`)
+        } else {
+          pushLog(`cte: ${respCte.mensagem}`)
+          logFocus('warn', 'sync_cte_falhou', {
+            companyId,
+            http: respCte.codigoHttp ?? '',
+            mensagem: respCte.mensagem,
+          })
+        }
+      } else {
+        const listaCte = Array.isArray(respCte.dados) ? respCte.dados : []
+        const headerMaxCte = respCte.headers['x-max-version']
+        const maxDaPaginaCte = headerMaxCte ? Number(headerMaxCte) : 0
+        cteListadaOk = true
+        qtdCtePagina = listaCte.length
+
+        logFocus('info', 'sync_pagina_cte', {
+          companyId,
+          versaoDe: versaoCte,
+          qtd: listaCte.length,
+          maxVersao: maxDaPaginaCte || '',
+          cnpj: cnpjMascarado,
+          limite: LIMITE_LOTE_SYNC,
+        })
+        pushLog(
+          `cte página: ${listaCte.length} (versão≥${versaoCte}, resto lote ${LIMITE_LOTE_SYNC - processados})`
+        )
+
+        if (listaCte.length === 0) {
+          logFocus('warn', 'sync_cte_vazia', {
+            companyId,
+            cnpj: cnpjMascarado,
+            versaoDe: versaoCte,
+            ambiente,
+          })
+          pushLog('cte: Focus devolveu 0 documentos neste cursor')
+        }
+
+        for (const item of listaCte) {
+          if (processados >= LIMITE_LOTE_SYNC || rateLimit) break
+          const chave = chaveCteFocus(item)
+          if (!chave) continue
+
+          const mapeado = mapearResumoCte(item)
+          const { criado, registro } = await repositorioFocusNfe.upsertNfeRecebida({
+            companyId,
+            ...mapeado,
+            origem: 'focus',
+          })
+          if (criado) novasCte += 1
+          else atualizadasCte += 1
+          if (mapeado.versaoFocus > maxVersaoCte) maxVersaoCte = mapeado.versaoFocus
+
+          if (temConfigBanco && maxVersaoCte > credenciais.ultimaVersaoCte) {
+            await repositorioFocusNfe.atualizarUltimaVersaoCte(companyId, maxVersaoCte)
+            credenciais.ultimaVersaoCte = maxVersaoCte
+          }
+
+          const xmlRes = await completarXmlCteDaFocus(
+            companyId,
+            credenciais.apiToken,
+            credenciais.homologacao,
+            chave,
+            registro.id,
+            pushLog
+          )
+          if (xmlRes.rateLimit) {
+            rateLimit = true
+            pushLog('cte: lote pausado por rate limit Focus')
+            break
+          }
+
+          processados += 1
+          await repositorioFocusNfe.atualizarJob(jobId, {
+            progresso: Math.min(95, 50 + processados * 4),
+            mensagem: `Lote: ${processados}/${LIMITE_LOTE_SYNC} — CTe +${novasCte}/~${atualizadasCte}`,
+            logResumo: linhasLog.join('\n'),
+          })
+        }
+
+        if (maxDaPaginaCte > maxVersaoCte) maxVersaoCte = maxDaPaginaCte
+        if (temConfigBanco && maxVersaoCte > credenciais.ultimaVersaoCte) {
+          await repositorioFocusNfe.atualizarUltimaVersaoCte(companyId, maxVersaoCte)
+          credenciais.ultimaVersaoCte = maxVersaoCte
+        }
+      }
+    }
+
     logFocus('info', 'sync_persistidas', {
       companyId,
       novas,
       atualizadas,
       novasNfse,
       atualizadasNfse,
+      novasCte,
+      atualizadasCte,
+      qtdNfePagina,
+      qtdNfsePagina,
+      qtdCtePagina,
       processados,
       rateLimit,
     })
     pushLog(
-      `fim lote: processados=${processados} nfe +${novas}/~${atualizadas}; nfse +${novasNfse}/~${atualizadasNfse}${
+      `fim lote: processados=${processados} nfe +${novas}/~${atualizadas}; nfse +${novasNfse}/~${atualizadasNfse}; cte +${novasCte}/~${atualizadasCte}${
         rateLimit ? ' (rate limit)' : ''
       }`
     )
 
-    const totalNovas = novas + novasNfse
-    const totalAtualizadas = atualizadas + atualizadasNfse
+    const totalNovas = novas + novasNfse + novasCte
+    const totalAtualizadas = atualizadas + atualizadasNfse + atualizadasCte
+    const nfeVaziaComOutros =
+      nfeListadaOk &&
+      qtdNfePagina === 0 &&
+      (qtdNfsePagina > 0 ||
+        qtdCtePagina > 0 ||
+        novasNfse + atualizadasNfse + novasCte + atualizadasCte > 0)
+    const cteVaziaComOutros =
+      cteListadaOk &&
+      qtdCtePagina === 0 &&
+      (qtdNfePagina > 0 ||
+        qtdNfsePagina > 0 ||
+        novas + atualizadas + novasNfse + atualizadasNfse > 0)
+
     let mensagemFim: string
     if (rateLimit) {
       mensagemFim = `Lote pausado por rate limit Focus após ${processados} nota(s). Já salvas no sistema; retoma no próximo ciclo (auto ~2 min).`
+    } else if (nfeVaziaComOutros || cteVaziaComOutros) {
+      const parteNfe =
+        nfeListadaOk && qtdNfePagina === 0
+          ? '0 NFe (DistDFe vazio)'
+          : `NFe ${novas} novas / ${atualizadas} atualizadas`
+      const parteNfse = `NFS-e ${novasNfse} novas / ${atualizadasNfse} atualizadas`
+      const parteCte =
+        cteListadaOk && qtdCtePagina === 0
+          ? '0 CTe'
+          : `CTe ${novasCte} novas / ${atualizadasCte} atualizadas`
+      mensagemFim =
+        `Sync: ${parteNfe} · ${parteNfse} · ${parteCte}. ` +
+        'Confira Recebimento de NFes/CTe na Focus. Na lista use Ver todas (sem data).'
     } else if (processados >= LIMITE_LOTE_SYNC) {
-      mensagemFim = `Lote de ${LIMITE_LOTE_SYNC} concluído (NFe +${novas}/~${atualizadas}; NFS-e +${novasNfse}/~${atualizadasNfse}). Próximas no sync automático.`
+      mensagemFim = `Lote de ${LIMITE_LOTE_SYNC} concluído (NFe +${novas}/~${atualizadas}; NFS-e +${novasNfse}/~${atualizadasNfse}; CTe +${novasCte}/~${atualizadasCte}). Próximas no sync automático.`
     } else if (totalNovas === 0 && totalAtualizadas === 0) {
       mensagemFim =
-        'Sync OK, Focus sem novidades neste lote (0 NFe / 0 NFS-e novas neste cursor). Lista e busca usam só o banco local.'
+        'Sync OK, Focus sem novidades neste lote (0 NFe / 0 NFS-e / 0 CTe novas neste cursor). Lista e busca usam só o banco local. Use Ver todas (sem data) se o filtro esconder notas.'
     } else {
-      mensagemFim = `Sync OK: NFe ${novas} novas / ${atualizadas} atualizadas; NFS-e ${novasNfse} novas / ${atualizadasNfse} atualizadas.`
+      mensagemFim = `Sync OK: NFe ${novas} novas / ${atualizadas} atualizadas; NFS-e ${novasNfse} novas / ${atualizadasNfse} atualizadas; CTe ${novasCte} novas / ${atualizadasCte} atualizadas.`
     }
 
     await repositorioFocusNfe.atualizarJob(jobId, {
@@ -583,6 +769,46 @@ async function completarXmlNfseDaFocus(
     companyId,
     chaveNfe: chave,
     tipoDocumento: 'nfse',
+    nomeEmitente: campos.nomeEmitente,
+    documentoEmitente: campos.documentoEmitente,
+    cnpjDestinatario: campos.cnpjDestinatario,
+    dataEmissao: campos.dataEmissao,
+    valorTotal: campos.valorTotal,
+    xmlConteudo: xmlResp.dados,
+    nfeCompleta: true,
+    origem: 'focus',
+    situacao: existente?.situacao ?? 'autorizada',
+    etapaAtual: 'servico',
+  })
+  await servicoEntradaNotas.processarAposXml(companyId, registro.id ?? registroId)
+  return { ok: true, rateLimit: false }
+}
+
+async function completarXmlCteDaFocus(
+  companyId: string,
+  apiToken: string,
+  homologacao: boolean,
+  chave: string,
+  registroId: string,
+  pushLog: (msg: string) => void
+): Promise<ResultadoXml> {
+  const existente = await repositorioFocusNfe.buscarPorChave(companyId, chave)
+  if (existente?.xmlConteudo && existente.nfeCompleta) {
+    return { ok: true, rateLimit: false }
+  }
+
+  const xmlResp = await clienteFocusNfe.baixarXmlCte(apiToken, homologacao, chave)
+  if (!xmlResp.sucesso || typeof xmlResp.dados !== 'string') {
+    const rateLimit = xmlResp.sucesso === false && xmlResp.codigoHttp === 429
+    pushLog(`xml cte ${chave.slice(-8)}: ${xmlResp.sucesso === false ? xmlResp.mensagem : 'vazio'}`)
+    return { ok: false, rateLimit, mensagem: xmlResp.sucesso === false ? xmlResp.mensagem : 'vazio' }
+  }
+
+  const campos = extrairCamposResumoDoXml(xmlResp.dados)
+  const { registro } = await repositorioFocusNfe.upsertNfeRecebida({
+    companyId,
+    chaveNfe: chave,
+    tipoDocumento: 'cte',
     nomeEmitente: campos.nomeEmitente,
     documentoEmitente: campos.documentoEmitente,
     cnpjDestinatario: campos.cnpjDestinatario,
@@ -772,18 +998,25 @@ async function obterXmlNota(companyId: string, id: string) {
 
   if (!xml) {
     const credenciais = await obterCredenciais(companyId)
-    const ehNfse = nota.tipoDocumento === 'nfse'
-    const xmlResp = ehNfse
-      ? await clienteFocusNfe.baixarXmlNfse(
-          credenciais.apiToken,
-          credenciais.homologacao,
-          nota.chaveNfe
-        )
-      : await clienteFocusNfe.baixarXml(
-          credenciais.apiToken,
-          credenciais.homologacao,
-          nota.chaveNfe
-        )
+    const tipo = nota.tipoDocumento
+    const xmlResp =
+      tipo === 'nfse'
+        ? await clienteFocusNfe.baixarXmlNfse(
+            credenciais.apiToken,
+            credenciais.homologacao,
+            nota.chaveNfe
+          )
+        : tipo === 'cte'
+          ? await clienteFocusNfe.baixarXmlCte(
+              credenciais.apiToken,
+              credenciais.homologacao,
+              nota.chaveNfe
+            )
+          : await clienteFocusNfe.baixarXml(
+              credenciais.apiToken,
+              credenciais.homologacao,
+              nota.chaveNfe
+            )
 
     if (!xmlResp.sucesso || typeof xmlResp.dados !== 'string') {
       const msg =
@@ -802,10 +1035,12 @@ async function obterXmlNota(companyId: string, id: string) {
     origemXml = 'focus'
 
     const campos = extrairCamposResumoDoXml(xml)
+    const tipoPersistido =
+      tipo === 'nfse' || tipo === 'cte' ? tipo : 'nfe55'
     await repositorioFocusNfe.upsertNfeRecebida({
       companyId,
       chaveNfe: nota.chaveNfe,
-      tipoDocumento: ehNfse ? 'nfse' : 'nfe55',
+      tipoDocumento: tipoPersistido,
       nomeEmitente: campos.nomeEmitente ?? nota.nomeEmitente,
       documentoEmitente: campos.documentoEmitente ?? nota.documentoEmitente,
       cnpjDestinatario: campos.cnpjDestinatario ?? nota.cnpjDestinatario,
@@ -840,8 +1075,11 @@ async function obterXmlNota(companyId: string, id: string) {
     visualizacao.dataEmissao = d ? d.toISOString() : null
   }
   if (!visualizacao.chaveNfe) visualizacao.chaveNfe = nota.chaveNfe
-  if (visualizacao.tipoDocumento === 'desconhecido' && nota.tipoDocumento === 'nfse') {
-    visualizacao.tipoDocumento = 'nfse'
+  if (
+    visualizacao.tipoDocumento === 'desconhecido' &&
+    (nota.tipoDocumento === 'nfse' || nota.tipoDocumento === 'cte')
+  ) {
+    visualizacao.tipoDocumento = nota.tipoDocumento
   }
 
   return {
@@ -864,14 +1102,17 @@ async function obterXmlNota(companyId: string, id: string) {
 }
 
 /**
- * DANFE/DANFSe (PDF): cache local primeiro; Focus só se necessário.
- * NFe 55 + NFS-e nacional.
+ * DANFE/DANFSe/DACTe (PDF): cache local primeiro; Focus só se necessário.
+ * NFe 55 + NFS-e nacional + CTe.
  */
 async function obterDanfeNota(companyId: string, id: string) {
   const nota = await repositorioFocusNfe.buscarPorId(companyId, id)
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada.', 404)
 
-  const ehNfse = nota.tipoDocumento === 'nfse'
+  const tipo = nota.tipoDocumento
+  const ehNfse = tipo === 'nfse'
+  const ehCte = tipo === 'cte'
+  const ehDocumental = ehNfse || ehCte
   const agora = Date.now()
   const atualizadoEm = nota.danfeAtualizadoEm?.getTime() ?? 0
   const dentroDe24h = agora - atualizadoEm < 24 * 60 * 60 * 1000
@@ -919,7 +1160,7 @@ async function obterDanfeNota(companyId: string, id: string) {
   const chave = nota.chaveNfe
 
   // 3) NFe: garantir ciência + XML antes do PDF
-  if (!ehNfse && !(nota.xmlConteudo && nota.nfeCompleta)) {
+  if (!ehDocumental && !(nota.xmlConteudo && nota.nfeCompleta)) {
     const man = (nota.manifestacaoDestinatario ?? '').toLowerCase()
     if (!man || man === 'nulo' || man === 'null') {
       await clienteFocusNfe.manifestar(
@@ -953,23 +1194,31 @@ async function obterDanfeNota(companyId: string, id: string) {
   }
 
   async function tentarPdf(): Promise<RespostaFocus<Buffer>> {
-    return ehNfse
-      ? clienteFocusNfe.baixarPdfNfse(
-          credenciais.apiToken,
-          credenciais.homologacao,
-          chave
-        )
-      : clienteFocusNfe.baixarPdfNfe(
-          credenciais.apiToken,
-          credenciais.homologacao,
-          chave
-        )
+    if (ehNfse) {
+      return clienteFocusNfe.baixarPdfNfse(
+        credenciais.apiToken,
+        credenciais.homologacao,
+        chave
+      )
+    }
+    if (ehCte) {
+      return clienteFocusNfe.baixarPdfCte(
+        credenciais.apiToken,
+        credenciais.homologacao,
+        chave
+      )
+    }
+    return clienteFocusNfe.baixarPdfNfe(
+      credenciais.apiToken,
+      credenciais.homologacao,
+      chave
+    )
   }
 
   let pdfResp = await tentarPdf()
 
   // 4) 404: um retry após nova ciência/XML (NFe)
-  if (!pdfResp.sucesso && pdfResp.codigoHttp === 404 && !ehNfse) {
+  if (!pdfResp.sucesso && pdfResp.codigoHttp === 404 && !ehDocumental) {
     await clienteFocusNfe.manifestar(
       credenciais.apiToken,
       credenciais.homologacao,
@@ -1009,7 +1258,9 @@ async function obterDanfeNota(companyId: string, id: string) {
       throw new ErroDaAplicacao(
         ehNfse
           ? 'PDF da NFS-e ainda não está disponível na Focus. Use Ver nota ou Baixar XML.'
-          : 'DANFE ainda não disponível na Focus (pode faltar ciência ou o PDF ainda não foi gerado). Use Ver nota.',
+          : ehCte
+            ? 'DACTe ainda não está disponível na Focus. Use Ver nota ou Baixar XML.'
+            : 'DANFE ainda não disponível na Focus (pode faltar ciência ou o PDF ainda não foi gerado). Use Ver nota.',
         422
       )
     }
@@ -1045,7 +1296,7 @@ async function importarXml(companyId: string, xmlBruto: string) {
       inicio: xml.slice(0, 80).replace(/\s+/g, ' '),
     })
     throw new ErroDaAplicacao(
-      'XML não reconhecido. Envie XML de NFe modelo 55 (produto) ou NFS-e nacional (serviço) — não DANFE PDF.',
+      'XML não reconhecido. Envie XML de NFe modelo 55 (produto), NFS-e nacional (serviço) ou CTe (transporte) — não DANFE/DACTe PDF.',
       400
     )
   }
@@ -1061,7 +1312,9 @@ async function importarXml(companyId: string, xmlBruto: string) {
     throw new ErroDaAplicacao(
       tipoDoc === 'nfse'
         ? 'Não foi possível extrair a chave/Id da NFS-e do XML.'
-        : 'Não foi possível extrair a chave (44 dígitos) do XML. Confirme que o arquivo é o XML da NF-e (não DANFE PDF nem evento).',
+        : tipoDoc === 'cte'
+          ? 'Não foi possível extrair a chave (44 dígitos) do XML do CTe.'
+          : 'Não foi possível extrair a chave (44 dígitos) do XML. Confirme que o arquivo é o XML da NF-e (não DANFE PDF nem evento).',
       400
     )
   }
@@ -1073,15 +1326,16 @@ async function importarXml(companyId: string, xmlBruto: string) {
       existente.statusEntrada === 'entrada_consolidada')
   ) {
     throw new ErroDaAplicacao(
-      `NF ${chave} já teve entrada. Duplicidade bloqueada pela chave.`,
+      `Documento ${chave} já teve entrada. Duplicidade bloqueada pela chave.`,
       409
     )
   }
 
+  const tipoPersistido = tipoDoc
   const { registro, criado } = await repositorioFocusNfe.upsertNfeRecebida({
     companyId,
     chaveNfe: chave,
-    tipoDocumento: tipoDoc === 'nfse' ? 'nfse' : 'nfe55',
+    tipoDocumento: tipoPersistido,
     nomeEmitente: campos.nomeEmitente,
     documentoEmitente: campos.documentoEmitente,
     cnpjDestinatario: campos.cnpjDestinatario,
@@ -1091,7 +1345,7 @@ async function importarXml(companyId: string, xmlBruto: string) {
     nfeCompleta: true,
     origem: 'xml',
     situacao: existente?.situacao ?? 'autorizada',
-    etapaAtual: tipoDoc === 'nfse' ? 'servico' : 'cadastro',
+    etapaAtual: tipoDoc === 'nfse' || tipoDoc === 'cte' ? 'servico' : 'cadastro',
   })
 
   logFocus('info', 'import_xml', {
@@ -1107,18 +1361,23 @@ async function importarXml(companyId: string, xmlBruto: string) {
   await servicoEntradaNotas.processarAposXml(companyId, registro.id)
   const apos = await repositorioFocusNfe.buscarPorChave(companyId, chave)
 
+  const mensagemContagem =
+    tipoDoc === 'nfse'
+      ? 'NFS-e importada e liberada para contagem documental (sem estoque).'
+      : tipoDoc === 'cte'
+        ? 'CTe importado e liberado para contagem documental (sem estoque).'
+        : 'XML importado e entrada automática (Liberar para contagem) — sem críticas bloqueantes.'
+
   return {
     id: registro.id,
     chaveNfe: registro.chaveNfe,
-    tipoDocumento: tipoDoc === 'nfse' ? 'nfse' : 'nfe55',
+    tipoDocumento: tipoPersistido,
     criado,
     statusEntrada: apos?.statusEntrada ?? registro.statusEntrada,
     etapaAtual: apos?.etapaAtual ?? registro.etapaAtual,
     mensagem:
       apos?.statusEntrada === 'entrada_contagem'
-        ? tipoDoc === 'nfse'
-          ? 'NFS-e importada e liberada para contagem documental (sem estoque).'
-          : 'XML importado e entrada automática (Liberar para contagem) — sem críticas bloqueantes.'
+        ? mensagemContagem
         : criado
           ? 'XML importado. Abra a nota para concluir a análise de entrada.'
           : 'XML atualizado. Abra a nota para concluir a análise de entrada.',
@@ -1144,10 +1403,15 @@ async function reprocessarXmlsLocais(companyId: string) {
     })
     ok += 1
   }
-  logFocus('info', 'reprocessar_xmls', { companyId, ok })
+  const vinculadas = await servicoEntradaNotas.vincularFornecedoresNasNotasPendentes(companyId)
+  logFocus('info', 'reprocessar_xmls', { companyId, ok, vinculadas })
   return {
     processados: ok,
-    mensagem: `${ok} nota(s) reprocessada(s) a partir do XML salvo (emitente, data, valor).`,
+    vinculadas,
+    mensagem:
+      vinculadas > 0
+        ? `${ok} nota(s) reprocessada(s); ${vinculadas} vinculada(s) a fornecedor cadastrado.`
+        : `${ok} nota(s) reprocessada(s) a partir do XML salvo (emitente, data, valor).`,
   }
 }
 

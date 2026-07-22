@@ -209,6 +209,38 @@ async function contarItens(nfeRecebidaId: string) {
   return clientePrisma.nfeRecebidaItem.count({ where: { nfeRecebidaId } })
 }
 
+/** Notas em aberto cujo emitente bate com o documento (compara só dígitos). */
+async function listarNotasPendentesPorDocumento(companyId: string, documento: string) {
+  const limpo = documento.replace(/\D/g, '')
+  if (!limpo) return []
+  const candidatas = await clientePrisma.nfeRecebida.findMany({
+    where: {
+      companyId,
+      statusEntrada: { in: ['pendente', 'em_analise', 'stand_by'] },
+      documentoEmitente: { not: null },
+    },
+    select: { id: true, documentoEmitente: true },
+    orderBy: { createdAt: 'asc' },
+  })
+  return candidatas
+    .filter((n) => (n.documentoEmitente ?? '').replace(/\D/g, '') === limpo)
+    .map((n) => ({ id: n.id }))
+}
+
+/** Notas em aberto ainda sem fornecedor ERP vinculado. */
+async function listarNotasPendentesSemFornecedor(companyId: string) {
+  return clientePrisma.nfeRecebida.findMany({
+    where: {
+      companyId,
+      statusEntrada: { in: ['pendente', 'em_analise', 'stand_by'] },
+      fornecedorPessoaId: null,
+      documentoEmitente: { not: null },
+    },
+    select: { id: true, documentoEmitente: true },
+    orderBy: { createdAt: 'asc' },
+  })
+}
+
 export const repositorioEntradaNotas = {
   buscarNotaCompleta,
   buscarNotaPorId,
@@ -223,4 +255,6 @@ export const repositorioEntradaNotas = {
   gravarCodigoOriginalVinculo,
   atualizarFiscalProduto,
   contarItens,
+  listarNotasPendentesPorDocumento,
+  listarNotasPendentesSemFornecedor,
 }

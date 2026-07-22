@@ -1,26 +1,14 @@
 'use client'
 
-import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
-import { PainelConfiguracaoFocusNfe } from '@/components/focus-nfe/painel-configuracao-focus-nfe'
-
-function Conteudo() {
-  return (
-    <div className="min-w-0 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Focus NFe</h1>
-        <p className="text-sm text-muted-foreground">
-          Token e ambiente para NFe recebidas (manifestador) — Entrada de Notas
-        </p>
-      </div>
-      <PainelConfiguracaoFocusNfe />
-    </div>
-  )
-}
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 
 export default function PaginaFocusNfe() {
+  const router = useRouter()
+  useEffect(() => {
+    router.replace('/configuracoes?aba=fiscal&secao=buscador')
+  }, [router])
   return (
-    <ProtegerRota somenteAdmin>
-      <Conteudo />
-    </ProtegerRota>
+    <p className="text-sm text-muted-foreground">Redirecionando para Configurações…</p>
   )
 }

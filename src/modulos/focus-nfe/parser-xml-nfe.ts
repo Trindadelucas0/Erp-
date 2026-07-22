@@ -1,15 +1,15 @@
 /**
- * Extrai chave, resumo e itens de XML fiscal: NFe modelo 55 ou NFS-e nacional.
+ * Extrai chave, resumo e itens de XML fiscal: NFe modelo 55, NFS-e nacional ou CTe.
  * Itens de produto (`extrairItensDoXml`) só se aplicam à NFe 55.
  */
 export function normalizarXmlNfe(xml: string): string {
   return xml.replace(/^\uFEFF/, '').trim()
 }
 
-/** Classifica o XML fiscal (NFe 55 produto | NFS-e nacional serviço). */
+/** Classifica o XML fiscal (NFe 55 | NFS-e | CTe). */
 export function detectarDocumentoFiscalXml(
   xmlBruto: string
-): 'nfe55' | 'nfse' | 'desconhecido' {
+): 'nfe55' | 'nfse' | 'cte' | 'desconhecido' {
   const xml = normalizarXmlNfe(xmlBruto)
   if (!xml) return 'desconhecido'
 
@@ -20,6 +20,14 @@ export function detectarDocumentoFiscalXml(
     /<(?:[\w.]+:)?infNFSe\b/i.test(xml)
   ) {
     return 'nfse'
+  }
+
+  if (
+    /<(?:[\w.]+:)?(?:cteProc|CTe|infCte)\b/i.test(xml) ||
+    /Id\s*=\s*["']CTe\d{44}/i.test(xml) ||
+    /<(?:[\w.]+:)?chCTe\b/i.test(xml)
+  ) {
+    return 'cte'
   }
 
   if (
@@ -160,7 +168,7 @@ export type CamposResumoXmlNfe = {
   dataEmissao: Date | null
   valorTotal: number | null
   prazoPagamentoXml: string | null
-  tipoDocumento?: 'nfe55' | 'nfse'
+  tipoDocumento?: 'nfe55' | 'nfse' | 'cte'
 }
 
 export type ItemXmlNfe = {
@@ -227,13 +235,81 @@ export function extrairCamposResumoDoXmlNfse(xmlBruto: string): CamposResumoXmlN
   }
 }
 
+export function extrairChaveCteDoXml(xmlBruto: string): string | null {
+  const xml = normalizarXmlNfe(xmlBruto)
+  if (!xml) return null
+
+  const porAtributo = xml.match(/Id\s*=\s*["']CTe(\d{44})["']/i)
+  if (porAtributo?.[1]) return porAtributo[1]
+
+  const porTag = xml.match(/<(?:[\w.]+:)?chCTe[^>]*>\s*(\d{44})\s*<\/(?:[\w.]+:)?chCTe>/i)
+  if (porTag?.[1]) return porTag[1]
+
+  const porIdSoDigitos = xml.match(/\bId\s*=\s*["'](\d{44})["']/i)
+  if (porIdSoDigitos?.[1]) {
+    const chave = porIdSoDigitos[1]
+    // Modelo 57 = CTe (posições 21-22 da chave, índice 20-21)
+    if (chave.slice(20, 22) === '57') return chave
+  }
+
+  return null
+}
+
+/** Resumo de XML CTe (conhecimento de transporte). */
+export function extrairCamposResumoDoXmlCte(xmlBruto: string): CamposResumoXmlNfe {
+  const xml = normalizarXmlNfe(xmlBruto)
+  const chaveNfe = extrairChaveCteDoXml(xml)
+
+  const emit = blocoTag(xml, 'emit')
+  const dest = blocoTag(xml, 'dest')
+  const toma4 = blocoTag(xml, 'toma4')
+  const toma3 = blocoTag(xml, 'toma3')
+  const toma = blocoTag(xml, 'toma') ?? toma4 ?? toma3
+  const ide = blocoTag(xml, 'ide')
+  const vPrest = blocoTag(xml, 'vPrest')
+
+  const nomeEmitente = emit ? extrairCampoXml(emit, 'xNome') : null
+  const documentoEmitente = emit
+    ? extrairCampoXml(emit, 'CNPJ') ?? extrairCampoXml(emit, 'CPF')
+    : null
+
+  const cnpjDestinatario =
+    (dest ? extrairCampoXml(dest, 'CNPJ') ?? extrairCampoXml(dest, 'CPF') : null) ??
+    (toma ? extrairCampoXml(toma, 'CNPJ') ?? extrairCampoXml(toma, 'CPF') : null)
+
+  const dhEmi =
+    (ide ? extrairCampoXml(ide, 'dhEmi') : null) ??
+    extrairCampoXml(xml, 'dhEmi') ??
+    (ide ? extrairCampoXml(ide, 'dEmi') : null)
+
+  const valorTotal =
+    parseValor(vPrest ? extrairCampoXml(vPrest, 'vTPrest') : null) ??
+    parseValor(vPrest ? extrairCampoXml(vPrest, 'vRec') : null) ??
+    parseValor(extrairCampoXml(xml, 'vTPrest'))
+
+  return {
+    chaveNfe,
+    nomeEmitente,
+    documentoEmitente,
+    cnpjDestinatario,
+    dataEmissao: parseDataEmissao(dhEmi),
+    valorTotal,
+    prazoPagamentoXml: null,
+    tipoDocumento: 'cte',
+  }
+}
+
 /**
  * Preferência: dados do bloco &lt;emit&gt; / &lt;dest&gt; / ide / total
  * (evita pegar xNome/CNPJ do destinatário como emitente).
  */
 export function extrairCamposResumoDoXml(xmlBruto: string): CamposResumoXmlNfe {
-  if (detectarDocumentoFiscalXml(xmlBruto) === 'nfse') {
+  const tipo = detectarDocumentoFiscalXml(xmlBruto)
+  if (tipo === 'nfse') {
     return extrairCamposResumoDoXmlNfse(xmlBruto)
+  }
+  if (tipo === 'cte') {
+    return extrairCamposResumoDoXmlCte(xmlBruto)
   }
 
   const xml = normalizarXmlNfe(xmlBruto)
@@ -328,7 +404,7 @@ export function extrairItensDoXml(xmlBruto: string): ItemXmlNfe[] {
 }
 
 export type VisualizacaoNotaFiscal = {
-  tipoDocumento: 'nfe55' | 'nfse' | 'desconhecido'
+  tipoDocumento: 'nfe55' | 'nfse' | 'cte' | 'desconhecido'
   chaveNfe: string | null
   numero: string | null
   serie: string | null
@@ -394,6 +470,42 @@ export function montarVisualizacaoDoXml(xmlBruto: string): VisualizacaoNotaFisca
       },
       destinatario: {
         nome: toma ? extrairCampoXml(toma, 'xNome') : null,
+        documento: resumo.cnpjDestinatario,
+      },
+      valorTotal: resumo.valorTotal,
+      prazoPagamento: null,
+      descricaoServico,
+      itens: [],
+    }
+  }
+
+  if (tipo === 'cte') {
+    const emit = blocoTag(xml, 'emit')
+    const dest = blocoTag(xml, 'dest')
+    const toma =
+      blocoTag(xml, 'toma') ?? blocoTag(xml, 'toma4') ?? blocoTag(xml, 'toma3')
+    const ide = blocoTag(xml, 'ide')
+    const descricaoServico =
+      extrairCampoXml(xml, 'xObs') ??
+      extrairCampoXml(xml, 'xDime') ??
+      (ide ? extrairCampoXml(ide, 'natOp') : null)
+
+    return {
+      tipoDocumento: 'cte',
+      chaveNfe: resumo.chaveNfe,
+      numero: ide ? extrairCampoXml(ide, 'nCT') : extrairCampoXml(xml, 'nCT'),
+      serie: ide ? extrairCampoXml(ide, 'serie') : extrairCampoXml(xml, 'serie'),
+      naturezaOperacao: ide ? extrairCampoXml(ide, 'natOp') : null,
+      dataEmissao: resumo.dataEmissao ? resumo.dataEmissao.toISOString() : null,
+      emitente: {
+        nome: resumo.nomeEmitente,
+        documento: resumo.documentoEmitente,
+        endereco: montarEnderecoBloco(emit),
+      },
+      destinatario: {
+        nome:
+          (dest ? extrairCampoXml(dest, 'xNome') : null) ??
+          (toma ? extrairCampoXml(toma, 'xNome') : null),
         documento: resumo.cnpjDestinatario,
       },
       valorTotal: resumo.valorTotal,

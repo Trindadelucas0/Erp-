@@ -31,13 +31,13 @@ async function criarFornecedor(
   }
 
   const companyId = requisicao.empresaAtivaId || ''
-  const fornecedor = await servicoDeFornecedores.criarFornecedor(
+  const { fornecedor, notasReanalisadas } = await servicoDeFornecedores.criarFornecedor(
     resultado.data,
     companyId,
     requisicao.idDoUsuario!
   )
 
-  return resposta.status(201).send({ fornecedor })
+  return resposta.status(201).send({ fornecedor, notasReanalisadas })
 }
 
 async function editarFornecedor(

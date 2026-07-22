@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { clienteHttp } from '@/services/api'
 import {
   codigoCfopCompleto,
@@ -12,7 +13,6 @@ import {
   SUBTIPOS_CFOP,
   type SubtipoCfop,
 } from '@/lib/cfop'
-import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { usePermissao } from '@/hooks/use-permissao'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { CabecalhoCadastroErp } from '@/components/compartilhado/cabecalho-cadastro-erp'
@@ -60,7 +60,7 @@ const formVazio = {
   cfopSugestaoEntrada: null as ItemCatalogo | null,
 }
 
-function ConteudoDaPagina() {
+export function ConteudoDaPaginaCfops() {
   const { estaAutenticado, carregando: carregandoSessao } = useSessaoDoUsuario()
   const podeCriar = usePermissao('financeiro:create')
   const podeEditar = usePermissao('financeiro:edit')
@@ -445,9 +445,15 @@ function ConteudoDaPagina() {
 }
 
 export default function PaginaCfops() {
+  return <RedirectParaConfiguracoesFiscal />
+}
+
+function RedirectParaConfiguracoesFiscal() {
+  const router = useRouter()
+  useEffect(() => {
+    router.replace('/configuracoes?aba=fiscal&secao=cfop')
+  }, [router])
   return (
-    <ProtegerRota chaveDaPagina="cfops">
-      <ConteudoDaPagina />
-    </ProtegerRota>
+    <p className="text-sm text-muted-foreground">Redirecionando para Configurações…</p>
   )
 }

@@ -51,7 +51,12 @@ export function BarraLateral({ aoFecharMenuMobile, className }: Props) {
 
         {estaAutenticado &&
           itensDoMenu.map((pagina) => {
-            const estaAtivo = caminhoAtual === pagina.caminho
+            const estaAtivo =
+              caminhoAtual === pagina.caminho ||
+              (pagina.caminho !== '/' &&
+                caminhoAtual.startsWith(pagina.caminho.split('?')[0] + '/') ) ||
+              (pagina.chave === 'configuracoes' &&
+                caminhoAtual.startsWith('/configuracoes'))
 
             return (
               <Link

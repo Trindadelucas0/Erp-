@@ -17,6 +17,11 @@ import {
 } from '@/components/entrada-notas/conteudo-visualizacao-nota'
 import { BarraCarregamentoDownload } from '@/components/entrada-notas/barra-carregamento-download'
 import { Loader2 } from 'lucide-react'
+import {
+  ehDocumentalEntrada,
+  prefixoPdfDocumento,
+  rotuloTipoDocumentoLongo,
+} from '@/lib/tipo-documento-entrada'
 
 type ResultadoEtapa = {
   status: string
@@ -241,7 +246,7 @@ function ConteudoDetalheEntrada() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${nota.tipoDocumento === 'nfse' ? 'DANFSe' : 'DANFE'}-${nota.chaveNfe || id}.pdf`
+      a.download = `${prefixoPdfDocumento(nota.tipoDocumento)}-${nota.chaveNfe || id}.pdf`
       a.click()
       URL.revokeObjectURL(url)
       setDanfeBloqueado(false)
@@ -307,7 +312,9 @@ function ConteudoDetalheEntrada() {
     nota?.statusEntrada === 'entrada_consolidada' ||
     nota?.statusEntrada === 'cancelada'
 
+  const ehDocumental = ehDocumentalEntrada(nota?.tipoDocumento)
   const ehNfse = nota?.tipoDocumento === 'nfse'
+  const ehCte = nota?.tipoDocumento === 'cte'
   const fiscalExigeManifesto =
     nota?.analise?.fiscal?.exigeManifesto === true ||
     (nota?.analise?.fiscal?.bloqueiosNaoLiberaveis?.length ?? 0) > 0 ||
@@ -378,7 +385,7 @@ function ConteudoDetalheEntrada() {
             variant="outline"
             size="sm"
             disabled={xmlBusy || danfeBloqueado}
-            title={danfeBloqueado ? 'PDF indisponível ou limite Focus — use Ver nota' : 'Baixar PDF (DANFE/DANFSe)'}
+            title={danfeBloqueado ? 'PDF indisponível ou limite Focus — use Ver nota' : 'Baixar PDF (DANFE/DANFSe/DACTe)'}
             onClick={() => void baixarDanfe()}
           >
             {xmlBusy && downloadRotulo.includes('PDF') ? (
@@ -434,7 +441,7 @@ function ConteudoDetalheEntrada() {
         <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
           <p>
             <span className="text-muted-foreground">Tipo:</span>{' '}
-            {nota.tipoDocumento === 'nfse' ? 'NFS-e (serviço)' : 'NFe 55 (produto)'}
+            {rotuloTipoDocumentoLongo(nota.tipoDocumento)}
           </p>
           <p>
             <span className="text-muted-foreground">Emitente:</span>{' '}
@@ -468,7 +475,24 @@ function ConteudoDetalheEntrada() {
         <EtapaCard titulo="2. Fiscal" etapa={nota.analise?.fiscal} />
         <EtapaCard titulo="3. Negociação" etapa={nota.analise?.negociacao} />
       </div>
-      {nota.analise?.fiscal?.bloqueios?.length && !ehNfse ? (
+      {cadastroBloqueante && nota.documentoEmitente ? (
+        <div>
+          <Link
+            href={`/fornecedores?novo=1&documento=${encodeURIComponent(
+              nota.documentoEmitente.replace(/\D/g, '')
+            )}${
+              nota.nomeEmitente
+                ? `&nome=${encodeURIComponent(nota.nomeEmitente)}`
+                : ''
+            }&retorno=${encodeURIComponent(`/entrada-notas/${nota.id}`)}`}
+          >
+            <Button type="button" size="sm">
+              Cadastrar fornecedor
+            </Button>
+          </Link>
+        </div>
+      ) : null}
+      {nota.analise?.fiscal?.bloqueios?.length && !ehDocumental ? (
         <p className="text-sm text-muted-foreground">
           Divergência de NCM ou origem: importe da NF para o produto (ou liberar críticas com senha).
           Problema de CST/CFOP: não prossiga — use desconhecimento da operação ou devolução.
@@ -520,7 +544,7 @@ function ConteudoDetalheEntrada() {
             >
               Contato fornecedor (stand-by)
             </Button>
-            {!ehNfse && (
+            {!ehDocumental && (
               <>
                 <Button
                   type="button"
@@ -560,7 +584,7 @@ function ConteudoDetalheEntrada() {
         </CardPadrao>
       )}
 
-      {!ehNfse && (
+      {!ehDocumental && (
       <CardPadrao titulo="Negociação — pedido e prazo">
         <div className="flex flex-wrap items-end gap-3 text-sm">
           <div>
@@ -607,12 +631,16 @@ function ConteudoDetalheEntrada() {
       </CardPadrao>
       )}
 
-      <CardPadrao titulo={ehNfse ? 'Serviço (NFS-e)' : 'Itens da NF'}>
-        {ehNfse ? (
+      <CardPadrao
+        titulo={
+          ehNfse ? 'Serviço (NFS-e)' : ehCte ? 'Transporte (CTe)' : 'Itens da NF'
+        }
+      >
+        {ehDocumental ? (
           <p className="text-sm text-muted-foreground">
-            NFS-e de serviço: não há itens de produto, vínculo por barras/código original nem
-            conferência com pedido de compra. Cadastro = prestador como fornecedor. Liberação é
-            documental (sem movimento de estoque).
+            {ehCte
+              ? 'CTe (conhecimento de transporte): não há itens de produto, vínculo por barras/código original nem conferência com pedido de compra. Cadastro = emitente (transportadora) como fornecedor. Liberação é documental (sem movimento de estoque).'
+              : 'NFS-e de serviço: não há itens de produto, vínculo por barras/código original nem conferência com pedido de compra. Cadastro = prestador como fornecedor. Liberação é documental (sem movimento de estoque).'}
           </p>
         ) : (
         <div className="space-y-4">
@@ -731,8 +759,8 @@ function ConteudoDetalheEntrada() {
       {!finalizada && (
         <CardPadrao titulo="4. Lançamento">
           <p className="mb-3 text-sm text-muted-foreground">
-            {ehNfse
-              ? 'Conferência documental. Liberar para contagem não movimenta estoque. Consolidar exige senha de gerente (só status).'
+            {ehDocumental
+              ? 'Conferência documental (NFS-e/CTe). Liberar para contagem não movimenta estoque. Consolidar exige senha de gerente (só status).'
               : 'Conferência final. Consolidar estoque exige senha de gerente (registra status; ainda não movimenta saldo físico).'}
           </p>
           <div className="flex flex-wrap items-end gap-3">
@@ -760,7 +788,7 @@ function ConteudoDetalheEntrada() {
               disabled={acao || !senha}
               onClick={() => postAcao('/lancar', { modo: 'consolidar', senha })}
             >
-              {ehNfse ? 'Consolidar (documental)' : 'Consolidar estoque'}
+              {ehDocumental ? 'Consolidar (documental)' : 'Consolidar estoque'}
             </Button>
           </div>
         </CardPadrao>

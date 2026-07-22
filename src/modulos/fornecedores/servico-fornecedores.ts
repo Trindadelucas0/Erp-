@@ -5,6 +5,7 @@ import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-auditoria.js'
 import { repositorioDeCfops } from '../cfops/repositorio-cfops.js'
+import { servicoEntradaNotas } from '../entrada-notas/servico-pipeline-entrada.js'
 import { repositorioDeFornecedores } from './repositorio-fornecedores.js'
 import {
   assertTodosPlanosSubgrupoDespesaEncontrados,
@@ -97,7 +98,20 @@ async function criarFornecedor(
     valoresDepois: { nome: dados.nome, tipo: dados.tipo },
   })
 
-  return fornecedor
+  let notasReanalisadas = 0
+  if (documento) {
+    try {
+      notasReanalisadas = await servicoEntradaNotas.reanalisarNotasPendentesPorDocumento(
+        companyId,
+        documento
+      )
+    } catch {
+      // Cadastro do fornecedor já persistiu; falha na reanálise não deve reverter.
+      notasReanalisadas = 0
+    }
+  }
+
+  return { fornecedor, notasReanalisadas }
 }
 
 async function editarFornecedor(

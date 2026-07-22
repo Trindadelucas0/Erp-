@@ -36,7 +36,7 @@ function decimalNum(v: { toNumber?: () => number } | number | null | undefined):
 async function garantirItensDoXml(companyId: string, notaId: string) {
   const nota = await repositorioEntradaNotas.buscarNotaPorId(companyId, notaId)
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
-  if (nota.tipoDocumento === 'nfse') {
+  if (nota.tipoDocumento === 'nfse' || nota.tipoDocumento === 'cte') {
     return nota
   }
   if (!nota.xmlConteudo) {
@@ -148,10 +148,14 @@ async function lancarContagem(notaId: string, origem: 'automatica' | 'humana') {
  * Roda o pipeline. Se tudo ok (ou críticas liberadas), lança automaticamente para contagem.
  */
 /**
- * NFS-e: só cadastro do prestador; sem fiscal de itens / PO / estoque.
+ * Documental (NFS-e / CTe): só cadastro do emitente; sem fiscal de itens / PO / estoque.
  * Libera para contagem documental se cadastro ok.
  */
-async function analisarNotaNfse(companyId: string, notaId: string) {
+async function analisarNotaDocumental(
+  companyId: string,
+  notaId: string,
+  tipo: 'nfse' | 'cte'
+) {
   let nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
 
@@ -170,18 +174,19 @@ async function analisarNotaNfse(companyId: string, notaId: string) {
     etapaAtual: 'servico',
   })
 
+  const rotulo = tipo === 'cte' ? 'CTe' : 'NFS-e'
   const analise: AnaliseJson = {
     versao: 1,
     atualizadoEm: new Date().toISOString(),
     cadastro: cadastro.resultado,
     fiscal: {
       status: 'ok',
-      avisos: ['NFS-e: análise fiscal de itens de produto não se aplica.'],
+      avisos: [`${rotulo}: análise fiscal de itens de produto não se aplica.`],
       bloqueios: [],
     },
     negociacao: {
       status: 'ok',
-      avisos: ['NFS-e: sem vínculo de estoque/PO — liberação documental.'],
+      avisos: [`${rotulo}: sem vínculo de estoque/PO — liberação documental.`],
       bloqueios: [],
     },
     autoLancado: false,
@@ -207,6 +212,15 @@ async function analisarNotaNfse(companyId: string, notaId: string) {
   return await obterDetalhe(companyId, notaId)
 }
 
+/** @deprecated alias — NFS-e usa analisarNotaDocumental */
+async function analisarNotaNfse(companyId: string, notaId: string) {
+  return analisarNotaDocumental(companyId, notaId, 'nfse')
+}
+
+async function analisarNotaCte(companyId: string, notaId: string) {
+  return analisarNotaDocumental(companyId, notaId, 'cte')
+}
+
 async function analisarNota(companyId: string, notaId: string, opcoes?: { forcarReparseItens?: boolean }) {
   const base = await garantirItensDoXml(companyId, notaId)
   if (
@@ -219,6 +233,9 @@ async function analisarNota(companyId: string, notaId: string, opcoes?: { forcar
 
   if (base.tipoDocumento === 'nfse') {
     return analisarNotaNfse(companyId, notaId)
+  }
+  if (base.tipoDocumento === 'cte') {
+    return analisarNotaCte(companyId, notaId)
   }
 
   if (opcoes?.forcarReparseItens && base.xmlConteudo) {
@@ -456,12 +473,12 @@ async function obterDetalhe(companyId: string, notaId: string) {
   }
 }
 
-/** Remove aviso legado de "sem itens" em NFS-e (serviço não tem itens de produto). */
+/** Remove aviso legado de "sem itens" em documentos documentais (NFS-e / CTe). */
 function sanitizarAnaliseExibicao(
   tipoDocumento: string | null | undefined,
   analise: AnaliseJson | null
 ): AnaliseJson | null {
-  if (!analise || tipoDocumento !== 'nfse') return analise
+  if (!analise || (tipoDocumento !== 'nfse' && tipoDocumento !== 'cte')) return analise
   const avisoItens = 'Nota sem itens parseados do XML'
   const avisos = (analise.cadastro?.avisos ?? []).filter((a) => !a.includes(avisoItens))
   const bloqueios = analise.cadastro?.bloqueios ?? []
@@ -683,7 +700,7 @@ async function processarAposXml(companyId: string, notaId: string) {
       return
     }
 
-    if (nota.tipoDocumento === 'nfse') {
+    if (nota.tipoDocumento === 'nfse' || nota.tipoDocumento === 'cte') {
       await analisarNota(companyId, notaId)
       return
     }
@@ -705,6 +722,70 @@ async function processarAposXml(companyId: string, notaId: string) {
   }
 }
 
+/**
+ * Após cadastrar fornecedor: reanalisa NFs em aberto do mesmo CNPJ/CPF
+ * (vincula fornecedor e segue o pipeline sem clique em Reanalisar).
+ */
+async function reanalisarNotasPendentesPorDocumento(companyId: string, documento: string) {
+  const notas = await repositorioEntradaNotas.listarNotasPendentesPorDocumento(
+    companyId,
+    documento
+  )
+  let ok = 0
+  for (const nota of notas) {
+    try {
+      await analisarNota(companyId, nota.id)
+      ok += 1
+    } catch (erro) {
+      logFocus('warn', 'reanalise_apos_fornecedor_falhou', {
+        companyId,
+        notaId: nota.id,
+        mensagem: erro instanceof Error ? erro.message : String(erro),
+      })
+    }
+  }
+  return ok
+}
+
+/**
+ * Notas já puxadas sem fornecedor: se o CNPJ/CPF do emitente já existe no cadastro,
+ * roda o pipeline (vincula e avança) — sem clique em Reanalisar.
+ */
+async function vincularFornecedoresNasNotasPendentes(companyId: string) {
+  const notas = await repositorioEntradaNotas.listarNotasPendentesSemFornecedor(companyId)
+  const porDoc = new Map<string, string[]>()
+  for (const nota of notas) {
+    const doc = (nota.documentoEmitente ?? '').replace(/\D/g, '')
+    if (!doc) continue
+    const ids = porDoc.get(doc) ?? []
+    ids.push(nota.id)
+    porDoc.set(doc, ids)
+  }
+
+  let vinculadas = 0
+  for (const [doc, ids] of porDoc) {
+    const fornecedor = await repositorioEntradaNotas.buscarFornecedorPorCnpj(companyId, doc)
+    if (!fornecedor) continue
+    for (const id of ids) {
+      try {
+        await analisarNota(companyId, id)
+        vinculadas += 1
+      } catch (erro) {
+        logFocus('warn', 'vinculo_fornecedor_nota_falhou', {
+          companyId,
+          notaId: id,
+          mensagem: erro instanceof Error ? erro.message : String(erro),
+        })
+      }
+    }
+  }
+
+  if (vinculadas > 0) {
+    logFocus('info', 'vinculo_fornecedores_pendentes', { companyId, vinculadas })
+  }
+  return vinculadas
+}
+
 export const servicoEntradaNotas = {
   analisarNota,
   obterDetalhe,
@@ -719,4 +800,6 @@ export const servicoEntradaNotas = {
   manifestar,
   lancar,
   processarAposXml,
+  reanalisarNotasPendentesPorDocumento,
+  vincularFornecedoresNasNotasPendentes,
 }

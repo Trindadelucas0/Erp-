@@ -3,6 +3,7 @@ import { montarAuthParaTeste } from './cliente-focus-nfe-auth-teste.js'
 import {
   extrairChaveNfeDoXml,
   extrairChaveNfseDoXml,
+  extrairChaveCteDoXml,
   extrairCamposResumoDoXml,
   detectarDocumentoFiscalXml,
   montarVisualizacaoDoXml,
@@ -98,6 +99,35 @@ describe('parser XML NF-e', () => {
     expect(c.documentoEmitente).toBe('67790913000120')
     expect(c.cnpjDestinatario).toBe('34221243000171')
     expect(c.valorTotal).toBe(3000)
+  })
+
+  it('detecta CTe e extrai emitente/valor', () => {
+    // Chave com modelo 57 nas posições 21-22
+    const chave =
+      '35240712345678000185570010000000011000000015'
+    const xml = `<?xml version="1.0"?>
+      <cteProc>
+        <CTe xmlns="http://www.portalfiscal.inf.br/cte">
+          <infCte Id="CTe${chave}">
+            <ide><dhEmi>2024-07-10T14:00:00-03:00</dhEmi><nCT>1</nCT><serie>1</serie><natOp>PRESTACAO DE SERVICO</natOp></ide>
+            <emit><CNPJ>12345678000185</CNPJ><xNome>TRANSPORTADORA SA</xNome></emit>
+            <dest><CNPJ>29859815000102</CNPJ><xNome>DESTINATARIO LTDA</xNome></dest>
+            <vPrest><vTPrest>450.75</vTPrest><vRec>450.75</vRec></vPrest>
+          </infCte>
+        </CTe>
+      </cteProc>`
+    expect(detectarDocumentoFiscalXml(xml)).toBe('cte')
+    expect(extrairChaveCteDoXml(xml)).toBe(chave)
+    const c = extrairCamposResumoDoXml(xml)
+    expect(c.tipoDocumento).toBe('cte')
+    expect(c.chaveNfe).toBe(chave)
+    expect(c.nomeEmitente).toBe('TRANSPORTADORA SA')
+    expect(c.documentoEmitente).toBe('12345678000185')
+    expect(c.cnpjDestinatario).toBe('29859815000102')
+    expect(c.valorTotal).toBe(450.75)
+    const v = montarVisualizacaoDoXml(xml)
+    expect(v.tipoDocumento).toBe('cte')
+    expect(v.itens).toHaveLength(0)
   })
 
   it('detecta NFe 55', () => {

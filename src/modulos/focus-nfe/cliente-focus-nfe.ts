@@ -1,14 +1,15 @@
 /**
  * Cliente HTTP Focus NFe — único ponto de fetch externo.
  *
- * Docs oficiais (escopo = NFe 55 + NFS-e nacional recebidas; sem emissão):
+ * Docs oficiais (escopo = NFe 55 + NFS-e nacional + CTe recebidos; sem emissão):
  * - Intro: https://doc.focusnfe.com.br/reference/introducao
  * - Auth Basic (token:): https://doc.focusnfe.com.br/reference/autenticacao
  * - Ambientes: https://doc.focusnfe.com.br/reference/ambiente
  * - NFe: GET /v2/nfes_recebidas?cnpj=&versao=
  * - NFS-e: GET /v2/nfsens_recebidas?cnpj=&versao=
+ * - CTe: GET /v2/ctes_recebidas?cnpj=&versao=
  * - Manifestar NFe: POST /v2/nfes_recebidas/{chave}/manifesto
- * - Empresa: habilita_manifestacao / Recebimento de NFSes do ambiente nacional
+ * - Empresa: habilita_manifestacao / Recebimento de NFSes / CTe recebidas
  *
  * Auth: Basic (token como usuário, senha vazia).
  * Nunca lança — retorna objeto tipado.
@@ -68,6 +69,25 @@ export type NfseRecebidaResumoFocus = {
   documento_tomador?: string | null
   cnpj_tomador?: string | null
   url_xml?: string | null
+}
+
+/** Resumo CTe recebido (campos flexíveis da Focus). */
+export type CteRecebidaResumoFocus = {
+  chave?: string
+  chave_acesso?: string
+  chave_cte?: string
+  versao?: number
+  status?: string
+  situacao?: string
+  data_emissao?: string
+  valor_total?: string
+  valor_prestacao?: string
+  documento_emitente?: string
+  nome_emitente?: string | null
+  documento_destinatario?: string | null
+  cnpj_destinatario?: string | null
+  documento_tomador?: string | null
+  nome_tomador?: string | null
 }
 
 let ultimaChamadaEm = 0
@@ -373,8 +393,23 @@ export const clienteFocusNfe = {
     })
   },
 
+  listarCtesRecebidas(apiToken: string, homologacao: boolean, cnpj: string, versao?: number) {
+    return chamar<CteRecebidaResumoFocus[]>('GET', '/ctes_recebidas', apiToken, homologacao, {
+      query: {
+        cnpj: cnpj.replace(/\D/g, ''),
+        versao: versao && versao > 0 ? versao : undefined,
+      },
+    })
+  },
+
   baixarXmlNfse(apiToken: string, homologacao: boolean, chave: string) {
     return chamar<string>('GET', `/nfsens_recebidas/${chave}.xml`, apiToken, homologacao, {
+      accept: 'application/xml',
+    })
+  },
+
+  baixarXmlCte(apiToken: string, homologacao: boolean, chave: string) {
+    return chamar<string>('GET', `/ctes_recebidas/${chave}.xml`, apiToken, homologacao, {
       accept: 'application/xml',
     })
   },
@@ -415,6 +450,14 @@ export const clienteFocusNfe = {
    */
   baixarPdfNfse(apiToken: string, homologacao: boolean, chave: string) {
     return baixarPdfBinario(apiToken, homologacao, `/nfsens_recebidas/${chave}.pdf`)
+  },
+
+  /**
+   * PDF DACTe — CTe recebido.
+   * @see https://doc.focusnfe.com.br/reference/consultar_ctes_recebidas
+   */
+  baixarPdfCte(apiToken: string, homologacao: boolean, chave: string) {
+    return baixarPdfBinario(apiToken, homologacao, `/ctes_recebidas/${chave}.pdf`)
   },
 
   /** @deprecated use baixarPdfNfe */

@@ -4,7 +4,8 @@
  * Tela de fornecedores — CRUD completo PF/PJ com validação inline,
  * BrasilAPI, verificação de duplicidade e flags fiscais.
  */
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
@@ -599,10 +600,15 @@ function CampoCheckbox({ rotulo, valor, aoMudar, ajuda }: {
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 function ConteudoDaPaginaDeFornecedores() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const { estaAutenticado, carregando: carregandoSessao } = useSessaoDoUsuario()
   const podeCriar = usePermissao('fornecedores:create')
   const podeEditar = usePermissao('fornecedores:edit')
   const podeDesativar = usePermissao('fornecedores:delete')
+  const deepLinkProcessado = useRef(false)
+  const consultarDocumentoAoAbrir = useRef(false)
+  const retornoAposCadastroRef = useRef<string | null>(null)
 
   const [listaFornecedores, setListaFornecedores] = useState<Fornecedor[]>([])
   const [mensagemDeErro, setMensagemDeErro] = useState('')
@@ -957,8 +963,15 @@ function ConteudoDaPaginaDeFornecedores() {
 
   // ─── Modal ──────────────────────────────────────────────────────────────
 
-  function abrirModalNovo() {
-    const vazio = clonarFormulario(FORM_VAZIO)
+  function abrirModalNovo(prefill?: { documento?: string; nome?: string }) {
+    const nums = (prefill?.documento ?? '').replace(/\D/g, '')
+    const tipo: 'PF' | 'PJ' = nums.length === 11 ? 'PF' : 'PJ'
+    const vazio = clonarFormulario({
+      ...FORM_VAZIO,
+      tipo: nums ? tipo : FORM_VAZIO.tipo,
+      documento: nums ? mascaraPorTipo(nums, tipo) : '',
+      nome: prefill?.nome?.trim() || FORM_VAZIO.nome,
+    })
     setForm(vazio)
     setFormInicial(vazio)
     setModoEdicao(false)
@@ -967,13 +980,39 @@ function ConteudoDaPaginaDeFornecedores() {
     setAbaAtiva('identificacao')
     setMensagemDeErro('')
     setErroSalvar('')
-    setCamposTocados(new Set())
+    setCamposTocados(nums ? new Set(['documento']) : new Set())
     setAvisoDuplicidade(null)
     setErrosDaAbaAtual([])
     resetarStatus()
     resetarConsulta()
+    consultarDocumentoAoAbrir.current = nums.length === 11 || nums.length === 14
     setModalAberto(true)
   }
+
+  useEffect(() => {
+    if (!modalAberto || !consultarDocumentoAoAbrir.current) return
+    if (modoEdicao || modoVisualizacao) return
+    const nums = form.documento.replace(/\D/g, '')
+    if (nums.length !== 11 && nums.length !== 14) return
+    consultarDocumentoAoAbrir.current = false
+    void aoSairDocumento()
+  }, [modalAberto, modoEdicao, modoVisualizacao, form.documento, aoSairDocumento])
+
+  useEffect(() => {
+    if (deepLinkProcessado.current) return
+    if (carregandoSessao || !estaAutenticado || !podeCriar) return
+    if (searchParams.get('novo') !== '1') return
+    const documento = searchParams.get('documento') ?? ''
+    const nome = searchParams.get('nome') ?? undefined
+    const retorno = searchParams.get('retorno')
+    if (retorno && /^\/entrada-notas\/[a-zA-Z0-9-]+$/.test(retorno)) {
+      retornoAposCadastroRef.current = retorno
+    }
+    deepLinkProcessado.current = true
+    abrirModalNovo({ documento, nome })
+    router.replace('/fornecedores')
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deep-link one-shot
+  }, [carregandoSessao, estaAutenticado, podeCriar, searchParams, router])
 
   function abrirModalEdicao(f: Fornecedor) {
     const formEdicao = fornecedorParaForm(f)
@@ -1205,12 +1244,28 @@ function ConteudoDaPaginaDeFornecedores() {
       if (modoEdicao) {
         await clienteHttp.put(`/fornecedores/${idEmEdicao}`, corpo)
         setMensagemDeSucesso('Fornecedor atualizado!')
+        fecharModal()
+        await carregarFornecedores()
       } else {
-        await clienteHttp.post('/fornecedores', corpo)
-        setMensagemDeSucesso('Fornecedor cadastrado!')
+        const { data } = await clienteHttp.post<{
+          fornecedor: Fornecedor
+          notasReanalisadas?: number
+        }>('/fornecedores', corpo)
+        const n = data.notasReanalisadas ?? 0
+        setMensagemDeSucesso(
+          n > 0
+            ? `Fornecedor cadastrado! ${n} nota(s) reanalisada(s) automaticamente.`
+            : 'Fornecedor cadastrado!'
+        )
+        fecharModal()
+        const retorno = retornoAposCadastroRef.current
+        retornoAposCadastroRef.current = null
+        if (retorno) {
+          router.push(retorno)
+          return
+        }
+        await carregarFornecedores()
       }
-      fecharModal()
-      await carregarFornecedores()
     } catch (erro) {
       const msg = extrairErro(erro, 'Erro ao salvar fornecedor')
       if (/documento|cpf|cnpj|duplicad/i.test(msg)) {
@@ -1247,7 +1302,7 @@ function ConteudoDaPaginaDeFornecedores() {
   useRegistrarAtalhos(
     {
       buscar: () => refBusca.current?.focus(),
-      novo: abrirModalNovo,
+      novo: () => abrirModalNovo(),
       atualizar: carregarFornecedores,
       salvar: () => submeterFormularioPorId('form-fornecedor'),
       cancelar: solicitarFechar,
@@ -1828,7 +1883,7 @@ function ConteudoDaPaginaDeFornecedores() {
             {podeCriar && (
               <BotaoPrimario
                 type="button"
-                onClick={abrirModalNovo}
+                onClick={() => abrirModalNovo()}
                 title={tituloComAtalho('Novo fornecedor', teclaNovo)}
               >
                 + Novo fornecedor
@@ -1947,7 +2002,9 @@ function ConteudoDaPaginaDeFornecedores() {
 export default function PaginaDeFornecedores() {
   return (
     <ProtegerRota chaveDaPagina="fornecedores">
-      <ConteudoDaPaginaDeFornecedores />
+      <Suspense fallback={<p className="text-sm text-muted-foreground">Carregando…</p>}>
+        <ConteudoDaPaginaDeFornecedores />
+      </Suspense>
     </ProtegerRota>
   )
 }

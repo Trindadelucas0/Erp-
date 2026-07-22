@@ -7,16 +7,18 @@ import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import { CardPadrao } from '@/components/ui/card-padrao'
-import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { BadgeStatus } from '@/components/ui/badge-status'
+import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
 import { LinhasSkeletonTabela } from '@/components/ui/linhas-skeleton-tabela'
 import {
   ControlesPaginacao,
   type ItensPorPagina,
 } from '@/components/ui/controles-paginacao'
 import { Modal } from '@/components/ui/modal'
+import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
+import { ordenarLista } from '@/lib/ordenacao-lista'
 import {
   ConteudoVisualizacaoNota,
   type VisualizacaoNota,
@@ -25,8 +27,11 @@ import { BarraCarregamentoDownload } from '@/components/entrada-notas/barra-carr
 import { Loader2 } from 'lucide-react'
 
 import { mascaraCnpj } from '@/lib/documentos'
-
-type DestinatarioValidacao = 'ok' | 'divergente' | 'pendente'
+import {
+  prefixoPdfDocumento,
+  rotuloTipoDocumentoCurto,
+  varianteBadgeTipo,
+} from '@/lib/tipo-documento-entrada'
 
 type NotaPendente = {
   id: string
@@ -34,7 +39,6 @@ type NotaPendente = {
   tipoDocumento?: string | null
   nomeEmitente: string | null
   documentoEmitente: string | null
-  cnpjDestinatario?: string | null
   tipoNfe?: string | null
   valorTotal: number | null
   dataEmissao: string | null
@@ -43,7 +47,6 @@ type NotaPendente = {
   origem: string
   etapaAtual: string
   nfeCompleta?: boolean
-  destinatarioValidacao?: DestinatarioValidacao
   cnpjEmpresa?: string | null
   temDanfe?: boolean
   danfeStatus?: string | null
@@ -86,6 +89,8 @@ const PAINEIS: Array<{ id: PainelEntrada; rotulo: string }> = [
 ]
 
 const STORAGE_FILTROS = 'entrada-notas:filtros'
+/** Intervalo do ciclo automático (Só novas + Completar + Atualizar lista). */
+const INTERVALO_AUTO_MS = 120_000
 
 function isoDataLocal(d: Date): string {
   const y = d.getFullYear()
@@ -142,50 +147,14 @@ function formatarDocCurto(doc: string | null | undefined): string {
   return doc
 }
 
-function rotuloValidacaoDest(v: DestinatarioValidacao | undefined): string {
-  if (v === 'ok') return 'Nosso CNPJ'
-  if (v === 'divergente') return 'Outro destinatário'
-  return 'A confirmar'
-}
-
-function varianteValidacaoDest(
-  v: DestinatarioValidacao | undefined
-): 'sucesso' | 'reprovado' | 'inativo' {
-  if (v === 'ok') return 'sucesso'
-  if (v === 'divergente') return 'reprovado'
-  return 'inativo'
-}
-
 function ehArquivoXml(nome: string): boolean {
   return nome.toLowerCase().endsWith('.xml')
 }
 
-function rotuloStatus(status: string): string {
-  if (status === 'pendente') return 'pendente — clique para analisar'
-  if (status === 'em_analise') return 'em análise — clique para continuar'
-  if (status === 'stand_by') return 'stand-by (contato fornecedor)'
-  if (status === 'entrada_contagem') return 'liberada para contagem'
-  if (status === 'entrada_consolidada') return 'estoque consolidado (status)'
-  if (status === 'cancelada') return 'cancelada / manifesto'
-  return status
-}
-
-function varianteStatusEntrada(
-  status: string
-): 'pendente' | 'info' | 'aguardando' | 'inativo' | 'sucesso' {
-  if (status === 'pendente') return 'pendente'
-  if (status === 'em_analise') return 'info'
-  if (status === 'stand_by') return 'aguardando'
-  if (status === 'entrada_contagem' || status === 'entrada_consolidada') return 'sucesso'
-  return 'inativo'
-}
-
-function rotuloStatusCurto(status: string): string {
-  if (status === 'em_analise') return 'em análise'
-  if (status === 'stand_by') return 'stand-by'
-  if (status === 'entrada_contagem') return 'contagem'
-  if (status === 'entrada_consolidada') return 'consolidada'
-  return status
+function rotuloOrigem(origem: string): string {
+  if (origem === 'xml') return 'XML Manual'
+  if (origem === 'focus') return 'Automática'
+  return origem || '—'
 }
 
 function tituloPainel(painel: PainelEntrada): string {
@@ -211,13 +180,20 @@ function ConteudoEntradaNotas() {
   const [buscaDebounced, setBuscaDebounced] = useState('')
   const [filtrosProntos, setFiltrosProntos] = useState(false)
   const [reprocessando, setReprocessando] = useState(false)
+  const [autoCicloAtivo, setAutoCicloAtivo] = useState(false)
   const [xmlModal, setXmlModal] = useState<XmlVisualizacao | null>(null)
   const [xmlCarregandoId, setXmlCarregandoId] = useState<string | null>(null)
   const [downloadRotulo, setDownloadRotulo] = useState('')
   const [pagina, setPagina] = useState(1)
   const [itensPorPagina, setItensPorPagina] = useState<ItensPorPagina>(10)
+  const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<
+    'emissao' | 'tipo' | 'fornecedor' | 'chave' | 'valor' | 'origem' | 'etapa'
+  >()
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const inputArquivosRef = useRef<HTMLInputElement | null>(null)
+  const ocupadoRef = useRef(false)
+  const cicloIncrementalRef = useRef<(() => Promise<void>) | null>(null)
+  const vinculoFornecedorFeitoRef = useRef(false)
   const painelAnalise = painel === 'analise'
 
   useEffect(() => {
@@ -244,14 +220,37 @@ function ConteudoEntradaNotas() {
 
   useEffect(() => {
     setPagina(1)
-  }, [painel, dataDe, dataAte, buscaDebounced, itensPorPagina])
+  }, [painel, dataDe, dataAte, buscaDebounced, itensPorPagina, ordenacao])
 
-  const totalPaginas = Math.max(1, Math.ceil(notas.length / itensPorPagina))
+  const notasOrdenadas = useMemo(
+    () =>
+      ordenarLista(notas, ordenacao, (n, coluna) => {
+        switch (coluna) {
+          case 'emissao':
+            return n.dataEmissao ? new Date(n.dataEmissao).getTime() : 0
+          case 'tipo':
+            return n.tipoDocumento ?? ''
+          case 'fornecedor':
+            return n.nomeEmitente ?? ''
+          case 'chave':
+            return n.chaveNfe
+          case 'valor':
+            return n.valorTotal ?? 0
+          case 'origem':
+            return rotuloOrigem(n.origem)
+          case 'etapa':
+            return n.etapaAtual
+        }
+      }),
+    [notas, ordenacao]
+  )
+
+  const totalPaginas = Math.max(1, Math.ceil(notasOrdenadas.length / itensPorPagina))
   const paginaAtual = Math.min(pagina, totalPaginas)
   const listaPaginada = useMemo(() => {
     const inicio = (paginaAtual - 1) * itensPorPagina
-    return notas.slice(inicio, inicio + itensPorPagina)
-  }, [notas, paginaAtual, itensPorPagina])
+    return notasOrdenadas.slice(inicio, inicio + itensPorPagina)
+  }, [notasOrdenadas, paginaAtual, itensPorPagina])
 
   const carregar = useCallback(async (opcoes?: { silencioso?: boolean }) => {
     if (!opcoes?.silencioso) setCarregando(true)
@@ -281,30 +280,182 @@ function ConteudoEntradaNotas() {
     }
   }, [carregar, filtrosProntos])
 
-  async function acompanharJob(jobId: string) {
+  async function acompanharJob(
+    jobId: string,
+    opcoes?: { limparFiltroData?: boolean }
+  ): Promise<'ok' | 'erro'> {
     if (pollRef.current) clearInterval(pollRef.current)
-    setMensagem('Sincronizando em lotes… notas já salvas aparecem abaixo.')
-    pollRef.current = setInterval(async () => {
-      try {
-        const { data } = await clienteHttp.get<{ job: JobStatus }>(`/focus-nfe/jobs/${jobId}`)
-        setJob(data.job)
-        await carregar({ silencioso: true })
-        if (data.job.status === 'ok' || data.job.status === 'erro') {
-          if (pollRef.current) clearInterval(pollRef.current)
-          setSincronizando(false)
-          if (data.job.status === 'ok') {
-            setMensagem(data.job.mensagem ?? 'Sincronização concluída.')
-            await carregar()
-          } else {
-            setErro(data.job.mensagem ?? 'Falha na sincronização.')
+    setMensagem('Sincronizando em lotes (NFe + NFS-e + CTe)… notas já salvas aparecem abaixo.')
+
+    return new Promise((resolve) => {
+      pollRef.current = setInterval(async () => {
+        try {
+          const { data } = await clienteHttp.get<{ job: JobStatus }>(`/focus-nfe/jobs/${jobId}`)
+          setJob(data.job)
+          await carregar({ silencioso: true })
+          if (data.job.status === 'ok' || data.job.status === 'erro') {
+            if (pollRef.current) clearInterval(pollRef.current)
+            pollRef.current = null
+            setSincronizando(false)
+            if (data.job.status === 'ok') {
+              const msg =
+                data.job.mensagem ??
+                'Sincronização concluída. Use Ver todas (sem data) se o filtro esconder notas.'
+              setMensagem(msg)
+              if (opcoes?.limparFiltroData && (dataDe || dataAte)) {
+                setDataDe('')
+                setDataAte('')
+              } else {
+                await carregar()
+              }
+              resolve('ok')
+            } else {
+              setErro(data.job.mensagem ?? 'Falha na sincronização.')
+              resolve('erro')
+            }
           }
+        } catch {
+          if (pollRef.current) clearInterval(pollRef.current)
+          pollRef.current = null
+          setSincronizando(false)
+          resolve('erro')
         }
-      } catch {
-        if (pollRef.current) clearInterval(pollRef.current)
-        setSincronizando(false)
-      }
-    }, 1500)
+      }, 1500)
+    })
   }
+
+  function statusHttpErro(err: unknown): number | undefined {
+    if (!err || typeof err !== 'object') return undefined
+    return (err as { response?: { status?: number } }).response?.status
+  }
+
+  async function sincronizarFocus(
+    completo: boolean,
+    opcoes?: { silencioso409?: boolean }
+  ): Promise<'ok' | 'erro' | 'ocupado'> {
+    setSincronizando(true)
+    setErro('')
+    setMensagem('')
+    setJob(null)
+    try {
+      const { data } = await clienteHttp.post<{ jobId: string; status: string }>(
+        '/focus-nfe/jobs/sincronizar',
+        { completo }
+      )
+      setMensagem(
+        completo
+          ? 'Buscando na Focus tudo (NFe + NFS-e + CTe) contra o CNPJ… Ao terminar, a lista abre sem filtro de data.'
+          : 'Buscando só notas novas na Focus (NFe + NFS-e + CTe)…'
+      )
+      return await acompanharJob(data.jobId, { limparFiltroData: completo })
+    } catch (err) {
+      setSincronizando(false)
+      if (opcoes?.silencioso409 && statusHttpErro(err) === 409) {
+        await carregar({ silencioso: true })
+        return 'ocupado'
+      }
+      setErro(extrairMensagemApi(err, 'Não foi possível iniciar a sync.'))
+      return 'erro'
+    }
+  }
+
+  async function reprocessarXmls(opcoes?: { silencioso?: boolean }) {
+    setReprocessando(true)
+    if (!opcoes?.silencioso) {
+      setErro('')
+      setMensagem('')
+    }
+    try {
+      const { data } = await clienteHttp.post<{ mensagem: string; processados: number }>(
+        '/focus-nfe/nfe-recebidas/reprocessar-xmls'
+      )
+      if (!opcoes?.silencioso) setMensagem(data.mensagem)
+      await carregar({ silencioso: opcoes?.silencioso })
+    } catch (err) {
+      if (!opcoes?.silencioso) {
+        setErro(extrairMensagemApi(err, 'Falha ao reprocessar XMLs.'))
+      }
+    } finally {
+      setReprocessando(false)
+    }
+  }
+
+  async function vincularFornecedoresPendentes(opcoes?: { silencioso?: boolean }) {
+    try {
+      const { data } = await clienteHttp.post<{ vinculadas: number }>(
+        '/entrada-notas/vincular-fornecedores-pendentes'
+      )
+      if (data.vinculadas > 0) {
+        if (!opcoes?.silencioso) {
+          setMensagem(
+            `${data.vinculadas} nota(s) vinculada(s) automaticamente a fornecedor cadastrado.`
+          )
+        }
+        await carregar({ silencioso: true })
+      }
+      return data.vinculadas
+    } catch {
+      return 0
+    }
+  }
+
+  async function rodarCicloIncremental() {
+    if (ocupadoRef.current) return
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+
+    setAutoCicloAtivo(true)
+    try {
+      if (painelAnalise) {
+        setDownloadRotulo('Buscando só notas novas…')
+        const resultado = await sincronizarFocus(false, { silencioso409: true })
+        if (resultado !== 'erro') {
+          setDownloadRotulo('Completando dados…')
+          await reprocessarXmls({ silencioso: true })
+        }
+      }
+      setDownloadRotulo('Vinculando fornecedores…')
+      await vincularFornecedoresPendentes({ silencioso: true })
+      setDownloadRotulo('Atualizando lista…')
+      await carregar({ silencioso: true })
+    } finally {
+      setAutoCicloAtivo(false)
+      setDownloadRotulo('')
+    }
+  }
+
+  cicloIncrementalRef.current = () => rodarCicloIncremental()
+
+  // Ao entrar: tenta vincular fornecedor nas notas já puxadas (sem barra de sync Focus).
+  useEffect(() => {
+    if (!filtrosProntos) return
+    if (vinculoFornecedorFeitoRef.current) return
+    vinculoFornecedorFeitoRef.current = true
+    void vincularFornecedoresPendentes({ silencioso: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- uma vez por visita
+  }, [filtrosProntos])
+
+  // A cada 2 min: busca/atualiza (Só novas + Completar + lista).
+  useEffect(() => {
+    if (!filtrosProntos) return
+
+    let cancelado = false
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+
+    const agendarProxima = () => {
+      timeoutId = setTimeout(async () => {
+        if (cancelado) return
+        await cicloIncrementalRef.current?.()
+        if (!cancelado) agendarProxima()
+      }, INTERVALO_AUTO_MS)
+    }
+
+    agendarProxima()
+
+    return () => {
+      cancelado = true
+      if (timeoutId) clearTimeout(timeoutId)
+    }
+  }, [filtrosProntos])
 
   async function baixarXmlNota(id: string, chave: string) {
     setXmlCarregandoId(id)
@@ -350,7 +501,7 @@ function ConteudoEntradaNotas() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${n.tipoDocumento === 'nfse' ? 'DANFSe' : 'DANFE'}-${n.chaveNfe || n.id}.pdf`
+      a.download = `${prefixoPdfDocumento(n.tipoDocumento)}-${n.chaveNfe || n.id}.pdf`
       a.click()
       URL.revokeObjectURL(url)
       await carregar({ silencioso: true })
@@ -378,45 +529,6 @@ function ConteudoEntradaNotas() {
     } finally {
       setXmlCarregandoId(null)
       setDownloadRotulo('')
-    }
-  }
-
-  async function sincronizarFocus(completo: boolean) {
-    setSincronizando(true)
-    setErro('')
-    setMensagem('')
-    setJob(null)
-    try {
-      const { data } = await clienteHttp.post<{ jobId: string; status: string }>(
-        '/focus-nfe/jobs/sincronizar',
-        { completo }
-      )
-      setMensagem(
-        completo
-          ? 'Buscando na Focus tudo que existir contra o CNPJ (ciência + XML)…'
-          : 'Buscando só notas novas na Focus…'
-      )
-      await acompanharJob(data.jobId)
-    } catch (err) {
-      setSincronizando(false)
-      setErro(extrairMensagemApi(err, 'Não foi possível iniciar a sync.'))
-    }
-  }
-
-  async function reprocessarXmls() {
-    setReprocessando(true)
-    setErro('')
-    setMensagem('')
-    try {
-      const { data } = await clienteHttp.post<{ mensagem: string; processados: number }>(
-        '/focus-nfe/nfe-recebidas/reprocessar-xmls'
-      )
-      setMensagem(data.mensagem)
-      await carregar()
-    } catch (err) {
-      setErro(extrairMensagemApi(err, 'Falha ao reprocessar XMLs.'))
-    } finally {
-      setReprocessando(false)
     }
   }
 
@@ -520,22 +632,32 @@ function ConteudoEntradaNotas() {
     setImportando(false)
   }
 
-  const ocupado = sincronizando || importando || reprocessando
+  const ocupado = sincronizando || importando || reprocessando || autoCicloAtivo
+  ocupadoRef.current = ocupado
   const filtrosDataAtivos = Boolean(dataDe || dataAte)
+
+  const barraSyncAtiva = (sincronizando || reprocessando || autoCicloAtivo) && !xmlCarregandoId
+  const barraRotulo = xmlCarregandoId
+    ? downloadRotulo || 'Carregando…'
+    : sincronizando
+      ? job?.mensagem || downloadRotulo || 'Sincronizando Focus…'
+      : reprocessando || autoCicloAtivo
+        ? downloadRotulo || 'Completando dados…'
+        : downloadRotulo || 'Carregando…'
 
   return (
     <div className="min-w-0 space-y-6">
       <BarraCarregamentoDownload
-        ativo={Boolean(xmlCarregandoId)}
-        rotulo={downloadRotulo || 'Carregando…'}
+        ativo={Boolean(xmlCarregandoId) || barraSyncAtiva}
+        rotulo={barraRotulo}
       />
       <div>
         <p className="text-sm text-muted-foreground">Fiscal &gt; Entrada de Notas</p>
         <h1 className="mt-1 text-2xl font-bold tracking-tight">Entrada de Notas</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Sync Focus traz <strong>NFe 55</strong> (produto) e <strong>NFS-e</strong> (serviço
-          nacional) em lotes (até 10 a cada ~2 min) e salva no banco. Lista, datas e busca usam só o
-          que já está salvo — sem reconsultar a Focus.
+          Sync Focus traz <strong>NFe 55</strong> (produto), <strong>NFS-e</strong> (serviço
+          nacional) e <strong>CTe</strong> (transporte) em lotes (até 10 a cada ~2 min) e salva no
+          banco. Lista, datas e busca usam só o que já está salvo — sem reconsultar a Focus.
         </p>
       </div>
 
@@ -554,7 +676,15 @@ function ConteudoEntradaNotas() {
       </div>
 
       {mensagem && (
-        <p className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">{mensagem}</p>
+        <div className="space-y-1 rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">
+          <p>{mensagem}</p>
+          {(mensagem.includes('DistDFe') || mensagem.includes('0 NFe')) && (
+            <p className="text-xs text-muted-foreground">
+              Meta: NFe + NFS-e + CTe. Se só NFS-e veio, ligue Recebimento de NFes/CTe na Focus e use{' '}
+              <strong>Ver todas (sem data)</strong>.
+            </p>
+          )}
+        </div>
       )}
       {erro && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{erro}</p>
@@ -570,51 +700,11 @@ function ConteudoEntradaNotas() {
       <CardPadrao
         titulo={tituloPainel(painel)}
         descricao={
-          painelAnalise
-            ? 'Buscar tudo reinicia o cursor e puxa NFe/NFS-e em lotes. Datas e busca filtram só o banco local (filtro permanece ao abrir uma nota).'
-            : 'Notas já lançadas ou canceladas. Filtro de datas e busca na lista local.'
-        }
-        acoes={
-          <>
-            {painelAnalise && (
-              <>
-                <BotaoPrimario
-                  type="button"
-                  onClick={() => sincronizarFocus(true)}
-                  disabled={ocupado}
-                >
-                  {sincronizando ? 'Sincronizando…' : 'Buscar na Focus (tudo)'}
-                </BotaoPrimario>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => sincronizarFocus(false)}
-                  disabled={ocupado}
-                >
-                  Só novas
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={reprocessarXmls}
-                  disabled={ocupado}
-                >
-                  {reprocessando ? 'Reprocessando…' : 'Completar dados'}
-                </Button>
-              </>
-            )}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => void carregar()}
-              disabled={carregando || ocupado}
-            >
-              Atualizar
-            </Button>
-          </>
+          autoCicloAtivo
+            ? 'Atualizando agora…'
+            : painelAnalise
+              ? 'Busca automática a cada 2 minutos'
+              : 'A lista atualiza sozinha a cada 2 minutos'
         }
       >
         <div className="mb-3 flex min-w-0 flex-wrap items-end gap-3">
@@ -690,26 +780,67 @@ function ConteudoEntradaNotas() {
           <table className="w-full min-w-[800px] text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
-                <th className="px-4 py-3 font-medium">Emissão</th>
-                <th className="px-4 py-3 font-medium">Tipo</th>
-                <th className="px-4 py-3 font-medium">Emitente (quem emitiu)</th>
-                <th className="hidden px-4 py-3 font-medium md:table-cell">Destinatário</th>
-                <th className="hidden px-4 py-3 font-medium lg:table-cell">Chave</th>
-                <th className="px-4 py-3 text-right font-medium">Valor</th>
-                <th className="hidden px-4 py-3 font-medium md:table-cell">Origem</th>
-                <th className="hidden px-4 py-3 font-medium md:table-cell">Etapa</th>
-                <th className="px-4 py-3 font-medium">Status</th>
+                <CabecalhoColunaOrdenavel
+                  className="px-4 py-3"
+                  rotulo="Emissão"
+                  coluna="emissao"
+                  ordenacao={ordenacao}
+                  onOrdenar={alternarOrdenacao}
+                />
+                <CabecalhoColunaOrdenavel
+                  className="px-4 py-3"
+                  rotulo="Tipo"
+                  coluna="tipo"
+                  ordenacao={ordenacao}
+                  onOrdenar={alternarOrdenacao}
+                />
+                <CabecalhoColunaOrdenavel
+                  className="px-4 py-3"
+                  rotulo="Fornecedor"
+                  coluna="fornecedor"
+                  ordenacao={ordenacao}
+                  onOrdenar={alternarOrdenacao}
+                />
+                <CabecalhoColunaOrdenavel
+                  className="hidden px-4 py-3 lg:table-cell"
+                  rotulo="Chave"
+                  coluna="chave"
+                  ordenacao={ordenacao}
+                  onOrdenar={alternarOrdenacao}
+                />
+                <CabecalhoColunaOrdenavel
+                  className="px-4 py-3"
+                  rotulo="Valor"
+                  coluna="valor"
+                  ordenacao={ordenacao}
+                  onOrdenar={alternarOrdenacao}
+                  alinhamento="right"
+                />
+                <CabecalhoColunaOrdenavel
+                  className="hidden px-4 py-3 md:table-cell"
+                  rotulo="Origem"
+                  coluna="origem"
+                  ordenacao={ordenacao}
+                  onOrdenar={alternarOrdenacao}
+                />
+                <CabecalhoColunaOrdenavel
+                  className="hidden px-4 py-3 md:table-cell"
+                  rotulo="Etapa"
+                  coluna="etapa"
+                  ordenacao={ordenacao}
+                  onOrdenar={alternarOrdenacao}
+                />
                 <th className="px-4 py-3 font-medium">XML</th>
               </tr>
             </thead>
             <tbody>
               {carregando ? (
-                <LinhasSkeletonTabela linhas={5} colunas={10} />
+                <LinhasSkeletonTabela linhas={5} colunas={8} />
               ) : notas.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                     {painelAnalise
-                      ? 'Nenhuma nota neste painel (filtro de datas/busca ativo). Clique em Buscar na Focus (tudo) ou Só novas. Use Ver todas (sem data) ou importe XML.'
+                      ? 'Nenhuma nota neste painel (filtro de datas/busca ativo). A busca Focus roda sozinha a cada 2 minutos. Use Ver todas (sem data) ou importe XML.'
                       : 'Nenhuma nota neste painel.'}
                   </td>
                 </tr>
@@ -735,9 +866,9 @@ function ConteudoEntradaNotas() {
                     </td>
                     <td className="px-4 py-3">
                       <BadgeStatus
-                        variante={n.tipoDocumento === 'nfse' ? 'info' : 'sucesso'}
+                        variante={varianteBadgeTipo(n.tipoDocumento)}
                       >
-                        {n.tipoDocumento === 'nfse' ? 'NFS-e' : 'NFe'}
+                        {rotuloTipoDocumentoCurto(n.tipoDocumento)}
                       </BadgeStatus>
                     </td>
                     <td className="max-w-[16rem] px-4 py-3">
@@ -749,16 +880,6 @@ function ConteudoEntradaNotas() {
                       </div>
                       <div className="truncate text-xs text-muted-foreground">
                         {formatarDocCurto(n.documentoEmitente)}
-                      </div>
-                    </td>
-                    <td className="hidden max-w-[12rem] px-4 py-3 md:table-cell">
-                      <div className="truncate text-xs">
-                        {formatarDocCurto(n.cnpjDestinatario)}
-                      </div>
-                      <div className="mt-1">
-                        <BadgeStatus variante={varianteValidacaoDest(n.destinatarioValidacao)}>
-                          {rotuloValidacaoDest(n.destinatarioValidacao)}
-                        </BadgeStatus>
                       </div>
                     </td>
                     <td className="hidden px-4 py-3 lg:table-cell">
@@ -780,15 +901,10 @@ function ConteudoEntradaNotas() {
                         : '—'}
                     </td>
                     <td className="hidden px-4 py-3 md:table-cell">
-                      <BadgeStatus variante="inativo">{n.origem}</BadgeStatus>
+                      <BadgeStatus variante="inativo">{rotuloOrigem(n.origem)}</BadgeStatus>
                     </td>
                     <td className="hidden px-4 py-3 md:table-cell">
                       <BadgeStatus variante="info">{n.etapaAtual}</BadgeStatus>
-                    </td>
-                    <td className="px-4 py-3" title={rotuloStatus(n.statusEntrada)}>
-                      <BadgeStatus variante={varianteStatusEntrada(n.statusEntrada)}>
-                        {rotuloStatusCurto(n.statusEntrada)}
-                      </BadgeStatus>
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex flex-wrap gap-1">
@@ -841,7 +957,7 @@ function ConteudoEntradaNotas() {
                                 ? 'PDF indisponível na Focus — use Ver nota'
                                 : n.danfeStatus === 'rate_limit'
                                   ? 'Aguarde 1–2 min (limite Focus)'
-                                  : 'Baixar PDF (DANFE/DANFSe)'
+                                  : 'Baixar PDF (DANFE/DANFSe/DACTe)'
                           }
                           onClick={() => void baixarDanfeNota(n)}
                         >
@@ -853,7 +969,7 @@ function ConteudoEntradaNotas() {
                           ) : n.temDanfe ? (
                             'PDF'
                           ) : (
-                            'DANFE'
+                            prefixoPdfDocumento(n.tipoDocumento)
                           )}
                         </Button>
                       </div>
@@ -937,7 +1053,7 @@ function ConteudoEntradaNotas() {
       {painelAnalise && (
       <CardPadrao
         titulo="Importar XML"
-        descricao="XML de NFe 55 (produto) ou NFS-e nacional (serviço). Um arquivo por vez."
+        descricao="XML de NFe 55 (produto), NFS-e nacional (serviço) ou CTe (transporte). Um arquivo por vez."
         compacto
       >
         <div className="space-y-3">

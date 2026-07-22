@@ -1,11 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { ChevronDown, DollarSign, Filter, Loader2, Plus } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { clienteHttp } from '@/services/api'
-import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { usePermissao } from '@/hooks/use-permissao'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { CardPadrao } from '@/components/ui/card-padrao'
@@ -39,7 +39,7 @@ const TIPO_POR_ABA: Record<AbaId, TipoPlanoAba> = {
   resultado: 'resultado',
 }
 
-function ConteudoDaPagina() {
+export function ConteudoDaPaginaPlanosFinanceiros() {
   const { estaAutenticado, carregando: carregandoSessao } = useSessaoDoUsuario()
   const podeCriar = usePermissao('financeiro:create')
   const podeEditar = usePermissao('financeiro:edit')
@@ -308,9 +308,15 @@ function ConteudoDaPagina() {
 }
 
 export default function PaginaPlanosFinanceiros() {
+  return <RedirectParaConfiguracoesFinanceiro />
+}
+
+function RedirectParaConfiguracoesFinanceiro() {
+  const router = useRouter()
+  useEffect(() => {
+    router.replace('/configuracoes?aba=financeiro')
+  }, [router])
   return (
-    <ProtegerRota chaveDaPagina="planos-financeiros">
-      <ConteudoDaPagina />
-    </ProtegerRota>
+    <p className="text-sm text-muted-foreground">Redirecionando para Configurações…</p>
   )
 }

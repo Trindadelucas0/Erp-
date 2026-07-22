@@ -161,6 +161,13 @@ async function lancar(requisicao: FastifyRequest, resposta: FastifyReply) {
   return resposta.send(dados)
 }
 
+async function vincularFornecedoresPendentes(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const vinculadas = await servicoEntradaNotas.vincularFornecedoresNasNotasPendentes(
+    companyIdDe(requisicao)
+  )
+  return resposta.send({ vinculadas })
+}
+
 export const controladorEntradaNotas = {
   detalhe,
   analisar,
@@ -174,4 +181,5 @@ export const controladorEntradaNotas = {
   definirPrazo,
   manifestar,
   lancar,
+  vincularFornecedoresPendentes,
 }

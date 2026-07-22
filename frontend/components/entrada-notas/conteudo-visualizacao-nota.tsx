@@ -15,7 +15,7 @@ export type ItemVisualizacaoNota = {
 }
 
 export type VisualizacaoNota = {
-  tipoDocumento: 'nfe55' | 'nfse' | 'desconhecido'
+  tipoDocumento: 'nfe55' | 'nfse' | 'cte' | 'desconhecido'
   chaveNfe: string | null
   numero: string | null
   serie: string | null
@@ -65,7 +65,12 @@ export function ConteudoVisualizacaoNota({
   visualizacao: VisualizacaoNota
 }) {
   const ehNfse = visualizacao.tipoDocumento === 'nfse'
-  const tituloTipo = ehNfse ? 'NFS-e (serviço)' : 'NFe 55 (produto)'
+  const ehCte = visualizacao.tipoDocumento === 'cte'
+  const ehDocumental = ehNfse || ehCte
+  const tituloTipo =
+    ehNfse ? 'NFS-e (serviço)' : ehCte ? 'CTe (transporte)' : 'NFe 55 (produto)'
+  const rotuloEmitente = ehNfse ? 'Prestador' : ehCte ? 'Transportadora' : 'Emitente'
+  const rotuloDest = ehNfse ? 'Tomador' : ehCte ? 'Destinatário / Tomador' : 'Destinatário'
 
   return (
     <div className="space-y-4 text-sm">
@@ -77,7 +82,9 @@ export function ConteudoVisualizacaoNota({
           <p className="mt-1 text-lg font-semibold">
             {visualizacao.numero
               ? `Nº ${visualizacao.numero}${visualizacao.serie ? ` · Série ${visualizacao.serie}` : ''}`
-              : 'Nota fiscal'}
+              : ehCte
+                ? 'Conhecimento de transporte'
+                : 'Nota fiscal'}
           </p>
         </div>
         <p className="text-right text-lg font-semibold tabular-nums">
@@ -88,7 +95,7 @@ export function ConteudoVisualizacaoNota({
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-md border border-border bg-muted/20 p-3">
           <p className="text-xs font-medium uppercase text-muted-foreground">
-            {ehNfse ? 'Prestador' : 'Emitente'}
+            {rotuloEmitente}
           </p>
           <p className="mt-1 font-medium">{visualizacao.emitente.nome ?? '—'}</p>
           <p className="text-xs text-muted-foreground">
@@ -100,7 +107,7 @@ export function ConteudoVisualizacaoNota({
         </div>
         <div className="rounded-md border border-border bg-muted/20 p-3">
           <p className="text-xs font-medium uppercase text-muted-foreground">
-            {ehNfse ? 'Tomador' : 'Destinatário'}
+            {rotuloDest}
           </p>
           <p className="mt-1 font-medium">{visualizacao.destinatario.nome ?? '—'}</p>
           <p className="text-xs text-muted-foreground">
@@ -127,14 +134,16 @@ export function ConteudoVisualizacaoNota({
         )}
       </div>
 
-      {ehNfse && visualizacao.descricaoServico && (
+      {ehDocumental && visualizacao.descricaoServico && (
         <div className="rounded-md border border-border p-3">
-          <p className="text-xs font-medium uppercase text-muted-foreground">Descrição do serviço</p>
+          <p className="text-xs font-medium uppercase text-muted-foreground">
+            {ehCte ? 'Observações / natureza' : 'Descrição do serviço'}
+          </p>
           <p className="mt-1 whitespace-pre-wrap">{visualizacao.descricaoServico}</p>
         </div>
       )}
 
-      {!ehNfse && visualizacao.itens.length > 0 && (
+      {!ehDocumental && visualizacao.itens.length > 0 && (
         <div className="overflow-x-auto rounded-md border border-border">
           <table className="w-full min-w-[640px] text-left text-xs">
             <thead>
@@ -180,7 +189,7 @@ export function ConteudoVisualizacaoNota({
         </div>
       )}
 
-      {!ehNfse && visualizacao.itens.length === 0 && (
+      {!ehDocumental && visualizacao.itens.length === 0 && (
         <p className="text-muted-foreground">Sem itens de produto no XML desta nota.</p>
       )}
 

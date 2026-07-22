@@ -88,6 +88,8 @@ model ConfiguracaoFocusNfe {
   ultimaVersaoNfeRecebida  Int      @default(0)
   /// Versão incremental Focus GET /nfsens_recebidas (independente da NFe 55)
   ultimaVersaoNfseRecebida Int      @default(0)
+  /// Versão incremental Focus GET /ctes_recebidas
+  ultimaVersaoCteRecebida  Int      @default(0)
   /// Stub de regras fiscais de entrada (NCM, origem, CST/CFOP). ativo=false não bloqueia.
   regrasFiscaisJson        Json?
   createdAt                DateTime @default(now())
@@ -119,7 +121,7 @@ model NfeRecebida {
   companyId                String
   company                  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   chaveNfe                 String
-  /// nfe55 | nfse
+  /// nfe55 | nfse | cte
   tipoDocumento            String    @default("nfe55")
   nomeEmitente             String?
   documentoEmitente        String?

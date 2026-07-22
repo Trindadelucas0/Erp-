@@ -62,12 +62,23 @@ async function atualizarUltimaVersaoNfse(companyId: string, versao: number) {
   })
 }
 
+async function atualizarUltimaVersaoCte(companyId: string, versao: number) {
+  return clientePrisma.configuracaoFocusNfe.update({
+    where: { companyId },
+    data: { ultimaVersaoCteRecebida: versao },
+  })
+}
+
 async function resetarUltimaVersao(companyId: string) {
   const cfg = await buscarConfigPorEmpresa(companyId)
   if (!cfg) return null
   return clientePrisma.configuracaoFocusNfe.update({
     where: { companyId },
-    data: { ultimaVersaoNfeRecebida: 0, ultimaVersaoNfseRecebida: 0 },
+    data: {
+      ultimaVersaoNfeRecebida: 0,
+      ultimaVersaoNfseRecebida: 0,
+      ultimaVersaoCteRecebida: 0,
+    },
   })
 }
 
@@ -318,6 +329,7 @@ export const repositorioFocusNfe = {
   salvarRegrasFiscais,
   atualizarUltimaVersao,
   atualizarUltimaVersaoNfse,
+  atualizarUltimaVersaoCte,
   resetarUltimaVersao,
   criarJob,
   atualizarJob,

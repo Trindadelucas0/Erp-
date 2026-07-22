@@ -10,6 +10,13 @@ import { controladorEntradaNotas } from './controlador-entrada-notas.js'
 export async function rotasEntradaNotas(aplicacao: FastifyInstance): Promise<void> {
   const autenticado = [middlewareDeAutenticacao, middlewareEmpresaAtiva]
 
+  // Rotas estáticas antes de /:id
+  aplicacao.post(
+    '/vincular-fornecedores-pendentes',
+    { preHandler: autenticado },
+    controladorEntradaNotas.vincularFornecedoresPendentes
+  )
+
   aplicacao.get('/:id', { preHandler: autenticado }, controladorEntradaNotas.detalhe)
   aplicacao.post('/:id/analisar', { preHandler: autenticado }, controladorEntradaNotas.analisar)
   aplicacao.post('/:id/vincular-item', { preHandler: autenticado }, controladorEntradaNotas.vincularItem)

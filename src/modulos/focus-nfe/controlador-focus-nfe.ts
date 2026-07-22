@@ -115,7 +115,12 @@ async function obterXml(requisicao: FastifyRequest, resposta: FastifyReply) {
 async function obterDanfe(requisicao: FastifyRequest, resposta: FastifyReply) {
   const { id } = requisicao.params as { id: string }
   const dados = await servicoFocusNfe.obterDanfeNota(companyIdDe(requisicao), id)
-  const prefixo = dados.tipoDocumento === 'nfse' ? 'DANFSe' : 'DANFE'
+  const prefixo =
+    dados.tipoDocumento === 'nfse'
+      ? 'DANFSe'
+      : dados.tipoDocumento === 'cte'
+        ? 'DACTe'
+        : 'DANFE'
   const nomeArquivo = `${prefixo}-${dados.chaveNfe || id}.pdf`
   return resposta
     .header('Content-Type', 'application/pdf')
