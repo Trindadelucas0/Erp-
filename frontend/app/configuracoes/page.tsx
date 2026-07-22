@@ -32,7 +32,7 @@ import {
 } from '@/lib/atalhos/interpretar-tecla'
 import type { AtalhoConfigurado, ChaveDaAcao } from '@/lib/atalhos/tipos'
 
-type AbaConfig = 'geral' | 'suprimentos' | 'vendas' | 'financeiro' | 'fiscal'
+type AbaConfig = 'geral' | 'vendas' | 'financeiro' | 'fiscal'
 type SecaoFiscal = 'cfop' | 'buscador'
 
 const ABAS_ASSINATURA = [
@@ -363,7 +363,6 @@ function ConteudoDaPaginaDeConfiguracoes() {
       lista.push({ id: 'geral', rotulo: 'Geral' })
     }
     if (ehAdmin) {
-      lista.push({ id: 'suprimentos', rotulo: 'Suprimentos' })
       lista.push({ id: 'vendas', rotulo: 'Vendas' })
     }
     if (podeFinanceiroAba) lista.push({ id: 'financeiro', rotulo: 'Financeiro' })
@@ -433,7 +432,6 @@ function ConteudoDaPaginaDeConfiguracoes() {
         </div>
       )}
 
-      {abaAtiva === 'suprimentos' && <PlaceholderAba nome="Suprimentos" />}
       {abaAtiva === 'vendas' && <PlaceholderAba nome="Vendas" />}
 
       {abaAtiva === 'financeiro' && podeFinanceiroAba && (
