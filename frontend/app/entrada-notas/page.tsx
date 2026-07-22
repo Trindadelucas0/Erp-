@@ -89,8 +89,6 @@ const PAINEIS: Array<{ id: PainelEntrada; rotulo: string }> = [
 ]
 
 const STORAGE_FILTROS = 'entrada-notas:filtros'
-/** Intervalo do ciclo automático (Só novas + Completar + Atualizar lista). */
-const INTERVALO_AUTO_MS = 120_000
 
 function isoDataLocal(d: Date): string {
   const y = d.getFullYear()
@@ -180,7 +178,6 @@ function ConteudoEntradaNotas() {
   const [buscaDebounced, setBuscaDebounced] = useState('')
   const [filtrosProntos, setFiltrosProntos] = useState(false)
   const [reprocessando, setReprocessando] = useState(false)
-  const [autoCicloAtivo, setAutoCicloAtivo] = useState(false)
   const [xmlModal, setXmlModal] = useState<XmlVisualizacao | null>(null)
   const [xmlCarregandoId, setXmlCarregandoId] = useState<string | null>(null)
   const [downloadRotulo, setDownloadRotulo] = useState('')
@@ -191,8 +188,6 @@ function ConteudoEntradaNotas() {
   >()
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const inputArquivosRef = useRef<HTMLInputElement | null>(null)
-  const ocupadoRef = useRef(false)
-  const cicloIncrementalRef = useRef<(() => Promise<void>) | null>(null)
   const vinculoFornecedorFeitoRef = useRef(false)
   const painelAnalise = painel === 'analise'
 
@@ -282,17 +277,18 @@ function ConteudoEntradaNotas() {
 
   async function acompanharJob(
     jobId: string,
-    opcoes?: { limparFiltroData?: boolean }
+    opcoes?: { limparFiltroData?: boolean; atualizarLista?: boolean }
   ): Promise<'ok' | 'erro'> {
     if (pollRef.current) clearInterval(pollRef.current)
-    setMensagem('Sincronizando em lotes (NFe + NFS-e + CTe)… notas já salvas aparecem abaixo.')
+    setMensagem('Sincronizando em lotes (NFe + NFS-e + CTe)…')
+
+    const atualizarLista = opcoes?.atualizarLista !== false
 
     return new Promise((resolve) => {
       pollRef.current = setInterval(async () => {
         try {
           const { data } = await clienteHttp.get<{ job: JobStatus }>(`/focus-nfe/jobs/${jobId}`)
           setJob(data.job)
-          await carregar({ silencioso: true })
           if (data.job.status === 'ok' || data.job.status === 'erro') {
             if (pollRef.current) clearInterval(pollRef.current)
             pollRef.current = null
@@ -305,12 +301,13 @@ function ConteudoEntradaNotas() {
               if (opcoes?.limparFiltroData && (dataDe || dataAte)) {
                 setDataDe('')
                 setDataAte('')
-              } else {
+              } else if (atualizarLista) {
                 await carregar()
               }
               resolve('ok')
             } else {
               setErro(data.job.mensagem ?? 'Falha na sincronização.')
+              if (atualizarLista) await carregar({ silencioso: true })
               resolve('erro')
             }
           }
@@ -324,63 +321,67 @@ function ConteudoEntradaNotas() {
     })
   }
 
-  function statusHttpErro(err: unknown): number | undefined {
-    if (!err || typeof err !== 'object') return undefined
-    return (err as { response?: { status?: number } }).response?.status
-  }
-
-  async function sincronizarFocus(
-    completo: boolean,
-    opcoes?: { silencioso409?: boolean }
-  ): Promise<'ok' | 'erro' | 'ocupado'> {
-    setSincronizando(true)
+  /** Um clique: sync Focus (NFe+NFS-e+CTe) → completar XMLs locais → vincular fornecedores → atualizar lista. */
+  async function executarBuscar() {
+    if (sincronizando || importando || reprocessando) return
     setErro('')
     setMensagem('')
     setJob(null)
+    setSincronizando(true)
+    setDownloadRotulo('Buscando na Focus…')
+    let falhouReprocessar = false
     try {
       const { data } = await clienteHttp.post<{ jobId: string; status: string }>(
         '/focus-nfe/jobs/sincronizar',
-        { completo }
+        { completo: false }
       )
-      setMensagem(
-        completo
-          ? 'Buscando na Focus tudo (NFe + NFS-e + CTe) contra o CNPJ… Ao terminar, a lista abre sem filtro de data.'
-          : 'Buscando só notas novas na Focus (NFe + NFS-e + CTe)…'
-      )
-      return await acompanharJob(data.jobId, { limparFiltroData: completo })
-    } catch (err) {
-      setSincronizando(false)
-      if (opcoes?.silencioso409 && statusHttpErro(err) === 409) {
-        await carregar({ silencioso: true })
-        return 'ocupado'
-      }
-      setErro(extrairMensagemApi(err, 'Não foi possível iniciar a sync.'))
-      return 'erro'
-    }
-  }
+      setMensagem('Buscando na Focus (NFe + NFS-e + CTe)…')
+      const resultado = await acompanharJob(data.jobId, { atualizarLista: false })
+      if (resultado === 'erro') return
 
-  async function reprocessarXmls(opcoes?: { silencioso?: boolean }) {
-    setReprocessando(true)
-    if (!opcoes?.silencioso) {
-      setErro('')
-      setMensagem('')
-    }
-    try {
-      const { data } = await clienteHttp.post<{ mensagem: string; processados: number }>(
-        '/focus-nfe/nfe-recebidas/reprocessar-xmls'
-      )
-      if (!opcoes?.silencioso) setMensagem(data.mensagem)
-      await carregar({ silencioso: opcoes?.silencioso })
-    } catch (err) {
-      if (!opcoes?.silencioso) {
+      setReprocessando(true)
+      setDownloadRotulo('Completando dados…')
+      try {
+        const { data: reproc } = await clienteHttp.post<{
+          mensagem: string
+          processados: number
+        }>('/focus-nfe/nfe-recebidas/reprocessar-xmls')
+        setMensagem(reproc.mensagem)
+      } catch (err) {
+        falhouReprocessar = true
         setErro(extrairMensagemApi(err, 'Falha ao reprocessar XMLs.'))
       }
+
+      setDownloadRotulo('Vinculando fornecedores…')
+      const vinculadas = await vincularFornecedoresPendentes({
+        silencioso: true,
+        semRecarregar: true,
+      })
+
+      setDownloadRotulo('Atualizando lista…')
+      await carregar()
+      if (!falhouReprocessar) {
+        setMensagem((msg) => {
+          if (vinculadas > 0) {
+            return `${msg ? `${msg} ` : ''}${vinculadas} fornecedor(es) vinculado(s).`
+          }
+          return msg || 'Busca concluída.'
+        })
+      }
+    } catch (err) {
+      setSincronizando(false)
+      setErro(extrairMensagemApi(err, 'Não foi possível iniciar a sync.'))
     } finally {
+      setSincronizando(false)
       setReprocessando(false)
+      setDownloadRotulo('')
     }
   }
 
-  async function vincularFornecedoresPendentes(opcoes?: { silencioso?: boolean }) {
+  async function vincularFornecedoresPendentes(opcoes?: {
+    silencioso?: boolean
+    semRecarregar?: boolean
+  }) {
     try {
       const { data } = await clienteHttp.post<{ vinculadas: number }>(
         '/entrada-notas/vincular-fornecedores-pendentes'
@@ -391,7 +392,9 @@ function ConteudoEntradaNotas() {
             `${data.vinculadas} nota(s) vinculada(s) automaticamente a fornecedor cadastrado.`
           )
         }
-        await carregar({ silencioso: true })
+        if (!opcoes?.semRecarregar) {
+          await carregar({ silencioso: true })
+        }
       }
       return data.vinculadas
     } catch {
@@ -399,62 +402,13 @@ function ConteudoEntradaNotas() {
     }
   }
 
-  async function rodarCicloIncremental() {
-    if (ocupadoRef.current) return
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
-
-    setAutoCicloAtivo(true)
-    try {
-      if (painelAnalise) {
-        setDownloadRotulo('Buscando só notas novas…')
-        const resultado = await sincronizarFocus(false, { silencioso409: true })
-        if (resultado !== 'erro') {
-          setDownloadRotulo('Completando dados…')
-          await reprocessarXmls({ silencioso: true })
-        }
-      }
-      setDownloadRotulo('Vinculando fornecedores…')
-      await vincularFornecedoresPendentes({ silencioso: true })
-      setDownloadRotulo('Atualizando lista…')
-      await carregar({ silencioso: true })
-    } finally {
-      setAutoCicloAtivo(false)
-      setDownloadRotulo('')
-    }
-  }
-
-  cicloIncrementalRef.current = () => rodarCicloIncremental()
-
-  // Ao entrar: tenta vincular fornecedor nas notas já puxadas (sem barra de sync Focus).
+  // Ao entrar: tenta vincular fornecedor nas notas já puxadas (API local — sem Focus).
   useEffect(() => {
     if (!filtrosProntos) return
     if (vinculoFornecedorFeitoRef.current) return
     vinculoFornecedorFeitoRef.current = true
     void vincularFornecedoresPendentes({ silencioso: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- uma vez por visita
-  }, [filtrosProntos])
-
-  // A cada 2 min: busca/atualiza (Só novas + Completar + lista).
-  useEffect(() => {
-    if (!filtrosProntos) return
-
-    let cancelado = false
-    let timeoutId: ReturnType<typeof setTimeout> | null = null
-
-    const agendarProxima = () => {
-      timeoutId = setTimeout(async () => {
-        if (cancelado) return
-        await cicloIncrementalRef.current?.()
-        if (!cancelado) agendarProxima()
-      }, INTERVALO_AUTO_MS)
-    }
-
-    agendarProxima()
-
-    return () => {
-      cancelado = true
-      if (timeoutId) clearTimeout(timeoutId)
-    }
   }, [filtrosProntos])
 
   async function baixarXmlNota(id: string, chave: string) {
@@ -632,16 +586,15 @@ function ConteudoEntradaNotas() {
     setImportando(false)
   }
 
-  const ocupado = sincronizando || importando || reprocessando || autoCicloAtivo
-  ocupadoRef.current = ocupado
+  const ocupado = sincronizando || importando || reprocessando
   const filtrosDataAtivos = Boolean(dataDe || dataAte)
 
-  const barraSyncAtiva = (sincronizando || reprocessando || autoCicloAtivo) && !xmlCarregandoId
+  const barraSyncAtiva = (sincronizando || reprocessando) && !xmlCarregandoId
   const barraRotulo = xmlCarregandoId
     ? downloadRotulo || 'Carregando…'
     : sincronizando
       ? job?.mensagem || downloadRotulo || 'Sincronizando Focus…'
-      : reprocessando || autoCicloAtivo
+      : reprocessando
         ? downloadRotulo || 'Completando dados…'
         : downloadRotulo || 'Carregando…'
 
@@ -655,9 +608,9 @@ function ConteudoEntradaNotas() {
         <p className="text-sm text-muted-foreground">Fiscal &gt; Entrada de Notas</p>
         <h1 className="mt-1 text-2xl font-bold tracking-tight">Entrada de Notas</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Sync Focus traz <strong>NFe 55</strong> (produto), <strong>NFS-e</strong> (serviço
-          nacional) e <strong>CTe</strong> (transporte) em lotes (até 10 a cada ~2 min) e salva no
-          banco. Lista, datas e busca usam só o que já está salvo — sem reconsultar a Focus.
+          Use <strong>BUSCAR</strong> para sincronizar <strong>NFe 55</strong>, <strong>NFS-e</strong> e{' '}
+          <strong>CTe</strong> na Focus, completar dados e atualizar a lista (lotes de até 10). Filtros e
+          pesquisa leem só o banco local.
         </p>
       </div>
 
@@ -700,16 +653,33 @@ function ConteudoEntradaNotas() {
       <CardPadrao
         titulo={tituloPainel(painel)}
         descricao={
-          autoCicloAtivo
-            ? 'Atualizando agora…'
-            : painelAnalise
-              ? 'Busca automática a cada 2 minutos'
-              : 'A lista atualiza sozinha a cada 2 minutos'
+          painelAnalise
+            ? 'Clique em BUSCAR para sincronizar Focus, completar dados e atualizar a lista'
+            : 'Lista do banco local — use Filtrar para atualizar'
         }
       >
+        {painelAnalise && (
+          <div className="mb-3 flex min-w-0 flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              disabled={ocupado}
+              onClick={() => void executarBuscar()}
+            >
+              {ocupado && (sincronizando || reprocessando) ? (
+                <>
+                  <Loader2 className="mr-1 size-3.5 animate-spin" aria-hidden />
+                  Buscando…
+                </>
+              ) : (
+                'BUSCAR'
+              )}
+            </Button>
+          </div>
+        )}
         <div className="mb-3 flex min-w-0 flex-wrap items-end gap-3">
           <div className="min-w-0 w-full flex-1 space-y-1 sm:min-w-[12rem]">
-            <Label htmlFor="filtro-busca">Buscar</Label>
+            <Label htmlFor="filtro-busca">Pesquisar na lista</Label>
             <input
               id="filtro-busca"
               type="search"
@@ -840,7 +810,7 @@ function ConteudoEntradaNotas() {
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                     {painelAnalise
-                      ? 'Nenhuma nota neste painel (filtro de datas/busca ativo). A busca Focus roda sozinha a cada 2 minutos. Use Ver todas (sem data) ou importe XML.'
+                      ? 'Nenhuma nota neste painel (filtro de datas/busca ativo). Use BUSCAR, Ver todas (sem data) ou importe XML.'
                       : 'Nenhuma nota neste painel.'}
                   </td>
                 </tr>

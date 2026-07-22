@@ -1,5 +1,8 @@
 /**
- * Agendador: sync incremental Focus a cada 2 min (lote de 10) para empresas ativas.
+ * Agendador Focus (opcional): sync incremental a cada 2 min.
+ * **Desligado por padrão** — não é iniciado em `aplicacao.ts` (cota plano básico).
+ * Sync sob demanda: botão BUSCAR na Entrada de Notas (sync + completar + vincular).
+ * Para reativar em ambiente com cota folgada: chamar `iniciarAgendadorFocusNfe()` após o listen.
  */
 import { empresaFocusEmAndamento } from './fila-focus-nfe.js'
 import { logFocus } from './logs-focus-nfe.js'

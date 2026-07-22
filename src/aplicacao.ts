@@ -5,7 +5,6 @@
 import { config } from 'dotenv'
 import { definirUrlDoBancoNoAmbiente } from './compartilhado/banco-dados/montar-url-do-banco.js'
 import { criarServidor } from './infraestrutura/http/servidor.js'
-import { iniciarAgendadorFocusNfe } from './modulos/focus-nfe/agendador-focus-nfe.js'
 
 config()
 definirUrlDoBancoNoAmbiente()
@@ -25,7 +24,7 @@ const aplicacao = await criarServidor()
 try {
   await aplicacao.listen({ port: porta, host: '0.0.0.0' })
   console.log(`API rodando em http://localhost:${porta}`)
-  iniciarAgendadorFocusNfe()
+  // Agendador Focus desligado: sync só sob demanda (botões na Entrada de Notas) — plano básico / cota.
 } catch (erro) {
   aplicacao.log.error(erro)
   process.exit(1)
