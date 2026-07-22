@@ -425,7 +425,16 @@ async function executarSync(companyId: string, jobId: string) {
 
         for (const item of lista) {
           if (processados >= LIMITE_LOTE_SYNC || rateLimit) break
-          if (!item.chave_nfe) continue
+          const versaoItem = item.versao ?? 0
+          if (!item.chave_nfe) {
+            // Avança cursor mesmo sem chave — senão o DistDFe trava no mesmo NSU.
+            if (versaoItem > maxVersao) maxVersao = versaoItem
+            if (temConfigBanco && maxVersao > credenciais.ultimaVersao) {
+              await repositorioFocusNfe.atualizarUltimaVersao(companyId, maxVersao)
+              credenciais.ultimaVersao = maxVersao
+            }
+            continue
+          }
 
           const mapeado = mapearResumo(item)
           const { criado } = await repositorioFocusNfe.upsertNfeRecebida({
@@ -463,7 +472,8 @@ async function executarSync(companyId: string, jobId: string) {
           })
         }
 
-        if (maxDaPagina > maxVersao) maxVersao = maxDaPagina
+        // Nunca usar x-max-version para avançar cursor: a Focus pagina ~100 e o lote
+        // processa só LIMITE_LOTE_SYNC — pular para o header descartava NFes do meio.
         if (temConfigBanco && maxVersao > credenciais.ultimaVersao) {
           await repositorioFocusNfe.atualizarUltimaVersao(companyId, maxVersao)
           credenciais.ultimaVersao = maxVersao
@@ -513,8 +523,16 @@ async function executarSync(companyId: string, jobId: string) {
 
         for (const item of listaNfse) {
           if (processados >= LIMITE_LOTE_SYNC || rateLimit) break
+          const versaoItem = item.versao ?? 0
           const chave = chaveNfseFocus(item)
-          if (!chave) continue
+          if (!chave) {
+            if (versaoItem > maxVersaoNfse) maxVersaoNfse = versaoItem
+            if (temConfigBanco && maxVersaoNfse > credenciais.ultimaVersaoNfse) {
+              await repositorioFocusNfe.atualizarUltimaVersaoNfse(companyId, maxVersaoNfse)
+              credenciais.ultimaVersaoNfse = maxVersaoNfse
+            }
+            continue
+          }
 
           const mapeado = mapearResumoNfse(item)
           const { criado, registro } = await repositorioFocusNfe.upsertNfeRecebida({
@@ -553,7 +571,7 @@ async function executarSync(companyId: string, jobId: string) {
           })
         }
 
-        if (maxDaPaginaNfse > maxVersaoNfse) maxVersaoNfse = maxDaPaginaNfse
+        // Não avançar com x-max-version (mesmo motivo do sync NFe).
         if (temConfigBanco && maxVersaoNfse > credenciais.ultimaVersaoNfse) {
           await repositorioFocusNfe.atualizarUltimaVersaoNfse(companyId, maxVersaoNfse)
           credenciais.ultimaVersaoNfse = maxVersaoNfse
@@ -613,8 +631,16 @@ async function executarSync(companyId: string, jobId: string) {
 
         for (const item of listaCte) {
           if (processados >= LIMITE_LOTE_SYNC || rateLimit) break
+          const versaoItem = item.versao ?? 0
           const chave = chaveCteFocus(item)
-          if (!chave) continue
+          if (!chave) {
+            if (versaoItem > maxVersaoCte) maxVersaoCte = versaoItem
+            if (temConfigBanco && maxVersaoCte > credenciais.ultimaVersaoCte) {
+              await repositorioFocusNfe.atualizarUltimaVersaoCte(companyId, maxVersaoCte)
+              credenciais.ultimaVersaoCte = maxVersaoCte
+            }
+            continue
+          }
 
           const mapeado = mapearResumoCte(item)
           const { criado, registro } = await repositorioFocusNfe.upsertNfeRecebida({
@@ -653,7 +679,7 @@ async function executarSync(companyId: string, jobId: string) {
           })
         }
 
-        if (maxDaPaginaCte > maxVersaoCte) maxVersaoCte = maxDaPaginaCte
+        // Não avançar com x-max-version (mesmo motivo do sync NFe).
         if (temConfigBanco && maxVersaoCte > credenciais.ultimaVersaoCte) {
           await repositorioFocusNfe.atualizarUltimaVersaoCte(companyId, maxVersaoCte)
           credenciais.ultimaVersaoCte = maxVersaoCte
