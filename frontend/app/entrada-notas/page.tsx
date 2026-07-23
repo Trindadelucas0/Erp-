@@ -363,7 +363,7 @@ function ConteudoEntradaNotas() {
       })
 
       setDownloadRotulo('Vinculando CT-es…')
-      const ctesVinculados = await vincularCtesPendentes({
+      const loteCte = await vincularCtesPendentes({
         silencioso: true,
         forcarRetryFocus: true,
       })
@@ -375,7 +375,13 @@ function ConteudoEntradaNotas() {
           const partes: string[] = []
           if (msg) partes.push(msg)
           if (vinculadas > 0) partes.push(`${vinculadas} fornecedor(es) vinculado(s).`)
-          if (ctesVinculados > 0) partes.push(`${ctesVinculados} CT-e(s) vinculado(s).`)
+          if (loteCte.vinculados > 0) {
+            partes.push(`${loteCte.vinculados} CT-e(s) vinculado(s).`)
+          } else if (loteCte.pendentes > 0) {
+            partes.push(
+              `${loteCte.pendentes} CT-e(s) aguardando NF (Focus sem XML — importe o XML da mercadoria).`
+            )
+          }
           return partes.length > 0 ? partes.join(' ') : 'Busca concluída.'
         })
       }
@@ -438,9 +444,13 @@ function ConteudoEntradaNotas() {
         }
         await carregar({ silencioso: true })
       }
-      return data.vinculados
+      return {
+        vinculados: data.vinculados,
+        pendentes: data.pendentes,
+        importadosFocus: data.importadosFocus,
+      }
     } catch {
-      return 0
+      return { vinculados: 0, pendentes: 0, importadosFocus: 0 }
     }
   }
 
@@ -453,12 +463,13 @@ function ConteudoEntradaNotas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- uma vez por visita
   }, [filtrosProntos])
 
-  // Ao entrar: vincula CT-es com chave; forçar retry Focus 1× por sessão (não a cada F5).
+  // Ao entrar / F5: vínculo local + Focus só se ainda não tentou (não martela DistDFe).
+  // Retry Focus de todas as chaves: botão BUSCAR (forcarRetryFocus: true).
   useEffect(() => {
     if (!filtrosProntos) return
     if (vinculoCteFeitoRef.current) return
     vinculoCteFeitoRef.current = true
-    void vincularCtesPendentes({ silencioso: true, forcarRetryFocus: true })
+    void vincularCtesPendentes({ silencioso: true, forcarRetryFocus: false })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- uma vez por visita
   }, [filtrosProntos])
 
@@ -728,6 +739,7 @@ function ConteudoEntradaNotas() {
             </Button>
           </div>
         )}
+
         <div className="mb-3 flex min-w-0 flex-wrap items-end gap-3">
           <div className="min-w-0 w-full flex-1 space-y-1 sm:min-w-[12rem]">
             <Label htmlFor="filtro-busca">Pesquisar na lista</Label>

@@ -21,6 +21,11 @@ export async function rotasEntradaNotas(aplicacao: FastifyInstance): Promise<voi
     { preHandler: autenticado },
     controladorEntradaNotas.vincularCtesPendentes
   )
+  aplicacao.get(
+    '/ctes-aguardando-nf',
+    { preHandler: autenticado },
+    controladorEntradaNotas.ctesAguardandoNf
+  )
 
   aplicacao.get('/:id', { preHandler: autenticado }, controladorEntradaNotas.detalhe)
   aplicacao.post('/:id/analisar', { preHandler: autenticado }, controladorEntradaNotas.analisar)

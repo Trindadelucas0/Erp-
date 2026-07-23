@@ -153,13 +153,73 @@ function abaInicial(nota: DetalheNota): AbaId {
   if (nota.statusEntrada === 'entrada_contagem' || nota.statusEntrada === 'entrada_consolidada') {
     return 'lancamento'
   }
-  // Gate frete (modFrete=1 sem CT-e): abre direto na aba de vínculo manual
-  if (motivo === 'frete' || etapa === 'frete') return 'frete'
+  // Gate frete (modFrete=1 sem CT-e) ou CT-e aguardando NF
+  if (motivo === 'frete' || motivo === 'vinculo_nfe' || etapa === 'frete') return 'frete'
   if (motivo === 'negociacao' || etapa === 'negociacao') return 'negociacao'
   if (motivo === 'fiscal' || etapa === 'fiscal') return 'fiscal'
   if (motivo === 'cadastro' || etapa === 'cadastro' || etapa === 'servico') return 'cadastro'
   if (etapa === 'lancamento') return 'lancamento'
   return 'cadastro'
+}
+
+/** Mensagem explícita após Reanalisar / Buscar NF (não deixa a ação “muda”). */
+function mensagemAposAnalisar(nota: DetalheNota): string | null {
+  const motivo = nota.analise?.motivoParada
+  const tipo = nota.tipoDocumento
+
+  if (tipo === 'cte') {
+    const vinculos = nota.nfesVinculadas ?? []
+    if (vinculos.length > 0) {
+      const chave = vinculos[0]?.nfe?.chaveNfe
+      return `CT-e vinculado à NF …${chave?.slice(-8) ?? ''}. Custo entra na análise da mercadoria.`
+    }
+    if (motivo === 'vinculo_nfe') {
+      const bloqueio = nota.analise?.negociacao?.bloqueios?.[0]
+      if (bloqueio) return bloqueio
+      if (nota.chaveNfeReferenciada) {
+        return `Focus não trouxe a NF …${nota.chaveNfeReferenciada.slice(-8)}. Importe o XML — o sistema vincula sozinho.`
+      }
+      return 'CT-e sem chave de NF no XML. Vincule manualmente pela NF de mercadoria.'
+    }
+    if (motivo === 'cadastro') {
+      const b = nota.analise?.cadastro?.bloqueios?.[0]
+      return b ? `Parou em cadastro: ${b}` : 'Parou em cadastro: cadastre a transportadora.'
+    }
+    return 'CT-e reanalisado.'
+  }
+
+  if (motivo === 'cadastro') {
+    const b = nota.analise?.cadastro?.bloqueios?.[0]
+    return b ? `Parou em cadastro: ${b}` : 'Parou em cadastro.'
+  }
+  if (motivo === 'fiscal') {
+    const b =
+      nota.analise?.fiscal?.bloqueios?.[0] ??
+      nota.analise?.fiscal?.bloqueiosNaoLiberaveis?.[0]
+    return b ? `Parou em fiscal: ${b}` : 'Parou em fiscal.'
+  }
+  if (motivo === 'negociacao') {
+    const b = nota.analise?.negociacao?.bloqueios?.[0]
+    return b ? `Parou em negociação: ${b}` : 'Parou em negociação.'
+  }
+  if (motivo === 'frete') {
+    const b = nota.analise?.frete?.bloqueios?.[0]
+    return b
+      ? `Parou em frete: ${b}`
+      : 'Parou em frete: vincule o CT-e (frete por conta do destinatário).'
+  }
+
+  if (nota.origemLancamento === 'automatica') {
+    return 'Entrada automática concluída (Liberar para contagem).'
+  }
+  if (
+    nota.statusEntrada === 'entrada_contagem' ||
+    nota.statusEntrada === 'entrada_consolidada'
+  ) {
+    return `Nota lançada: ${nota.statusEntrada}.`
+  }
+  if (!motivo) return 'Reanálise concluída — sem bloqueios nesta etapa.'
+  return `Reanálise concluída (parada: ${motivo}).`
 }
 
 function rotuloModFrete(mod: string | null | undefined): string {
@@ -324,13 +384,17 @@ function ConteudoDetalheEntrada() {
         setNota(data.nota)
         setPedidos(data.pedidosDisponiveis ?? [])
         setAbaAtiva(abaInicial(data.nota))
-        if (data.nota.origemLancamento === 'automatica') {
+        if (path === '/analisar' || path.startsWith('/analisar')) {
+          setMensagem(mensagemAposAnalisar(data.nota))
+        } else if (data.nota.origemLancamento === 'automatica') {
           setMensagem('Entrada automática concluída (Liberar para contagem).')
         } else if (
           data.nota.statusEntrada === 'entrada_contagem' ||
           data.nota.statusEntrada === 'entrada_consolidada'
         ) {
           setMensagem(`Nota lançada: ${data.nota.statusEntrada}.`)
+        } else if (path.includes('vincular-cte') || path.includes('definir-prazo')) {
+          setMensagem(mensagemAposAnalisar(data.nota))
         }
       } else if (data.mensagem) {
         setMensagem(data.mensagem)

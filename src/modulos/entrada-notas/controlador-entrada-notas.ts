@@ -200,11 +200,16 @@ async function vincularCtesPendentes(requisicao: FastifyRequest, resposta: Fasti
     {
       // Default true: Focus só entra se o CT-e tiver chave de NF e ela não estiver no ERP
       importarFocusSeAusente: body.importarFocusSeAusente !== false,
-      // true = reprocessa mesmo CT-e que já falhou Focus (após correção consulta→XML)
+      // true = BUSCAR / retry — reprocessa mesmo CT-e que já falhou Focus
       forcarRetryFocus: body.forcarRetryFocus === true,
     }
   )
   return resposta.send(dados)
+}
+
+async function ctesAguardandoNf(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const itens = await servicoEntradaNotas.listarCtesAguardandoNf(companyIdDe(requisicao))
+  return resposta.send({ itens, total: itens.length })
 }
 
 export const controladorEntradaNotas = {
@@ -224,4 +229,5 @@ export const controladorEntradaNotas = {
   desvincularCte,
   vincularFornecedoresPendentes,
   vincularCtesPendentes,
+  ctesAguardandoNf,
 }

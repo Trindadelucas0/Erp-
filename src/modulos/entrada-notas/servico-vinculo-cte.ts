@@ -9,8 +9,36 @@ import {
   extrairChavesNfeReferenciadasDoCte,
   normalizarXmlNfe,
 } from '../focus-nfe/parser-xml-nfe.js'
-import { logFocus } from '../focus-nfe/logs-focus-nfe.js'
+import {
+  logFocus,
+  logTabelaVinculoCte,
+  type LinhaTabelaVinculoCte,
+} from '../focus-nfe/logs-focus-nfe.js'
 import { importarNfePorChave } from '../focus-nfe/importar-nfe-por-chave.js'
+
+export type CteAguardandoNf = {
+  cteId: string
+  chaveCte: string
+  chaveNfe: string | null
+  status: string
+  motivo: string
+}
+
+function motivoCurtoPendente(
+  analiseJson: unknown,
+  chaveRef: string | null
+): string {
+  const chave = chaveRef?.replace(/\D/g, '') ?? ''
+  if (chave.length !== 44) return 'Sem chave NF no XML'
+  if (jaTentouFocusSemSucesso(analiseJson)) return 'Focus 404 — DistDFe'
+  return 'Aguardando NF no ERP'
+}
+
+function oQueFazerPendente(motivo: string): string {
+  if (motivo.includes('Focus 404')) return 'Importe o XML da NF; o sistema vincula sozinho'
+  if (motivo.includes('Sem chave')) return 'Vínculo manual na NF de mercadoria'
+  return 'Aguarde sync ou importe o XML da NF'
+}
 
 function decimalNum(v: { toNumber?: () => number } | number | null | undefined): number | null {
   if (v == null) return null
@@ -263,6 +291,8 @@ async function tentarVincularCteAutomatico(
 /**
  * Varre CT-es sem vínculo: primeiro só banco (sem Focus); depois, só para os que
  * têm chave de NF referenciada e ainda sem vínculo, tenta Focus se permitido.
+ * `forcarRetryFocus: true` = BUSCAR / Reanalisar em massa — re-bate Focus mesmo após 404.
+ * Sem flag = F5 / abertura da lista — só vínculo local + Focus se ainda não tentou.
  */
 async function processarVinculosCtePendentes(
   companyId: string,
@@ -273,6 +303,7 @@ async function processarVinculosCtePendentes(
   importadosFocus: number
   semChave: number
   pendentes: number
+  pendentesDetalhe: CteAguardandoNf[]
 }> {
   const importarFocus = opcoes?.importarFocusSeAusente !== false
   const forcarRetryFocus = opcoes?.forcarRetryFocus === true
@@ -285,7 +316,12 @@ async function processarVinculosCtePendentes(
       vinculosComoCte: { none: {} },
       statusEntrada: { notIn: ['cancelada'] },
     },
-    select: { id: true },
+    select: {
+      id: true,
+      chaveNfe: true,
+      chaveNfeReferenciada: true,
+      analiseJson: true,
+    },
     orderBy: { dataEmissao: 'desc' },
     take: 500,
   })
@@ -294,6 +330,23 @@ async function processarVinculosCtePendentes(
   let semChave = 0
   let pendentes = 0
   let importadosFocus = 0
+  const linhasTabela: LinhaTabelaVinculoCte[] = []
+
+  const pushLinha = (
+    cte: { chaveNfe: string; chaveNfeReferenciada: string | null },
+    etapa: string,
+    http: string | number,
+    resultado: string,
+    oQueFazer: string
+  ) => {
+    linhasTabela.push({
+      etapa,
+      chaveNF: cte.chaveNfeReferenciada ?? '—',
+      http,
+      resultado: `${resultado} (CT-e …${cte.chaveNfe.slice(-8)})`,
+      oQueFazer,
+    })
+  }
 
   // 1ª passagem: só vínculo local (zero Focus)
   for (const cte of ctes) {
@@ -303,10 +356,12 @@ async function processarVinculosCtePendentes(
     if (r.vinculado) {
       vinculados += 1
       await reanalisarCteAposVinculo(companyId, cte.id)
+      pushLinha(cte, 'local', '—', 'vinculado', 'Nada — já ligado à NF no ERP')
       continue
     }
     if (r.semChaveNfe) {
       semChave += 1
+      pushLinha(cte, 'local', '—', 'sem chave NF', oQueFazerPendente('Sem chave'))
       continue
     }
     pendentes += 1
@@ -323,7 +378,12 @@ async function processarVinculosCtePendentes(
         vinculosComoCte: { none: {} },
         statusEntrada: { notIn: ['cancelada'] },
       },
-      select: { id: true, chaveNfeReferenciada: true, analiseJson: true },
+      select: {
+        id: true,
+        chaveNfe: true,
+        chaveNfeReferenciada: true,
+        analiseJson: true,
+      },
       take: 80,
     })
 
@@ -333,12 +393,15 @@ async function processarVinculosCtePendentes(
       // Sem forcarRetryFocus: não re-bate Focus se a análise já registrou 404/falha
       if (!forcarRetryFocus && jaTentouFocusSemSucesso(cte.analiseJson)) {
         pendentes += 1
+        const motivo = motivoCurtoPendente(cte.analiseJson, cte.chaveNfeReferenciada)
+        pushLinha(cte, 'lote (sem retry)', 404, motivo, oQueFazerPendente(motivo))
         continue
       }
 
       const chave = cte.chaveNfeReferenciada?.replace(/\D/g, '') ?? ''
       if (chave.length !== 44) {
         pendentes += 1
+        pushLinha(cte, 'lote', '—', 'chave inválida', oQueFazerPendente('Sem chave'))
         continue
       }
 
@@ -350,6 +413,7 @@ async function processarVinculosCtePendentes(
       const precisaFocus = !jaTinhaNfe?.xmlConteudo || !jaTinhaNfe.nfeCompleta
       if (precisaFocus && focusRestantes <= 0) {
         pendentes += 1
+        pushLinha(cte, 'Focus', '—', 'cota lote esgotada', 'Use BUSCAR de novo ou importe XML')
         continue
       }
 
@@ -362,41 +426,107 @@ async function processarVinculosCtePendentes(
         vinculados += 1
         if (precisaFocus) importadosFocus += 1
         await reanalisarCteAposVinculo(companyId, cte.id)
+        pushLinha(
+          cte,
+          precisaFocus ? 'Focus' : 'local',
+          precisaFocus ? 200 : '—',
+          precisaFocus ? 'importou e vinculou' : 'vinculado',
+          'Nada'
+        )
       } else if (!r.semChaveNfe) {
         pendentes += 1
         if (precisaFocus && r.falhaImport) {
           await registrarFalhaVinculoNaAnalise(cte.id, chave, r.falhaImport)
         }
+        const motivo = r.falhaImport
+          ? /404|DistDFe|não encontr/i.test(r.falhaImport)
+            ? 'Focus 404 — DistDFe'
+            : r.falhaImport.slice(0, 80)
+          : motivoCurtoPendente(cte.analiseJson, chave)
+        const http = /404/.test(r.falhaImport ?? '') ? 404 : precisaFocus ? '?' : '—'
+        pushLinha(cte, precisaFocus ? 'Focus' : 'local', http, motivo, oQueFazerPendente(motivo))
       }
     }
   }
 
-  logFocus('info', 'cte_vinculos_lote', {
-    companyId,
-    analisados: ctes.length,
-    vinculados,
-    importadosFocus,
-    semChave,
-    pendentes,
-  })
+  const pendentesDetalhe = await listarCtesAguardandoNf(companyId)
+
+  logTabelaVinculoCte(
+    forcarRetryFocus
+      ? 'Lote CT-e (BUSCAR / retry Focus)'
+      : 'Lote CT-e (abertura lista / sem martelar Focus)',
+    linhasTabela,
+    {
+      companyId,
+      analisados: ctes.length,
+      vinculados,
+      importadosFocus,
+      semChave,
+      pendentes: pendentesDetalhe.length,
+      forcarRetryFocus,
+    }
+  )
 
   return {
     analisados: ctes.length,
     vinculados,
     importadosFocus,
     semChave,
-    pendentes,
+    pendentes: pendentesDetalhe.length,
+    pendentesDetalhe,
   }
 }
 
+/** CT-es com chave de NF e sem NfeCteVinculo — painel da lista (todas as chaves). */
+async function listarCtesAguardandoNf(companyId: string): Promise<CteAguardandoNf[]> {
+  const ctes = await clientePrisma.nfeRecebida.findMany({
+    where: {
+      companyId,
+      tipoDocumento: 'cte',
+      xmlConteudo: { not: null },
+      vinculosComoCte: { none: {} },
+      statusEntrada: { notIn: ['cancelada'] },
+    },
+    select: {
+      id: true,
+      chaveNfe: true,
+      chaveNfeReferenciada: true,
+      analiseJson: true,
+      statusEntrada: true,
+    },
+    orderBy: { dataEmissao: 'desc' },
+    take: 200,
+  })
+
+  return ctes
+    .filter((c) => {
+      const chave = c.chaveNfeReferenciada?.replace(/\D/g, '') ?? ''
+      return chave.length === 44
+    })
+    .map((c) => {
+      const motivo = motivoCurtoPendente(c.analiseJson, c.chaveNfeReferenciada)
+      return {
+        cteId: c.id,
+        chaveCte: c.chaveNfe,
+        chaveNfe: c.chaveNfeReferenciada,
+        status: c.statusEntrada,
+        motivo,
+      }
+    })
+}
+
 /**
- * Após XML de NF-e: procura CT-es com esta chave referenciada ainda sem vínculo.
+ * Após XML de NF-e (sync ou Importar XML): vincula **todos** os CT-es que
+ * referenciam esta chave e reanalisa cada CT-e + a NF (gate frete).
  */
 async function tentarVincularNfesPendentesAoCte(companyId: string, nfeId: string): Promise<void> {
   const nfe = await clientePrisma.nfeRecebida.findFirst({
     where: { id: nfeId, companyId, tipoDocumento: 'nfe55' },
   })
   if (!nfe) return
+
+  const cteIdsVinculados = new Set<string>()
+  const linhasTabela: LinhaTabelaVinculoCte[] = []
 
   const ctes = await clientePrisma.nfeRecebida.findMany({
     where: {
@@ -421,6 +551,14 @@ async function tentarVincularNfesPendentesAoCte(companyId: string, nfeId: string
         origemVinculo: 'automatico',
         valorFrete: valor,
       })
+      cteIdsVinculados.add(cte.id)
+      linhasTabela.push({
+        etapa: 'auto pós-NF',
+        chaveNF: nfe.chaveNfe,
+        http: '—',
+        resultado: `vinculado (CT-e …${cte.chaveNfe.slice(-8)})`,
+        oQueFazer: 'Nada',
+      })
     } catch {
       // já vinculado em corrida
     }
@@ -434,11 +572,11 @@ async function tentarVincularNfesPendentesAoCte(companyId: string, nfeId: string
       xmlConteudo: { not: null },
       vinculosComoCte: { none: {} },
     },
-    select: { id: true, xmlConteudo: true, valorTotal: true },
-    take: 50,
+    select: { id: true, chaveNfe: true, xmlConteudo: true, valorTotal: true },
+    take: 200,
   })
   for (const cte of ctesComXml) {
-    if (!cte.xmlConteudo) continue
+    if (cteIdsVinculados.has(cte.id) || !cte.xmlConteudo) continue
     const chaves = extrairChavesNfeReferenciadasDoCte(cte.xmlConteudo)
     if (!chaves.includes(nfe.chaveNfe)) continue
     const resumo = extrairCamposResumoDoXml(cte.xmlConteudo)
@@ -455,9 +593,33 @@ async function tentarVincularNfesPendentesAoCte(companyId: string, nfeId: string
         origemVinculo: 'automatico',
         valorFrete: resumo.valorTotal ?? decimalNum(cte.valorTotal),
       })
+      cteIdsVinculados.add(cte.id)
+      linhasTabela.push({
+        etapa: 'auto pós-NF (reparse)',
+        chaveNF: nfe.chaveNfe,
+        http: '—',
+        resultado: `vinculado (CT-e …${cte.chaveNfe.slice(-8)})`,
+        oQueFazer: 'Nada',
+      })
     } catch {
       // ignore
     }
+  }
+
+  for (const cteId of cteIdsVinculados) {
+    await reanalisarCteAposVinculo(companyId, cteId)
+  }
+  if (cteIdsVinculados.size > 0) {
+    await reanalisarCteAposVinculo(companyId, nfe.id)
+  }
+
+  if (linhasTabela.length > 0) {
+    logTabelaVinculoCte('Auto-vínculo quando a NF chegou', linhasTabela, {
+      companyId,
+      nfeId: nfe.id,
+      chaveNfe: nfe.chaveNfe.slice(-8),
+      ctesVinculados: cteIdsVinculados.size,
+    })
   }
 }
 
@@ -559,6 +721,7 @@ async function listarVinculosDoCte(companyId: string, cteId: string) {
 export const servicoVinculoCte = {
   tentarVincularCteAutomatico,
   processarVinculosCtePendentes,
+  listarCtesAguardandoNf,
   tentarVincularNfesPendentesAoCte,
   vincularCteManual,
   desvincularCte,

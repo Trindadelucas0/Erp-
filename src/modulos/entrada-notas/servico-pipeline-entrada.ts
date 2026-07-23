@@ -1116,6 +1116,10 @@ async function processarVinculosCtePendentes(
   return servicoVinculoCte.processarVinculosCtePendentes(companyId, opcoes)
 }
 
+async function listarCtesAguardandoNf(companyId: string) {
+  return servicoVinculoCte.listarCtesAguardandoNf(companyId)
+}
+
 export const servicoEntradaNotas = {
   analisarNota,
   obterDetalhe,
@@ -1133,6 +1137,7 @@ export const servicoEntradaNotas = {
   reanalisarNotasPendentesPorDocumento,
   vincularFornecedoresNasNotasPendentes,
   processarVinculosCtePendentes,
+  listarCtesAguardandoNf,
   vincularCte,
   desvincularCte,
 }
