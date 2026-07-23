@@ -6,69 +6,78 @@ import type { ItemXmlNfe } from '../focus-nfe/parser-xml-nfe.js'
 import { randomUUID } from 'crypto'
 import type { Prisma } from '@prisma/client'
 
-async function buscarNotaCompleta(companyId: string, id: string) {
-  return clientePrisma.nfeRecebida.findFirst({
-    where: { id, companyId },
+const includeNotaCompleta = {
+  itens: {
+    orderBy: { nItem: 'asc' as const },
     include: {
-      itens: {
-        orderBy: { nItem: 'asc' },
-        include: {
-          produto: {
-            select: {
-              id: true,
-              nomeVenda: true,
-              sku: true,
-              ncm: true,
-              codigoOrigem: true,
-              pesoKg: true,
-            },
-          },
-        },
-      },
-      fornecedorPessoa: {
+      produto: {
         select: {
           id: true,
-          nome: true,
-          cnpj: true,
-          nomeFantasia: true,
-          papeis: {
-            where: { papel: 'fornecedor', ativo: true },
-            take: 1,
-            include: { dadosFornecedor: { select: { regraRateioFrete: true } } },
-          },
+          nomeVenda: true,
+          sku: true,
+          ncm: true,
+          codigoOrigem: true,
+          pesoKg: true,
         },
       },
-      vinculosComoNfe: {
-        include: {
-          cteRecebida: {
-            select: {
-              id: true,
-              chaveNfe: true,
-              nomeEmitente: true,
-              documentoEmitente: true,
-              valorTotal: true,
-              dataEmissao: true,
-              statusEntrada: true,
-              fornecedorPessoaId: true,
-            },
-          },
-        },
-      },
-      vinculosComoCte: {
-        include: {
-          nfeRecebida: {
-            select: {
-              id: true,
-              chaveNfe: true,
-              nomeEmitente: true,
-              valorTotal: true,
-              statusEntrada: true,
-            },
-          },
-        },
-      },
-      despesasEntrada: true,
     },
+  },
+  fornecedorPessoa: {
+    select: {
+      id: true,
+      nome: true,
+      cnpj: true,
+      nomeFantasia: true,
+      papeis: {
+        where: { papel: 'fornecedor' as const, ativo: true },
+        take: 1,
+        include: { dadosFornecedor: { select: { regraRateioFrete: true } } },
+      },
+    },
+  },
+  vinculosComoNfe: {
+    include: {
+      cteRecebida: {
+        select: {
+          id: true,
+          chaveNfe: true,
+          nomeEmitente: true,
+          documentoEmitente: true,
+          valorTotal: true,
+          dataEmissao: true,
+          statusEntrada: true,
+          fornecedorPessoaId: true,
+        },
+      },
+    },
+  },
+  vinculosComoCte: {
+    include: {
+      nfeRecebida: {
+        select: {
+          id: true,
+          chaveNfe: true,
+          nomeEmitente: true,
+          valorTotal: true,
+          statusEntrada: true,
+        },
+      },
+    },
+  },
+  despesasEntrada: true,
+} as const
+
+export type NotaCompletaEntrada = Prisma.NfeRecebidaGetPayload<{
+  include: typeof includeNotaCompleta
+}>
+
+async function buscarNotaCompleta(
+  companyId: string,
+  id: string
+): Promise<NotaCompletaEntrada | null> {
+  return clientePrisma.nfeRecebida.findFirst({
+    where: { id, companyId },
+    include: includeNotaCompleta,
   })
 }
 

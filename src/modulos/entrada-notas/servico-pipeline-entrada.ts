@@ -19,7 +19,10 @@ import { repositorioEntradaNotas } from './repositorio-entrada-notas.js'
 import type { AnaliseJson, ResultadoEtapa } from './tipos-analise.js'
 import { etapaVazia } from './tipos-analise.js'
 import type { RegrasFiscaisJson } from './analise-fiscal/analisar-fiscal-basico.js'
-import { sanitizarRegrasFiscais } from '../focus-nfe/esquema-focus-nfe.js'
+import {
+  sanitizarRegrasFiscais,
+  type DadosRegrasFiscais,
+} from '../focus-nfe/esquema-focus-nfe.js'
 import type { Prisma } from '@prisma/client'
 import { ratearCustoFrete } from './ratear-custo-frete.js'
 import { servicoVinculoCte } from './servico-vinculo-cte.js'
@@ -65,7 +68,7 @@ async function garantirItensDoXml(companyId: string, notaId: string) {
 async function carregarRegras(companyId: string): Promise<RegrasFiscaisJson | null> {
   const cfg = await repositorioFocusNfe.buscarConfigPorEmpresa(companyId)
   if (!cfg?.regrasFiscaisJson) return null
-  return sanitizarRegrasFiscais(cfg.regrasFiscaisJson as Partial<RegrasFiscaisJson>)
+  return sanitizarRegrasFiscais(cfg.regrasFiscaisJson as Partial<DadosRegrasFiscais>)
 }
 
 /** Cadastro nunca é liberável por senha — só vínculo/cadastro. */

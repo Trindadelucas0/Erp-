@@ -105,9 +105,17 @@ async function buscarPedidoCompra(id: string, companyId: string) {
 }
 
 function prepararDadosComPrazos(
-  dados: DadosParaCriarPedidoCompra | DadosParaEditarPedidoCompra,
+  dados: DadosParaCriarPedidoCompra,
   itens: DadosParaCriarPedidoCompra['itens']
-) {
+): DadosParaCriarPedidoCompra
+function prepararDadosComPrazos(
+  dados: DadosParaEditarPedidoCompra,
+  itens: NonNullable<DadosParaEditarPedidoCompra['itens']> | DadosParaCriarPedidoCompra['itens']
+): DadosParaEditarPedidoCompra
+function prepararDadosComPrazos(
+  dados: DadosParaCriarPedidoCompra | DadosParaEditarPedidoCompra,
+  itens: DadosParaCriarPedidoCompra['itens'] | undefined
+): DadosParaCriarPedidoCompra | DadosParaEditarPedidoCompra {
   if (!itens?.length) return dados
   if (dados.prazosPagamento === undefined) return dados
 
@@ -195,7 +203,7 @@ async function copiarPedidoCompra(id: string, companyId: string, idDoAutor: stri
 
 async function editarPedidoCompra(
   id: string,
-  dados: DadosParaEditarPedidoCompra,
+  dados: DadosParaEditarPedidoCompra & { status?: string },
   companyId: string,
   idDoAutor: string
 ) {

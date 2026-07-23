@@ -142,7 +142,7 @@ function itemPrecisaImportarFiscal(item: ItemNota): boolean {
 function statusAbaDeEtapa(etapa?: ResultadoEtapa | null): StatusDaAba {
   if (!etapa || etapa.status === 'pendente') return 'idle'
   if (etapa.status === 'ok') return 'valid'
-  if (etapa.status === 'bloqueante') return 'invalid'
+  if (etapa.status === 'bloqueante') return 'error'
   return 'idle'
 }
 

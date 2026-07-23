@@ -2,7 +2,7 @@
  * Acesso ao banco de dados para pedidos de compra.
  */
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
-import type { Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 import {
   estornarReservaPedido,
   sincronizarReservaCreditoPedido,
@@ -181,7 +181,10 @@ function dadosCabecalhoParaCreate(dados: DadosParaCriarPedidoCompra) {
     previsaoEntrega: dados.previsaoEntrega ?? null,
     valorFrete: dados.valorFrete ?? null,
     valorFreteSugerido: dados.valorFreteSugerido ?? null,
-    prazosPagamento: dados.prazosPagamento ?? null,
+    prazosPagamento:
+      dados.prazosPagamento == null
+        ? Prisma.DbNull
+        : (dados.prazosPagamento as Prisma.InputJsonValue),
     rateioParcelas: dados.rateioParcelas || 'igual',
     observacoes: dados.observacoes || null,
     observacoesInternas: dados.observacoesInternas || null,
@@ -276,7 +279,7 @@ async function criar(dados: DadosParaCriarPedidoCompra, companyId: string) {
         itens: {
           create: dadosPedido.itens.map(dadosItemParaCreate),
         },
-      },
+      } satisfies Prisma.PedidoCompraUncheckedCreateInput,
       include: includeCompleto,
     })
 
@@ -385,7 +388,14 @@ async function atualizar(
         ...(dados.valorFreteSugerido !== undefined
           ? { valorFreteSugerido: dados.valorFreteSugerido }
           : {}),
-        ...(dados.prazosPagamento !== undefined ? { prazosPagamento: dados.prazosPagamento } : {}),
+        ...(dados.prazosPagamento !== undefined
+          ? {
+              prazosPagamento:
+                dados.prazosPagamento == null
+                  ? Prisma.DbNull
+                  : (dados.prazosPagamento as Prisma.InputJsonValue),
+            }
+          : {}),
         ...(dados.rateioParcelas !== undefined ? { rateioParcelas: dados.rateioParcelas } : {}),
         ...(dados.status ? { status: dados.status } : {}),
         ...(dados.observacoes !== undefined ? { observacoes: dados.observacoes || null } : {}),
@@ -406,7 +416,7 @@ async function atualizar(
               },
             }
           : {}),
-      },
+      } satisfies Prisma.PedidoCompraUncheckedUpdateInput,
       include: includeCompleto,
     })
 

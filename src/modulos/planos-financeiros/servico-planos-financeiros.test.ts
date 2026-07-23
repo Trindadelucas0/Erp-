@@ -19,6 +19,7 @@ import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 
 const planoBase = {
   id: 'plano-001',
+  companyId: 'company-001',
   codigo: '2.1',
   nome: 'Despesas operacionais',
   tipo: 'despesa',

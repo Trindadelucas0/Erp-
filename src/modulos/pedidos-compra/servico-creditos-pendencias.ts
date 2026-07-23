@@ -28,24 +28,50 @@ async function listarCreditos(
   opcoes?: { comMovimentos?: boolean; apenasComSaldo?: boolean }
 ) {
   const apenasComSaldo = opcoes?.apenasComSaldo ?? !opcoes?.comMovimentos
+  const where = {
+    companyId,
+    ...(fornecedorPessoaId ? { fornecedorPessoaId } : {}),
+    ...(apenasComSaldo ? { saldo: { gt: 0 } } : {}),
+  }
+
+  if (opcoes?.comMovimentos) {
+    const creditos = await clientePrisma.creditoFornecedor.findMany({
+      where,
+      orderBy: { vencimento: 'asc' },
+      include: {
+        movimentos: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            pedidoCompra: { select: { numero: true } },
+          },
+        },
+      },
+    })
+
+    return creditos.map((c) => ({
+      id: c.id,
+      fornecedorPessoaId: c.fornecedorPessoaId,
+      valor: Number(c.valor),
+      saldo: Number(c.saldo),
+      origem: c.origem,
+      vencimento: c.vencimento,
+      movimentos: c.movimentos.map((m) => ({
+        id: m.id,
+        tipo: m.tipo,
+        valor: Number(m.valor),
+        saldoAnterior: Number(m.saldoAnterior),
+        saldoDepois: Number(m.saldoDepois),
+        motivo: m.motivo,
+        pedidoCompraId: m.pedidoCompraId,
+        pedidoNumero: m.pedidoCompra?.numero ?? null,
+        createdAt: m.createdAt,
+      })),
+    }))
+  }
 
   const creditos = await clientePrisma.creditoFornecedor.findMany({
-    where: {
-      companyId,
-      ...(fornecedorPessoaId ? { fornecedorPessoaId } : {}),
-      ...(apenasComSaldo ? { saldo: { gt: 0 } } : {}),
-    },
+    where,
     orderBy: { vencimento: 'asc' },
-    include: opcoes?.comMovimentos
-      ? {
-          movimentos: {
-            orderBy: { createdAt: 'desc' },
-            include: {
-              pedidoCompra: { select: { numero: true } },
-            },
-          },
-        }
-      : undefined,
   })
 
   return creditos.map((c) => ({
@@ -55,21 +81,7 @@ async function listarCreditos(
     saldo: Number(c.saldo),
     origem: c.origem,
     vencimento: c.vencimento,
-    movimentos: opcoes?.comMovimentos
-      ? ('movimentos' in c
-          ? c.movimentos.map((m) => ({
-              id: m.id,
-              tipo: m.tipo,
-              valor: Number(m.valor),
-              saldoAnterior: Number(m.saldoAnterior),
-              saldoDepois: Number(m.saldoDepois),
-              motivo: m.motivo,
-              pedidoCompraId: m.pedidoCompraId,
-              pedidoNumero: m.pedidoCompra?.numero ?? null,
-              createdAt: m.createdAt,
-            }))
-          : [])
-      : undefined,
+    movimentos: undefined,
   }))
 }
 

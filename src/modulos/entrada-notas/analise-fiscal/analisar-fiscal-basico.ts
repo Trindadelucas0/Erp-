@@ -9,10 +9,10 @@ export type ResultadoAnaliseFiscal = {
 }
 
 export type RegrasFiscaisJson = {
-  versaoSchema?: number
+  versaoSchema?: 1
   ativo?: boolean
   checks?: string[]
-  observacao?: string
+  observacao?: string | null
 }
 
 export function analisarFiscalBasico(
