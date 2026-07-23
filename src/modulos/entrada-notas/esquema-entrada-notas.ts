@@ -44,3 +44,12 @@ export const esquemaLancar = z.object({
 export const esquemaLiberarCriticas = z.object({
   senha: z.string().min(1, 'Senha de gerente obrigatória para liberar críticas'),
 })
+
+export const esquemaVincularCte = z
+  .object({
+    chaveCte: z.string().min(44).optional(),
+    cteId: z.string().uuid().optional(),
+  })
+  .refine((d) => Boolean(d.chaveCte || d.cteId), {
+    message: 'Informe a chave do CT-e ou o id',
+  })

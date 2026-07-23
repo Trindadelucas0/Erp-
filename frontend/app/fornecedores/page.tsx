@@ -117,6 +117,7 @@ type Fornecedor = {
   permitirVinculoManual?: boolean
   exigirItensEntrada?: boolean
   modalidadeTransportePadrao?: string | null
+  regraRateioFrete?: string | null
   prazosPagamento?: (number | null)[]
   planosFinanceiros?: ItemCatalogo[]
   cfopsEntrada?: ItemCatalogo[]
@@ -158,6 +159,7 @@ type FormFornecedor = {
   permitirVinculoManual: boolean
   exigirItensEntrada: boolean
   modalidadeTransportePadrao: string
+  regraRateioFrete: string
   prazosPagamento: string[]
   planosFinanceiros: ItemCatalogo[]
   cfopsEntrada: ItemCatalogo[]
@@ -209,6 +211,7 @@ const FORM_VAZIO: FormFornecedor = {
   permitirVinculoManual: false,
   exigirItensEntrada: false,
   modalidadeTransportePadrao: '',
+  regraRateioFrete: 'valor',
   prazosPagamento: ['', '', '', '', '', ''],
   planosFinanceiros: [],
   cfopsEntrada: [],
@@ -270,6 +273,7 @@ function fornecedorParaForm(f: Fornecedor): FormFornecedor {
     permitirVinculoManual: f.permitirVinculoManual ?? false,
     exigirItensEntrada: f.exigirItensEntrada ?? false,
     modalidadeTransportePadrao: normalizarModalidadeTransporte(f.modalidadeTransportePadrao),
+    regraRateioFrete: f.regraRateioFrete || 'valor',
     prazosPagamento: prazos.slice(0, 6).map((p) => (p != null ? String(p) : '')),
     planosFinanceiros: f.planosFinanceiros ?? [],
     cfopsEntrada: f.cfopsEntrada ?? [],
@@ -1183,6 +1187,7 @@ function ConteudoDaPaginaDeFornecedores() {
       permitirVinculoManual: form.permitirVinculoManual,
       exigirItensEntrada: form.exigirItensEntrada,
       modalidadeTransportePadrao: form.modalidadeTransportePadrao || undefined,
+      regraRateioFrete: form.regraRateioFrete || 'valor',
       prazosPagamento,
       planosFinanceirosIds: form.planosFinanceiros.map((p) => p.id),
       cfopsEntradaIds: form.cfopsEntrada.map((c) => c.id),
@@ -1792,6 +1797,20 @@ function ConteudoDaPaginaDeFornecedores() {
                   valor={form.modalidadeTransportePadrao}
                   aoMudar={(v) => set('modalidadeTransportePadrao', v)}
                   opcoes={MODALIDADES}
+                  placeholder="Selecione"
+                  disabled={somenteLeitura}
+                />
+
+                <SelectPadrao
+                  rotulo="Regra de rateio do frete (CT-e)"
+                  valor={form.regraRateioFrete}
+                  aoMudar={(v) => set('regraRateioFrete', v)}
+                  opcoes={[
+                    { value: 'valor', label: 'Proporcional ao valor dos itens' },
+                    { value: 'peso', label: 'Proporcional ao peso' },
+                    { value: 'quantidade', label: 'Proporcional à quantidade' },
+                    { value: 'igual', label: 'Igual entre os itens' },
+                  ]}
                   placeholder="Selecione"
                   disabled={somenteLeitura}
                 />

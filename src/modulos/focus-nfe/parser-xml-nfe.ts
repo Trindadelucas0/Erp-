@@ -169,6 +169,12 @@ export type CamposResumoXmlNfe = {
   valorTotal: number | null
   prazoPagamentoXml: string | null
   tipoDocumento?: 'nfe55' | 'nfse' | 'cte'
+  /** NFe 55: transp/modFrete */
+  modFrete?: string | null
+  /** CTe: chaves de NF-e referenciadas (infDoc/infNFe) */
+  chavesNfeReferenciadas?: string[]
+  /** CTe: primeira chave referenciada */
+  chaveNfeReferenciada?: string | null
 }
 
 export type ItemXmlNfe = {
@@ -183,6 +189,7 @@ export type ItemXmlNfe = {
   quantidade: number | null
   valorUnitario: number | null
   valorTotal: number | null
+  pesoKg?: number | null
 }
 
 export function extrairChaveNfseDoXml(xmlBruto: string): string | null {
@@ -255,6 +262,111 @@ export function extrairChaveCteDoXml(xmlBruto: string): string | null {
   return null
 }
 
+function documentoCnpjOuCpfDoBloco(bloco: string | null): string | null {
+  if (!bloco) return null
+  return extrairCampoXml(bloco, 'CNPJ') ?? extrairCampoXml(bloco, 'CPF')
+}
+
+/**
+ * CNPJ/CPF do tomador do frete no CT-e.
+ * `ide/toma` (ou toma3/toma4): 0=rem, 1=exped, 2=receb, 3=dest, 4=outros (toma4).
+ * Sem indicador legível ou sem documento → null (fail-closed no filtro).
+ */
+export function extrairCnpjTomadorCte(xmlBruto: string): string | null {
+  const xml = normalizarXmlNfe(xmlBruto)
+  if (!xml) return null
+
+  const ide = blocoTag(xml, 'ide')
+  const toma3 = blocoTag(xml, 'toma3')
+  const toma4 = blocoTag(xml, 'toma4')
+
+  const indicador =
+    (ide ? extrairCampoXml(ide, 'toma') : null) ??
+    (toma3 ? extrairCampoXml(toma3, 'toma') : null) ??
+    (toma4 ? extrairCampoXml(toma4, 'toma') : null)
+
+  const rem = blocoTag(xml, 'rem')
+  const exped = blocoTag(xml, 'exped')
+  const receb = blocoTag(xml, 'receb')
+  const dest = blocoTag(xml, 'dest')
+
+  switch ((indicador ?? '').trim()) {
+    case '0':
+      return documentoCnpjOuCpfDoBloco(rem)
+    case '1':
+      return documentoCnpjOuCpfDoBloco(exped)
+    case '2':
+      return documentoCnpjOuCpfDoBloco(receb)
+    case '3':
+      return documentoCnpjOuCpfDoBloco(dest)
+    case '4':
+      return (
+        documentoCnpjOuCpfDoBloco(toma4) ??
+        documentoCnpjOuCpfDoBloco(blocoTag(xml, 'toma'))
+      )
+    default:
+      return (
+        documentoCnpjOuCpfDoBloco(toma4) ??
+        documentoCnpjOuCpfDoBloco(blocoTag(xml, 'toma')) ??
+        documentoCnpjOuCpfDoBloco(toma3)
+      )
+  }
+}
+
+/**
+ * Chaves de NF-e (44 dígitos) referenciadas no CT-e (`infDoc` / `infNFe` / `chave` / `chNFe`).
+ */
+export function extrairChavesNfeReferenciadasDoCte(xmlBruto: string): string[] {
+  const xml = normalizarXmlNfe(xmlBruto)
+  if (!xml) return []
+
+  const chaves = new Set<string>()
+  const adicionar = (raw: string | null | undefined) => {
+    if (!raw) return
+    const digitos = raw.replace(/\D/g, '')
+    if (digitos.length === 44 && digitos.slice(20, 22) === '55') {
+      chaves.add(digitos)
+    }
+  }
+
+  const infDocs = todosBlocosTag(xml, 'infDoc')
+  for (const infDoc of infDocs) {
+    for (const infNFe of todosBlocosTag(infDoc, 'infNFe')) {
+      adicionar(extrairCampoXml(infNFe, 'chave') ?? extrairCampoXml(infNFe, 'chNFe'))
+    }
+    for (const infNFeTran of todosBlocosTag(infDoc, 'infNFeTran')) {
+      adicionar(extrairCampoXml(infNFeTran, 'chave') ?? extrairCampoXml(infNFeTran, 'chNFe'))
+    }
+  }
+
+  // Fallback: qualquer <chave> / <chNFe> de 44 dígitos modelo 55 no XML do CT-e
+  if (chaves.size === 0) {
+    for (const m of xml.matchAll(
+      /<(?:[\w.]+:)?(?:chave|chNFe)[^>]*>\s*(\d{44})\s*<\/(?:[\w.]+:)?(?:chave|chNFe)>/gi
+    )) {
+      adicionar(m[1])
+    }
+  }
+
+  return [...chaves]
+}
+
+/**
+ * Modalidade do frete na NFe 55 (`transp/modFrete`).
+ * 0=remetente, 1=destinatário, 2=terceiros, 3=próprio rem., 4=próprio dest., 9=sem frete.
+ */
+export function extrairModFreteDoXml(xmlBruto: string): string | null {
+  const xml = normalizarXmlNfe(xmlBruto)
+  if (!xml || detectarDocumentoFiscalXml(xml) !== 'nfe55') return null
+
+  const transp = blocoTag(xml, 'transp')
+  const raw = (transp ? extrairCampoXml(transp, 'modFrete') : null) ?? extrairCampoXml(xml, 'modFrete')
+  if (raw == null) return null
+  const digito = raw.trim().replace(/\D/g, '')
+  if (!digito) return null
+  return digito.slice(0, 1)
+}
+
 /** Resumo de XML CTe (conhecimento de transporte). */
 export function extrairCamposResumoDoXmlCte(xmlBruto: string): CamposResumoXmlNfe {
   const xml = normalizarXmlNfe(xmlBruto)
@@ -262,9 +374,6 @@ export function extrairCamposResumoDoXmlCte(xmlBruto: string): CamposResumoXmlNf
 
   const emit = blocoTag(xml, 'emit')
   const dest = blocoTag(xml, 'dest')
-  const toma4 = blocoTag(xml, 'toma4')
-  const toma3 = blocoTag(xml, 'toma3')
-  const toma = blocoTag(xml, 'toma') ?? toma4 ?? toma3
   const ide = blocoTag(xml, 'ide')
   const vPrest = blocoTag(xml, 'vPrest')
 
@@ -273,9 +382,8 @@ export function extrairCamposResumoDoXmlCte(xmlBruto: string): CamposResumoXmlNf
     ? extrairCampoXml(emit, 'CNPJ') ?? extrairCampoXml(emit, 'CPF')
     : null
 
-  const cnpjDestinatario =
-    (dest ? extrairCampoXml(dest, 'CNPJ') ?? extrairCampoXml(dest, 'CPF') : null) ??
-    (toma ? extrairCampoXml(toma, 'CNPJ') ?? extrairCampoXml(toma, 'CPF') : null)
+  // Destinatário ≠ tomador: não misturar com toma/toma4.
+  const cnpjDestinatario = documentoCnpjOuCpfDoBloco(dest)
 
   const dhEmi =
     (ide ? extrairCampoXml(ide, 'dhEmi') : null) ??
@@ -287,6 +395,8 @@ export function extrairCamposResumoDoXmlCte(xmlBruto: string): CamposResumoXmlNf
     parseValor(vPrest ? extrairCampoXml(vPrest, 'vRec') : null) ??
     parseValor(extrairCampoXml(xml, 'vTPrest'))
 
+  const chavesNfeReferenciadas = extrairChavesNfeReferenciadasDoCte(xml)
+
   return {
     chaveNfe,
     nomeEmitente,
@@ -296,6 +406,8 @@ export function extrairCamposResumoDoXmlCte(xmlBruto: string): CamposResumoXmlNf
     valorTotal,
     prazoPagamentoXml: null,
     tipoDocumento: 'cte',
+    chavesNfeReferenciadas,
+    chaveNfeReferenciada: chavesNfeReferenciadas[0] ?? null,
   }
 }
 
@@ -355,6 +467,7 @@ export function extrairCamposResumoDoXml(xmlBruto: string): CamposResumoXmlNfe {
     (m) => m[1].trim()
   )
   const prazoPagamentoXml = vencimentos.length > 0 ? vencimentos.join(', ') : null
+  const modFrete = extrairModFreteDoXml(xml)
 
   return {
     chaveNfe,
@@ -365,6 +478,7 @@ export function extrairCamposResumoDoXml(xmlBruto: string): CamposResumoXmlNfe {
     valorTotal,
     prazoPagamentoXml,
     tipoDocumento: 'nfe55',
+    modFrete,
   }
 }
 
@@ -397,6 +511,7 @@ export function extrairItensDoXml(xmlBruto: string): ItemXmlNfe[] {
       quantidade: parseValor(prod ? extrairCampoXml(prod, 'qCom') : null),
       valorUnitario: parseValor(prod ? extrairCampoXml(prod, 'vUnCom') : null),
       valorTotal: parseValor(prod ? extrairCampoXml(prod, 'vProd') : null),
+      pesoKg: parseValor(prod ? extrairCampoXml(prod, 'pesoL') ?? extrairCampoXml(prod, 'pesoB') : null),
     })
   }
 

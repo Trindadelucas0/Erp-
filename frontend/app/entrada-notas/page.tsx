@@ -24,7 +24,7 @@ import {
   type VisualizacaoNota,
 } from '@/components/entrada-notas/conteudo-visualizacao-nota'
 import { BarraCarregamentoDownload } from '@/components/entrada-notas/barra-carregamento-download'
-import { Loader2 } from 'lucide-react'
+import { CheckCircle2, Loader2 } from 'lucide-react'
 
 import { mascaraCnpj } from '@/lib/documentos'
 import {
@@ -50,6 +50,9 @@ type NotaPendente = {
   cnpjEmpresa?: string | null
   temDanfe?: boolean
   danfeStatus?: string | null
+  /** CT-e↔NF de mercadoria já vinculados */
+  temVinculoFrete?: boolean
+  chaveNfeReferenciada?: string | null
 }
 
 type JobStatus = {
@@ -189,6 +192,7 @@ function ConteudoEntradaNotas() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const inputArquivosRef = useRef<HTMLInputElement | null>(null)
   const vinculoFornecedorFeitoRef = useRef(false)
+  const vinculoCteFeitoRef = useRef(false)
   const painelAnalise = painel === 'analise'
 
   useEffect(() => {
@@ -358,14 +362,21 @@ function ConteudoEntradaNotas() {
         semRecarregar: true,
       })
 
+      setDownloadRotulo('Vinculando CT-es…')
+      const ctesVinculados = await vincularCtesPendentes({
+        silencioso: true,
+        forcarRetryFocus: true,
+      })
+
       setDownloadRotulo('Atualizando lista…')
       await carregar()
       if (!falhouReprocessar) {
         setMensagem((msg) => {
-          if (vinculadas > 0) {
-            return `${msg ? `${msg} ` : ''}${vinculadas} fornecedor(es) vinculado(s).`
-          }
-          return msg || 'Busca concluída.'
+          const partes: string[] = []
+          if (msg) partes.push(msg)
+          if (vinculadas > 0) partes.push(`${vinculadas} fornecedor(es) vinculado(s).`)
+          if (ctesVinculados > 0) partes.push(`${ctesVinculados} CT-e(s) vinculado(s).`)
+          return partes.length > 0 ? partes.join(' ') : 'Busca concluída.'
         })
       }
     } catch (err) {
@@ -402,12 +413,52 @@ function ConteudoEntradaNotas() {
     }
   }
 
+  async function vincularCtesPendentes(opcoes?: {
+    silencioso?: boolean
+    forcarRetryFocus?: boolean
+  }) {
+    try {
+      const { data } = await clienteHttp.post<{
+        vinculados: number
+        importadosFocus: number
+        analisados: number
+        pendentes: number
+      }>('/entrada-notas/vincular-ctes-pendentes', {
+        importarFocusSeAusente: true,
+        forcarRetryFocus: opcoes?.forcarRetryFocus === true,
+      })
+      if (data.vinculados > 0) {
+        if (!opcoes?.silencioso) {
+          setMensagem(
+            `${data.vinculados} CT-e(s) vinculado(s) à NF de mercadoria` +
+              (data.importadosFocus > 0
+                ? ` (${data.importadosFocus} NF buscada(s) na Focus).`
+                : '.')
+          )
+        }
+        await carregar({ silencioso: true })
+      }
+      return data.vinculados
+    } catch {
+      return 0
+    }
+  }
+
   // Ao entrar: tenta vincular fornecedor nas notas já puxadas (API local — sem Focus).
   useEffect(() => {
     if (!filtrosProntos) return
     if (vinculoFornecedorFeitoRef.current) return
     vinculoFornecedorFeitoRef.current = true
     void vincularFornecedoresPendentes({ silencioso: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- uma vez por visita
+  }, [filtrosProntos])
+
+  // Ao entrar: vincula CT-es com chave; forçar retry Focus 1× por sessão (não a cada F5).
+  useEffect(() => {
+    if (!filtrosProntos) return
+    if (vinculoCteFeitoRef.current) return
+    vinculoCteFeitoRef.current = true
+    void vincularCtesPendentes({ silencioso: true, forcarRetryFocus: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- uma vez por visita
   }, [filtrosProntos])
 
@@ -608,9 +659,9 @@ function ConteudoEntradaNotas() {
         <p className="text-sm text-muted-foreground">Fiscal &gt; Entrada de Notas</p>
         <h1 className="mt-1 text-2xl font-bold tracking-tight">Entrada de Notas</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Use <strong>BUSCAR</strong> para sincronizar <strong>NFe 55</strong>, <strong>NFS-e</strong> e{' '}
-          <strong>CTe</strong> na Focus, completar dados e atualizar a lista (lotes de até 10). Filtros e
-          pesquisa leem só o banco local.
+          O sistema sincroniza sozinho a cada ~2 min (<strong>NFe 55</strong>, <strong>NFS-e</strong> e{' '}
+          <strong>CTe</strong> em que a empresa é tomadora do frete). Use <strong>BUSCAR</strong> para forçar
+          agora (lotes de até 10). Filtros e pesquisa leem só o banco local.
         </p>
       </div>
 
@@ -654,7 +705,7 @@ function ConteudoEntradaNotas() {
         titulo={tituloPainel(painel)}
         descricao={
           painelAnalise
-            ? 'Clique em BUSCAR para sincronizar Focus, completar dados e atualizar a lista'
+            ? 'Sync automático ~2 min; BUSCAR força agora (Focus + completar + lista)'
             : 'Lista do banco local — use Filtrar para atualizar'
         }
       >
@@ -835,11 +886,21 @@ function ConteudoEntradaNotas() {
                         : '—'}
                     </td>
                     <td className="px-4 py-3">
-                      <BadgeStatus
-                        variante={varianteBadgeTipo(n.tipoDocumento)}
-                      >
-                        {rotuloTipoDocumentoCurto(n.tipoDocumento)}
-                      </BadgeStatus>
+                      <div className="flex items-center gap-1.5">
+                        <BadgeStatus
+                          variante={varianteBadgeTipo(n.tipoDocumento)}
+                        >
+                          {rotuloTipoDocumentoCurto(n.tipoDocumento)}
+                        </BadgeStatus>
+                        {n.temVinculoFrete ? (
+                          <span
+                            title="CT-e e NF de mercadoria vinculados"
+                            className="inline-flex text-emerald-600 dark:text-emerald-400"
+                          >
+                            <CheckCircle2 className="size-4" aria-label="Vinculado" />
+                          </span>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="max-w-[16rem] px-4 py-3">
                       <div

@@ -21,6 +21,9 @@ import { etapaVazia } from './tipos-analise.js'
 import type { RegrasFiscaisJson } from './analise-fiscal/analisar-fiscal-basico.js'
 import { sanitizarRegrasFiscais } from '../focus-nfe/esquema-focus-nfe.js'
 import type { Prisma } from '@prisma/client'
+import { ratearCustoFrete } from './ratear-custo-frete.js'
+import { servicoVinculoCte } from './servico-vinculo-cte.js'
+import { randomUUID } from 'crypto'
 
 function asJson(valor: AnaliseJson): Prisma.InputJsonValue {
   return valor as unknown as Prisma.InputJsonValue
@@ -98,6 +101,15 @@ function fiscalExigeManifesto(etapa: ResultadoEtapa | null | undefined): boolean
   )
 }
 
+function exigeCtePorModFrete(modFrete: string | null | undefined): boolean {
+  return (modFrete ?? '').trim() === '1'
+}
+
+function podeAvancarFrete(etapa: ResultadoEtapa | null | undefined): boolean {
+  if (!etapa) return true
+  return etapa.status !== 'bloqueante'
+}
+
 function pipelineProntoParaLancar(
   analise: AnaliseJson | null,
   criticasLiberadas: boolean
@@ -133,6 +145,13 @@ function pipelineProntoParaLancar(
         'Negociação bloqueante: resolva o pedido/prazo ou liberar críticas com senha de gerente.',
     }
   }
+  if (!podeAvancarFrete(analise.frete)) {
+    return {
+      ok: false,
+      mensagem:
+        'Frete por conta do destinatário: vincule um CT-e (automático ou manual) antes de lançar.',
+    }
+  }
   return { ok: true }
 }
 
@@ -148,18 +167,34 @@ async function lancarContagem(notaId: string, origem: 'automatica' | 'humana') {
  * Roda o pipeline. Se tudo ok (ou críticas liberadas), lança automaticamente para contagem.
  */
 /**
- * Documental (NFS-e / CTe): só cadastro do emitente; sem fiscal de itens / PO / estoque.
+ * Documental (NFS-e): só cadastro do emitente; sem fiscal de itens / PO / estoque.
  * Libera para contagem documental se cadastro ok.
+ *
+ * CTe: cadastro da transportadora + vínculo com NF-e (chave do XML). Não auto-lança
+ * sozinho quando há chave referenciada — o frete entra na NF de mercadoria.
  */
 async function analisarNotaDocumental(
   companyId: string,
   notaId: string,
   tipo: 'nfse' | 'cte'
-) {
+): Promise<{
+  nota: Record<string, unknown>
+  pedidosDisponiveis: Array<{ id: string; numero: number; status: string }>
+}> {
   let nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
 
   await repositorioEntradaNotas.atualizarNota(notaId, { statusEntrada: 'em_analise' })
+
+  let falhaImportNfeRef: string | undefined
+  if (tipo === 'cte') {
+    const resultadoVinculo = await servicoVinculoCte.tentarVincularCteAutomatico(companyId, notaId, {
+      importarFocusSeAusente: true,
+    })
+    falhaImportNfeRef = resultadoVinculo.falhaImport
+    nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+    if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  }
 
   const cadastro = await analisarCadastro({
     companyId,
@@ -200,7 +235,64 @@ async function analisarNotaDocumental(
       etapaAtual: 'servico',
       statusEntrada: 'em_analise',
     })
-    return await obterDetalhe(companyId, notaId)
+    return await obterDetalhe(companyId, notaId, { jaRetentouVinculoCte: true })
+  }
+
+  if (tipo === 'cte') {
+    // Recarrega vínculos após possível import Focus no início
+    nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+    if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+
+    const vinculos = nota.vinculosComoCte ?? []
+    const chaveRef = nota.chaveNfeReferenciada
+    if (vinculos.length === 0) {
+      analise.motivoParada = 'vinculo_nfe'
+      const bloqueioComChave = falhaImportNfeRef
+        ? [
+            `CTe referencia a NF ${chaveRef?.slice(-8) ?? ''}…. Tentativa automática de importar pela Focus falhou: ${falhaImportNfeRef}`,
+          ]
+        : chaveRef
+          ? [
+              `CTe referencia a NF ${chaveRef.slice(-8)}… (chave ${chaveRef}). A importação automática pela Focus não concluiu — use “Buscar NF pela chave” ou importe o XML da NF.`,
+            ]
+          : [
+              'CTe sem chave de NF-e no XML. Vincule manualmente pela tela da NF de mercadoria ou aguarde NF com frete destinatário.',
+            ]
+      analise.negociacao = {
+        status: 'bloqueante',
+        avisos: [],
+        bloqueios: bloqueioComChave,
+      }
+      await repositorioEntradaNotas.atualizarNota(notaId, {
+        analiseJson: asJson(analise),
+        etapaAtual: 'servico',
+        statusEntrada: 'em_analise',
+      })
+      return await obterDetalhe(companyId, notaId, { jaRetentouVinculoCte: true })
+    }
+
+    // CT-e vinculado: não lança sozinho — despesa/rateio na NF de mercadoria
+    analise.negociacao = {
+      status: 'ok',
+      avisos: [
+        `CTe vinculado à NF ${vinculos[0]?.nfeRecebida?.chaveNfe?.slice(-8) ?? ''}… — custo entra na análise da mercadoria.`,
+      ],
+      bloqueios: [],
+    }
+    await repositorioEntradaNotas.atualizarNota(notaId, {
+      analiseJson: asJson(analise),
+      etapaAtual: 'servico',
+      statusEntrada: 'em_analise',
+    })
+    // Reanalisa a NF vinculada para liberar gate de frete
+    for (const v of vinculos) {
+      try {
+        await analisarNota(companyId, v.nfeRecebidaId)
+      } catch {
+        /* NF pode estar finalizada */
+      }
+    }
+    return await obterDetalhe(companyId, notaId, { jaRetentouVinculoCte: true })
   }
 
   analise.autoLancado = true
@@ -221,7 +313,14 @@ async function analisarNotaCte(companyId: string, notaId: string) {
   return analisarNotaDocumental(companyId, notaId, 'cte')
 }
 
-async function analisarNota(companyId: string, notaId: string, opcoes?: { forcarReparseItens?: boolean }) {
+async function analisarNota(
+  companyId: string,
+  notaId: string,
+  opcoes?: { forcarReparseItens?: boolean }
+): Promise<{
+  nota: Record<string, unknown>
+  pedidosDisponiveis: Array<{ id: string; numero: number; status: string }>
+}> {
   const base = await garantirItensDoXml(companyId, notaId)
   if (
     base.statusEntrada === 'entrada_contagem' ||
@@ -387,9 +486,59 @@ async function analisarNota(companyId: string, notaId: string, opcoes?: { forcar
     return await obterDetalhe(companyId, notaId)
   }
 
+  // Gate frete / CT-e (modFrete = 1 destinatário)
+  nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+
+  let modFrete = nota.modFrete
+  if (!modFrete && nota.xmlConteudo) {
+    const camposXml = extrairCamposResumoDoXml(nota.xmlConteudo)
+    modFrete = camposXml.modFrete ?? null
+    if (modFrete) {
+      await repositorioEntradaNotas.atualizarNota(notaId, { modFrete })
+    }
+  }
+
+  const qtdCtes = (nota.vinculosComoNfe ?? []).length
+  if (exigeCtePorModFrete(modFrete) && qtdCtes === 0) {
+    analise.frete = {
+      status: 'bloqueante',
+      avisos: [],
+      bloqueios: [
+        'Frete por conta do destinatário (modFrete=1): é obrigatório vincular um CT-e. Se não veio no sync, use a aba Frete/CT-e e informe a chave do CT-e (44 dígitos) manualmente.',
+      ],
+    }
+    analise.motivoParada = 'frete'
+    await repositorioEntradaNotas.atualizarNota(notaId, {
+      analiseJson: asJson(analise),
+      etapaAtual: 'frete',
+      statusEntrada: 'em_analise',
+    })
+    return await obterDetalhe(companyId, notaId)
+  }
+
+  if (exigeCtePorModFrete(modFrete)) {
+    analise.frete = {
+      status: 'ok',
+      avisos: [`${qtdCtes} CT-e(s) vinculado(s) — frete destinatário ok.`],
+      bloqueios: [],
+    }
+  } else {
+    analise.frete = {
+      status: 'ok',
+      avisos: modFrete
+        ? [`modFrete=${modFrete} — CT-e não obrigatório.`]
+        : ['modFrete ausente no XML — CT-e não exigido.'],
+      bloqueios: [],
+    }
+  }
+
+  await repositorioEntradaNotas.atualizarNota(notaId, { etapaAtual: 'frete' })
+
   // Auto-lançamento
   analise.autoLancado = true
   analise.motivoParada = null
+  await aplicarRateioEDespesasFrete(companyId, notaId)
   await lancarContagem(notaId, 'automatica')
   await repositorioEntradaNotas.atualizarNota(notaId, {
     analiseJson: asJson(analise),
@@ -399,7 +548,83 @@ async function analisarNota(companyId: string, notaId: string, opcoes?: { forcar
   return await obterDetalhe(companyId, notaId)
 }
 
-async function obterDetalhe(companyId: string, notaId: string) {
+/**
+ * Rateia custo dos CT-es vinculados nos itens e registra despesa mínima por CT-e.
+ */
+async function aplicarRateioEDespesasFrete(companyId: string, notaId: string) {
+  const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota || nota.tipoDocumento === 'nfse' || nota.tipoDocumento === 'cte') return
+
+  const vinculos = nota.vinculosComoNfe ?? []
+  if (vinculos.length === 0) {
+    for (const item of nota.itens) {
+      await repositorioEntradaNotas.atualizarItem(item.id, { custoFreteRateado: null })
+    }
+    return
+  }
+
+  const valorTotalFrete = vinculos.reduce((acc, v) => {
+    const n = decimalNum(v.valorFrete) ?? decimalNum(v.cteRecebida?.valorTotal) ?? 0
+    return acc + n
+  }, 0)
+
+  const regra =
+    nota.fornecedorPessoa?.papeis?.[0]?.dadosFornecedor?.regraRateioFrete ?? 'valor'
+
+  const rateio = ratearCustoFrete({
+    regra,
+    valorTotalFrete,
+    itens: nota.itens.map((i) => ({
+      id: i.id,
+      valorTotal: decimalNum(i.valorTotal),
+      quantidade: decimalNum(i.quantidade),
+      pesoKg: decimalNum(i.pesoKg),
+      pesoProdutoKg: decimalNum(i.produto?.pesoKg ?? null),
+    })),
+  })
+
+  for (const item of rateio.itens) {
+    await repositorioEntradaNotas.atualizarItem(item.id, {
+      custoFreteRateado: item.custoFreteRateado,
+    })
+  }
+
+  for (const v of vinculos) {
+    const valor = decimalNum(v.valorFrete) ?? decimalNum(v.cteRecebida?.valorTotal) ?? 0
+    if (valor <= 0) continue
+    const pessoaId = v.cteRecebida?.fornecedorPessoaId ?? null
+    await clientePrisma.despesaEntradaDocumento.upsert({
+      where: {
+        nfeRecebidaId_origem: { nfeRecebidaId: v.cteRecebidaId, origem: 'cte' },
+      },
+      create: {
+        id: randomUUID(),
+        companyId,
+        nfeRecebidaId: v.cteRecebidaId,
+        pessoaId,
+        valor,
+        status: 'lancado',
+        origem: 'cte',
+        updatedAt: new Date(),
+      },
+      update: {
+        pessoaId,
+        valor,
+        status: 'lancado',
+        updatedAt: new Date(),
+      },
+    })
+  }
+}
+
+async function obterDetalhe(
+  companyId: string,
+  notaId: string,
+  opcoes?: { jaRetentouVinculoCte?: boolean }
+): Promise<{
+  nota: Record<string, unknown>
+  pedidosDisponiveis: Array<{ id: string; numero: number; status: string }>
+}> {
   let nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
 
@@ -412,6 +637,23 @@ async function obterDetalhe(companyId: string, notaId: string) {
     await processarAposXml(companyId, notaId)
     nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
     if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  }
+
+  // CT-e com chave e sem vínculo: ao abrir o detalhe sempre tenta Focus
+  // pela chave do próprio XML (não depende de análise antiga / “aguarde o sync”).
+  // jaRetentouVinculoCte evita loop quando analisarNota retorna via obterDetalhe.
+  const semVinculoCte = (nota.vinculosComoCte ?? []).length === 0
+  const temChaveRef =
+    Boolean(nota.chaveNfeReferenciada) ||
+    (nota.tipoDocumento === 'cte' && Boolean(nota.xmlConteudo))
+  if (
+    !opcoes?.jaRetentouVinculoCte &&
+    nota.tipoDocumento === 'cte' &&
+    statusesAbertos.includes(nota.statusEntrada) &&
+    temChaveRef &&
+    semVinculoCte
+  ) {
+    return analisarNota(companyId, notaId)
   }
 
   let pedidosDisponiveis: Array<{ id: string; numero: number; status: string }> = []
@@ -446,8 +688,57 @@ async function obterDetalhe(companyId: string, notaId: string) {
       origemLancamento: nota.origemLancamento,
       prazoPagamentoXml: nota.prazoPagamentoXml,
       prazoPagamentoTexto: nota.prazoPagamentoTexto,
-      fornecedor: nota.fornecedorPessoa,
+      modFrete: nota.modFrete ?? null,
+      chaveNfeReferenciada: nota.chaveNfeReferenciada ?? null,
+      exigeCte: exigeCtePorModFrete(nota.modFrete),
+      regraRateioFrete:
+        nota.fornecedorPessoa?.papeis?.[0]?.dadosFornecedor?.regraRateioFrete ?? 'valor',
+      fornecedor: nota.fornecedorPessoa
+        ? {
+            id: nota.fornecedorPessoa.id,
+            nome: nota.fornecedorPessoa.nome,
+            cnpj: nota.fornecedorPessoa.cnpj,
+            nomeFantasia: nota.fornecedorPessoa.nomeFantasia,
+          }
+        : null,
       analise: sanitizarAnaliseExibicao(nota.tipoDocumento, nota.analiseJson as AnaliseJson | null),
+      ctesVinculados: (nota.vinculosComoNfe ?? []).map((v) => ({
+        id: v.id,
+        origemVinculo: v.origemVinculo,
+        chaveNfeReferenciada: v.chaveNfeReferenciada,
+        valorFrete: decimalNum(v.valorFrete),
+        cte: v.cteRecebida
+          ? {
+              id: v.cteRecebida.id,
+              chaveNfe: v.cteRecebida.chaveNfe,
+              nomeEmitente: v.cteRecebida.nomeEmitente,
+              documentoEmitente: v.cteRecebida.documentoEmitente,
+              valorTotal: decimalNum(v.cteRecebida.valorTotal),
+              dataEmissao: v.cteRecebida.dataEmissao,
+              statusEntrada: v.cteRecebida.statusEntrada,
+            }
+          : null,
+      })),
+      nfesVinculadas: (nota.vinculosComoCte ?? []).map((v) => ({
+        id: v.id,
+        origemVinculo: v.origemVinculo,
+        nfe: v.nfeRecebida
+          ? {
+              id: v.nfeRecebida.id,
+              chaveNfe: v.nfeRecebida.chaveNfe,
+              nomeEmitente: v.nfeRecebida.nomeEmitente,
+              valorTotal: decimalNum(v.nfeRecebida.valorTotal),
+              statusEntrada: v.nfeRecebida.statusEntrada,
+            }
+          : null,
+      })),
+      despesasFrete: (nota.despesasEntrada ?? []).map((d) => ({
+        id: d.id,
+        valor: decimalNum(d.valor),
+        status: d.status,
+        origem: d.origem,
+        pessoaId: d.pessoaId,
+      })),
       itens: nota.itens.map((i) => ({
         id: i.id,
         nItem: i.nItem,
@@ -461,6 +752,8 @@ async function obterDetalhe(companyId: string, notaId: string) {
         quantidade: decimalNum(i.quantidade),
         valorUnitario: decimalNum(i.valorUnitario),
         valorTotal: decimalNum(i.valorTotal),
+        pesoKg: decimalNum(i.pesoKg),
+        custoFreteRateado: decimalNum(i.custoFreteRateado),
         produtoId: i.produtoId,
         vinculoModo: i.vinculoModo,
         criticaCadastro: i.criticaCadastro,
@@ -673,12 +966,14 @@ async function lancar(
     if (!senha) throw new ErroDaAplicacao('Senha de gerente obrigatória para consolidar estoque.', 400)
     const ok = await servicoDeAutenticacao.verificarSenhaDoUsuario(usuarioId, senha)
     if (!ok) throw new ErroDaAplicacao('Senha inválida.', 403)
+    await aplicarRateioEDespesasFrete(companyId, notaId)
     await repositorioEntradaNotas.atualizarNota(notaId, {
       statusEntrada: 'entrada_consolidada',
       etapaAtual: 'lancamento',
       origemLancamento: 'humana',
     })
   } else {
+    await aplicarRateioEDespesasFrete(companyId, notaId)
     await lancarContagem(notaId, 'humana')
   }
 
@@ -700,7 +995,15 @@ async function processarAposXml(companyId: string, notaId: string) {
       return
     }
 
-    if (nota.tipoDocumento === 'nfse' || nota.tipoDocumento === 'cte') {
+    if (nota.tipoDocumento === 'cte') {
+      await servicoVinculoCte.tentarVincularCteAutomatico(companyId, notaId, {
+        importarFocusSeAusente: true,
+      })
+      await analisarNota(companyId, notaId)
+      return
+    }
+
+    if (nota.tipoDocumento === 'nfse') {
       await analisarNota(companyId, notaId)
       return
     }
@@ -711,7 +1014,9 @@ async function processarAposXml(companyId: string, notaId: string) {
     await repositorioEntradaNotas.substituirItensDoXml(notaId, itens)
     await repositorioEntradaNotas.atualizarNota(notaId, {
       prazoPagamentoXml: campos.prazoPagamentoXml,
+      modFrete: campos.modFrete ?? null,
     })
+    await servicoVinculoCte.tentarVincularNfesPendentesAoCte(companyId, notaId)
     await analisarNota(companyId, notaId)
   } catch (erro) {
     logFocus('warn', 'pipeline_apos_xml_falhou', {
@@ -720,6 +1025,20 @@ async function processarAposXml(companyId: string, notaId: string) {
       mensagem: erro instanceof Error ? erro.message : String(erro),
     })
   }
+}
+
+async function vincularCte(
+  companyId: string,
+  notaId: string,
+  body: { chaveCte?: string; cteId?: string }
+) {
+  await servicoVinculoCte.vincularCteManual(companyId, notaId, body)
+  return analisarNota(companyId, notaId)
+}
+
+async function desvincularCte(companyId: string, notaId: string, vinculoId: string) {
+  await servicoVinculoCte.desvincularCte(companyId, notaId, vinculoId)
+  return analisarNota(companyId, notaId)
 }
 
 /**
@@ -786,6 +1105,14 @@ async function vincularFornecedoresNasNotasPendentes(companyId: string) {
   return vinculadas
 }
 
+/** CT-es sem vínculo: liga NF local; Focus só se houver chave de NF e ela ainda não existir. */
+async function processarVinculosCtePendentes(
+  companyId: string,
+  opcoes?: { importarFocusSeAusente?: boolean; forcarRetryFocus?: boolean }
+) {
+  return servicoVinculoCte.processarVinculosCtePendentes(companyId, opcoes)
+}
+
 export const servicoEntradaNotas = {
   analisarNota,
   obterDetalhe,
@@ -802,4 +1129,7 @@ export const servicoEntradaNotas = {
   processarAposXml,
   reanalisarNotasPendentesPorDocumento,
   vincularFornecedoresNasNotasPendentes,
+  processarVinculosCtePendentes,
+  vincularCte,
+  desvincularCte,
 }

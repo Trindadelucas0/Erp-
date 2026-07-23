@@ -13,6 +13,7 @@ import {
   esquemaLancar,
   esquemaLiberarCriticas,
   esquemaManifestar,
+  esquemaVincularCte,
   esquemaVincularItem,
 } from './esquema-entrada-notas.js'
 
@@ -161,11 +162,49 @@ async function lancar(requisicao: FastifyRequest, resposta: FastifyReply) {
   return resposta.send(dados)
 }
 
+async function vincularCte(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parsed = esquemaVincularCte.safeParse(requisicao.body ?? {})
+  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
+  const dados = await servicoEntradaNotas.vincularCte(
+    companyIdDe(requisicao),
+    notaIdDe(requisicao),
+    parsed.data
+  )
+  return resposta.send(dados)
+}
+
+async function desvincularCte(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { vinculoId } = requisicao.params as { id: string; vinculoId: string }
+  const dados = await servicoEntradaNotas.desvincularCte(
+    companyIdDe(requisicao),
+    notaIdDe(requisicao),
+    vinculoId
+  )
+  return resposta.send(dados)
+}
+
 async function vincularFornecedoresPendentes(requisicao: FastifyRequest, resposta: FastifyReply) {
   const vinculadas = await servicoEntradaNotas.vincularFornecedoresNasNotasPendentes(
     companyIdDe(requisicao)
   )
   return resposta.send({ vinculadas })
+}
+
+async function vincularCtesPendentes(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const body = (requisicao.body ?? {}) as {
+    importarFocusSeAusente?: boolean
+    forcarRetryFocus?: boolean
+  }
+  const dados = await servicoEntradaNotas.processarVinculosCtePendentes(
+    companyIdDe(requisicao),
+    {
+      // Default true: Focus só entra se o CT-e tiver chave de NF e ela não estiver no ERP
+      importarFocusSeAusente: body.importarFocusSeAusente !== false,
+      // true = reprocessa mesmo CT-e que já falhou Focus (após correção consulta→XML)
+      forcarRetryFocus: body.forcarRetryFocus === true,
+    }
+  )
+  return resposta.send(dados)
 }
 
 export const controladorEntradaNotas = {
@@ -181,5 +220,8 @@ export const controladorEntradaNotas = {
   definirPrazo,
   manifestar,
   lancar,
+  vincularCte,
+  desvincularCte,
   vincularFornecedoresPendentes,
+  vincularCtesPendentes,
 }

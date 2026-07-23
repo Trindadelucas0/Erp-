@@ -4,6 +4,9 @@ import {
   extrairChaveNfeDoXml,
   extrairChaveNfseDoXml,
   extrairChaveCteDoXml,
+  extrairCnpjTomadorCte,
+  extrairChavesNfeReferenciadasDoCte,
+  extrairModFreteDoXml,
   extrairCamposResumoDoXml,
   detectarDocumentoFiscalXml,
   montarVisualizacaoDoXml,
@@ -109,7 +112,7 @@ describe('parser XML NF-e', () => {
       <cteProc>
         <CTe xmlns="http://www.portalfiscal.inf.br/cte">
           <infCte Id="CTe${chave}">
-            <ide><dhEmi>2024-07-10T14:00:00-03:00</dhEmi><nCT>1</nCT><serie>1</serie><natOp>PRESTACAO DE SERVICO</natOp></ide>
+            <ide><dhEmi>2024-07-10T14:00:00-03:00</dhEmi><toma>3</toma><nCT>1</nCT><serie>1</serie><natOp>PRESTACAO DE SERVICO</natOp></ide>
             <emit><CNPJ>12345678000185</CNPJ><xNome>TRANSPORTADORA SA</xNome></emit>
             <dest><CNPJ>29859815000102</CNPJ><xNome>DESTINATARIO LTDA</xNome></dest>
             <vPrest><vTPrest>450.75</vTPrest><vRec>450.75</vRec></vPrest>
@@ -125,9 +128,100 @@ describe('parser XML NF-e', () => {
     expect(c.documentoEmitente).toBe('12345678000185')
     expect(c.cnpjDestinatario).toBe('29859815000102')
     expect(c.valorTotal).toBe(450.75)
+    expect(extrairCnpjTomadorCte(xml)).toBe('29859815000102')
     const v = montarVisualizacaoDoXml(xml)
     expect(v.tipoDocumento).toBe('cte')
     expect(v.itens).toHaveLength(0)
+  })
+
+  it('extrai tomador CTe toma=3 (destinatário) e toma=0 (remetente)', () => {
+    const chave = '42260307746756000123570010000436571341325990'
+    const xmlTomadorDest = `<?xml version="1.0"?>
+      <cteProc>
+        <CTe>
+          <infCte Id="CTe${chave}">
+            <ide><dhEmi>2026-03-07T10:00:00-03:00</dhEmi><toma>3</toma></ide>
+            <emit><CNPJ>07746756000123</CNPJ><xNome>PORTOLOG</xNome></emit>
+            <rem><CNPJ>46388683000105</CNPJ><xNome>BF IMPORTACAO</xNome></rem>
+            <dest><CNPJ>55700950000110</CNPJ><xNome>VYZO CONSULTORIA</xNome></dest>
+            <vPrest><vTPrest>270.00</vTPrest></vPrest>
+          </infCte>
+        </CTe>
+      </cteProc>`
+    expect(extrairCnpjTomadorCte(xmlTomadorDest)).toBe('55700950000110')
+
+    const xmlTomadorRem = `<?xml version="1.0"?>
+      <cteProc>
+        <CTe>
+          <infCte Id="CTe${chave}">
+            <ide><dhEmi>2026-03-07T10:00:00-03:00</dhEmi><toma>0</toma></ide>
+            <emit><CNPJ>07746756000123</CNPJ><xNome>PORTOLOG</xNome></emit>
+            <rem><CNPJ>46388683000105</CNPJ><xNome>BF IMPORTACAO</xNome></rem>
+            <dest><CNPJ>55700950000110</CNPJ><xNome>VYZO CONSULTORIA</xNome></dest>
+            <vPrest><vTPrest>270.00</vTPrest></vPrest>
+          </infCte>
+        </CTe>
+      </cteProc>`
+    expect(extrairCnpjTomadorCte(xmlTomadorRem)).toBe('46388683000105')
+    // Destinatário permanece o dest, não o tomador
+    expect(extrairCamposResumoDoXml(xmlTomadorRem).cnpjDestinatario).toBe('55700950000110')
+  })
+
+  it('extrai tomador CTe toma=4 (outros) e fail-closed sem documento', () => {
+    const chave = '35240712345678000185570010000000011000000015'
+    const xmlOutros = `<?xml version="1.0"?>
+      <cteProc>
+        <CTe>
+          <infCte Id="CTe${chave}">
+            <ide><toma>4</toma></ide>
+            <emit><CNPJ>12345678000185</CNPJ></emit>
+            <dest><CNPJ>29859815000102</CNPJ></dest>
+            <toma4><CNPJ>11222333000144</CNPJ><xNome>TOMADOR TERCEIRO</xNome></toma4>
+          </infCte>
+        </CTe>
+      </cteProc>`
+    expect(extrairCnpjTomadorCte(xmlOutros)).toBe('11222333000144')
+
+    const xmlSemTomador = `<?xml version="1.0"?>
+      <cteProc>
+        <CTe>
+          <infCte Id="CTe${chave}">
+            <ide><toma>4</toma></ide>
+            <emit><CNPJ>12345678000185</CNPJ></emit>
+            <dest><CNPJ>29859815000102</CNPJ></dest>
+          </infCte>
+        </CTe>
+      </cteProc>`
+    expect(extrairCnpjTomadorCte(xmlSemTomador)).toBeNull()
+  })
+
+  it('extrai chaves NF referenciadas no CTe e modFrete na NFe', () => {
+    const chaveCte = '35240712345678000185570010000000011000000015'
+    const chaveNfe =
+      '35200114200166000187550010000000011000000015'
+    const xmlCte = `<?xml version="1.0"?>
+      <cteProc>
+        <CTe>
+          <infCte Id="CTe${chaveCte}">
+            <ide><toma>3</toma></ide>
+            <emit><CNPJ>12345678000185</CNPJ></emit>
+            <dest><CNPJ>29859815000102</CNPJ></dest>
+            <infDoc>
+              <infNFe><chave>${chaveNfe}</chave></infNFe>
+            </infDoc>
+            <vPrest><vTPrest>100.00</vTPrest></vPrest>
+          </infCte>
+        </CTe>
+      </cteProc>`
+    expect(extrairChavesNfeReferenciadasDoCte(xmlCte)).toEqual([chaveNfe])
+    expect(extrairCamposResumoDoXml(xmlCte).chaveNfeReferenciada).toBe(chaveNfe)
+
+    const xmlNfe = `<nfeProc><NFe><infNFe Id="NFe${chaveNfe}">
+      <transp><modFrete>1</modFrete></transp>
+      <total><ICMSTot><vNF>10.00</vNF></ICMSTot></total>
+    </infNFe></NFe></nfeProc>`
+    expect(extrairModFreteDoXml(xmlNfe)).toBe('1')
+    expect(extrairCamposResumoDoXml(xmlNfe).modFrete).toBe('1')
   })
 
   it('detecta NFe 55', () => {

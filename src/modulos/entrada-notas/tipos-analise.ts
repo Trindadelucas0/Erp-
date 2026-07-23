@@ -25,6 +25,8 @@ export type AnaliseJson = {
   cadastro: ResultadoEtapa
   fiscal: ResultadoEtapa
   negociacao: ResultadoEtapa
+  /** Gate frete/CT-e (NFe 55 com modFrete destinatário). */
+  frete?: ResultadoEtapa
   autoLancado?: boolean
   motivoParada?: string | null
 }

@@ -10,8 +10,64 @@ async function buscarNotaCompleta(companyId: string, id: string) {
   return clientePrisma.nfeRecebida.findFirst({
     where: { id, companyId },
     include: {
-      itens: { orderBy: { nItem: 'asc' }, include: { produto: { select: { id: true, nomeVenda: true, sku: true, ncm: true, codigoOrigem: true } } } },
-      fornecedorPessoa: { select: { id: true, nome: true, cnpj: true, nomeFantasia: true } },
+      itens: {
+        orderBy: { nItem: 'asc' },
+        include: {
+          produto: {
+            select: {
+              id: true,
+              nomeVenda: true,
+              sku: true,
+              ncm: true,
+              codigoOrigem: true,
+              pesoKg: true,
+            },
+          },
+        },
+      },
+      fornecedorPessoa: {
+        select: {
+          id: true,
+          nome: true,
+          cnpj: true,
+          nomeFantasia: true,
+          papeis: {
+            where: { papel: 'fornecedor', ativo: true },
+            take: 1,
+            include: { dadosFornecedor: { select: { regraRateioFrete: true } } },
+          },
+        },
+      },
+      vinculosComoNfe: {
+        include: {
+          cteRecebida: {
+            select: {
+              id: true,
+              chaveNfe: true,
+              nomeEmitente: true,
+              documentoEmitente: true,
+              valorTotal: true,
+              dataEmissao: true,
+              statusEntrada: true,
+              fornecedorPessoaId: true,
+            },
+          },
+        },
+      },
+      vinculosComoCte: {
+        include: {
+          nfeRecebida: {
+            select: {
+              id: true,
+              chaveNfe: true,
+              nomeEmitente: true,
+              valorTotal: true,
+              statusEntrada: true,
+            },
+          },
+        },
+      },
+      despesasEntrada: true,
     },
   })
 }
@@ -38,6 +94,7 @@ async function substituirItensDoXml(nfeRecebidaId: string, itens: ItemXmlNfe[]) 
       quantidade: item.quantidade,
       valorUnitario: item.valorUnitario,
       valorTotal: item.valorTotal,
+      pesoKg: item.pesoKg ?? null,
       updatedAt: new Date(),
     })),
   })
@@ -61,6 +118,8 @@ async function atualizarNota(
     observacaoContato?: string | null
     pedidoCompraId?: string | null
     manifestacaoDestinatario?: string | null
+    modFrete?: string | null
+    chaveNfeReferenciada?: string | null
   }
 ) {
   return clientePrisma.nfeRecebida.update({
@@ -77,6 +136,7 @@ async function atualizarItem(
     criticaCadastro?: boolean
     criticaFiscal?: boolean
     criticaNegociacao?: boolean
+    custoFreteRateado?: number | null
   }
 ) {
   return clientePrisma.nfeRecebidaItem.update({ where: { id }, data })

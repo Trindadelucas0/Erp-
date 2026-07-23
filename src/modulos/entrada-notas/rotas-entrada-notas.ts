@@ -16,6 +16,11 @@ export async function rotasEntradaNotas(aplicacao: FastifyInstance): Promise<voi
     { preHandler: autenticado },
     controladorEntradaNotas.vincularFornecedoresPendentes
   )
+  aplicacao.post(
+    '/vincular-ctes-pendentes',
+    { preHandler: autenticado },
+    controladorEntradaNotas.vincularCtesPendentes
+  )
 
   aplicacao.get('/:id', { preHandler: autenticado }, controladorEntradaNotas.detalhe)
   aplicacao.post('/:id/analisar', { preHandler: autenticado }, controladorEntradaNotas.analisar)
@@ -45,4 +50,10 @@ export async function rotasEntradaNotas(aplicacao: FastifyInstance): Promise<voi
   aplicacao.post('/:id/definir-prazo', { preHandler: autenticado }, controladorEntradaNotas.definirPrazo)
   aplicacao.post('/:id/manifestar', { preHandler: autenticado }, controladorEntradaNotas.manifestar)
   aplicacao.post('/:id/lancar', { preHandler: autenticado }, controladorEntradaNotas.lancar)
+  aplicacao.post('/:id/vincular-cte', { preHandler: autenticado }, controladorEntradaNotas.vincularCte)
+  aplicacao.delete(
+    '/:id/vinculos-cte/:vinculoId',
+    { preHandler: autenticado },
+    controladorEntradaNotas.desvincularCte
+  )
 }

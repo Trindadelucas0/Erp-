@@ -186,6 +186,14 @@ async function listarNfesPorPainel(
       ...buscaFiltro,
     },
     orderBy: [{ dataEmissao: 'desc' }, { createdAt: 'desc' }],
+    include: {
+      _count: {
+        select: {
+          vinculosComoCte: true,
+          vinculosComoNfe: true,
+        },
+      },
+    },
   })
 }
 
@@ -243,6 +251,8 @@ async function upsertNfeRecebida(dados: {
   origem?: string
   xmlConteudo?: string | null
   etapaAtual?: string
+  modFrete?: string | null
+  chaveNfeReferenciada?: string | null
 }) {
   const existente = await buscarPorChave(dados.companyId, dados.chaveNfe)
   if (existente) {
@@ -264,6 +274,10 @@ async function upsertNfeRecebida(dados: {
           versaoFocus: dados.versaoFocus ?? existente.versaoFocus,
           xmlConteudo: dados.xmlConteudo ?? existente.xmlConteudo,
           ...(dados.etapaAtual ? { etapaAtual: dados.etapaAtual } : {}),
+          ...(dados.modFrete !== undefined ? { modFrete: dados.modFrete } : {}),
+          ...(dados.chaveNfeReferenciada !== undefined
+            ? { chaveNfeReferenciada: dados.chaveNfeReferenciada }
+            : {}),
         },
       }),
       criado: false,
@@ -290,6 +304,8 @@ async function upsertNfeRecebida(dados: {
         xmlConteudo: dados.xmlConteudo,
         statusEntrada: 'pendente',
         etapaAtual: dados.etapaAtual ?? 'cadastro',
+        modFrete: dados.modFrete ?? null,
+        chaveNfeReferenciada: dados.chaveNfeReferenciada ?? null,
       },
     }),
     criado: true,

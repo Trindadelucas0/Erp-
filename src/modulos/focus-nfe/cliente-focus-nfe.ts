@@ -87,6 +87,7 @@ export type CteRecebidaResumoFocus = {
   documento_destinatario?: string | null
   cnpj_destinatario?: string | null
   documento_tomador?: string | null
+  cnpj_tomador?: string | null
   nome_tomador?: string | null
 }
 
@@ -419,20 +420,32 @@ export const clienteFocusNfe = {
     homologacao: boolean,
     chaveNfe: string,
     tipo: string,
-    justificativa?: string
+    justificativa?: string,
+    cnpjEmpresa?: string | null
   ) {
+    const cnpj = cnpjEmpresa?.replace(/\D/g, '')
     return chamar<unknown>(
       'POST',
       `/nfes_recebidas/${chaveNfe}/manifesto`,
       apiToken,
       homologacao,
-      { corpo: { tipo, ...(justificativa ? { justificativa } : {}) } }
+      {
+        corpo: { tipo, ...(justificativa ? { justificativa } : {}) },
+        ...(cnpj && cnpj.length === 14 ? { query: { cnpj } } : {}),
+      }
     )
   },
 
-  baixarXml(apiToken: string, homologacao: boolean, chaveNfe: string) {
+  baixarXml(
+    apiToken: string,
+    homologacao: boolean,
+    chaveNfe: string,
+    cnpjEmpresa?: string | null
+  ) {
+    const cnpj = cnpjEmpresa?.replace(/\D/g, '')
     return chamar<string>('GET', `/nfes_recebidas/${chaveNfe}.xml`, apiToken, homologacao, {
       accept: 'application/xml',
+      ...(cnpj && cnpj.length === 14 ? { query: { cnpj } } : {}),
     })
   },
 
@@ -467,5 +480,30 @@ export const clienteFocusNfe = {
 
   consultarJson(apiToken: string, homologacao: boolean, chaveNfe: string) {
     return chamar<unknown>('GET', `/nfes_recebidas/${chaveNfe}.json`, apiToken, homologacao)
+  },
+
+  /**
+   * Consulta individual da NF recebida (resumo ou completa).
+   * @see https://doc.focusnfe.com.br/reference/consultar_nfe_recebida_individual
+   */
+  consultarNfeRecebida(
+    apiToken: string,
+    homologacao: boolean,
+    chaveNfe: string,
+    opcoes?: { cnpj?: string | null; completa?: boolean }
+  ) {
+    const cnpj = opcoes?.cnpj?.replace(/\D/g, '')
+    return chamar<Record<string, unknown>>(
+      'GET',
+      `/nfes_recebidas/${chaveNfe}`,
+      apiToken,
+      homologacao,
+      {
+        query: {
+          ...(cnpj && cnpj.length === 14 ? { cnpj } : {}),
+          ...(opcoes?.completa ? { completa: 1 } : {}),
+        },
+      }
+    )
   },
 }

@@ -33,6 +33,7 @@ model Company {
   configuracaoFocusNfe        ConfiguracaoFocusNfe?
   focusNfeJobs                FocusNfeJob[]
   nfesRecebidas               NfeRecebida[]
+  despesasEntradaDocumento    DespesaEntradaDocumento[]
   produtos                    Produto[]
   pedidosCompra               PedidoCompra[]
   creditosFornecedor          CreditoFornecedor[]
@@ -158,7 +159,14 @@ model NfeRecebida {
   prazoPagamentoXml        String?
   /// Preenchimento humano quando NF sem prazo
   prazoPagamentoTexto      String?
+  /// NFe 55: transp/modFrete (0=remetente … 1=destinatário … 9=sem frete)
+  modFrete                 String?
+  /// CTe: 1ª chave de NF-e referenciada no XML (infDoc/infNFe)
+  chaveNfeReferenciada     String?
   itens                    NfeRecebidaItem[]
+  vinculosComoNfe          NfeCteVinculo[]          @relation("VinculoNfeMercadoria")
+  vinculosComoCte          NfeCteVinculo[]          @relation("VinculoCte")
+  despesasEntrada          DespesaEntradaDocumento[]
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 
@@ -167,6 +175,50 @@ model NfeRecebida {
   @@index([companyId, versaoFocus])
   @@index([companyId, fornecedorPessoaId])
   @@index([companyId, tipoDocumento])
+  @@index([companyId, chaveNfeReferenciada])
+}
+
+model NfeCteVinculo {
+  id                   String      @id @default(uuid())
+  companyId            String
+  nfeRecebidaId        String
+  nfeRecebida          NfeRecebida @relation("VinculoNfeMercadoria", fields: [nfeRecebidaId], references: [id], onDelete: Cascade)
+  cteRecebidaId        String
+  cteRecebida          NfeRecebida @relation("VinculoCte", fields: [cteRecebidaId], references: [id], onDelete: Cascade)
+  chaveNfeReferenciada String?
+  /// automatico | manual
+  origemVinculo        String      @default("automatico")
+  valorFrete           Decimal?    @db.Decimal(18, 2)
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  @@unique([cteRecebidaId])
+  @@index([companyId, nfeRecebidaId])
+  @@index([companyId, chaveNfeReferenciada])
+}
+
+model DespesaEntradaDocumento {
+  id                String           @id @default(uuid())
+  companyId         String
+  company           Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  nfeRecebidaId     String
+  nfeRecebida       NfeRecebida      @relation(fields: [nfeRecebidaId], references: [id], onDelete: Cascade)
+  pessoaId          String?
+  pessoa            Pessoa?          @relation(fields: [pessoaId], references: [id], onDelete: SetNull)
+  planoFinanceiroId String?
+  planoFinanceiro   PlanoFinanceiro? @relation(fields: [planoFinanceiroId], references: [id], onDelete: SetNull)
+  valor             Decimal          @db.Decimal(18, 2)
+  /// pendente | lancado
+  status            String           @default("pendente")
+  /// cte
+  origem            String           @default("cte")
+  vencimento        DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@unique([nfeRecebidaId, origem])
+  @@index([companyId, status])
+  @@index([pessoaId])
 }
 
 model NfeRecebidaItem {
@@ -184,6 +236,8 @@ model NfeRecebidaItem {
   quantidade         Decimal?    @db.Decimal(18, 4)
   valorUnitario      Decimal?    @db.Decimal(18, 4)
   valorTotal         Decimal?    @db.Decimal(18, 2)
+  /// Peso líquido do item no XML (kg), se houver
+  pesoKg             Decimal?    @db.Decimal(18, 4)
   produtoId          String?
   produto            Produto?    @relation(fields: [produtoId], references: [id], onDelete: SetNull)
   /// barras | codigo_original | manual | null
@@ -191,6 +245,7 @@ model NfeRecebidaItem {
   criticaCadastro    Boolean     @default(false)
   criticaFiscal      Boolean     @default(false)
   criticaNegociacao  Boolean     @default(false)
+  custoFreteRateado  Decimal?    @db.Decimal(18, 4)
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
 
@@ -244,6 +299,7 @@ model Pessoa {
   creditosFornecedor          CreditoFornecedor[]
   pendenciasFornecedor        PendenciaFornecedor[]
   nfesRecebidasComoFornecedor NfeRecebida[]
+  despesasEntradaDocumento    DespesaEntradaDocumento[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -323,6 +379,8 @@ model DadosFornecedor {
   prazoPagamento5            Int?
   prazoPagamento6            Int?
   modalidadeTransportePadrao String?
+  /// valor | peso | quantidade | igual — rateio do CT-e nos itens da NF
+  regraRateioFrete           String  @default("valor")
   observacoes                String?
 
   planosFinanceiros    FornecedorPlanoFinanceiro[]
@@ -448,6 +506,7 @@ model PlanoFinanceiro {
   ativo                   Boolean                        @default(true)
   fornecedores            FornecedorPlanoFinanceiro[]
   paresPlanoCfop          FornecedorParPlanoCfopPadrao[]
+  despesasEntrada         DespesaEntradaDocumento[]
   createdAt               DateTime                       @default(now())
 
   @@unique([codigo, companyId])
