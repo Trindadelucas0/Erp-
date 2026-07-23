@@ -1,7 +1,12 @@
-# Deploy na VPS — executar na pasta do projeto (ex.: ~/PROJETOS/Erp-)
+# Deploy na VPS — executar SEMPRE na raiz do projeto (ex.: ~/PROJETOS/Erp-)
+# NÃO rode estes comandos de dentro de frontend/ — db:* e o build completo
+# ficam no package.json da raiz.
 # Ordem importa: migração ANTES do build.
 
 cd ~/PROJETOS/Erp-
+
+# Confirme: pwd deve terminar em Erp- (não em Erp-/frontend)
+pwd
 
 git pull
 

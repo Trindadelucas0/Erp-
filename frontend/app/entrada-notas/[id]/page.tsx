@@ -23,6 +23,7 @@ import {
   prefixoPdfDocumento,
   rotuloTipoDocumentoLongo,
 } from '@/lib/tipo-documento-entrada'
+import { gravarDeepLinkFornecedor } from '@/lib/fornecedor-deep-link'
 import type { StatusDaAba } from '@/hooks/use-validacao-de-abas'
 
 type ResultadoEtapa = {
@@ -593,17 +594,20 @@ function ConteudoDetalheEntrada() {
             <EtapaResumo etapa={nota.analise?.cadastro} />
             {cadastroBloqueante && nota.documentoEmitente ? (
               <div className="mt-3">
-                <Link
-                  href={`/fornecedores?novo=1&documento=${encodeURIComponent(
-                    nota.documentoEmitente.replace(/\D/g, '')
-                  )}${
-                    nota.nomeEmitente ? `&nome=${encodeURIComponent(nota.nomeEmitente)}` : ''
-                  }&retorno=${encodeURIComponent(`/entrada-notas/${nota.id}`)}`}
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    gravarDeepLinkFornecedor({
+                      documento: nota.documentoEmitente!.replace(/\D/g, ''),
+                      nome: nota.nomeEmitente ?? undefined,
+                      retorno: `/entrada-notas/${nota.id}`,
+                    })
+                    router.push('/fornecedores')
+                  }}
                 >
-                  <Button type="button" size="sm">
-                    Cadastrar fornecedor
-                  </Button>
-                </Link>
+                  Cadastrar fornecedor
+                </Button>
               </div>
             ) : null}
           </CardPadrao>

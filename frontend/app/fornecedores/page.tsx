@@ -50,6 +50,12 @@ import {
   validarCnpj,
 } from '@/lib/documentos'
 import { useConsultaDocumento } from '@/hooks/use-consulta-documento'
+import {
+  gravarDeepLinkFornecedor,
+  lerDeepLinkFornecedor,
+  limparDeepLinkFornecedor,
+  retornoEntradaNotasValido,
+} from '@/lib/fornecedor-deep-link'
 import { ListaContatos, type ContatoForm } from '@/components/clientes/lista-contatos'
 import { ListaEnderecos, ENDERECO_VAZIO, type EnderecoForm } from '@/components/clientes/lista-enderecos'
 import {
@@ -221,41 +227,6 @@ const FORM_VAZIO: FormFornecedor = {
   dadosBancarios: [],
   contatos: [],
   enderecos: [],
-}
-
-/** Deep-link da Entrada de Notas (?novo=1) — sobrevive a remount do Suspense. */
-const DEEP_LINK_STORAGE_KEY = 'fornecedores:deepLinkNovo'
-
-type DeepLinkNovoFornecedor = {
-  documento: string
-  nome?: string
-  retorno?: string | null
-}
-
-function lerDeepLinkPendente(): DeepLinkNovoFornecedor | null {
-  if (typeof window === 'undefined') return null
-  try {
-    const raw = sessionStorage.getItem(DEEP_LINK_STORAGE_KEY)
-    if (!raw) return null
-    return JSON.parse(raw) as DeepLinkNovoFornecedor
-  } catch {
-    return null
-  }
-}
-
-function gravarDeepLinkPendente(dados: DeepLinkNovoFornecedor) {
-  if (typeof window === 'undefined') return
-  sessionStorage.setItem(DEEP_LINK_STORAGE_KEY, JSON.stringify(dados))
-}
-
-function limparDeepLinkPendente() {
-  if (typeof window === 'undefined') return
-  sessionStorage.removeItem(DEEP_LINK_STORAGE_KEY)
-}
-
-function retornoEntradaNotasValido(retorno: string | null | undefined): string | null {
-  if (retorno && /^\/entrada-notas\/[a-zA-Z0-9-]+$/.test(retorno)) return retorno
-  return null
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1040,24 +1011,23 @@ function ConteudoDaPaginaDeFornecedores() {
   useEffect(() => {
     if (deepLinkProcessado.current) return
     if (carregandoSessao || !estaAutenticado) return
+    if (modalAberto) return
 
-    // Persiste query antes de limpar URL — se Suspense remontar, o intent não se perde
+    // Fallback legado: links antigos ?novo=1&documento= → grava no storage (sem replaceState)
     if (searchParams.get('novo') === '1') {
-      gravarDeepLinkPendente({
+      gravarDeepLinkFornecedor({
         documento: searchParams.get('documento') ?? '',
         nome: searchParams.get('nome') ?? undefined,
         retorno: searchParams.get('retorno'),
       })
-      // Não usar router.replace: remonta useSearchParams/Suspense e apaga o modal
-      window.history.replaceState(null, '', '/fornecedores')
     }
 
-    const intent = lerDeepLinkPendente()
+    const intent = lerDeepLinkFornecedor()
     if (!intent) return
 
     if (!podeCriar) {
       deepLinkProcessado.current = true
-      limparDeepLinkPendente()
+      limparDeepLinkFornecedor()
       setMensagemDeErro(
         'Você não tem permissão para cadastrar fornecedores (fornecedores:create).'
       )
@@ -1067,10 +1037,10 @@ function ConteudoDaPaginaDeFornecedores() {
     deepLinkProcessado.current = true
     const retorno = retornoEntradaNotasValido(intent.retorno)
     if (retorno) retornoAposCadastroRef.current = retorno
-    limparDeepLinkPendente()
+    // Mantém storage até fechar o modal — remount reabre o cadastro
     abrirModalNovo({ documento: intent.documento, nome: intent.nome })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- deep-link one-shot
-  }, [carregandoSessao, estaAutenticado, podeCriar, searchParams])
+  }, [carregandoSessao, estaAutenticado, podeCriar, searchParams, modalAberto])
 
   function abrirModalEdicao(f: Fornecedor) {
     const formEdicao = fornecedorParaForm(f)
@@ -1127,6 +1097,11 @@ function ConteudoDaPaginaDeFornecedores() {
     setErrosDaAbaAtual([])
     resetarStatus()
     resetarConsulta()
+    limparDeepLinkFornecedor()
+    // Limpa query legado (?novo=1) só depois que o modal já estável / fechou
+    if (typeof window !== 'undefined' && window.location.search.includes('novo=1')) {
+      window.history.replaceState(null, '', '/fornecedores')
+    }
   }, [resetarStatus, resetarConsulta])
 
   const { solicitarFechar, dialogoConfirmacao } = useConfirmarSaida(
