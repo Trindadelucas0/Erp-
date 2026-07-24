@@ -245,11 +245,19 @@ async function chamar<T>(
 async function baixarPdfUmaVez(
   apiToken: string,
   homologacao: boolean,
-  caminho: string
+  caminho: string,
+  query?: Record<string, string | undefined>
 ): Promise<RespostaFocus<Buffer>> {
   await aguardarRateLimit()
 
-  const url = `${baseUrl(homologacao)}${caminho}`
+  const params = new URLSearchParams()
+  if (query) {
+    for (const [k, v] of Object.entries(query)) {
+      if (v !== undefined && v !== '') params.set(k, v)
+    }
+  }
+  const qs = params.toString()
+  const url = `${baseUrl(homologacao)}${caminho}${qs ? `?${qs}` : ''}`
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
   const inicio = Date.now()
@@ -336,11 +344,15 @@ async function baixarPdfUmaVez(
 async function baixarPdfBinario(
   apiToken: string,
   homologacao: boolean,
-  caminho: string
+  caminho: string,
+  cnpjEmpresa?: string | null
 ): Promise<RespostaFocus<Buffer>> {
+  const cnpj = cnpjEmpresa?.replace(/\D/g, '')
+  const query =
+    cnpj && cnpj.length === 14 ? { cnpj } : undefined
   let ultima: RespostaFocus<Buffer> | null = null
   for (let tentativa = 1; tentativa <= MAX_TENTATIVAS_429; tentativa += 1) {
-    ultima = await baixarPdfUmaVez(apiToken, homologacao, caminho)
+    ultima = await baixarPdfUmaVez(apiToken, homologacao, caminho, query)
     if (ultima.sucesso || ultima.codigoHttp !== 429) return ultima
     if (tentativa >= MAX_TENTATIVAS_429) break
     const esperaSec = segundosEspera429(ultima.mensagem)
@@ -453,29 +465,69 @@ export const clienteFocusNfe = {
    * PDF DANFE — NFe 55 recebida.
    * @see https://doc.focusnfe.com.br/reference/consultar_nfe_recebida_individual_pdf
    */
-  baixarPdfNfe(apiToken: string, homologacao: boolean, chave: string) {
-    return baixarPdfBinario(apiToken, homologacao, `/nfes_recebidas/${chave}.pdf`)
+  baixarPdfNfe(
+    apiToken: string,
+    homologacao: boolean,
+    chave: string,
+    cnpjEmpresa?: string | null
+  ) {
+    return baixarPdfBinario(
+      apiToken,
+      homologacao,
+      `/nfes_recebidas/${chave}.pdf`,
+      cnpjEmpresa
+    )
   },
 
   /**
    * PDF DANFSe — NFS-e nacional recebida.
    * @see https://doc.focusnfe.com.br/reference/consultar_nfsen_recebida_individual_pdf
    */
-  baixarPdfNfse(apiToken: string, homologacao: boolean, chave: string) {
-    return baixarPdfBinario(apiToken, homologacao, `/nfsens_recebidas/${chave}.pdf`)
+  baixarPdfNfse(
+    apiToken: string,
+    homologacao: boolean,
+    chave: string,
+    cnpjEmpresa?: string | null
+  ) {
+    return baixarPdfBinario(
+      apiToken,
+      homologacao,
+      `/nfsens_recebidas/${chave}.pdf`,
+      cnpjEmpresa
+    )
   },
 
   /**
    * PDF DACTe — CTe recebido.
    * @see https://doc.focusnfe.com.br/reference/consultar_ctes_recebidas
    */
-  baixarPdfCte(apiToken: string, homologacao: boolean, chave: string) {
-    return baixarPdfBinario(apiToken, homologacao, `/ctes_recebidas/${chave}.pdf`)
+  baixarPdfCte(
+    apiToken: string,
+    homologacao: boolean,
+    chave: string,
+    cnpjEmpresa?: string | null
+  ) {
+    return baixarPdfBinario(
+      apiToken,
+      homologacao,
+      `/ctes_recebidas/${chave}.pdf`,
+      cnpjEmpresa
+    )
   },
 
   /** @deprecated use baixarPdfNfe */
-  baixarDanfePdf(apiToken: string, homologacao: boolean, chaveNfe: string) {
-    return baixarPdfBinario(apiToken, homologacao, `/nfes_recebidas/${chaveNfe}.pdf`)
+  baixarDanfePdf(
+    apiToken: string,
+    homologacao: boolean,
+    chaveNfe: string,
+    cnpjEmpresa?: string | null
+  ) {
+    return baixarPdfBinario(
+      apiToken,
+      homologacao,
+      `/nfes_recebidas/${chaveNfe}.pdf`,
+      cnpjEmpresa
+    )
   },
 
   consultarJson(apiToken: string, homologacao: boolean, chaveNfe: string) {

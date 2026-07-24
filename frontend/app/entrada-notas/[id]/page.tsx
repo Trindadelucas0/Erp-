@@ -17,6 +17,7 @@ import {
   type VisualizacaoNota,
 } from '@/components/entrada-notas/conteudo-visualizacao-nota'
 import { BarraCarregamentoDownload } from '@/components/entrada-notas/barra-carregamento-download'
+import { ItemVinculoCadastroGrid } from '@/components/entrada-notas/item-vinculo-cadastro-grid'
 import { CheckCircle2 } from 'lucide-react'
 import {
   ehDocumentalEntrada,
@@ -63,6 +64,8 @@ type ItemNota = {
   criticaCadastro: boolean
   criticaFiscal: boolean
   criticaNegociacao: boolean
+  /** cProd da NF já está em ProdutoFornecedor.codigoFornecedor */
+  codigoOriginalGravado?: boolean
   produto: {
     id: string
     nomeVenda: string
@@ -281,6 +284,9 @@ function ConteudoDetalheEntrada() {
   const [danfeBloqueado, setDanfeBloqueado] = useState(false)
   const [abaAtiva, setAbaAtiva] = useState<AbaId>('cadastro')
   const [chaveCteManual, setChaveCteManual] = useState('')
+  const [codigosOriginaisGravados, setCodigosOriginaisGravados] = useState<Record<string, true>>(
+    {}
+  )
 
   const carregar = useCallback(async () => {
     setCarregando(true)
@@ -370,7 +376,7 @@ function ConteudoDetalheEntrada() {
     }
   }
 
-  async function postAcao(path: string, body?: Record<string, unknown>) {
+  async function postAcao(path: string, body?: Record<string, unknown>): Promise<boolean> {
     setAcao(true)
     setErro(null)
     setMensagem(null)
@@ -396,12 +402,17 @@ function ConteudoDetalheEntrada() {
         } else if (path.includes('vincular-cte') || path.includes('definir-prazo')) {
           setMensagem(mensagemAposAnalisar(data.nota))
         }
-      } else if (data.mensagem) {
+        return true
+      }
+      if (data.mensagem) {
         setMensagem(data.mensagem)
         await carregar()
+        return true
       }
+      return false
     } catch (err) {
       setErro(extrairMensagemApi(err, 'Falha na ação.'))
+      return false
     } finally {
       setAcao(false)
     }
@@ -710,99 +721,58 @@ function ConteudoDetalheEntrada() {
             ) : (
               <div className="space-y-4">
                 {nota.itens.map((item) => (
-                  <div key={item.id} className="rounded-md border p-3 text-sm">
-                    <div className="flex flex-wrap justify-between gap-2">
-                      <p className="font-medium">
-                        #{item.nItem} {item.descricao ?? '—'}
-                      </p>
-                      <p className="text-muted-foreground">
-                        {item.quantidade ?? '—'} ×{' '}
-                        {item.valorUnitario != null
-                          ? item.valorUnitario.toLocaleString('pt-BR', {
-                              style: 'currency',
-                              currency: 'BRL',
+                  <ItemVinculoCadastroGrid
+                    key={item.id}
+                    item={item}
+                    finalizada={finalizada}
+                    acao={acao}
+                    buscando={itemVinculando === item.id}
+                    buscaProduto={buscaProduto}
+                    produtos={produtos}
+                    onAbrirBusca={() => abrirBuscaProduto(item)}
+                    onFecharBusca={() => {
+                      setItemVinculando(null)
+                      setProdutos([])
+                      setBuscaProduto('')
+                    }}
+                    onBuscaChange={setBuscaProduto}
+                    onBuscar={() => void buscarProdutos()}
+                    onVincular={async (produtoId) => {
+                      await postAcao('/vincular-item', {
+                        itemId: item.id,
+                        produtoId,
+                      })
+                      setItemVinculando(null)
+                      setProdutos([])
+                      setBuscaProduto('')
+                    }}
+                    onImportarNcm={() =>
+                      postAcao('/importar-fiscal-produto', {
+                        itemId: item.id,
+                        ncm: true,
+                        origem: false,
+                      })
+                    }
+                    codigoOriginalGravado={
+                      Boolean(item.codigoOriginalGravado) ||
+                      Boolean(codigosOriginaisGravados[item.id])
+                    }
+                    onGravarCodigoOriginal={
+                      item.produtoId && item.codigoProduto
+                        ? async () => {
+                            const ok = await postAcao('/gravar-codigo-original', {
+                              itemId: item.id,
                             })
-                          : '—'}
-                      </p>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      GTIN {item.gtin ?? '—'} · cProd {item.codigoProduto ?? '—'}
-                    </p>
-                    <p className="mt-1">
-                      Produto:{' '}
-                      {item.produto
-                        ? `${item.produto.nomeVenda} (${item.vinculoModo ?? 'vinculado'})`
-                        : 'sem vínculo'}
-                      {item.criticaCadastro && (
-                        <span className="ml-2 text-destructive">crítica cadastro</span>
-                      )}
-                    </p>
-                    {!finalizada && (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {!item.produtoId && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => abrirBuscaProduto(item)}
-                          >
-                            Buscar produto
-                          </Button>
-                        )}
-                        {item.produtoId && item.codigoProduto && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            disabled={acao}
-                            onClick={() => postAcao('/gravar-codigo-original', { itemId: item.id })}
-                          >
-                            Gravar código original no vínculo
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                    {itemVinculando === item.id && (
-                      <div className="mt-3 space-y-2 rounded-md border border-dashed p-3">
-                        <div className="flex gap-2">
-                          <input
-                            className="flex-1 rounded-md border bg-background px-3 py-2 text-sm"
-                            placeholder="Buscar produto…"
-                            value={buscaProduto}
-                            onChange={(e) => setBuscaProduto(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') void buscarProdutos()
-                            }}
-                          />
-                          <Button type="button" size="sm" onClick={() => void buscarProdutos()}>
-                            Buscar
-                          </Button>
-                        </div>
-                        <ul className="max-h-40 space-y-1 overflow-y-auto">
-                          {produtos.map((p) => (
-                            <li key={p.id}>
-                              <button
-                                type="button"
-                                className="w-full rounded px-2 py-1 text-left hover:bg-muted"
-                                disabled={acao}
-                                onClick={async () => {
-                                  await postAcao('/vincular-item', {
-                                    itemId: item.id,
-                                    produtoId: p.id,
-                                  })
-                                  setItemVinculando(null)
-                                  setProdutos([])
-                                  setBuscaProduto('')
-                                }}
-                              >
-                                {p.nomeVenda} {p.sku ? `(${p.sku})` : ''}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
+                            if (ok) {
+                              setCodigosOriginaisGravados((prev) => ({
+                                ...prev,
+                                [item.id]: true,
+                              }))
+                            }
+                          }
+                        : undefined
+                    }
+                  />
                 ))}
                 {nota.itens.length === 0 && (
                   <p className="text-sm text-muted-foreground">Sem itens. Reanalisar ou reimporte o XML.</p>

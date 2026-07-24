@@ -260,6 +260,27 @@ async function gravarCodigoOriginalVinculo(
   })
 }
 
+/** Códigos do vínculo produto×fornecedor (chave = produtoId). */
+async function mapaCodigoOriginalPorProduto(
+  fornecedorPessoaId: string,
+  produtoIds: string[]
+): Promise<Map<string, string>> {
+  const ids = [...new Set(produtoIds.filter(Boolean))]
+  if (ids.length === 0) return new Map()
+
+  const vinculos = await clientePrisma.produtoFornecedor.findMany({
+    where: {
+      fornecedorPessoaId,
+      produtoId: { in: ids },
+    },
+    select: { produtoId: true, codigoFornecedor: true },
+  })
+
+  return new Map(
+    vinculos.map((v) => [v.produtoId, (v.codigoFornecedor ?? '').trim().toLowerCase()])
+  )
+}
+
 async function atualizarFiscalProduto(
   produtoId: string,
   companyId: string,
@@ -322,6 +343,7 @@ export const repositorioEntradaNotas = {
   listarPedidosAbertosFornecedor,
   buscarPedidoComItens,
   gravarCodigoOriginalVinculo,
+  mapaCodigoOriginalPorProduto,
   atualizarFiscalProduto,
   contarItens,
   listarNotasPendentesPorDocumento,

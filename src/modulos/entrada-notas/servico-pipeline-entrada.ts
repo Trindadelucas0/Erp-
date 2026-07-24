@@ -672,6 +672,13 @@ async function obterDetalhe(
     }))
   }
 
+  const codigosVinculo = nota.fornecedorPessoaId
+    ? await repositorioEntradaNotas.mapaCodigoOriginalPorProduto(
+        nota.fornecedorPessoaId,
+        nota.itens.map((i) => i.produtoId).filter((id): id is string => Boolean(id))
+      )
+    : new Map<string, string>()
+
   return {
     nota: {
       id: nota.id,
@@ -742,28 +749,35 @@ async function obterDetalhe(
         origem: d.origem,
         pessoaId: d.pessoaId,
       })),
-      itens: nota.itens.map((i) => ({
-        id: i.id,
-        nItem: i.nItem,
-        descricao: i.descricao,
-        gtin: i.gtin,
-        codigoProduto: i.codigoProduto,
-        ncm: i.ncm,
-        cfop: i.cfop,
-        cst: i.cst,
-        origem: i.origem,
-        quantidade: decimalNum(i.quantidade),
-        valorUnitario: decimalNum(i.valorUnitario),
-        valorTotal: decimalNum(i.valorTotal),
-        pesoKg: decimalNum(i.pesoKg),
-        custoFreteRateado: decimalNum(i.custoFreteRateado),
-        produtoId: i.produtoId,
-        vinculoModo: i.vinculoModo,
-        criticaCadastro: i.criticaCadastro,
-        criticaFiscal: i.criticaFiscal,
-        criticaNegociacao: i.criticaNegociacao,
-        produto: i.produto,
-      })),
+      itens: nota.itens.map((i) => {
+        const cProd = (i.codigoProduto ?? '').trim().toLowerCase()
+        const noVinculo =
+          i.produtoId != null ? (codigosVinculo.get(i.produtoId) ?? '') : ''
+        const codigoOriginalGravado = Boolean(i.produtoId && cProd && noVinculo === cProd)
+        return {
+          id: i.id,
+          nItem: i.nItem,
+          descricao: i.descricao,
+          gtin: i.gtin,
+          codigoProduto: i.codigoProduto,
+          ncm: i.ncm,
+          cfop: i.cfop,
+          cst: i.cst,
+          origem: i.origem,
+          quantidade: decimalNum(i.quantidade),
+          valorUnitario: decimalNum(i.valorUnitario),
+          valorTotal: decimalNum(i.valorTotal),
+          pesoKg: decimalNum(i.pesoKg),
+          custoFreteRateado: decimalNum(i.custoFreteRateado),
+          produtoId: i.produtoId,
+          vinculoModo: i.vinculoModo,
+          criticaCadastro: i.criticaCadastro,
+          criticaFiscal: i.criticaFiscal,
+          criticaNegociacao: i.criticaNegociacao,
+          codigoOriginalGravado,
+          produto: i.produto,
+        }
+      }),
     },
     pedidosDisponiveis,
   }

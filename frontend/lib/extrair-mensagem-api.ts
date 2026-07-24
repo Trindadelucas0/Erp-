@@ -3,6 +3,42 @@
  * O backend retorna { mensagem } nos erros controlados — este helper garante
  * que o frontend sempre mostre a causa real, nunca um texto genérico.
  */
+
+type CorpoErroApi = { mensagem?: string; message?: string }
+
+function textoDeBuffer(dados: ArrayBuffer | ArrayBufferView): string {
+  const view =
+    dados instanceof ArrayBuffer
+      ? new Uint8Array(dados)
+      : new Uint8Array(dados.buffer, dados.byteOffset, dados.byteLength)
+  return new TextDecoder('utf-8').decode(view)
+}
+
+/** Converte corpo de erro (JSON, string, ArrayBuffer de download PDF/XML) em objeto/string. */
+function normalizarCorpoErro(dados: unknown): CorpoErroApi | string | null {
+  if (dados == null) return null
+  if (typeof dados === 'string') {
+    const t = dados.trim()
+    if (!t) return null
+    if (t.startsWith('{')) {
+      try {
+        return JSON.parse(t) as CorpoErroApi
+      } catch {
+        return t
+      }
+    }
+    return t
+  }
+  if (typeof dados === 'object') {
+    if (dados instanceof ArrayBuffer || ArrayBuffer.isView(dados)) {
+      return normalizarCorpoErro(textoDeBuffer(dados as ArrayBuffer | ArrayBufferView))
+    }
+    const obj = dados as CorpoErroApi & Record<string, unknown>
+    if (typeof obj.mensagem === 'string' || typeof obj.message === 'string') return obj
+  }
+  return null
+}
+
 export function extrairMensagemApi(erro: unknown, mensagemPadrao: string): string {
   if (!erro || typeof erro !== 'object') return mensagemPadrao
 
@@ -12,15 +48,14 @@ export function extrairMensagemApi(erro: unknown, mensagemPadrao: string): strin
     response?: {
       status?: number
       statusText?: string
-      data?: { mensagem?: string; message?: string } | string
+      data?: unknown
     }
   }
 
-  const dados = axiosErro.response?.data
-
-  if (dados && typeof dados === 'object') {
-    if (dados.mensagem) return dados.mensagem
-    if (dados.message) return dados.message
+  const corpo = normalizarCorpoErro(axiosErro.response?.data)
+  if (corpo && typeof corpo === 'object') {
+    if (corpo.mensagem) return corpo.mensagem
+    if (corpo.message) return corpo.message
   }
 
   // ECONNRESET/socket hang up e 500 sem corpo estruturado (ex.: página de erro
@@ -47,8 +82,8 @@ export function extrairMensagemApi(erro: unknown, mensagemPadrao: string): strin
     return 'A API interrompeu a operação antes de responder. Verifique o terminal da API e tente novamente.'
   }
 
-  if (typeof dados === 'string' && dados.trim() && dados.length <= 300) {
-    return dados
+  if (typeof corpo === 'string' && corpo.trim() && corpo.length <= 300) {
+    return corpo
   }
 
   if (status) {

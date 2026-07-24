@@ -1493,6 +1493,7 @@ async function obterDanfeNota(companyId: string, id: string) {
   const ehNfse = tipo === 'nfse'
   const ehCte = tipo === 'cte'
   const ehDocumental = ehNfse || ehCte
+  const origemXml = (nota.origem ?? '').toLowerCase() === 'xml'
   const agora = Date.now()
   const atualizadoEm = nota.danfeAtualizadoEm?.getTime() ?? 0
   const dentroDe24h = agora - atualizadoEm < 24 * 60 * 60 * 1000
@@ -1525,7 +1526,9 @@ async function obterDanfeNota(companyId: string, id: string) {
   // 2) Status recente: não martelar a Focus
   if (nota.danfeStatus === 'indisponivel' && dentroDe24h) {
     throw new ErroDaAplicacao(
-      'PDF ainda indisponível na Focus para esta nota. Use Ver nota ou tente amanhã. (ciência/XML podem ser necessários)',
+      origemXml
+        ? 'PDF ainda indisponível: esta nota foi importada por XML e não está no DistDFe da Focus. Use Ver nota.'
+        : 'PDF ainda indisponível na Focus para esta nota. Use Ver nota ou tente amanhã. (ciência/XML podem ser necessários)',
       422
     )
   }
@@ -1537,6 +1540,8 @@ async function obterDanfeNota(companyId: string, id: string) {
   }
 
   const credenciais = await obterCredenciais(companyId)
+  const empresa = await repositorioFocusNfe.buscarEmpresaCnpj(companyId)
+  const cnpjEmpresa = empresa?.cnpj ? normalizarCnpj(empresa.cnpj) : null
   const chave = nota.chaveNfe
 
   // 3) NFe: garantir ciência + XML antes do PDF
@@ -1547,7 +1552,9 @@ async function obterDanfeNota(companyId: string, id: string) {
         credenciais.apiToken,
         credenciais.homologacao,
         chave,
-        'ciencia'
+        'ciencia',
+        undefined,
+        cnpjEmpresa
       )
     }
     const xmlRes = await completarXmlDaFocus(
@@ -1578,32 +1585,45 @@ async function obterDanfeNota(companyId: string, id: string) {
       return clienteFocusNfe.baixarPdfNfse(
         credenciais.apiToken,
         credenciais.homologacao,
-        chave
+        chave,
+        cnpjEmpresa
       )
     }
     if (ehCte) {
       return clienteFocusNfe.baixarPdfCte(
         credenciais.apiToken,
         credenciais.homologacao,
-        chave
+        chave,
+        cnpjEmpresa
       )
     }
     return clienteFocusNfe.baixarPdfNfe(
       credenciais.apiToken,
       credenciais.homologacao,
-      chave
+      chave,
+      cnpjEmpresa
     )
   }
 
   let pdfResp = await tentarPdf()
 
-  // 4) 404: um retry após nova ciência/XML (NFe)
-  if (!pdfResp.sucesso && pdfResp.codigoHttp === 404 && !ehDocumental) {
+  // 4) 404: um retry após nova ciência/XML (NFe) — só se a Focus conhece o documento.
+  // codigo nao_encontrado / origem XML: manifesto também falha (não martelar DistDFe).
+  const focusNaoTemDocumento =
+    (!pdfResp.sucesso && pdfResp.codigo === 'nao_encontrado') || origemXml
+  if (
+    !pdfResp.sucesso &&
+    pdfResp.codigoHttp === 404 &&
+    !ehDocumental &&
+    !focusNaoTemDocumento
+  ) {
     await clienteFocusNfe.manifestar(
       credenciais.apiToken,
       credenciais.homologacao,
       chave,
-      'ciencia'
+      'ciencia',
+      undefined,
+      cnpjEmpresa
     )
     await completarXmlDaFocus(
       companyId,
@@ -1640,7 +1660,9 @@ async function obterDanfeNota(companyId: string, id: string) {
           ? 'PDF da NFS-e ainda não está disponível na Focus. Use Ver nota ou Baixar XML.'
           : ehCte
             ? 'DACTe ainda não está disponível na Focus. Use Ver nota ou Baixar XML.'
-            : 'DANFE ainda não disponível na Focus (pode faltar ciência ou o PDF ainda não foi gerado). Use Ver nota.',
+            : origemXml || (!pdfResp.sucesso && pdfResp.codigo === 'nao_encontrado')
+              ? 'Focus não encontrou esta NF no DistDFe (comum em notas importadas por XML). O DANFE só vem da Focus se a SEFAZ distribuir a nota. Use Ver nota.'
+              : 'DANFE ainda não disponível na Focus (pode faltar ciência ou o PDF ainda não foi gerado). Use Ver nota.',
         422
       )
     }

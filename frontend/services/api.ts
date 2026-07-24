@@ -37,9 +37,34 @@ clienteHttp.interceptors.request.use((configuracao) => {
   return configuracao
 })
 
+/** Em downloads (blob/arraybuffer) o corpo de erro JSON vem binário — parseia para { mensagem }. */
+async function normalizarCorpoErroBinario(erro: {
+  response?: { data?: unknown }
+}): Promise<void> {
+  const data = erro.response?.data
+  if (data == null || !erro.response) return
+
+  let texto: string | null = null
+  if (typeof ArrayBuffer !== 'undefined' && data instanceof ArrayBuffer) {
+    texto = new TextDecoder('utf-8').decode(data)
+  } else if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(data)) {
+    texto = new TextDecoder('utf-8').decode(data as ArrayBufferView)
+  } else if (typeof Blob !== 'undefined' && data instanceof Blob) {
+    texto = await data.text()
+  }
+  if (!texto?.trim().startsWith('{')) return
+  try {
+    erro.response.data = JSON.parse(texto)
+  } catch {
+    /* mantém binário */
+  }
+}
+
 clienteHttp.interceptors.response.use(
   (resposta) => resposta,
-  (erro) => {
+  async (erro) => {
+    await normalizarCorpoErroBinario(erro)
+
     if (typeof window !== 'undefined') {
       if (
         erro.response?.status === 401 &&
