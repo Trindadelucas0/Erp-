@@ -49,11 +49,17 @@ async function testarConexao(requisicao: FastifyRequest, resposta: FastifyReply)
 }
 
 async function sincronizar(requisicao: FastifyRequest, resposta: FastifyReply) {
-  const body = (requisicao.body ?? {}) as { completo?: boolean }
+  const body = (requisicao.body ?? {}) as { completo?: boolean; liberarExtras?: boolean }
   const job = await servicoFocusNfe.enfileirarSync(companyIdDe(requisicao), {
     completo: body.completo === true,
+    liberarExtras: body.liberarExtras === true,
   })
   return resposta.status(202).send(job)
+}
+
+async function buscarCota(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const cota = await servicoFocusNfe.buscarCota(companyIdDe(requisicao))
+  return resposta.send({ cota })
 }
 
 async function statusJob(requisicao: FastifyRequest, resposta: FastifyReply) {
@@ -166,6 +172,7 @@ export const controladorFocusNfe = {
   salvarRegrasFiscais,
   testarConexao,
   sincronizar,
+  buscarCota,
   statusJob,
   listarPendentes,
   obterXml,

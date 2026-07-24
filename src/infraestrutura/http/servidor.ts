@@ -59,9 +59,11 @@ export async function criarServidor() {
     if (ehErroDaAplicacao) {
       const erroDaAplicacao = erro as ErroDaAplicacao
       marcarMensagemDeErro(requisicao, erroDaAplicacao.message)
-      return resposta
-        .status(erroDaAplicacao.codigoHttp)
-        .send({ mensagem: erroDaAplicacao.message })
+      return resposta.status(erroDaAplicacao.codigoHttp).send({
+        mensagem: erroDaAplicacao.message,
+        ...(erroDaAplicacao.codigo ? { codigo: erroDaAplicacao.codigo } : {}),
+        ...(erroDaAplicacao.detalhes ? { detalhes: erroDaAplicacao.detalhes } : {}),
+      })
     }
 
     const mensagem =

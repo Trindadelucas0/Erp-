@@ -23,6 +23,7 @@ import type { DadosParaSalvarConfigFocus, DadosRegrasFiscais } from './esquema-f
 import { REGRAS_FISCAIS_PADRAO, sanitizarRegrasFiscais } from './esquema-focus-nfe.js'
 import { analisarFiscalBasico } from '../entrada-notas/analise-fiscal/analisar-fiscal-basico.js'
 import { servicoEntradaNotas } from '../entrada-notas/servico-pipeline-entrada.js'
+import { lerConfigCotaFocus, saldoCotaFocus, contarUsoMesFocus } from './cota-focus-nfe.js'
 
 function mascararToken(token: string): string {
   if (token.length <= 8) return '****'
@@ -371,6 +372,18 @@ async function executarSync(companyId: string, jobId: string) {
     })
     logFocus('info', 'job_inicio', { id: jobId, tipo: 'sync', companyId })
 
+    const jobAtual = await repositorioFocusNfe.buscarJob(jobId, companyId)
+    const payloadJob = (jobAtual?.payloadJson ?? {}) as {
+      completo?: boolean
+      liberarExtras?: boolean
+    }
+    const liberarExtras = payloadJob.liberarExtras === true
+    const configCota = lerConfigCotaFocus()
+    const cotaHabilitada = configCota.habilitada
+    const cotaMensal = configCota.cota
+    let usadosNoMes = cotaHabilitada ? await contarUsoMesFocus(companyId) : 0
+    let cotaEsgotadaNoLote = false
+
     const credenciais = await obterCredenciais(companyId)
     const empresa = await repositorioFocusNfe.buscarEmpresaCnpj(companyId)
     if (!empresa?.cnpj) {
@@ -388,7 +401,12 @@ async function executarSync(companyId: string, jobId: string) {
       homologacao: credenciais.homologacao,
       cnpj: cnpjMascarado,
     })
-    pushLog(`fonte=${credenciais.fonte} ambiente=${ambiente} cnpj=${cnpjMascarado} lote=${LIMITE_LOTE_SYNC}`)
+    pushLog(
+      `fonte=${credenciais.fonte} ambiente=${ambiente} cnpj=${cnpjMascarado} lote=${LIMITE_LOTE_SYNC}` +
+        (cotaHabilitada
+          ? ` cota=${usadosNoMes}/${cotaMensal}${liberarExtras ? ' extras=sim' : ''}`
+          : ' cota=off')
+    )
 
     let processados = 0
     let novas = 0
@@ -412,8 +430,16 @@ async function executarSync(companyId: string, jobId: string) {
     let nfseListadaOk = false
     let cteListadaOk = false
 
+    /** Retorna false se a cota bloqueia criar uma nota nova (pausa o lote). */
+    const podeCriarNotaNova = (): boolean => {
+      if (!cotaHabilitada || liberarExtras) return true
+      if (usadosNoMes < cotaMensal) return true
+      cotaEsgotadaNoLote = true
+      return false
+    }
+
     // --- NFe 55 ---
-    if (processados < LIMITE_LOTE_SYNC && !rateLimit) {
+    if (processados < LIMITE_LOTE_SYNC && !rateLimit && !cotaEsgotadaNoLote) {
       const resp = await clienteFocusNfe.listarNfesRecebidas(
         credenciais.apiToken,
         credenciais.homologacao,
@@ -463,7 +489,7 @@ async function executarSync(companyId: string, jobId: string) {
         }
 
         for (const item of lista) {
-          if (processados >= LIMITE_LOTE_SYNC || rateLimit) break
+          if (processados >= LIMITE_LOTE_SYNC || rateLimit || cotaEsgotadaNoLote) break
           const versaoItem = item.versao ?? 0
           if (!item.chave_nfe) {
             // Avança cursor mesmo sem chave — senão o DistDFe trava no mesmo NSU.
@@ -476,13 +502,38 @@ async function executarSync(companyId: string, jobId: string) {
           }
 
           const mapeado = mapearResumo(item)
+          const existentePre = await repositorioFocusNfe.buscarPorChave(companyId, mapeado.chaveNfe)
+          if (!existentePre && !podeCriarNotaNova()) {
+            pushLog(`nfe: cota mensal esgotada (${usadosNoMes}/${cotaMensal}) — pausando lote`)
+            break
+          }
+          if (existentePre?.nfeCompleta && existentePre.xmlConteudo) {
+            if (mapeado.versaoFocus > maxVersao) maxVersao = mapeado.versaoFocus
+            if (temConfigBanco && maxVersao > credenciais.ultimaVersao) {
+              await repositorioFocusNfe.atualizarUltimaVersao(companyId, maxVersao)
+              credenciais.ultimaVersao = maxVersao
+            }
+            atualizadas += 1
+            processados += 1
+            await repositorioFocusNfe.atualizarJob(jobId, {
+              progresso: Math.min(85, 10 + processados * 7),
+              mensagem: `Lote: ${processados}/${LIMITE_LOTE_SYNC} — NFe +${novas}/~${atualizadas}`,
+              logResumo: linhasLog.join('\n'),
+            })
+            continue
+          }
+
           const { criado } = await repositorioFocusNfe.upsertNfeRecebida({
             companyId,
             ...mapeado,
             origem: 'focus',
           })
-          if (criado) novas += 1
-          else atualizadas += 1
+          if (criado) {
+            novas += 1
+            usadosNoMes += 1
+          } else {
+            atualizadas += 1
+          }
           if (mapeado.versaoFocus > maxVersao) maxVersao = mapeado.versaoFocus
 
           if (temConfigBanco && maxVersao > credenciais.ultimaVersao) {
@@ -521,7 +572,7 @@ async function executarSync(companyId: string, jobId: string) {
     }
 
     // --- NFS-e nacional ---
-    if (processados < LIMITE_LOTE_SYNC && !rateLimit) {
+    if (processados < LIMITE_LOTE_SYNC && !rateLimit && !cotaEsgotadaNoLote) {
       const respNfse = await clienteFocusNfe.listarNfsesRecebidas(
         credenciais.apiToken,
         credenciais.homologacao,
@@ -561,7 +612,7 @@ async function executarSync(companyId: string, jobId: string) {
         )
 
         for (const item of listaNfse) {
-          if (processados >= LIMITE_LOTE_SYNC || rateLimit) break
+          if (processados >= LIMITE_LOTE_SYNC || rateLimit || cotaEsgotadaNoLote) break
           const versaoItem = item.versao ?? 0
           const chave = chaveNfseFocus(item)
           if (!chave) {
@@ -574,13 +625,38 @@ async function executarSync(companyId: string, jobId: string) {
           }
 
           const mapeado = mapearResumoNfse(item)
+          const existentePre = await repositorioFocusNfe.buscarPorChave(companyId, mapeado.chaveNfe)
+          if (!existentePre && !podeCriarNotaNova()) {
+            pushLog(`nfse: cota mensal esgotada (${usadosNoMes}/${cotaMensal}) — pausando lote`)
+            break
+          }
+          if (existentePre?.nfeCompleta && existentePre.xmlConteudo) {
+            if (mapeado.versaoFocus > maxVersaoNfse) maxVersaoNfse = mapeado.versaoFocus
+            if (temConfigBanco && maxVersaoNfse > credenciais.ultimaVersaoNfse) {
+              await repositorioFocusNfe.atualizarUltimaVersaoNfse(companyId, maxVersaoNfse)
+              credenciais.ultimaVersaoNfse = maxVersaoNfse
+            }
+            atualizadasNfse += 1
+            processados += 1
+            await repositorioFocusNfe.atualizarJob(jobId, {
+              progresso: Math.min(95, 40 + processados * 5),
+              mensagem: `Lote: ${processados}/${LIMITE_LOTE_SYNC} — NFS-e +${novasNfse}/~${atualizadasNfse}`,
+              logResumo: linhasLog.join('\n'),
+            })
+            continue
+          }
+
           const { criado, registro } = await repositorioFocusNfe.upsertNfeRecebida({
             companyId,
             ...mapeado,
             origem: 'focus',
           })
-          if (criado) novasNfse += 1
-          else atualizadasNfse += 1
+          if (criado) {
+            novasNfse += 1
+            usadosNoMes += 1
+          } else {
+            atualizadasNfse += 1
+          }
           if (mapeado.versaoFocus > maxVersaoNfse) maxVersaoNfse = mapeado.versaoFocus
 
           if (temConfigBanco && maxVersaoNfse > credenciais.ultimaVersaoNfse) {
@@ -619,7 +695,7 @@ async function executarSync(companyId: string, jobId: string) {
     }
 
     // --- CTe ---
-    if (processados < LIMITE_LOTE_SYNC && !rateLimit) {
+    if (processados < LIMITE_LOTE_SYNC && !rateLimit && !cotaEsgotadaNoLote) {
       const respCte = await clienteFocusNfe.listarCtesRecebidas(
         credenciais.apiToken,
         credenciais.homologacao,
@@ -670,7 +746,7 @@ async function executarSync(companyId: string, jobId: string) {
 
 
         for (const item of listaCte) {
-          if (processados >= LIMITE_LOTE_SYNC || rateLimit) break
+          if (processados >= LIMITE_LOTE_SYNC || rateLimit || cotaEsgotadaNoLote) break
           const versaoItem = item.versao ?? 0
           const chave = chaveCteFocus(item)
           if (!chave) {
@@ -735,6 +811,11 @@ async function executarSync(companyId: string, jobId: string) {
               continue
             }
 
+            if (!existente && !podeCriarNotaNova()) {
+              pushLog(`cte: cota mensal esgotada (${usadosNoMes}/${cotaMensal}) — pausando lote`)
+              break
+            }
+
             const xmlResp = await clienteFocusNfe.baixarXmlCte(
               credenciais.apiToken,
               credenciais.homologacao,
@@ -779,6 +860,11 @@ async function executarSync(companyId: string, jobId: string) {
               continue
             }
 
+            if (!existente && !podeCriarNotaNova()) {
+              pushLog(`cte: cota mensal esgotada (${usadosNoMes}/${cotaMensal}) — pausando lote`)
+              break
+            }
+
             const campos = extrairCamposResumoDoXml(xmlResp.dados)
             const { criado, registro } = await repositorioFocusNfe.upsertNfeRecebida({
               companyId,
@@ -796,8 +882,12 @@ async function executarSync(companyId: string, jobId: string) {
               versaoFocus: versaoItem,
               etapaAtual: 'servico',
             })
-            if (criado) novasCte += 1
-            else atualizadasCte += 1
+            if (criado) {
+              novasCte += 1
+              usadosNoMes += 1
+            } else {
+              atualizadasCte += 1
+            }
             maxVersaoCte = await avancarCursorCte(
               companyId,
               credenciais,
@@ -817,13 +907,35 @@ async function executarSync(companyId: string, jobId: string) {
 
           // Resumo já confirma que somos tomador.
           const mapeado = mapearResumoCte(item)
+          const existentePre = await repositorioFocusNfe.buscarPorChave(companyId, mapeado.chaveNfe)
+          if (!existentePre && !podeCriarNotaNova()) {
+            pushLog(`cte: cota mensal esgotada (${usadosNoMes}/${cotaMensal}) — pausando lote`)
+            break
+          }
+          if (existentePre?.nfeCompleta && existentePre.xmlConteudo) {
+            maxVersaoCte = await avancarCursorCte(
+              companyId,
+              credenciais,
+              temConfigBanco,
+              maxVersaoCte,
+              mapeado.versaoFocus
+            )
+            atualizadasCte += 1
+            processados += 1
+            continue
+          }
+
           const { criado, registro } = await repositorioFocusNfe.upsertNfeRecebida({
             companyId,
             ...mapeado,
             origem: 'focus',
           })
-          if (criado) novasCte += 1
-          else atualizadasCte += 1
+          if (criado) {
+            novasCte += 1
+            usadosNoMes += 1
+          } else {
+            atualizadasCte += 1
+          }
           maxVersaoCte = await avancarCursorCte(
             companyId,
             credenciais,
@@ -902,7 +1014,12 @@ async function executarSync(companyId: string, jobId: string) {
         novas + atualizadas + novasNfse + atualizadasNfse > 0)
 
     let mensagemFim: string
-    if (rateLimit) {
+    if (cotaEsgotadaNoLote) {
+      mensagemFim =
+        `Cota mensal Focus esgotada (${usadosNoMes}/${cotaMensal}). ` +
+        `Lote pausado após ${processados} nota(s) (NFe +${novas}; NFS-e +${novasNfse}; CTe +${novasCte}). ` +
+        'Use BUSCAR e confirme a liberação de extras para continuar.'
+    } else if (rateLimit) {
       mensagemFim = `Lote pausado por rate limit Focus após ${processados} nota(s). Já salvas no sistema; retoma no próximo ciclo (auto ~2 min).`
     } else if (nfeVaziaComOutros || cteVaziaComOutros) {
       const parteNfe =
@@ -1109,7 +1226,10 @@ async function completarXmlDaFocus(
   return { ok: true, rateLimit: false }
 }
 
-async function enfileirarSync(companyId: string, opcoes?: { completo?: boolean }) {
+async function enfileirarSync(
+  companyId: string,
+  opcoes?: { completo?: boolean; liberarExtras?: boolean }
+) {
   if (!tentarTravarFocus(companyId)) {
     logFocus('warn', 'job_recusado_409', { companyId, motivo: 'ja_em_andamento' })
     throw new ErroDaAplicacao('Já existe uma sincronização Focus em andamento para esta empresa.', 409)
@@ -1117,6 +1237,22 @@ async function enfileirarSync(companyId: string, opcoes?: { completo?: boolean }
 
   try {
     await obterCredenciais(companyId)
+    const saldo = await saldoCotaFocus(companyId)
+    if (saldo.habilitada && saldo.restantes <= 0 && !opcoes?.liberarExtras) {
+      throw new ErroDaAplicacao(
+        `Cota mensal de ${saldo.cota} notas Focus esgotada (${saldo.usados} usadas em ${saldo.mesReferencia}). Confirme a liberação de extras para continuar.`,
+        402,
+        {
+          codigo: 'COTA_ESGOTADA',
+          detalhes: {
+            usados: saldo.usados,
+            cota: saldo.cota,
+            custoExtraCentavos: saldo.custoExtraCentavos,
+            mesReferencia: saldo.mesReferencia,
+          },
+        }
+      )
+    }
   } catch (e) {
     liberarTravaFocus(companyId)
     throw e
@@ -1130,15 +1266,28 @@ async function enfileirarSync(companyId: string, opcoes?: { completo?: boolean }
   const job = await repositorioFocusNfe.criarJob({
     companyId,
     tipo: 'sync',
-    payloadJson: { completo: opcoes?.completo === true },
+    payloadJson: {
+      completo: opcoes?.completo === true,
+      liberarExtras: opcoes?.liberarExtras === true,
+    },
   })
-  logFocus('info', 'job_criado', { id: job.id, tipo: 'sync', companyId, completo: !!opcoes?.completo })
+  logFocus('info', 'job_criado', {
+    id: job.id,
+    tipo: 'sync',
+    companyId,
+    completo: !!opcoes?.completo,
+    liberarExtras: !!opcoes?.liberarExtras,
+  })
 
   setImmediate(() => {
     void executarSync(companyId, job.id)
   })
 
   return { jobId: job.id, status: job.status }
+}
+
+async function buscarCota(companyId: string) {
+  return saldoCotaFocus(companyId)
 }
 
 async function statusJob(companyId: string, jobId: string) {
@@ -1697,6 +1846,7 @@ export const servicoFocusNfe = {
   salvarRegrasFiscais,
   testarConexao,
   enfileirarSync,
+  buscarCota,
   statusJob,
   listarPendentes,
   obterXmlNota,

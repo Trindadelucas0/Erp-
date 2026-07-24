@@ -63,6 +63,45 @@ type JobStatus = {
   logResumo: string | null
 }
 
+type CotaFocus = {
+  habilitada: boolean
+  usados: number
+  cota: number
+  restantes: number
+  mesReferencia: string
+  custoExtraCentavos: number
+}
+
+type DetalhesCotaEsgotada = {
+  usados?: number
+  cota?: number
+  custoExtraCentavos?: number
+  mesReferencia?: string
+}
+
+function extrairCotaEsgotada(erro: unknown): DetalhesCotaEsgotada | null {
+  if (!erro || typeof erro !== 'object') return null
+  const axiosErro = erro as {
+    response?: {
+      status?: number
+      data?: {
+        codigo?: string
+        detalhes?: DetalhesCotaEsgotada
+      }
+    }
+  }
+  if (axiosErro.response?.status !== 402) return null
+  if (axiosErro.response.data?.codigo !== 'COTA_ESGOTADA') return null
+  return axiosErro.response.data.detalhes ?? {}
+}
+
+function formatarCustoExtraCentavos(centavos: number): string {
+  return (centavos / 100).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  })
+}
+
 type PainelEntrada = 'analise' | 'contagem' | 'consolidada' | 'cancelada'
 
 type FiltrosEntradaSalvos = {
@@ -186,6 +225,9 @@ function ConteudoEntradaNotas() {
   const [downloadRotulo, setDownloadRotulo] = useState('')
   const [pagina, setPagina] = useState(1)
   const [itensPorPagina, setItensPorPagina] = useState<ItensPorPagina>(10)
+  const [cotaFocus, setCotaFocus] = useState<CotaFocus | null>(null)
+  const [modalCotaAberto, setModalCotaAberto] = useState(false)
+  const [detalhesCotaModal, setDetalhesCotaModal] = useState<DetalhesCotaEsgotada | null>(null)
   const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<
     'emissao' | 'tipo' | 'fornecedor' | 'chave' | 'valor' | 'origem' | 'etapa'
   >()
@@ -194,6 +236,15 @@ function ConteudoEntradaNotas() {
   const vinculoFornecedorFeitoRef = useRef(false)
   const vinculoCteFeitoRef = useRef(false)
   const painelAnalise = painel === 'analise'
+
+  const carregarCota = useCallback(async () => {
+    try {
+      const { data } = await clienteHttp.get<{ cota: CotaFocus }>('/focus-nfe/cota')
+      setCotaFocus(data.cota)
+    } catch {
+      /* cota é informativa — não bloqueia a tela */
+    }
+  }, [])
 
   useEffect(() => {
     const salvos = lerFiltrosSalvos()
@@ -274,10 +325,11 @@ function ConteudoEntradaNotas() {
   useEffect(() => {
     if (!filtrosProntos) return
     carregar()
+    void carregarCota()
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
     }
-  }, [carregar, filtrosProntos])
+  }, [carregar, carregarCota, filtrosProntos])
 
   async function acompanharJob(
     jobId: string,
@@ -325,74 +377,119 @@ function ConteudoEntradaNotas() {
     })
   }
 
+  /** Reprocessar XMLs + vincular fornecedores/CT-e + atualizar lista (sem sync Focus). */
+  async function executarPosSyncLocal(opcoes?: {
+    forcarRetryFocus?: boolean
+    prefixoMensagem?: string
+  }): Promise<boolean> {
+    let falhouReprocessar = false
+    let mensagemReproc = ''
+    setReprocessando(true)
+    setDownloadRotulo('Completando dados…')
+    try {
+      const { data: reproc } = await clienteHttp.post<{
+        mensagem: string
+        processados: number
+      }>('/focus-nfe/nfe-recebidas/reprocessar-xmls')
+      mensagemReproc = reproc.mensagem
+    } catch (err) {
+      falhouReprocessar = true
+      setErro(extrairMensagemApi(err, 'Falha ao reprocessar XMLs.'))
+    }
+
+    setDownloadRotulo('Vinculando fornecedores…')
+    const vinculadas = await vincularFornecedoresPendentes({
+      silencioso: true,
+      semRecarregar: true,
+    })
+
+    setDownloadRotulo('Vinculando CT-es…')
+    const loteCte = await vincularCtesPendentes({
+      silencioso: true,
+      forcarRetryFocus: opcoes?.forcarRetryFocus !== false,
+    })
+
+    setDownloadRotulo('Atualizando lista…')
+    await carregar()
+    await carregarCota()
+    if (!falhouReprocessar) {
+      const partes: string[] = []
+      if (opcoes?.prefixoMensagem) partes.push(opcoes.prefixoMensagem)
+      if (mensagemReproc) partes.push(mensagemReproc)
+      if (vinculadas > 0) partes.push(`${vinculadas} fornecedor(es) vinculado(s).`)
+      if (loteCte.vinculados > 0) {
+        partes.push(`${loteCte.vinculados} CT-e(s) vinculado(s).`)
+      } else if (loteCte.pendentes > 0) {
+        partes.push(
+          `${loteCte.pendentes} CT-e(s) aguardando NF (Focus sem XML — importe o XML da mercadoria).`
+        )
+      }
+      setMensagem(partes.length > 0 ? partes.join(' ') : 'Busca concluída.')
+    }
+    return !falhouReprocessar
+  }
+
   /** Um clique: sync Focus (NFe+NFS-e+CTe) → completar XMLs locais → vincular fornecedores → atualizar lista. */
-  async function executarBuscar() {
+  async function executarBuscar(opcoes?: { liberarExtras?: boolean }) {
     if (sincronizando || importando || reprocessando) return
     setErro('')
     setMensagem('')
     setJob(null)
     setSincronizando(true)
     setDownloadRotulo('Buscando na Focus…')
-    let falhouReprocessar = false
+    let focusPuladaPorCota = false
+    let detalhesCotaSkip: DetalhesCotaEsgotada | null = null
+    let syncOk = false
+
     try {
-      const { data } = await clienteHttp.post<{ jobId: string; status: string }>(
-        '/focus-nfe/jobs/sincronizar',
-        { completo: false }
-      )
-      setMensagem('Buscando na Focus (NFe + NFS-e + CTe)…')
-      const resultado = await acompanharJob(data.jobId, { atualizarLista: false })
-      if (resultado === 'erro') return
-
-      setReprocessando(true)
-      setDownloadRotulo('Completando dados…')
       try {
-        const { data: reproc } = await clienteHttp.post<{
-          mensagem: string
-          processados: number
-        }>('/focus-nfe/nfe-recebidas/reprocessar-xmls')
-        setMensagem(reproc.mensagem)
+        const { data } = await clienteHttp.post<{ jobId: string; status: string }>(
+          '/focus-nfe/jobs/sincronizar',
+          { completo: false, liberarExtras: opcoes?.liberarExtras === true }
+        )
+        setMensagem('Buscando na Focus (NFe + NFS-e + CTe)…')
+        const resultado = await acompanharJob(data.jobId, { atualizarLista: false })
+        if (resultado === 'erro') return
+        syncOk = true
       } catch (err) {
-        falhouReprocessar = true
-        setErro(extrairMensagemApi(err, 'Falha ao reprocessar XMLs.'))
+        const detalhesCota = extrairCotaEsgotada(err)
+        if (detalhesCota && !opcoes?.liberarExtras) {
+          focusPuladaPorCota = true
+          detalhesCotaSkip = detalhesCota
+          setErro('')
+          setMensagem(
+            'Cota mensal esgotada — Focus não consultada. Atualizando dados locais…'
+          )
+        } else {
+          setErro(extrairMensagemApi(err, 'Não foi possível iniciar a sync.'))
+          return
+        }
       }
 
-      setDownloadRotulo('Vinculando fornecedores…')
-      const vinculadas = await vincularFornecedoresPendentes({
-        silencioso: true,
-        semRecarregar: true,
+      if (!syncOk && !focusPuladaPorCota) return
+
+      await executarPosSyncLocal({
+        forcarRetryFocus: !focusPuladaPorCota,
+        prefixoMensagem: focusPuladaPorCota
+          ? 'Cota mensal esgotada — Focus não consultada; dados locais atualizados.'
+          : undefined,
       })
 
-      setDownloadRotulo('Vinculando CT-es…')
-      const loteCte = await vincularCtesPendentes({
-        silencioso: true,
-        forcarRetryFocus: true,
-      })
-
-      setDownloadRotulo('Atualizando lista…')
-      await carregar()
-      if (!falhouReprocessar) {
-        setMensagem((msg) => {
-          const partes: string[] = []
-          if (msg) partes.push(msg)
-          if (vinculadas > 0) partes.push(`${vinculadas} fornecedor(es) vinculado(s).`)
-          if (loteCte.vinculados > 0) {
-            partes.push(`${loteCte.vinculados} CT-e(s) vinculado(s).`)
-          } else if (loteCte.pendentes > 0) {
-            partes.push(
-              `${loteCte.pendentes} CT-e(s) aguardando NF (Focus sem XML — importe o XML da mercadoria).`
-            )
-          }
-          return partes.length > 0 ? partes.join(' ') : 'Busca concluída.'
-        })
+      if (focusPuladaPorCota && detalhesCotaSkip) {
+        setDetalhesCotaModal(detalhesCotaSkip)
+        setModalCotaAberto(true)
       }
-    } catch (err) {
-      setSincronizando(false)
-      setErro(extrairMensagemApi(err, 'Não foi possível iniciar a sync.'))
     } finally {
       setSincronizando(false)
       setReprocessando(false)
       setDownloadRotulo('')
     }
+  }
+
+  function confirmarLiberarExtrasCota() {
+    setModalCotaAberto(false)
+    setDetalhesCotaModal(null)
+    void executarBuscar({ liberarExtras: true })
   }
 
   async function vincularFornecedoresPendentes(opcoes?: {
@@ -721,7 +818,7 @@ function ConteudoEntradaNotas() {
         }
       >
         {painelAnalise && (
-          <div className="mb-3 flex min-w-0 flex-wrap gap-2">
+          <div className="mb-3 flex min-w-0 flex-wrap items-center gap-2">
             <Button
               type="button"
               size="sm"
@@ -737,6 +834,20 @@ function ConteudoEntradaNotas() {
                 'BUSCAR'
               )}
             </Button>
+            {cotaFocus?.habilitada && (
+              <span
+                className="text-xs text-muted-foreground"
+                title={`Mês ${cotaFocus.mesReferencia}. Extra: ${formatarCustoExtraCentavos(cotaFocus.custoExtraCentavos)} por nota.`}
+              >
+                Notas Focus:{' '}
+                <strong className="text-foreground">
+                  {Math.min(cotaFocus.usados, cotaFocus.cota)}/{cotaFocus.cota}
+                </strong>
+                {cotaFocus.usados > cotaFocus.cota
+                  ? ` (+${cotaFocus.usados - cotaFocus.cota} extras)`
+                  : ''}
+              </span>
+            )}
           </div>
         )}
 
@@ -1032,6 +1143,54 @@ function ConteudoEntradaNotas() {
           onItensPorPaginaChange={setItensPorPagina}
         />
       </CardPadrao>
+
+      <Modal
+        aberto={modalCotaAberto}
+        aoFechar={() => {
+          setModalCotaAberto(false)
+          setDetalhesCotaModal(null)
+        }}
+        titulo="Cota mensal esgotada"
+        descricao="Os dados locais já foram atualizados. Confirme se deseja liberar notas extras na Focus."
+        largura="md"
+        rodape={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setModalCotaAberto(false)
+                setDetalhesCotaModal(null)
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button type="button" onClick={confirmarLiberarExtrasCota}>
+              Liberar extras e buscar
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          Cota mensal de{' '}
+          <strong className="text-foreground">
+            {detalhesCotaModal?.cota ?? cotaFocus?.cota ?? 100}
+          </strong>{' '}
+          notas Focus esgotada
+          {detalhesCotaModal?.usados != null
+            ? ` (${detalhesCotaModal.usados} usadas)`
+            : ''}
+          . Cada nota adicional custa{' '}
+          <strong className="text-foreground">
+            {formatarCustoExtraCentavos(
+              detalhesCotaModal?.custoExtraCentavos ??
+                cotaFocus?.custoExtraCentavos ??
+                10
+            )}
+          </strong>
+          . Deseja liberar a busca mesmo assim?
+        </p>
+      </Modal>
 
       <Modal
         aberto={Boolean(xmlModal)}

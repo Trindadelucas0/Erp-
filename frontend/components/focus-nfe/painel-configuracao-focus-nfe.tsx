@@ -37,6 +37,22 @@ type ResultadoTeste = {
   cnpjMascarado?: string
 } | null
 
+type CotaFocus = {
+  habilitada: boolean
+  usados: number
+  cota: number
+  restantes: number
+  mesReferencia: string
+  custoExtraCentavos: number
+}
+
+function formatarCustoExtraCentavos(centavos: number): string {
+  return (centavos / 100).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  })
+}
+
 const REGRAS_PADRAO: RegrasFiscais = {
   versaoSchema: 1,
   ativo: true,
@@ -96,6 +112,16 @@ export function PainelConfiguracaoFocusNfe() {
   const [salvandoFiscal, setSalvandoFiscal] = useState(false)
   const [mensagemFiscal, setMensagemFiscal] = useState('')
   const [erroFiscal, setErroFiscal] = useState('')
+  const [cotaFocus, setCotaFocus] = useState<CotaFocus | null>(null)
+
+  const carregarCota = useCallback(async () => {
+    try {
+      const { data } = await clienteHttp.get<{ cota: CotaFocus }>('/focus-nfe/cota')
+      setCotaFocus(data.cota)
+    } catch {
+      setCotaFocus(null)
+    }
+  }, [])
 
   const carregarConfig = useCallback(async () => {
     setCarregando(true)
@@ -107,12 +133,13 @@ export function PainelConfiguracaoFocusNfe() {
       setFiscalAtivo(regras.ativo)
       setFiscalChecks(regras.checks)
       setFiscalObs(regras.observacao ?? '')
+      await carregarCota()
     } catch (err) {
       setErroSalvo(extrairMensagemApi(err, 'Não foi possível carregar a configuração Focus.'))
     } finally {
       setCarregando(false)
     }
-  }, [])
+  }, [carregarCota])
 
   useEffect(() => {
     carregarConfig()
@@ -246,6 +273,62 @@ export function PainelConfiguracaoFocusNfe() {
           . Preferível ao .env.
         </p>
       )}
+
+      <CardPadrao
+        titulo="Cota mensal de notas Focus"
+        descricao="Notas novas puxadas da Focus neste mês (por empresa). Ao esgotar, o BUSCAR ainda atualiza dados locais e pergunta antes de liberar extras."
+      >
+        {!cotaFocus ? (
+          <p className="text-sm text-muted-foreground">Não foi possível carregar a cota.</p>
+        ) : !cotaFocus.habilitada ? (
+          <p className="text-sm text-muted-foreground">
+            Cota desligada no .env (<code>FOCUS_NFE_COTA_HABILITADA=false</code> ou{' '}
+            <code>FOCUS_NFE_COTA_MENSAL=0</code>).
+          </p>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+              <span>
+                <strong>
+                  {Math.min(cotaFocus.usados, cotaFocus.cota)}/{cotaFocus.cota}
+                </strong>{' '}
+                notas em {cotaFocus.mesReferencia}
+                {cotaFocus.usados > cotaFocus.cota
+                  ? ` (+${cotaFocus.usados - cotaFocus.cota} extras)`
+                  : ''}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {cotaFocus.restantes > 0
+                  ? `${cotaFocus.restantes} restantes`
+                  : 'Cota esgotada'}
+                {' · '}
+                Extra: {formatarCustoExtraCentavos(cotaFocus.custoExtraCentavos)}
+              </span>
+            </div>
+            <div
+              className="h-2.5 w-full overflow-hidden rounded-full bg-muted"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={cotaFocus.cota}
+              aria-valuenow={Math.min(cotaFocus.usados, cotaFocus.cota)}
+              aria-label="Uso da cota mensal Focus"
+            >
+              <div
+                className={
+                  cotaFocus.restantes <= 0
+                    ? 'h-full rounded-full bg-destructive transition-[width]'
+                    : cotaFocus.usados / cotaFocus.cota >= 0.8
+                      ? 'h-full rounded-full bg-amber-500 transition-[width]'
+                      : 'h-full rounded-full bg-primary transition-[width]'
+                }
+                style={{
+                  width: `${Math.min(100, (cotaFocus.usados / Math.max(1, cotaFocus.cota)) * 100)}%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
+      </CardPadrao>
 
       {mensagemSalvo && (
         <p className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">{mensagemSalvo}</p>

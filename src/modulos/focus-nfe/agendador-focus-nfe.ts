@@ -7,6 +7,7 @@ import { empresaFocusEmAndamento } from './fila-focus-nfe.js'
 import { logFocus } from './logs-focus-nfe.js'
 import { repositorioFocusNfe } from './repositorio-focus-nfe.js'
 import { servicoFocusNfe } from './servico-focus-nfe.js'
+import { cotaEsgotadaParaAgendador } from './cota-focus-nfe.js'
 
 const INTERVALO_MS = 120_000
 let timer: ReturnType<typeof setInterval> | null = null
@@ -20,12 +21,20 @@ async function tickAgendadorFocus() {
     for (const companyId of companyIds) {
       if (empresaFocusEmAndamento(companyId)) continue
       try {
+        if (await cotaEsgotadaParaAgendador(companyId)) {
+          logFocus('info', 'agendador_sync_cota_esgotada', { companyId })
+          continue
+        }
         const job = await servicoFocusNfe.enfileirarSync(companyId, { completo: false })
         logFocus('info', 'agendador_sync', { companyId, jobId: job.jobId })
       } catch (erro) {
         const msg = erro instanceof Error ? erro.message : String(erro)
-        // 409 / sem token — silencioso
-        if (!msg.includes('em andamento') && !msg.includes('não configurado')) {
+        // 409 / sem token / cota — silencioso
+        if (
+          !msg.includes('em andamento') &&
+          !msg.includes('não configurado') &&
+          !msg.includes('Cota mensal')
+        ) {
           logFocus('warn', 'agendador_sync_falhou', { companyId, mensagem: msg })
         }
       }
