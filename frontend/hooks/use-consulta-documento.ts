@@ -14,7 +14,12 @@
 import { useCallback, useRef, useState } from 'react'
 import { buscarDadosCnpj, type DadosCnpj } from '@/lib/brasil-api'
 import { clienteHttp } from '@/services/api'
-import { validarCpf, validarCnpj } from '@/lib/documentos'
+import {
+  normalizarCpf,
+  normalizarCnpj,
+  validarCpf,
+  validarCnpj,
+} from '@/lib/documentos'
 
 export type RespostaPorDocumento = {
   encontrado: boolean
@@ -69,7 +74,10 @@ export function useConsultaDocumento(params: Params): Retorno {
     if (consultandoRef.current) return
 
     const form = p.getForm()
-    const nums = form.documento.replace(/\D/g, '')
+    const nums =
+      form.tipo === 'PF'
+        ? normalizarCpf(form.documento)
+        : normalizarCnpj(form.documento)
 
     if (form.tipo === 'PF') {
       if (nums.length !== 11 || !validarCpf(nums)) return

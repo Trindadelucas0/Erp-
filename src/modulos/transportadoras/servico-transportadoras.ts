@@ -3,6 +3,7 @@
  */
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-auditoria.js'
+import { normalizarCnpj, normalizarCpf } from '../../compartilhado/validacoes/documentos.js'
 import { repositorioDeTransportadoras } from './repositorio-transportadoras.js'
 import type { DadosParaCriarTransportadora, DadosParaEditarTransportadora } from './esquema-transportadoras.js'
 
@@ -23,7 +24,9 @@ async function criarTransportadora(
   }
 
   const documento =
-    dados.tipo === 'PF' ? dados.cpf?.replace(/\D/g, '') : dados.cnpj?.replace(/\D/g, '')
+    dados.tipo === 'PF'
+      ? (dados.cpf ? normalizarCpf(dados.cpf) : undefined)
+      : (dados.cnpj ? normalizarCnpj(dados.cnpj) : undefined)
 
   if (documento) {
     const busca = await repositorioDeTransportadoras.buscarPessoaPorDocumentoNaEmpresa(

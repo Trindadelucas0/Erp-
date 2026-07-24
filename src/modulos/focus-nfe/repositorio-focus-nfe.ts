@@ -2,6 +2,7 @@
  * Persistência Focus NFe / NFe recebidas.
  */
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
+import { normalizarDocumento } from '../../compartilhado/validacoes/documentos.js'
 import { REGRAS_FISCAIS_PADRAO } from './esquema-focus-nfe.js'
 
 async function buscarConfigPorEmpresa(companyId: string) {
@@ -167,9 +168,14 @@ async function listarNfesPorPainel(
       { chaveNfe: { contains: busca, mode: 'insensitive' } },
     ]
     const soDigitos = busca.replace(/\D/g, '')
+    const alfa = normalizarDocumento(busca)
     if (soDigitos.length >= 3) {
       or.push({ documentoEmitente: { contains: soDigitos } })
       or.push({ cnpjDestinatario: { contains: soDigitos } })
+    }
+    if (alfa.length >= 3 && alfa !== soDigitos) {
+      or.push({ documentoEmitente: { contains: alfa } })
+      or.push({ cnpjDestinatario: { contains: alfa } })
     }
     const valor = parseValorBusca(busca)
     if (valor != null) {

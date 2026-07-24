@@ -246,7 +246,9 @@ export function FornecedoresRelacionadosField({
               <span className="font-medium">{item.nome}</span>
               {item.documento && (
                 <span className="font-mono text-muted-foreground">
-                  {item.documento.length > 11 ? mascaraCnpj(item.documento) : mascaraCpf(item.documento)}
+                  {/[A-Z]/.test(item.documento) || item.documento.length > 11
+                    ? mascaraCnpj(item.documento)
+                    : mascaraCpf(item.documento)}
                 </span>
               )}
               <span

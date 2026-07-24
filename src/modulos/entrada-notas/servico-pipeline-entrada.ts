@@ -3,6 +3,7 @@
  */
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
+import { normalizarDocumento } from '../../compartilhado/validacoes/documentos.js'
 import { servicoDeAutenticacao } from '../autenticacao/servico-autenticacao.js'
 import { repositorioFocusNfe } from '../focus-nfe/repositorio-focus-nfe.js'
 import { clienteFocusNfe } from '../focus-nfe/cliente-focus-nfe.js'
@@ -1091,7 +1092,7 @@ async function vincularFornecedoresNasNotasPendentes(companyId: string) {
   const notas = await repositorioEntradaNotas.listarNotasPendentesSemFornecedor(companyId)
   const porDoc = new Map<string, string[]>()
   for (const nota of notas) {
-    const doc = (nota.documentoEmitente ?? '').replace(/\D/g, '')
+    const doc = normalizarDocumento(nota.documentoEmitente ?? '')
     if (!doc) continue
     const ids = porDoc.get(doc) ?? []
     ids.push(nota.id)

@@ -46,6 +46,8 @@ import {
   mascaraCep,
   mascaraCpf,
   mascaraCnpj,
+  normalizarCpf,
+  normalizarCnpj,
   validarCpf,
   validarCnpj,
 } from '@/lib/documentos'
@@ -290,7 +292,8 @@ function validarFormCliente(form: FormCliente): ErrosDoForm {
   if (!form.nome.trim() || form.nome.trim().length < 2)
     erros.nome = 'nome obrigatório (mínimo 2 caracteres)'
 
-  const nums = form.documento.replace(/\D/g, '')
+  const nums =
+    form.tipo === 'PF' ? normalizarCpf(form.documento) : normalizarCnpj(form.documento)
   if (form.tipo === 'PF') {
     if (!validarCpf(nums)) erros.documento = 'CPF inválido — verifique os dígitos'
   } else if (!validarCnpj(nums)) {
@@ -583,7 +586,8 @@ function ConteudoDaPaginaDeClientes() {
       validar: () => {
         const f = formRef.current
         if (!f.nome.trim() || f.nome.trim().length < 2) return false
-        const nums = f.documento.replace(/\D/g, '')
+        const nums =
+          f.tipo === 'PF' ? normalizarCpf(f.documento) : normalizarCnpj(f.documento)
         if (f.tipo === 'PF') return validarCpf(nums)
         return validarCnpj(nums)
       },
@@ -969,7 +973,8 @@ function ConteudoDaPaginaDeClientes() {
 
   function aoMudarTipo(novoTipo: 'PF' | 'PJ') {
     setForm((f) => {
-      const nums = f.documento.replace(/\D/g, '')
+      const nums =
+        f.tipo === 'PF' ? normalizarCpf(f.documento) : normalizarCnpj(f.documento)
       const documento = nums ? mascaraPorTipo(nums, novoTipo) : ''
       return {
         ...f,
@@ -1016,7 +1021,8 @@ function ConteudoDaPaginaDeClientes() {
   // ─── Montar corpo da requisição ───────────────────────────────────────────
 
   function montarCorpo() {
-    const nums = form.documento.replace(/\D/g, '')
+    const nums =
+      form.tipo === 'PF' ? normalizarCpf(form.documento) : normalizarCnpj(form.documento)
     const base = {
       tipo: form.tipo,
       nome: form.nome,

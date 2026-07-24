@@ -2,6 +2,7 @@
  * Validação dos dados do portal do fornecedor com Zod.
  */
 import { z } from 'zod'
+import { normalizarCnpj } from '../../compartilhado/validacoes/documentos.js'
 
 function normalizarNumero(valor: unknown): number {
   const n = typeof valor === 'number' ? valor : Number(String(valor).replace(/\D/g, ''))
@@ -12,7 +13,7 @@ export const esquemaLoginPortalFornecedor = z.object({
   cnpj: z
     .string()
     .min(11, 'CNPJ obrigatório')
-    .transform((v) => v.replace(/\D/g, ''))
+    .transform(normalizarCnpj)
     .refine((v) => v.length === 14, 'CNPJ inválido'),
   // Senha do portal = número do pedido, enviado por e-mail ao fornecedor
   senha: z

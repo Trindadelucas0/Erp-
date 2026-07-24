@@ -2,6 +2,7 @@
  * Acesso ao banco de dados para empresas.
  */
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
+import { normalizarCnpj } from '../../compartilhado/validacoes/documentos.js'
 import type {
   DadosParaCriarEmpresa,
   DadosParaEditarEmpresa,
@@ -39,10 +40,10 @@ async function buscarPorId(idDaEmpresa: string) {
 }
 
 async function buscarPorCnpj(cnpj: string) {
-  const cnpjSomenteNumeros = cnpj.replace(/\D/g, '')
+  const cnpjNormalizado = normalizarCnpj(cnpj)
   return clientePrisma.company.findFirst({
     where: {
-      cnpj: { in: [cnpj, cnpjSomenteNumeros] },
+      cnpj: { in: [...new Set([cnpj, cnpjNormalizado].filter(Boolean))] },
     },
   })
 }
@@ -51,7 +52,7 @@ async function criar(dados: DadosParaCriarEmpresa) {
   return clientePrisma.company.create({
     data: {
       name: dados.nome,
-      cnpj: dados.cnpj.replace(/\D/g, ''),
+      cnpj: normalizarCnpj(dados.cnpj),
       phone: dados.phone || null,
       email: dados.email || null,
       cep: dados.cep?.replace(/\D/g, '') || null,
@@ -70,7 +71,7 @@ async function atualizar(idDaEmpresa: string, dados: DadosParaEditarEmpresa) {
     where: { id: idDaEmpresa },
     data: {
       name: dados.nome,
-      cnpj: dados.cnpj.replace(/\D/g, ''),
+      cnpj: normalizarCnpj(dados.cnpj),
       phone: dados.phone || null,
       email: dados.email || null,
       cep: dados.cep?.replace(/\D/g, '') || null,

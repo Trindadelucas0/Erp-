@@ -4,6 +4,7 @@
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-auditoria.js'
+import { normalizarCnpj, normalizarCpf } from '../../compartilhado/validacoes/documentos.js'
 import { repositorioDeCfops } from '../cfops/repositorio-cfops.js'
 import { servicoEntradaNotas } from '../entrada-notas/servico-pipeline-entrada.js'
 import { repositorioDeFornecedores } from './repositorio-fornecedores.js'
@@ -71,7 +72,9 @@ async function criarFornecedor(
   await validarVinculosFinanceirosECfop(companyId, dados)
 
   const documento =
-    dados.tipo === 'PF' ? dados.cpf?.replace(/\D/g, '') : dados.cnpj?.replace(/\D/g, '')
+    dados.tipo === 'PF'
+      ? (dados.cpf ? normalizarCpf(dados.cpf) : undefined)
+      : (dados.cnpj ? normalizarCnpj(dados.cnpj) : undefined)
 
   if (documento) {
     const busca = await repositorioDeFornecedores.buscarPessoaPorDocumentoNaEmpresa(

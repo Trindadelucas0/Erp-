@@ -5,16 +5,22 @@ import {
 } from './esquema-portal-fornecedor.js'
 
 describe('esquemaLoginPortalFornecedor', () => {
-  it('aceita CNPJ formatado e normaliza para dígitos', () => {
+  it('aceita CNPJ formatado e normaliza (numérico ou alfanumérico)', () => {
     const resultado = esquemaLoginPortalFornecedor.parse({
       cnpj: '12.345.678/0001-99',
       senha: '42',
     })
     expect(resultado.cnpj).toBe('12345678000199')
     expect(resultado.senha).toBe(42)
+
+    const alfa = esquemaLoginPortalFornecedor.parse({
+      cnpj: '12.ABC.345/01DE-35',
+      senha: '42',
+    })
+    expect(alfa.cnpj).toBe('12ABC34501DE35')
   })
 
-  it('rejeita CNPJ com quantidade de dígitos inválida', () => {
+  it('rejeita CNPJ com quantidade de caracteres inválida', () => {
     expect(() =>
       esquemaLoginPortalFornecedor.parse({ cnpj: '123', senha: '42' })
     ).toThrow()

@@ -3,6 +3,7 @@
  */
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-auditoria.js'
+import { normalizarCnpj, normalizarCpf } from '../../compartilhado/validacoes/documentos.js'
 import { repositorioDeClientes } from './repositorio-clientes.js'
 import { statusPermiteEdicaoVendedor } from './regras-cliente.js'
 import type {
@@ -43,7 +44,9 @@ async function criarCliente(
   }
 
   const documento =
-    dados.tipo === 'PF' ? dados.cpf?.replace(/\D/g, '') : dados.cnpj?.replace(/\D/g, '')
+    dados.tipo === 'PF'
+      ? (dados.cpf ? normalizarCpf(dados.cpf) : undefined)
+      : (dados.cnpj ? normalizarCnpj(dados.cnpj) : undefined)
 
   if (documento) {
     const busca = await repositorioDeClientes.buscarPessoaPorDocumentoNaEmpresa(

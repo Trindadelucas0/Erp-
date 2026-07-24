@@ -26,7 +26,7 @@ import {
 import { BarraCarregamentoDownload } from '@/components/entrada-notas/barra-carregamento-download'
 import { CheckCircle2, Loader2 } from 'lucide-react'
 
-import { mascaraCnpj } from '@/lib/documentos'
+import { mascaraCnpj, mascaraCpf } from '@/lib/documentos'
 import {
   prefixoPdfDocumento,
   rotuloTipoDocumentoCurto,
@@ -179,11 +179,9 @@ function gravarFiltrosSalvos(f: FiltrosEntradaSalvos) {
 
 function formatarDocCurto(doc: string | null | undefined): string {
   if (!doc) return '—'
-  const d = doc.replace(/\D/g, '')
-  if (d.length === 14) return mascaraCnpj(d)
-  if (d.length === 11) {
-    return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
-  }
+  const limpo = doc.toUpperCase().replace(/[^0-9A-Z]/g, '')
+  if (limpo.length === 14 || /[A-Z]/.test(limpo)) return mascaraCnpj(doc)
+  if (limpo.length === 11) return mascaraCpf(limpo)
   return doc
 }
 

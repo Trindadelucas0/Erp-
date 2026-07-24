@@ -696,7 +696,7 @@ function ConteudoDetalheEntrada() {
                   size="sm"
                   onClick={() => {
                     gravarDeepLinkFornecedor({
-                      documento: nota.documentoEmitente!.replace(/\D/g, ''),
+                      documento: nota.documentoEmitente!,
                       nome: nota.nomeEmitente ?? undefined,
                       retorno: `/entrada-notas/${nota.id}`,
                     })

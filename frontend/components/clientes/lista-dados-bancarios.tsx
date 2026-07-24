@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react'
 import { Select, classesOption, classesSelectCompacto } from '@/components/ui/select'
-import { mascaraCpf, mascaraCnpj } from '@/lib/documentos'
+import { mascaraDocumento, normalizarDocumento } from '@/lib/documentos'
 import { ComboboxBanco } from '@/components/ui/combobox-banco'
 
 export type DadosBancarioForm = {
@@ -46,9 +46,7 @@ type Props = {
 }
 
 function mascaraDocumentoFavorecido(v: string): string {
-  const nums = v.replace(/\D/g, '')
-  if (nums.length <= 11) return mascaraCpf(nums)
-  return mascaraCnpj(nums)
+  return mascaraDocumento(v)
 }
 
 function inferirFavorecidoIgualCadastro(
@@ -56,8 +54,8 @@ function inferirFavorecidoIgualCadastro(
   nomeCadastro: string,
   documentoCadastro: string
 ): boolean {
-  const docCadastro = documentoCadastro.replace(/\D/g, '')
-  const docFavorecido = db.documentoFavorecido.replace(/\D/g, '')
+  const docCadastro = normalizarDocumento(documentoCadastro)
+  const docFavorecido = normalizarDocumento(db.documentoFavorecido)
   if (!docCadastro) return false
   return (
     db.favorecido.trim() === nomeCadastro.trim() &&
@@ -80,7 +78,7 @@ export function dadosBancarioApiParaForm(
   nomeCadastro: string,
   documentoCadastro: string
 ): DadosBancarioForm {
-  const docNums = (db.documentoFavorecido || '').replace(/\D/g, '')
+  const docNorm = normalizarDocumento(db.documentoFavorecido || '')
   const item: DadosBancarioForm = {
     apelido: db.apelido || '',
     banco: db.banco || '',
@@ -89,8 +87,8 @@ export function dadosBancarioApiParaForm(
     tipoConta: (db.tipoConta as DadosBancarioForm['tipoConta']) || '',
     pix: db.pix || '',
     favorecido: db.favorecido || '',
-    documentoFavorecido: docNums
-      ? mascaraDocumentoFavorecido(docNums)
+    documentoFavorecido: docNorm
+      ? mascaraDocumentoFavorecido(docNorm)
       : '',
     favorecidoIgualCadastro: false,
     principal: db.principal ?? false,

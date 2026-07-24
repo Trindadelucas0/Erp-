@@ -2,7 +2,7 @@
  * Validação dos dados de transportadora (PF e PJ) com Zod.
  */
 import { z } from 'zod'
-import { validarCpf, validarCnpj } from '../../compartilhado/validacoes/documentos.js'
+import { validarCpf, validarCnpj, normalizarCnpj, normalizarCpf } from '../../compartilhado/validacoes/documentos.js'
 import { normalizarIe } from '../../compartilhado/validacoes/inscricao-estadual.js'
 import { normalizarTextoCadastro } from '../../compartilhado/normalizacao/texto-cadastro.js'
 import {
@@ -115,7 +115,8 @@ export const esquemaDeCriacaoDeTransportadoraPF = z.object({
   tipo: z.literal('PF'),
   cpf: z
     .string()
-    .min(11, 'CPF inválido')
+    .transform(normalizarCpf)
+    .refine((v) => v.length === 11, 'CPF inválido')
     .refine(validarCpf, 'CPF inválido — verifique os dígitos'),
   rg: z.string().max(20).optional(),
   dataNascimento: z
@@ -133,7 +134,8 @@ export const esquemaDeCriacaoDeTransportadoraPJ = z.object({
   tipo: z.literal('PJ'),
   cnpj: z
     .string()
-    .min(14, 'CNPJ inválido')
+    .transform(normalizarCnpj)
+    .refine((v) => v.length === 14, 'CNPJ inválido')
     .refine(validarCnpj, 'CNPJ inválido — verifique os dígitos'),
   nomeFantasia: textoCadastroOpcional(200),
   cnae: z.string().max(10).optional(),

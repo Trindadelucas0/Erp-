@@ -46,6 +46,10 @@ import {
   mascaraCep,
   mascaraCpf,
   mascaraCnpj,
+  normalizarCpf,
+  normalizarCnpj,
+  normalizarDocumento,
+  classificarDocumento,
   validarCpf,
   validarCnpj,
 } from '@/lib/documentos'
@@ -432,7 +436,8 @@ function validarFormFornecedor(form: FormFornecedor): ErrosDoForm {
   if (!form.nome.trim() || form.nome.trim().length < 2)
     erros.nome = 'nome obrigatório (mínimo 2 caracteres)'
 
-  const nums = form.documento.replace(/\D/g, '')
+  const nums =
+    form.tipo === 'PF' ? normalizarCpf(form.documento) : normalizarCnpj(form.documento)
   if (form.tipo === 'PF') {
     if (!validarCpf(nums)) erros.documento = 'CPF inválido — verifique os dígitos'
   } else if (!validarCnpj(nums)) {
@@ -678,7 +683,8 @@ function ConteudoDaPaginaDeFornecedores() {
         validar: () => {
           const f = formRef.current
           if (!f.nome.trim() || f.nome.trim().length < 2) return false
-          const nums = f.documento.replace(/\D/g, '')
+          const nums =
+            f.tipo === 'PF' ? normalizarCpf(f.documento) : normalizarCnpj(f.documento)
           if (f.tipo === 'PF') { if (!validarCpf(nums)) return false }
           else { if (!validarCnpj(nums)) return false }
           if (!f.tipoRevenda && !f.tipoConsumo && !f.tipoPrestadorServico) return false
@@ -974,8 +980,9 @@ function ConteudoDaPaginaDeFornecedores() {
   // ─── Modal ──────────────────────────────────────────────────────────────
 
   function abrirModalNovo(prefill?: { documento?: string; nome?: string }) {
-    const nums = (prefill?.documento ?? '').replace(/\D/g, '')
-    const tipo: 'PF' | 'PJ' = nums.length === 11 ? 'PF' : 'PJ'
+    const classificado = classificarDocumento(prefill?.documento ?? '')
+    const tipo: 'PF' | 'PJ' = classificado?.tipo === 'CPF' ? 'PF' : 'PJ'
+    const nums = classificado?.valor ?? ''
     const vazio = clonarFormulario({
       ...FORM_VAZIO,
       tipo: nums ? tipo : FORM_VAZIO.tipo,
@@ -995,14 +1002,14 @@ function ConteudoDaPaginaDeFornecedores() {
     setErrosDaAbaAtual([])
     resetarStatus()
     resetarConsulta()
-    consultarDocumentoAoAbrir.current = nums.length === 11 || nums.length === 14
+    consultarDocumentoAoAbrir.current = Boolean(classificado)
     setModalAberto(true)
   }
 
   useEffect(() => {
     if (!modalAberto || !consultarDocumentoAoAbrir.current) return
     if (modoEdicao || modoVisualizacao) return
-    const nums = form.documento.replace(/\D/g, '')
+    const nums = form.documento.replace(/[^0-9A-Za-z]/g, '')
     if (nums.length !== 11 && nums.length !== 14) return
     consultarDocumentoAoAbrir.current = false
     void aoSairDocumento()
@@ -1128,7 +1135,8 @@ function ConteudoDaPaginaDeFornecedores() {
 
   function aoMudarTipo(novoTipo: 'PF' | 'PJ') {
     setForm((f) => {
-      const nums = f.documento.replace(/\D/g, '')
+      const nums =
+        f.tipo === 'PF' ? normalizarCpf(f.documento) : normalizarCnpj(f.documento)
       const documento = nums ? mascaraPorTipo(nums, novoTipo) : ''
       return {
         ...f,
@@ -1175,7 +1183,8 @@ function ConteudoDaPaginaDeFornecedores() {
   // ─── Montar corpo ────────────────────────────────────────────────────────
 
   function montarCorpo() {
-    const nums = form.documento.replace(/\D/g, '')
+    const nums =
+      form.tipo === 'PF' ? normalizarCpf(form.documento) : normalizarCnpj(form.documento)
     const prazosPagamento = form.prazosPagamento.map((p) => {
       const trimmed = p.trim()
       return trimmed ? parseInt(trimmed, 10) : null
@@ -1191,7 +1200,7 @@ function ConteudoDaPaginaDeFornecedores() {
         tipoConta: db.tipoConta || undefined,
         pix: db.pix || undefined,
         favorecido: db.favorecido || undefined,
-        documentoFavorecido: db.documentoFavorecido.replace(/\D/g, '') || undefined,
+        documentoFavorecido: normalizarDocumento(db.documentoFavorecido) || undefined,
         principal: db.principal,
       }))
 

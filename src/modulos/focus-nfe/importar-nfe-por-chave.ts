@@ -91,7 +91,9 @@ export async function importarNfePorChave(
     logFocus('warn', 'import_chave_consulta_404_continua_xml', {
       companyId,
       chave: chave.slice(-8),
-      cnpj: cnpjEmpresa ? `**********${cnpjEmpresa.replace(/\D/g, '').slice(-4)}` : null,
+      cnpj: cnpjEmpresa
+        ? `**********${cnpjEmpresa.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(-4)}`
+        : null,
     })
   } else if (!consulta.sucesso && consulta.codigoHttp === 429) {
     return {

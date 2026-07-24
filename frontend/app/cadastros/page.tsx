@@ -29,7 +29,7 @@ import { SelectPadrao } from '@/components/ui/select-padrao'
 import { Modal } from '@/components/ui/modal'
 import { Separator } from '@/components/ui/separator'
 import { submeterFormularioPorId } from '@/lib/atalhos/submeter-formulario'
-import { mascaraTelefone, mascaraCep } from '@/lib/documentos'
+import { mascaraTelefone, mascaraCep, mascaraCnpj, normalizarCnpj } from '@/lib/documentos'
 import { paraCaixaAlta } from '@/lib/texto'
 
 const ESTADOS_BR = [
@@ -100,27 +100,13 @@ function extrairMensagemDeErro(erro: unknown, mensagemPadrao: string): string {
   return dados?.mensagem || dados?.message || mensagemPadrao
 }
 
-function aplicarMascaraCnpj(valor: string): string {
-  const numeros = valor.replace(/\D/g, '').slice(0, 14)
-  return numeros
-    .replace(/^(\d{2})(\d)/, '$1.$2')
-    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
-    .replace(/\.(\d{3})(\d)/, '.$1/$2')
-    .replace(/(\d{4})(\d)/, '$1-$2')
-}
-
-function aplicarMascaraCep(valor: string): string {
-  return mascaraCep(valor)
-}
-
 function empresaParaFormulario(empresa: Empresa): FormularioEmpresa {
-  const cnpj = empresa.cnpj.replace(/\D/g, '')
   return {
     nome: empresa.name,
-    cnpj: aplicarMascaraCnpj(cnpj),
+    cnpj: mascaraCnpj(empresa.cnpj),
     phone: empresa.phone ? mascaraTelefone(empresa.phone) : '',
     email: empresa.email || '',
-    cep: empresa.cep ? aplicarMascaraCep(empresa.cep) : '',
+    cep: empresa.cep ? mascaraCep(empresa.cep) : '',
     logradouro: empresa.logradouro || '',
     numero: empresa.numero || '',
     complemento: empresa.complemento || '',
@@ -258,7 +244,7 @@ function ConteudoDaPaginaDeCadastros() {
 
     const corpo = {
       nome: form.nome,
-      cnpj: form.cnpj,
+      cnpj: normalizarCnpj(form.cnpj),
       phone: form.phone || undefined,
       email: form.email || undefined,
       cep: form.cep || undefined,
@@ -442,7 +428,7 @@ function ConteudoDaPaginaDeCadastros() {
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                   value={form.cnpj}
                   onChange={(e) =>
-                    atualizarCampo('cnpj', aplicarMascaraCnpj(e.target.value))
+                    atualizarCampo('cnpj', mascaraCnpj(e.target.value))
                   }
                   placeholder="00.000.000/0000-00"
                   maxLength={18}
@@ -492,7 +478,7 @@ function ConteudoDaPaginaDeCadastros() {
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                   value={form.cep}
                   onChange={(e) =>
-                    atualizarCampo('cep', aplicarMascaraCep(e.target.value))
+                    atualizarCampo('cep', mascaraCep(e.target.value))
                   }
                   onBlur={(e) => buscarEnderecoPorCep(e.target.value)}
                   placeholder="00000-000"
@@ -599,7 +585,7 @@ function ConteudoDaPaginaDeCadastros() {
                 >
                   <td className="px-4 py-3 font-medium">{empresa.name}</td>
                   <td className="px-4 py-3 font-mono text-muted-foreground">
-                    {aplicarMascaraCnpj(empresa.cnpj)}
+                    {mascaraCnpj(empresa.cnpj)}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {empresa.phone

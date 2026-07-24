@@ -9,6 +9,12 @@ import type { DadosParaCriarFornecedor, DadosParaEditarFornecedor } from './esqu
 import { extrairContatosEEnderecos } from '../../compartilhado/pessoas/extrair-contatos-enderecos.js'
 import { normalizarIe, resolverIndicadorIe } from '../../compartilhado/validacoes/inscricao-estadual.js'
 import {
+  classificarDocumento,
+  normalizarCnpj,
+  normalizarCpf,
+  normalizarDocumento,
+} from '../../compartilhado/validacoes/documentos.js'
+import {
   enriquecerFornecedoresComVinculos,
   obterFornecedoresRelacionados,
   sincronizarVinculosDiretosFornecedor,
@@ -322,7 +328,7 @@ function normalizarDocumento(dados: DadosParaCriarFornecedor | DadosParaEditarFo
   if (dados.tipo === 'PF') {
     return {
       ...base,
-      cpf: limparNumeros(dados.cpf),
+      cpf: dados.cpf ? normalizarCpf(dados.cpf) : null,
       rg: dados.rg || null,
       dataNascimento: dados.dataNascimento || null,
       cnpj: null,
@@ -337,7 +343,7 @@ function normalizarDocumento(dados: DadosParaCriarFornecedor | DadosParaEditarFo
 
   return {
     ...base,
-    cnpj: limparNumeros(dados.cnpj),
+    cnpj: dados.cnpj ? normalizarCnpj(dados.cnpj) : null,
     nomeFantasia: dados.nomeFantasia || null,
     dataFundacao: dados.dataFundacao || null,
     ie: ieNormalizada,
@@ -354,6 +360,7 @@ function normalizarDocumento(dados: DadosParaCriarFornecedor | DadosParaEditarFo
 
 async function listarPorEmpresa(companyId: string, q?: string) {
   const termo = q?.trim()
+  const alfa = termo?.toUpperCase().replace(/[^0-9A-Z]/g, '') ?? ''
   const nums = termo?.replace(/\D/g, '') ?? ''
 
   const pessoas = await clientePrisma.pessoa.findMany({
@@ -364,9 +371,8 @@ async function listarPorEmpresa(companyId: string, q?: string) {
         ? {
             OR: [
               { nome: { contains: termo, mode: 'insensitive' } },
-              ...(nums.length >= 3
-                ? [{ cpf: { contains: nums } }, { cnpj: { contains: nums } }]
-                : []),
+              ...(nums.length >= 3 ? [{ cpf: { contains: nums } }] : []),
+              ...(alfa.length >= 3 ? [{ cnpj: { contains: alfa } }] : []),
             ],
           }
         : {}),
@@ -410,7 +416,7 @@ async function buscarPorId(id: string) {
 }
 
 async function buscarPorCpfNaEmpresa(cpf: string, companyId: string) {
-  const cpfLimpo = cpf.replace(/\D/g, '')
+  const cpfLimpo = normalizarCpf(cpf)
   const pessoa = await clientePrisma.pessoa.findFirst({
     where: {
       cpf: cpfLimpo,
@@ -423,7 +429,7 @@ async function buscarPorCpfNaEmpresa(cpf: string, companyId: string) {
 }
 
 async function buscarPorCnpjNaEmpresa(cnpj: string, companyId: string) {
-  const cnpjLimpo = cnpj.replace(/\D/g, '')
+  const cnpjLimpo = normalizarCnpj(cnpj)
   const pessoa = await clientePrisma.pessoa.findFirst({
     where: {
       cnpj: cnpjLimpo,
@@ -439,13 +445,12 @@ async function buscarPessoaPorDocumentoNaEmpresa(
   documento: string,
   companyId: string
 ): Promise<ResultadoBuscaPorDocumento> {
-  const nums = documento.replace(/\D/g, '')
-  const ehCpf = nums.length === 11
-  const ehCnpj = nums.length === 14
-
-  if (!ehCpf && !ehCnpj) {
+  const classificado = classificarDocumento(documento)
+  if (!classificado) {
     return { encontrado: false, temPapelFornecedor: false, papeis: [], pessoa: null }
   }
+  const ehCpf = classificado.tipo === 'CPF'
+  const nums = classificado.valor
 
   const pessoa = await clientePrisma.pessoa.findFirst({
     where: {
@@ -638,7 +643,7 @@ async function criarDadosBancarios(tx: TxCliente, pessoaId: string, campos: Camp
         pix: db.pix,
         favorecido: db.favorecido,
         documentoFavorecido: db.documentoFavorecido
-          ? limparNumeros(db.documentoFavorecido)
+          ? normalizarDocumento(db.documentoFavorecido)
           : null,
         principal: db.principal ?? false,
       },

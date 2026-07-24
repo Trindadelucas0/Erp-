@@ -10,6 +10,11 @@ import { STATUS_APROVACAO } from './regras-cliente.js'
 import { randomUUID } from 'node:crypto'
 import { extrairContatosEEnderecos } from '../../compartilhado/pessoas/extrair-contatos-enderecos.js'
 import { normalizarIe, resolverIndicadorIe } from '../../compartilhado/validacoes/inscricao-estadual.js'
+import {
+  classificarDocumento,
+  normalizarCnpj,
+  normalizarCpf,
+} from '../../compartilhado/validacoes/documentos.js'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -216,7 +221,7 @@ function normalizarDocumento(dados: DadosParaCriarCliente | DadosParaEditarClien
   if (dados.tipo === 'PF') {
     return {
       ...base,
-      cpf: limparNumeros(dados.cpf),
+      cpf: dados.cpf ? normalizarCpf(dados.cpf) : null,
       rg: dados.rg || null,
       dataNascimento: dados.dataNascimento || null,
       cnpj: null,
@@ -233,7 +238,7 @@ function normalizarDocumento(dados: DadosParaCriarCliente | DadosParaEditarClien
 
   return {
     ...base,
-    cnpj: limparNumeros(dados.cnpj),
+    cnpj: dados.cnpj ? normalizarCnpj(dados.cnpj) : null,
     nomeFantasia: dados.nomeFantasia || null,
     cnae: cnaePrincipal,
     dataFundacao: dados.dataFundacao || null,
@@ -272,7 +277,7 @@ async function buscarPorId(id: string) {
 }
 
 async function buscarPorCpfNaEmpresa(cpf: string, companyId: string) {
-  const cpfLimpo = cpf.replace(/\D/g, '')
+  const cpfLimpo = normalizarCpf(cpf)
   const pessoa = await clientePrisma.pessoa.findFirst({
     where: {
       cpf: cpfLimpo,
@@ -285,7 +290,7 @@ async function buscarPorCpfNaEmpresa(cpf: string, companyId: string) {
 }
 
 async function buscarPorCnpjNaEmpresa(cnpj: string, companyId: string) {
-  const cnpjLimpo = cnpj.replace(/\D/g, '')
+  const cnpjLimpo = normalizarCnpj(cnpj)
   const pessoa = await clientePrisma.pessoa.findFirst({
     where: {
       cnpj: cnpjLimpo,
@@ -305,13 +310,12 @@ async function buscarPessoaPorDocumentoNaEmpresa(
   documento: string,
   companyId: string
 ): Promise<ResultadoBuscaPorDocumento> {
-  const nums = documento.replace(/\D/g, '')
-  const ehCpf = nums.length === 11
-  const ehCnpj = nums.length === 14
-
-  if (!ehCpf && !ehCnpj) {
+  const classificado = classificarDocumento(documento)
+  if (!classificado) {
     return { encontrado: false, temPapelCliente: false, papeis: [], pessoa: null }
   }
+  const ehCpf = classificado.tipo === 'CPF'
+  const nums = classificado.valor
 
   const include = {
     papeis: { include: { dadosCliente: true } },

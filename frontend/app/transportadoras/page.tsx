@@ -43,6 +43,9 @@ import {
   mascaraCep,
   mascaraCpf,
   mascaraCnpj,
+  normalizarCpf,
+  normalizarCnpj,
+  normalizarDocumento,
   validarCpf,
   validarCnpj,
 } from '@/lib/documentos'
@@ -288,7 +291,8 @@ function validarFormTransportadora(form: FormTransportadora): ErrosDoForm {
   if (!form.nome.trim() || form.nome.trim().length < 2)
     erros.nome = 'nome obrigatório (mínimo 2 caracteres)'
 
-  const nums = form.documento.replace(/\D/g, '')
+  const nums =
+    form.tipo === 'PF' ? normalizarCpf(form.documento) : normalizarCnpj(form.documento)
   if (form.tipo === 'PF') {
     if (!validarCpf(nums)) erros.documento = 'CPF inválido — verifique os dígitos'
   } else if (!validarCnpj(nums)) {
@@ -464,7 +468,8 @@ function ConteudoDaPaginaDeTransportadoras() {
       validar: () => {
         const f = formRef.current
         if (!f.nome.trim() || f.nome.trim().length < 2) return false
-        const nums = f.documento.replace(/\D/g, '')
+        const nums =
+          f.tipo === 'PF' ? normalizarCpf(f.documento) : normalizarCnpj(f.documento)
         return f.tipo === 'PF' ? validarCpf(nums) : validarCnpj(nums)
       },
     },
@@ -779,7 +784,8 @@ function ConteudoDaPaginaDeTransportadoras() {
 
   function aoMudarTipo(novoTipo: 'PF' | 'PJ') {
     setForm((f) => {
-      const nums = f.documento.replace(/\D/g, '')
+      const nums =
+        f.tipo === 'PF' ? normalizarCpf(f.documento) : normalizarCnpj(f.documento)
       const documento = nums ? mascaraPorTipo(nums, novoTipo) : ''
       return {
         ...f,
@@ -818,7 +824,8 @@ function ConteudoDaPaginaDeTransportadoras() {
   }
 
   function montarCorpo() {
-    const nums = form.documento.replace(/\D/g, '')
+    const nums =
+      form.tipo === 'PF' ? normalizarCpf(form.documento) : normalizarCnpj(form.documento)
     const base = {
       tipo: form.tipo, nome: form.nome,
       email: form.email || undefined, telefone: form.telefone || undefined,
@@ -840,7 +847,7 @@ function ConteudoDaPaginaDeTransportadoras() {
     ).map((db) => ({
       apelido: db.apelido || undefined, banco: db.banco || undefined, agencia: db.agencia || undefined,
       conta: db.conta || undefined, tipoConta: db.tipoConta || undefined, pix: db.pix || undefined,
-      favorecido: db.favorecido || undefined, documentoFavorecido: db.documentoFavorecido.replace(/\D/g, '') || undefined,
+      favorecido: db.favorecido || undefined, documentoFavorecido: normalizarDocumento(db.documentoFavorecido) || undefined,
       principal: db.principal,
     }))
 

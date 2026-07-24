@@ -2,6 +2,7 @@
  * Persistência do pipeline de Entrada de Notas.
  */
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
+import { normalizarDocumento } from '../../compartilhado/validacoes/documentos.js'
 import type { ItemXmlNfe } from '../focus-nfe/parser-xml-nfe.js'
 import { randomUUID } from 'crypto'
 import type { Prisma } from '@prisma/client'
@@ -152,7 +153,7 @@ async function atualizarItem(
 }
 
 async function buscarFornecedorPorCnpj(companyId: string, documento: string) {
-  const limpo = documento.replace(/\D/g, '')
+  const limpo = normalizarDocumento(documento)
   if (!limpo) return null
   return clientePrisma.pessoa.findFirst({
     where: {
@@ -299,9 +300,9 @@ async function contarItens(nfeRecebidaId: string) {
   return clientePrisma.nfeRecebidaItem.count({ where: { nfeRecebidaId } })
 }
 
-/** Notas em aberto cujo emitente bate com o documento (compara só dígitos). */
+/** Notas em aberto cujo emitente bate com o documento (normalizado A-Z/0-9). */
 async function listarNotasPendentesPorDocumento(companyId: string, documento: string) {
-  const limpo = documento.replace(/\D/g, '')
+  const limpo = normalizarDocumento(documento)
   if (!limpo) return []
   const candidatas = await clientePrisma.nfeRecebida.findMany({
     where: {
@@ -313,7 +314,7 @@ async function listarNotasPendentesPorDocumento(companyId: string, documento: st
     orderBy: { createdAt: 'asc' },
   })
   return candidatas
-    .filter((n) => (n.documentoEmitente ?? '').replace(/\D/g, '') === limpo)
+    .filter((n) => normalizarDocumento(n.documentoEmitente ?? '') === limpo)
     .map((n) => ({ id: n.id }))
 }
 

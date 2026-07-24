@@ -3,12 +3,9 @@
  */
 import { randomBytes } from 'node:crypto'
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
+import { normalizarCnpj } from '../../compartilhado/validacoes/documentos.js'
 
 const DIAS_EXPIRACAO_SESSAO = 7
-
-function normalizarCnpj(cnpj: string): string {
-  return cnpj.replace(/\D/g, '')
-}
 
 async function buscarPedidoParaLiberar(pedidoCompraId: string, companyId: string) {
   return clientePrisma.pedidoCompra.findFirst({

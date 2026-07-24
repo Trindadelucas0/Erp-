@@ -2,7 +2,7 @@
  * Consulta CNPJ na BrasilAPI e normaliza para o shape usado pelo frontend.
  */
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
-import { validarCnpj } from '../../compartilhado/validacoes/documentos.js'
+import { normalizarCnpj, validarCnpj } from '../../compartilhado/validacoes/documentos.js'
 
 const URL_BRASIL_API = 'https://brasilapi.com.br/api/cnpj/v1'
 const TIMEOUT_MS = 8_000
@@ -145,7 +145,7 @@ async function buscarDadosCnpj(nums: string): Promise<DadosCnpj> {
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
 
   try {
-    const resposta = await fetch(`${URL_BRASIL_API}/${nums}`, {
+    const resposta = await fetch(`${URL_BRASIL_API}/${encodeURIComponent(nums)}`, {
       signal: controller.signal,
       headers: HEADERS_BRASIL_API,
     })
@@ -170,10 +170,10 @@ async function buscarDadosCnpj(nums: string): Promise<DadosCnpj> {
 
 export const servicoBrasilApi = {
   async consultarCnpj(documento: string): Promise<DadosCnpj> {
-    const nums = documento.replace(/\D/g, '')
-    if (nums.length !== 14 || !validarCnpj(nums)) {
+    const limpo = normalizarCnpj(documento)
+    if (limpo.length !== 14 || !validarCnpj(limpo)) {
       throw new ErroDaAplicacao('CNPJ inválido', 400)
     }
-    return buscarDadosCnpj(nums)
+    return buscarDadosCnpj(limpo)
   },
 }

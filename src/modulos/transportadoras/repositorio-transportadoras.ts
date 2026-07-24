@@ -8,6 +8,12 @@ import type { Prisma } from '@prisma/client'
 import type { DadosParaCriarTransportadora, DadosParaEditarTransportadora } from './esquema-transportadoras.js'
 import { extrairContatosEEnderecos } from '../../compartilhado/pessoas/extrair-contatos-enderecos.js'
 import { normalizarIe, resolverIndicadorIe } from '../../compartilhado/validacoes/inscricao-estadual.js'
+import {
+  classificarDocumento,
+  normalizarCnpj,
+  normalizarCpf,
+  normalizarDocumento,
+} from '../../compartilhado/validacoes/documentos.js'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -204,7 +210,7 @@ function normalizarDocumento(dados: DadosParaCriarTransportadora | DadosParaEdit
   if (dados.tipo === 'PF') {
     return {
       ...base,
-      cpf: limparNumeros(dados.cpf),
+      cpf: dados.cpf ? normalizarCpf(dados.cpf) : null,
       rg: dados.rg || null,
       dataNascimento: dados.dataNascimento || null,
       cnpj: null,
@@ -220,7 +226,7 @@ function normalizarDocumento(dados: DadosParaCriarTransportadora | DadosParaEdit
 
   return {
     ...base,
-    cnpj: limparNumeros(dados.cnpj),
+    cnpj: dados.cnpj ? normalizarCnpj(dados.cnpj) : null,
     nomeFantasia: dados.nomeFantasia || null,
     cnae: dados.cnae || null,
     dataFundacao: dados.dataFundacao || null,
@@ -258,7 +264,7 @@ async function buscarPorId(id: string) {
 }
 
 async function buscarPorCpfNaEmpresa(cpf: string, companyId: string) {
-  const cpfLimpo = cpf.replace(/\D/g, '')
+  const cpfLimpo = normalizarCpf(cpf)
   const pessoa = await clientePrisma.pessoa.findFirst({
     where: {
       cpf: cpfLimpo,
@@ -271,7 +277,7 @@ async function buscarPorCpfNaEmpresa(cpf: string, companyId: string) {
 }
 
 async function buscarPorCnpjNaEmpresa(cnpj: string, companyId: string) {
-  const cnpjLimpo = cnpj.replace(/\D/g, '')
+  const cnpjLimpo = normalizarCnpj(cnpj)
   const pessoa = await clientePrisma.pessoa.findFirst({
     where: {
       cnpj: cnpjLimpo,
@@ -287,13 +293,12 @@ async function buscarPessoaPorDocumentoNaEmpresa(
   documento: string,
   companyId: string
 ): Promise<ResultadoBuscaPorDocumento> {
-  const nums = documento.replace(/\D/g, '')
-  const ehCpf = nums.length === 11
-  const ehCnpj = nums.length === 14
-
-  if (!ehCpf && !ehCnpj) {
+  const classificado = classificarDocumento(documento)
+  if (!classificado) {
     return { encontrado: false, temPapelTransportadora: false, papeis: [], pessoa: null }
   }
+  const ehCpf = classificado.tipo === 'CPF'
+  const nums = classificado.valor
 
   const include = {
     papeis: { include: { dadosTransportadora: true } },
@@ -478,7 +483,7 @@ async function criarDadosBancarios(tx: TxCliente, pessoaId: string, campos: Camp
         tipoConta: db.tipoConta,
         pix: db.pix,
         favorecido: db.favorecido,
-        documentoFavorecido: db.documentoFavorecido ? limparNumeros(db.documentoFavorecido) : null,
+        documentoFavorecido: db.documentoFavorecido ? normalizarDocumento(db.documentoFavorecido) : null,
         principal: db.principal ?? false,
       },
     })

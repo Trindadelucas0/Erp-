@@ -3,6 +3,8 @@
  * Não envia mensagem automaticamente — o comprador abre o link e envia.
  */
 
+import { mascaraCnpj } from '../../compartilhado/validacoes/documentos.js'
+
 export type TelefoneWhatsapp = {
   id: string
   valor: string
@@ -87,9 +89,7 @@ function urlBasePortal(): string {
 }
 
 function formatarCnpj(cnpj: string): string {
-  const digitos = cnpj.replace(/\D/g, '')
-  if (digitos.length !== 14) return cnpj
-  return digitos.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')
+  return mascaraCnpj(cnpj)
 }
 
 export function montarTextoCredenciaisPortal(dados: {

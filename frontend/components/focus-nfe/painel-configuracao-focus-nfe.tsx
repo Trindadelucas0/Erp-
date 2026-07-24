@@ -7,6 +7,7 @@ import { CardPadrao } from '@/components/ui/card-padrao'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { mascaraCnpj } from '@/lib/documentos'
 
 type CheckFiscal = 'ncm' | 'origem' | 'cst_cfop'
 
@@ -63,9 +64,7 @@ const REGRAS_PADRAO: RegrasFiscais = {
 
 function formatarCnpjExibicao(cnpj: string | null | undefined): string {
   if (!cnpj) return '—'
-  const d = cnpj.replace(/\D/g, '')
-  if (d.length !== 14) return cnpj
-  return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
+  return mascaraCnpj(cnpj)
 }
 
 function normalizarRegras(raw: RegrasFiscais | null | undefined): RegrasFiscais {

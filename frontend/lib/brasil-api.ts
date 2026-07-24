@@ -7,7 +7,7 @@
  * a mesma em vez de abrir uma 2ª requisição.
  */
 import { clienteHttp } from '@/services/api'
-import { mascaraTelefone } from '@/lib/documentos'
+import { mascaraTelefone, normalizarCnpj, validarCnpj } from '@/lib/documentos'
 import { paraCaixaAlta } from '@/lib/texto'
 
 export type CnaeItem = {
@@ -55,21 +55,21 @@ function normalizarTelefones(dados: DadosCnpj): DadosCnpj {
 const _consultasEmAndamento = new Map<string, Promise<DadosCnpj | null>>()
 
 export async function buscarDadosCnpj(cnpj: string): Promise<DadosCnpj | null> {
-  const nums = cnpj.replace(/\D/g, '')
-  if (nums.length !== 14) return null
+  const limpo = normalizarCnpj(cnpj)
+  if (limpo.length !== 14 || !validarCnpj(limpo)) return null
 
-  const existente = _consultasEmAndamento.get(nums)
+  const existente = _consultasEmAndamento.get(limpo)
   if (existente) return existente
 
   const promessa = (async () => {
     try {
-      const { data } = await clienteHttp.get<DadosCnpj>(`/integracoes/cnpj/${nums}`)
+      const { data } = await clienteHttp.get<DadosCnpj>(`/integracoes/cnpj/${encodeURIComponent(limpo)}`)
       return normalizarTelefones(data)
     } catch {
       return null
     }
-  })().finally(() => _consultasEmAndamento.delete(nums))
+  })().finally(() => _consultasEmAndamento.delete(limpo))
 
-  _consultasEmAndamento.set(nums, promessa)
+  _consultasEmAndamento.set(limpo, promessa)
   return promessa
 }
