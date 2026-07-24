@@ -429,16 +429,38 @@ function ConteudoDetalheEntrada() {
     }
   }
 
-  async function buscarProdutos() {
-    if (buscaProduto.trim().length < 2) return
+  function termoBuscaProdutoItem(item: ItemNota): string {
+    const descricao = item.descricao?.trim() ?? ''
+    if (descricao.length >= 2) return descricao
+    const cProd = item.codigoProduto?.trim() ?? ''
+    if (cProd.length >= 2) return cProd
+    const gtin = item.gtin?.trim() ?? ''
+    if (gtin.length >= 2) return gtin
+    return descricao || cProd || gtin
+  }
+
+  async function buscarProdutos(termo?: string) {
+    const q = (termo ?? buscaProduto).trim()
+    if (q.length < 2) {
+      setProdutos([])
+      return
+    }
     try {
       const { data } = await clienteHttp.get<{ produtos?: ProdutoBusca[] }>('/produtos', {
-        params: { q: buscaProduto.trim(), pagina: 1, limite: 20, resumo: 'true' },
+        params: { q, pagina: 1, limite: 20, resumo: 'true' },
       })
       setProdutos(data.produtos ?? [])
     } catch {
       setProdutos([])
     }
+  }
+
+  function abrirBuscaProduto(item: ItemNota) {
+    const termo = termoBuscaProdutoItem(item)
+    setItemVinculando(item.id)
+    setBuscaProduto(termo)
+    setProdutos([])
+    void buscarProdutos(termo)
   }
 
   const finalizada =
@@ -722,7 +744,7 @@ function ConteudoDetalheEntrada() {
                             type="button"
                             size="sm"
                             variant="outline"
-                            onClick={() => setItemVinculando(item.id)}
+                            onClick={() => abrirBuscaProduto(item)}
                           >
                             Buscar produto
                           </Button>
