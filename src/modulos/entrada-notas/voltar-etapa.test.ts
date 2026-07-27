@@ -54,6 +54,36 @@ import { analisarFiscalItens } from './analise-fiscal/analisar-fiscal-itens.js'
 import { analisarNegociacao } from './analise-negociacao/analisar-negociacao.js'
 import { servicoEntradaNotas } from './servico-pipeline-entrada.js'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
+import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
+
+/**
+ * Substitui analisarCadastro por uma versão sem I/O que preserva o que já veio
+ * em cada item (não inventa auto-match) — usado nos testes de vincular/desvincular
+ * que só querem verificar a orquestração do serviço, não a regra de auto-match
+ * (essa é coberta em analise-cadastro/analisar-cadastro.test.ts).
+ */
+function mockAnalisarCadastroPassthrough() {
+  vi.mocked(analisarCadastro).mockImplementation(async ({ itens, fornecedorPessoaId }) => {
+    const itensAtualizados = itens.map((item) => ({
+      id: item.id,
+      produtoId: item.produtoId,
+      vinculoModo: item.vinculoModo,
+      criticaCadastro: !item.produtoId,
+    }))
+    const bloqueios = itensAtualizados
+      .filter((item) => !item.produtoId)
+      .map((item) => `Item ${item.id} sem vínculo de produto.`)
+    return {
+      resultado: {
+        status: bloqueios.length > 0 ? 'bloqueante' : 'ok',
+        avisos: [],
+        bloqueios,
+      },
+      fornecedorPessoaId: fornecedorPessoaId ?? 'fornecedor-1',
+      itensAtualizados,
+    } as never
+  })
+}
 
 function buildNotaFixture(overrides: Record<string, unknown> = {}) {
   return {
@@ -224,9 +254,10 @@ describe('servicoEntradaNotas.voltarEtapa', () => {
 describe('servicoEntradaNotas.desvincularItem', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockAnalisarCadastroPassthrough()
   })
 
-  it('zera o vínculo do item, marca crítica de cadastro e reabre nota lançada', async () => {
+  it('zera o vínculo do item, marca vinculoModo=desvinculado e reabre nota lançada', async () => {
     ligarRepositorioFake(buildNotaFixture())
 
     const resultado = await servicoEntradaNotas.desvincularItem('empresa-1', 'nota-1', 'item-1')
@@ -235,10 +266,11 @@ describe('servicoEntradaNotas.desvincularItem', () => {
     expect(nota.statusEntrada).toBe('em_analise')
     expect(nota.origemLancamento).toBeNull()
 
-    const item = (resultado.nota as { itens: Array<{ id: string; produtoId: string | null }> }).itens.find(
-      (i) => i.id === 'item-1'
-    )
+    const item = (
+      resultado.nota as { itens: Array<{ id: string; produtoId: string | null; vinculoModo: string | null }> }
+    ).itens.find((i) => i.id === 'item-1')
     expect(item?.produtoId).toBeNull()
+    expect(item?.vinculoModo).toBe('desvinculado')
 
     const analise = (resultado.nota as { analise: { cadastro: { status: string }; motivoParada: string | null } })
       .analise
@@ -251,6 +283,98 @@ describe('servicoEntradaNotas.desvincularItem', () => {
 
     await expect(
       servicoEntradaNotas.desvincularItem('empresa-1', 'nota-1', 'item-1')
+    ).rejects.toBeInstanceOf(ErroDaAplicacao)
+    expect(repositorioEntradaNotas.atualizarItem).not.toHaveBeenCalled()
+  })
+})
+
+describe('servicoEntradaNotas.vincularItem', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAnalisarCadastroPassthrough()
+    vi.mocked(clientePrisma.produto.findFirst).mockResolvedValue({ id: 'produto-2' } as never)
+  })
+
+  it('vincular um item só atualiza aquele item e não religa item que estava desvinculado manualmente', async () => {
+    ligarRepositorioFake(
+      buildNotaFixture({
+        statusEntrada: 'em_analise',
+        etapaAtual: 'cadastro',
+        origemLancamento: null,
+        itens: [
+          {
+            id: 'item-1',
+            nItem: 1,
+            descricao: 'Item desvinculado manualmente',
+            gtin: '7891234567890',
+            codigoProduto: 'ABC',
+            ncm: null,
+            cfop: null,
+            cst: null,
+            origem: null,
+            quantidade: 1,
+            valorUnitario: 10,
+            valorTotal: 10,
+            pesoKg: null,
+            custoFreteRateado: null,
+            produtoId: null,
+            vinculoModo: 'desvinculado',
+            criticaCadastro: true,
+            criticaFiscal: false,
+            criticaNegociacao: false,
+            produto: null,
+          },
+          {
+            id: 'item-2',
+            nItem: 2,
+            descricao: 'Item pendente de conciliação',
+            gtin: '9999999999999',
+            codigoProduto: 'XYZ',
+            ncm: null,
+            cfop: null,
+            cst: null,
+            origem: null,
+            quantidade: 1,
+            valorUnitario: 20,
+            valorTotal: 20,
+            pesoKg: null,
+            custoFreteRateado: null,
+            produtoId: null,
+            vinculoModo: null,
+            criticaCadastro: true,
+            criticaFiscal: false,
+            criticaNegociacao: false,
+            produto: null,
+          },
+        ],
+      })
+    )
+
+    const resultado = await servicoEntradaNotas.vincularItem('empresa-1', 'nota-1', 'item-2', 'produto-2')
+
+    const itens = (
+      resultado.nota as { itens: Array<{ id: string; produtoId: string | null; vinculoModo: string | null }> }
+    ).itens
+    const item1 = itens.find((i) => i.id === 'item-1')
+    const item2 = itens.find((i) => i.id === 'item-2')
+
+    expect(item2?.produtoId).toBe('produto-2')
+    expect(item2?.vinculoModo).toBe('manual')
+    expect(item1?.produtoId).toBeNull()
+    expect(item1?.vinculoModo).toBe('desvinculado')
+
+    const nota = resultado.nota as { etapaAtual: string; analise: { motivoParada: string | null } }
+    expect(nota.etapaAtual).toBe('cadastro')
+    expect(analisarFiscalItens).not.toHaveBeenCalled()
+    expect(analisarNegociacao).not.toHaveBeenCalled()
+  })
+
+  it('rejeita vincular produto inexistente', async () => {
+    vi.mocked(clientePrisma.produto.findFirst).mockResolvedValue(null)
+    ligarRepositorioFake(buildNotaFixture({ statusEntrada: 'em_analise', etapaAtual: 'cadastro', origemLancamento: null }))
+
+    await expect(
+      servicoEntradaNotas.vincularItem('empresa-1', 'nota-1', 'item-1', 'produto-inexistente')
     ).rejects.toBeInstanceOf(ErroDaAplicacao)
     expect(repositorioEntradaNotas.atualizarItem).not.toHaveBeenCalled()
   })

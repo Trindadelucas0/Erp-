@@ -240,7 +240,7 @@ model NfeRecebidaItem {
   pesoKg             Decimal?    @db.Decimal(18, 4)
   produtoId          String?
   produto            Produto?    @relation(fields: [produtoId], references: [id], onDelete: SetNull)
-  /// barras | codigo_original | manual | null
+  /// barras | codigo_original | manual | desvinculado | null
   vinculoModo        String?
   criticaCadastro    Boolean     @default(false)
   criticaFiscal      Boolean     @default(false)

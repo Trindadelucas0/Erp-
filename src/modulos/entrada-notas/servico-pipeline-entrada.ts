@@ -118,7 +118,8 @@ function podeAvancarFrete(etapa: ResultadoEtapa | null | undefined): boolean {
 
 function pipelineProntoParaLancar(
   analise: AnaliseJson | null,
-  criticasLiberadas: boolean
+  criticasLiberadas: boolean,
+  fornecedorPessoaId: string | null
 ): { ok: true } | { ok: false; mensagem: string } {
   if (!analise) {
     return { ok: false, mensagem: 'Nota sem análise. Clique em Reanalisar antes de lançar.' }
@@ -126,8 +127,9 @@ function pipelineProntoParaLancar(
   if (!podeAvancarCadastro(analise.cadastro)) {
     return {
       ok: false,
-      mensagem:
-        'Cadastro bloqueante: cadastre o fornecedor e vincule os produtos antes de lançar.',
+      mensagem: fornecedorPessoaId
+        ? 'Cadastro bloqueante: vincule os produtos sem vínculo antes de lançar.'
+        : 'Cadastro bloqueante: cadastre o fornecedor e vincule os produtos antes de lançar.',
     }
   }
   if (fiscalExigeManifesto(analise.fiscal)) {
@@ -166,14 +168,6 @@ async function lancarContagem(notaId: string, origem: 'automatica' | 'humana') {
     statusEntrada: 'entrada_contagem',
     etapaAtual: 'lancamento',
     origemLancamento: origem,
-  })
-}
-
-/** Tira a nota de entrada_contagem/entrada_consolidada para permitir corrigir e reanalisar. */
-async function reabrirNotaFinalizada(notaId: string) {
-  await repositorioEntradaNotas.atualizarNota(notaId, {
-    statusEntrada: 'em_analise',
-    origemLancamento: null,
   })
 }
 
@@ -951,6 +945,64 @@ function sanitizarAnaliseExibicao(
   }
 }
 
+/**
+ * Recalcula só o cadastro (fornecedor + vínculo de itens) e para exatamente aí —
+ * não roda fiscal/negociação/frete. Usado após vincular/desvincular **um** item
+ * isolado, para não religar automaticamente os demais itens da nota (o usuário
+ * concilia um a um; só o Reanalisar roda o pipeline completo de novo).
+ */
+async function recalcularSomenteCadastro(companyId: string, notaId: string) {
+  const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+
+  const cadastro = await analisarCadastro({
+    companyId,
+    documentoEmitente: nota.documentoEmitente,
+    fornecedorPessoaId: nota.fornecedorPessoaId,
+    itens: nota.itens.map((i) => ({
+      id: i.id,
+      gtin: i.gtin,
+      codigoProduto: i.codigoProduto,
+      produtoId: i.produtoId,
+      vinculoModo: i.vinculoModo,
+    })),
+  })
+
+  for (const item of cadastro.itensAtualizados) {
+    await repositorioEntradaNotas.atualizarItem(item.id, {
+      produtoId: item.produtoId,
+      vinculoModo: item.vinculoModo,
+      criticaCadastro: item.criticaCadastro,
+    })
+  }
+
+  const analiseAtual: AnaliseJson = (nota.analiseJson as AnaliseJson | null) ?? {
+    versao: 1,
+    atualizadoEm: new Date().toISOString(),
+    cadastro: etapaVazia(),
+    fiscal: etapaVazia(),
+    negociacao: etapaVazia(),
+    autoLancado: false,
+    motivoParada: null,
+  }
+  const analise: AnaliseJson = {
+    ...analiseAtual,
+    cadastro: cadastro.resultado,
+    autoLancado: false,
+    motivoParada: podeAvancarCadastro(cadastro.resultado) ? null : 'cadastro',
+  }
+
+  await repositorioEntradaNotas.atualizarNota(notaId, {
+    fornecedorPessoaId: cadastro.fornecedorPessoaId,
+    statusEntrada: 'em_analise',
+    origemLancamento: null,
+    analiseJson: asJson(analise),
+    etapaAtual: 'cadastro',
+  })
+
+  return obterDetalhe(companyId, notaId)
+}
+
 async function vincularItem(
   companyId: string,
   notaId: string,
@@ -977,18 +1029,13 @@ async function vincularItem(
     criticaCadastro: false,
   })
 
-  const finalizada =
-    nota.statusEntrada === 'entrada_contagem' || nota.statusEntrada === 'entrada_consolidada'
-  if (finalizada) {
-    await reabrirNotaFinalizada(notaId)
-    return analisarNota(companyId, notaId, { pararEm: 'cadastro' })
-  }
-  return analisarNota(companyId, notaId)
+  return recalcularSomenteCadastro(companyId, notaId)
 }
 
 /**
  * Desfaz um vínculo produto × item (vínculo errado por código de barras/manual).
- * Não roda o pipeline inteiro — usuário concilia o produto certo e clica Reanalisar.
+ * `vinculoModo='desvinculado'` marca o item para o auto-match (barras/código
+ * original) não religar sozinho — só volta a ter produto após conciliação manual.
  */
 async function desvincularItem(companyId: string, notaId: string, itemId: string) {
   const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
@@ -1001,38 +1048,11 @@ async function desvincularItem(companyId: string, notaId: string, itemId: string
 
   await repositorioEntradaNotas.atualizarItem(itemId, {
     produtoId: null,
-    vinculoModo: null,
+    vinculoModo: 'desvinculado',
     criticaCadastro: true,
   })
 
-  const analiseAtual: AnaliseJson = (nota.analiseJson as AnaliseJson | null) ?? {
-    versao: 1,
-    atualizadoEm: new Date().toISOString(),
-    cadastro: etapaVazia(),
-    fiscal: etapaVazia(),
-    negociacao: etapaVazia(),
-    autoLancado: false,
-    motivoParada: null,
-  }
-  const analise: AnaliseJson = {
-    ...analiseAtual,
-    cadastro: {
-      status: 'bloqueante',
-      avisos: [],
-      bloqueios: ['Item sem vínculo de produto (desvinculado manualmente). Concilie novamente e reanalise.'],
-    },
-    autoLancado: false,
-    motivoParada: 'cadastro',
-  }
-
-  await repositorioEntradaNotas.atualizarNota(notaId, {
-    statusEntrada: 'em_analise',
-    origemLancamento: null,
-    analiseJson: asJson(analise),
-    etapaAtual: 'cadastro',
-  })
-
-  return obterDetalhe(companyId, notaId)
+  return recalcularSomenteCadastro(companyId, notaId)
 }
 
 async function gravarCodigoOriginal(companyId: string, notaId: string, itemId: string) {
@@ -1084,7 +1104,9 @@ async function liberarCriticas(companyId: string, notaId: string, usuarioId: str
   const analise = nota.analiseJson as AnaliseJson | null
   if (analise?.cadastro?.status === 'bloqueante') {
     throw new ErroDaAplicacao(
-      'Cadastro bloqueante não pode ser liberado por senha. Cadastre o fornecedor e vincule os produtos, depois reanalise.',
+      nota.fornecedorPessoaId
+        ? 'Cadastro bloqueante não pode ser liberado por senha. Vincule os produtos sem vínculo, depois reanalise.'
+        : 'Cadastro bloqueante não pode ser liberado por senha. Cadastre o fornecedor e vincule os produtos, depois reanalise.',
       400
     )
   }
@@ -1178,7 +1200,8 @@ async function lancar(
 
   const gate = pipelineProntoParaLancar(
     nota.analiseJson as AnaliseJson | null,
-    nota.criticasLiberadas
+    nota.criticasLiberadas,
+    nota.fornecedorPessoaId
   )
   if (!gate.ok) {
     throw new ErroDaAplicacao(gate.mensagem, 400)

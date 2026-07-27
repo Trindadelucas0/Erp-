@@ -61,8 +61,9 @@ export async function analisarCadastro(params: {
     let produtoId = item.produtoId
     let vinculoModo = item.vinculoModo
     let critica = false
+    const desvinculadoManualmente = vinculoModo === 'desvinculado'
 
-    if (!produtoId && item.gtin) {
+    if (!produtoId && !desvinculadoManualmente && item.gtin) {
       const porBarras = await repositorioEntradaNotas.buscarProdutoPorGtin(
         params.companyId,
         item.gtin
@@ -73,7 +74,7 @@ export async function analisarCadastro(params: {
       }
     }
 
-    if (!produtoId && fornecedorPessoaId && item.codigoProduto) {
+    if (!produtoId && !desvinculadoManualmente && fornecedorPessoaId && item.codigoProduto) {
       const porOriginal = await repositorioEntradaNotas.buscarProdutoPorCodigoOriginal(
         params.companyId,
         fornecedorPessoaId,
@@ -88,7 +89,9 @@ export async function analisarCadastro(params: {
     if (!produtoId) {
       critica = true
       bloqueios.push(
-        `Item sem vínculo de produto (GTIN: ${item.gtin ?? '—'} / cProd: ${item.codigoProduto ?? '—'}). Use busca manual.`
+        desvinculadoManualmente
+          ? `Item desvinculado manualmente (GTIN: ${item.gtin ?? '—'} / cProd: ${item.codigoProduto ?? '—'}). Use busca manual para conciliar.`
+          : `Item sem vínculo de produto (GTIN: ${item.gtin ?? '—'} / cProd: ${item.codigoProduto ?? '—'}). Use busca manual.`
       )
     }
 

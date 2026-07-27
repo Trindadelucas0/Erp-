@@ -443,6 +443,8 @@ function ConteudoDetalheEntrada() {
           setMensagem(`Nota reaberta em ${rotulo}. Corrija o necessário e clique em Reanalisar.`)
         } else if (path === '/desvincular-item') {
           setMensagem('Produto desvinculado. Concilie o produto correto e clique em Reanalisar.')
+        } else if (path === '/vincular-item') {
+          setMensagem('Produto vinculado. Concilie os demais itens e clique em Reanalisar.')
         }
         return true
       }
@@ -538,7 +540,9 @@ function ConteudoDetalheEntrada() {
   const freteBloqueante = nota?.analise?.frete?.status === 'bloqueante'
   const podeLiberarCriticas = !cadastroBloqueante && !fiscalExigeManifesto
   const motivoBloqueioLiberacao = cadastroBloqueante
-    ? 'Cadastro bloqueante não libera por senha — cadastre o fornecedor e vincule produtos, depois reanalise.'
+    ? nota?.fornecedor
+      ? 'Cadastro bloqueante não libera por senha — concilie os produtos sem vínculo e reanalise.'
+      : 'Cadastro bloqueante não libera por senha — cadastre o fornecedor e vincule produtos, depois reanalise.'
     : fiscalExigeManifesto
       ? 'CST/CFOP impeditivo não libera por senha — use desconhecimento da operação ou devolução.'
       : null
@@ -774,7 +778,7 @@ function ConteudoDetalheEntrada() {
         <div className="space-y-4">
           <CardPadrao titulo="Análise de cadastro">
             <EtapaResumo etapa={nota.analise?.cadastro} />
-            {cadastroBloqueante && nota.documentoEmitente ? (
+            {cadastroBloqueante && !nota.fornecedor && nota.documentoEmitente ? (
               <div className="mt-3">
                 <Button
                   type="button"
