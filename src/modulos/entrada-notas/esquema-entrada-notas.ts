@@ -12,6 +12,14 @@ export const esquemaGravarCodigoOriginal = z.object({
   itemId: z.string().uuid(),
 })
 
+export const esquemaDesvincularItem = z.object({
+  itemId: z.string().uuid(),
+})
+
+export const esquemaVoltarEtapa = z.object({
+  etapaDestino: z.enum(['cadastro', 'fiscal', 'negociacao', 'frete']),
+})
+
 export const esquemaImportarFiscal = z.object({
   itemId: z.string().uuid(),
   ncm: z.boolean().optional(),

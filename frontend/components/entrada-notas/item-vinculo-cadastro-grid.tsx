@@ -61,6 +61,7 @@ type Props = {
   onBuscar: () => void
   onVincular: (produtoId: string) => void | Promise<void>
   onImportarNcm: () => void
+  onDesvincular: () => void | Promise<void>
   onGravarCodigoOriginal?: () => void | Promise<void>
   /** Após gravar com sucesso nesta sessão da tela */
   codigoOriginalGravado?: boolean
@@ -79,6 +80,7 @@ export function ItemVinculoCadastroGrid({
   onBuscar,
   onVincular,
   onImportarNcm,
+  onDesvincular,
   onGravarCodigoOriginal,
   codigoOriginalGravado = false,
 }: Props) {
@@ -175,6 +177,22 @@ export function ItemVinculoCadastroGrid({
                 <Button type="button" size="sm" disabled={acao} onClick={onAbrirBusca}>
                   Conciliar produto
                 </Button>
+              )}
+              {item.produtoId && (
+                <>
+                  <Button type="button" size="sm" variant="outline" disabled={acao} onClick={onAbrirBusca}>
+                    Trocar vínculo
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={acao}
+                    onClick={() => void onDesvincular()}
+                  >
+                    Desvincular
+                  </Button>
+                </>
               )}
               {item.produtoId && precisaNcm && (
                 <Button

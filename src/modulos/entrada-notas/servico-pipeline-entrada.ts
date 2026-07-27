@@ -29,6 +29,8 @@ import { ratearCustoFrete } from './ratear-custo-frete.js'
 import { servicoVinculoCte } from './servico-vinculo-cte.js'
 import { randomUUID } from 'crypto'
 
+type EtapaPipeline = 'cadastro' | 'fiscal' | 'negociacao' | 'frete'
+
 function asJson(valor: AnaliseJson): Prisma.InputJsonValue {
   return valor as unknown as Prisma.InputJsonValue
 }
@@ -165,6 +167,136 @@ async function lancarContagem(notaId: string, origem: 'automatica' | 'humana') {
     etapaAtual: 'lancamento',
     origemLancamento: origem,
   })
+}
+
+/** Tira a nota de entrada_contagem/entrada_consolidada para permitir corrigir e reanalisar. */
+async function reabrirNotaFinalizada(notaId: string) {
+  await repositorioEntradaNotas.atualizarNota(notaId, {
+    statusEntrada: 'em_analise',
+    origemLancamento: null,
+  })
+}
+
+const ORDEM_ETAPAS: EtapaPipeline[] = ['cadastro', 'fiscal', 'negociacao', 'frete']
+
+/** Etapas de retorno válidas por tipo de documento (NFS-e/CTe só têm cadastro). */
+function etapasVoltarValidas(tipoDocumento: string | null | undefined): EtapaPipeline[] {
+  return tipoDocumento === 'nfse' || tipoDocumento === 'cte' ? ['cadastro'] : ORDEM_ETAPAS
+}
+
+/** Posição efetiva da nota no pipeline — finalizada conta como além do fim (permite voltar de qualquer etapa). */
+function etapaEfetivaAtual(nota: {
+  statusEntrada: string
+  etapaAtual: string
+  analiseJson: unknown
+}): EtapaPipeline | 'lancamento' {
+  if (nota.statusEntrada === 'entrada_contagem' || nota.statusEntrada === 'entrada_consolidada') {
+    return 'lancamento'
+  }
+  const motivo = (nota.analiseJson as AnaliseJson | null)?.motivoParada
+  if (motivo === 'cadastro' || motivo === 'fiscal' || motivo === 'negociacao' || motivo === 'frete') {
+    return motivo
+  }
+  if (
+    nota.etapaAtual === 'cadastro' ||
+    nota.etapaAtual === 'fiscal' ||
+    nota.etapaAtual === 'negociacao' ||
+    nota.etapaAtual === 'frete'
+  ) {
+    return nota.etapaAtual
+  }
+  return 'lancamento'
+}
+
+/**
+ * Volta a nota para uma etapa anterior: reabre se já lançada, limpa o resultado
+ * das etapas a partir do destino (recalculadas na reanálise) e para exatamente
+ * na etapa escolhida — sem saltar de volta para o bloqueio antigo.
+ */
+async function voltarEtapa(
+  companyId: string,
+  notaId: string,
+  usuarioId: string,
+  etapaDestino: EtapaPipeline
+) {
+  const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  if (nota.statusEntrada === 'cancelada') {
+    throw new ErroDaAplicacao('Nota cancelada — não é possível voltar etapa.', 409)
+  }
+
+  const etapasValidas = etapasVoltarValidas(nota.tipoDocumento)
+  if (!etapasValidas.includes(etapaDestino)) {
+    throw new ErroDaAplicacao(
+      `Etapa "${etapaDestino}" não existe para este tipo de documento.`,
+      400
+    )
+  }
+
+  const atual = etapaEfetivaAtual(nota)
+  const indiceAtual = atual === 'lancamento' ? ORDEM_ETAPAS.length : ORDEM_ETAPAS.indexOf(atual)
+  const indiceDestino = ORDEM_ETAPAS.indexOf(etapaDestino)
+  if (indiceDestino >= indiceAtual) {
+    throw new ErroDaAplicacao(
+      `Etapa "${etapaDestino}" não é anterior à etapa atual (${atual}).`,
+      400
+    )
+  }
+  const analiseAtual: AnaliseJson = (nota.analiseJson as AnaliseJson | null) ?? {
+    versao: 1,
+    atualizadoEm: new Date().toISOString(),
+    cadastro: etapaVazia(),
+    fiscal: etapaVazia(),
+    negociacao: etapaVazia(),
+    autoLancado: false,
+    motivoParada: null,
+  }
+
+  const analise: AnaliseJson = {
+    ...analiseAtual,
+    fiscal: indiceDestino <= ORDEM_ETAPAS.indexOf('fiscal') ? etapaVazia() : analiseAtual.fiscal,
+    negociacao:
+      indiceDestino <= ORDEM_ETAPAS.indexOf('negociacao') ? etapaVazia() : analiseAtual.negociacao,
+    frete: indiceDestino <= ORDEM_ETAPAS.indexOf('frete') ? etapaVazia() : analiseAtual.frete,
+    autoLancado: false,
+    motivoParada: null,
+  }
+
+  const finalizada =
+    nota.statusEntrada === 'entrada_contagem' || nota.statusEntrada === 'entrada_consolidada'
+
+  await repositorioEntradaNotas.atualizarNota(notaId, {
+    statusEntrada: 'em_analise',
+    origemLancamento: finalizada ? null : nota.origemLancamento,
+    analiseJson: asJson(analise),
+    etapaAtual: etapaDestino,
+    criticasLiberadas:
+      indiceDestino <= ORDEM_ETAPAS.indexOf('negociacao') ? false : nota.criticasLiberadas,
+  })
+
+  for (const item of nota.itens) {
+    const dados: { criticaFiscal?: boolean; criticaNegociacao?: boolean; custoFreteRateado?: null } =
+      {}
+    if (indiceDestino <= ORDEM_ETAPAS.indexOf('fiscal')) dados.criticaFiscal = false
+    if (indiceDestino <= ORDEM_ETAPAS.indexOf('negociacao')) dados.criticaNegociacao = false
+    if (indiceDestino <= ORDEM_ETAPAS.indexOf('frete')) dados.custoFreteRateado = null
+    if (Object.keys(dados).length > 0) {
+      await repositorioEntradaNotas.atualizarItem(item.id, dados)
+    }
+  }
+
+  logFocus('info', 'voltar_etapa', {
+    companyId,
+    notaId,
+    usuarioId,
+    etapaDestino,
+    eraFinalizada: finalizada,
+  })
+
+  if (nota.tipoDocumento === 'nfse' || nota.tipoDocumento === 'cte') {
+    return analisarNota(companyId, notaId)
+  }
+  return analisarNota(companyId, notaId, { pararEm: etapaDestino })
 }
 
 /**
@@ -320,7 +452,7 @@ async function analisarNotaCte(companyId: string, notaId: string) {
 async function analisarNota(
   companyId: string,
   notaId: string,
-  opcoes?: { forcarReparseItens?: boolean }
+  opcoes?: { forcarReparseItens?: boolean; pararEm?: EtapaPipeline }
 ): Promise<{
   nota: Record<string, unknown>
   pedidosDisponiveis: Array<{ id: string; numero: number; status: string }>
@@ -387,8 +519,9 @@ async function analisarNota(
     motivoParada: null,
   }
 
-  if (!podeAvancarCadastro(cadastro.resultado)) {
-    analise.motivoParada = 'cadastro'
+  const cadastroBloqueado = !podeAvancarCadastro(cadastro.resultado)
+  if (cadastroBloqueado || opcoes?.pararEm === 'cadastro') {
+    analise.motivoParada = cadastroBloqueado ? 'cadastro' : null
     await repositorioEntradaNotas.atualizarNota(notaId, {
       analiseJson: asJson(analise),
       etapaAtual: 'cadastro',
@@ -420,8 +553,9 @@ async function analisarNota(
   analise.fiscal = fiscal.resultado
   await repositorioEntradaNotas.atualizarNota(notaId, { etapaAtual: 'fiscal' })
 
-  if (!podeAvancarFiscal(fiscal.resultado, nota.criticasLiberadas)) {
-    analise.motivoParada = 'fiscal'
+  const fiscalBloqueado = !podeAvancarFiscal(fiscal.resultado, nota.criticasLiberadas)
+  if (fiscalBloqueado || opcoes?.pararEm === 'fiscal') {
+    analise.motivoParada = fiscalBloqueado ? 'fiscal' : null
     await repositorioEntradaNotas.atualizarNota(notaId, {
       analiseJson: asJson(analise),
       etapaAtual: 'fiscal',
@@ -480,8 +614,9 @@ async function analisarNota(
   analise.negociacao = negociacao.resultado
   await repositorioEntradaNotas.atualizarNota(notaId, { etapaAtual: 'negociacao' })
 
-  if (!podeAvancarNegociacao(negociacao.resultado, nota.criticasLiberadas)) {
-    analise.motivoParada = 'negociacao'
+  const negociacaoBloqueada = !podeAvancarNegociacao(negociacao.resultado, nota.criticasLiberadas)
+  if (negociacaoBloqueada || opcoes?.pararEm === 'negociacao') {
+    analise.motivoParada = negociacaoBloqueada ? 'negociacao' : null
     await repositorioEntradaNotas.atualizarNota(notaId, {
       analiseJson: asJson(analise),
       etapaAtual: 'negociacao',
@@ -538,6 +673,16 @@ async function analisarNota(
   }
 
   await repositorioEntradaNotas.atualizarNota(notaId, { etapaAtual: 'frete' })
+
+  if (opcoes?.pararEm === 'frete') {
+    analise.motivoParada = null
+    await repositorioEntradaNotas.atualizarNota(notaId, {
+      analiseJson: asJson(analise),
+      etapaAtual: 'frete',
+      statusEntrada: 'em_analise',
+    })
+    return await obterDetalhe(companyId, notaId)
+  }
 
   // Auto-lançamento
   analise.autoLancado = true
@@ -814,6 +959,9 @@ async function vincularItem(
 ) {
   const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  if (nota.statusEntrada === 'cancelada') {
+    throw new ErroDaAplicacao('Nota cancelada — não é possível vincular produto.', 409)
+  }
   const item = nota.itens.find((i) => i.id === itemId)
   if (!item) throw new ErroDaAplicacao('Item não encontrado', 404)
 
@@ -828,7 +976,63 @@ async function vincularItem(
     vinculoModo: 'manual',
     criticaCadastro: false,
   })
+
+  const finalizada =
+    nota.statusEntrada === 'entrada_contagem' || nota.statusEntrada === 'entrada_consolidada'
+  if (finalizada) {
+    await reabrirNotaFinalizada(notaId)
+    return analisarNota(companyId, notaId, { pararEm: 'cadastro' })
+  }
   return analisarNota(companyId, notaId)
+}
+
+/**
+ * Desfaz um vínculo produto × item (vínculo errado por código de barras/manual).
+ * Não roda o pipeline inteiro — usuário concilia o produto certo e clica Reanalisar.
+ */
+async function desvincularItem(companyId: string, notaId: string, itemId: string) {
+  const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  if (nota.statusEntrada === 'cancelada') {
+    throw new ErroDaAplicacao('Nota cancelada — não é possível desvincular produto.', 409)
+  }
+  const item = nota.itens.find((i) => i.id === itemId)
+  if (!item) throw new ErroDaAplicacao('Item não encontrado', 404)
+
+  await repositorioEntradaNotas.atualizarItem(itemId, {
+    produtoId: null,
+    vinculoModo: null,
+    criticaCadastro: true,
+  })
+
+  const analiseAtual: AnaliseJson = (nota.analiseJson as AnaliseJson | null) ?? {
+    versao: 1,
+    atualizadoEm: new Date().toISOString(),
+    cadastro: etapaVazia(),
+    fiscal: etapaVazia(),
+    negociacao: etapaVazia(),
+    autoLancado: false,
+    motivoParada: null,
+  }
+  const analise: AnaliseJson = {
+    ...analiseAtual,
+    cadastro: {
+      status: 'bloqueante',
+      avisos: [],
+      bloqueios: ['Item sem vínculo de produto (desvinculado manualmente). Concilie novamente e reanalise.'],
+    },
+    autoLancado: false,
+    motivoParada: 'cadastro',
+  }
+
+  await repositorioEntradaNotas.atualizarNota(notaId, {
+    statusEntrada: 'em_analise',
+    origemLancamento: null,
+    analiseJson: asJson(analise),
+    etapaAtual: 'cadastro',
+  })
+
+  return obterDetalhe(companyId, notaId)
 }
 
 async function gravarCodigoOriginal(companyId: string, notaId: string, itemId: string) {
@@ -1139,6 +1343,8 @@ export const servicoEntradaNotas = {
   analisarNota,
   obterDetalhe,
   vincularItem,
+  desvincularItem,
+  voltarEtapa,
   gravarCodigoOriginal,
   importarFiscalProduto,
   liberarCriticas,

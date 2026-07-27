@@ -128,6 +128,17 @@ type ProdutoBusca = { id: string; nomeVenda: string; sku?: string | null; codigo
 
 type AbaId = 'cadastro' | 'fiscal' | 'negociacao' | 'frete' | 'lancamento'
 
+type EtapaPipeline = 'cadastro' | 'fiscal' | 'negociacao' | 'frete'
+
+const ORDEM_ETAPAS: EtapaPipeline[] = ['cadastro', 'fiscal', 'negociacao', 'frete']
+
+const ROTULOS_ETAPA: Record<EtapaPipeline, string> = {
+  cadastro: 'Cadastro',
+  fiscal: 'Fiscal',
+  negociacao: 'Negociação',
+  frete: 'Frete / CT-e',
+}
+
 function normalizarNcm(valor?: string | null): string {
   return (valor ?? '').replace(/\D/g, '').trim()
 }
@@ -163,6 +174,31 @@ function abaInicial(nota: DetalheNota): AbaId {
   if (motivo === 'cadastro' || etapa === 'cadastro' || etapa === 'servico') return 'cadastro'
   if (etapa === 'lancamento') return 'lancamento'
   return 'cadastro'
+}
+
+/** Posição efetiva no pipeline — nota finalizada conta como além do fim (pode voltar de qualquer etapa). */
+function etapaEfetiva(nota: DetalheNota): EtapaPipeline | 'lancamento' {
+  if (nota.statusEntrada === 'entrada_contagem' || nota.statusEntrada === 'entrada_consolidada') {
+    return 'lancamento'
+  }
+  const motivo = nota.analise?.motivoParada
+  if (motivo === 'cadastro' || motivo === 'fiscal' || motivo === 'negociacao' || motivo === 'frete') {
+    return motivo
+  }
+  const etapa = nota.etapaAtual
+  if (etapa === 'cadastro' || etapa === 'fiscal' || etapa === 'negociacao' || etapa === 'frete') {
+    return etapa
+  }
+  return 'lancamento'
+}
+
+/** Etapas anteriores à posição atual — únicas para as quais faz sentido "voltar". */
+function etapasVoltarDisponiveis(nota: DetalheNota, ehDocumental: boolean): EtapaPipeline[] {
+  if (nota.statusEntrada === 'cancelada') return []
+  const validas: EtapaPipeline[] = ehDocumental ? ['cadastro'] : ORDEM_ETAPAS
+  const atual = etapaEfetiva(nota)
+  const indiceAtual = atual === 'lancamento' ? ORDEM_ETAPAS.length : ORDEM_ETAPAS.indexOf(atual)
+  return validas.filter((e) => ORDEM_ETAPAS.indexOf(e) < indiceAtual)
 }
 
 /** Mensagem explícita após Reanalisar / Buscar NF (não deixa a ação “muda”). */
@@ -283,6 +319,7 @@ function ConteudoDetalheEntrada() {
   const [xmlModal, setXmlModal] = useState<{ visualizacao: VisualizacaoNota } | null>(null)
   const [danfeBloqueado, setDanfeBloqueado] = useState(false)
   const [abaAtiva, setAbaAtiva] = useState<AbaId>('cadastro')
+  const [etapaVoltarSelecionada, setEtapaVoltarSelecionada] = useState<EtapaPipeline | ''>('')
   const [chaveCteManual, setChaveCteManual] = useState('')
   const [codigosOriginaisGravados, setCodigosOriginaisGravados] = useState<Record<string, true>>(
     {}
@@ -401,6 +438,11 @@ function ConteudoDetalheEntrada() {
           setMensagem(`Nota lançada: ${data.nota.statusEntrada}.`)
         } else if (path.includes('vincular-cte') || path.includes('definir-prazo')) {
           setMensagem(mensagemAposAnalisar(data.nota))
+        } else if (path === '/voltar-etapa') {
+          const rotulo = ROTULOS_ETAPA[(body?.etapaDestino as EtapaPipeline) ?? 'cadastro']
+          setMensagem(`Nota reaberta em ${rotulo}. Corrija o necessário e clique em Reanalisar.`)
+        } else if (path === '/desvincular-item') {
+          setMensagem('Produto desvinculado. Concilie o produto correto e clique em Reanalisar.')
         }
         return true
       }
@@ -525,6 +567,21 @@ function ConteudoDetalheEntrada() {
     ]
   }, [nota, ehNfse, ehCte])
 
+  const opcoesVoltarEtapa = useMemo(() => {
+    if (!nota) return []
+    return etapasVoltarDisponiveis(nota, ehDocumental)
+  }, [nota, ehDocumental])
+
+  useEffect(() => {
+    if (opcoesVoltarEtapa.length === 0) {
+      setEtapaVoltarSelecionada('')
+      return
+    }
+    if (!opcoesVoltarEtapa.includes(etapaVoltarSelecionada as EtapaPipeline)) {
+      setEtapaVoltarSelecionada(opcoesVoltarEtapa[opcoesVoltarEtapa.length - 1])
+    }
+  }, [opcoesVoltarEtapa, etapaVoltarSelecionada])
+
   function abaBloqueada(idAba: string): boolean {
     if (finalizada) return false
     if (ehNfse) return idAba === 'lancamento' && cadastroBloqueante
@@ -611,6 +668,34 @@ function ConteudoDetalheEntrada() {
           >
             Reanalisar
           </Button>
+          {opcoesVoltarEtapa.length > 0 && (
+            <div className="flex items-center gap-1">
+              <select
+                className="h-8 rounded-md border bg-background px-2 text-sm"
+                aria-label="Etapa para voltar"
+                value={etapaVoltarSelecionada}
+                disabled={acao}
+                onChange={(e) => setEtapaVoltarSelecionada(e.target.value as EtapaPipeline)}
+              >
+                {opcoesVoltarEtapa.map((etapa) => (
+                  <option key={etapa} value={etapa}>
+                    {ROTULOS_ETAPA[etapa]}
+                  </option>
+                ))}
+              </select>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={acao || !etapaVoltarSelecionada}
+                onClick={() =>
+                  postAcao('/voltar-etapa', { etapaDestino: etapaVoltarSelecionada })
+                }
+              >
+                Voltar etapa
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -753,6 +838,9 @@ function ConteudoDetalheEntrada() {
                         origem: false,
                       })
                     }
+                    onDesvincular={async () => {
+                      await postAcao('/desvincular-item', { itemId: item.id })
+                    }}
                     codigoOriginalGravado={
                       Boolean(item.codigoOriginalGravado) ||
                       Boolean(codigosOriginaisGravados[item.id])

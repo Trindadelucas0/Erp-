@@ -8,6 +8,7 @@ import {
   esquemaContatoFornecedor,
   esquemaDefinirPedido,
   esquemaDefinirPrazo,
+  esquemaDesvincularItem,
   esquemaGravarCodigoOriginal,
   esquemaImportarFiscal,
   esquemaLancar,
@@ -15,6 +16,7 @@ import {
   esquemaManifestar,
   esquemaVincularCte,
   esquemaVincularItem,
+  esquemaVoltarEtapa,
 } from './esquema-entrada-notas.js'
 
 function companyIdDe(requisicao: FastifyRequest): string {
@@ -57,6 +59,29 @@ async function vincularItem(requisicao: FastifyRequest, resposta: FastifyReply) 
     notaIdDe(requisicao),
     parsed.data.itemId,
     parsed.data.produtoId
+  )
+  return resposta.send(dados)
+}
+
+async function desvincularItem(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parsed = esquemaDesvincularItem.safeParse(requisicao.body)
+  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
+  const dados = await servicoEntradaNotas.desvincularItem(
+    companyIdDe(requisicao),
+    notaIdDe(requisicao),
+    parsed.data.itemId
+  )
+  return resposta.send(dados)
+}
+
+async function voltarEtapa(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parsed = esquemaVoltarEtapa.safeParse(requisicao.body)
+  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
+  const dados = await servicoEntradaNotas.voltarEtapa(
+    companyIdDe(requisicao),
+    notaIdDe(requisicao),
+    usuarioIdDe(requisicao),
+    parsed.data.etapaDestino
   )
   return resposta.send(dados)
 }
@@ -216,6 +241,8 @@ export const controladorEntradaNotas = {
   detalhe,
   analisar,
   vincularItem,
+  desvincularItem,
+  voltarEtapa,
   gravarCodigoOriginal,
   importarFiscal,
   liberarCriticas,
