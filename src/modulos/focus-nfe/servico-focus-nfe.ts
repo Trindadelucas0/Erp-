@@ -18,13 +18,21 @@ import {
   montarVisualizacaoDoXml,
 } from './parser-xml-nfe.js'
 import { repositorioFocusNfe } from './repositorio-focus-nfe.js'
-import { lerDanfe, lerDanfePorCaminho, salvarDanfe } from './armazenamento-danfe.js'
+import {
+  detectarPdfAuxiliarLegado,
+  lerDanfePorCaminho,
+  removerArquivoDanfe,
+  salvarDanfe,
+} from './armazenamento-danfe.js'
 import type { DadosParaSalvarConfigFocus, DadosRegrasFiscais } from './esquema-focus-nfe.js'
 import { REGRAS_FISCAIS_PADRAO, sanitizarRegrasFiscais } from './esquema-focus-nfe.js'
 import { analisarFiscalBasico } from '../entrada-notas/analise-fiscal/analisar-fiscal-basico.js'
 import { servicoEntradaNotas } from '../entrada-notas/servico-pipeline-entrada.js'
 import { lerConfigCotaFocus, saldoCotaFocus, contarUsoMesFocus } from './cota-focus-nfe.js'
-
+import {
+  obterRecursosEntradaNotas,
+  type RecursosEntradaNotas,
+} from './config-recursos-entrada-notas.js'
 function mascararToken(token: string): string {
   if (token.length <= 8) return '****'
   return `${token.slice(0, 4)}${'*'.repeat(token.length - 8)}${token.slice(-4)}`
@@ -1371,8 +1379,27 @@ async function listarPendentes(
 /**
  * Obtém XML da nota: banco primeiro; se faltar, busca na Focus, salva e processa.
  * Inclui `visualizacao` legível (cabeçalho + itens) montada a partir do XML.
+ * `modo`: visualizar exige flag verNota; download exige baixarXml.
  */
-async function obterXmlNota(companyId: string, id: string) {
+async function obterXmlNota(
+  companyId: string,
+  id: string,
+  modo: 'visualizar' | 'download' = 'download'
+) {
+  const recursos = await obterRecursosEntradaNotas(companyId)
+  if (modo === 'visualizar' && !recursos.verNota) {
+    throw new ErroDaAplicacao(
+      'Recurso Ver nota não disponível no plano da empresa.',
+      403
+    )
+  }
+  if (modo === 'download' && !recursos.baixarXml) {
+    throw new ErroDaAplicacao(
+      'Recurso Baixar XML não disponível no plano da empresa.',
+      403
+    )
+  }
+
   const nota = await repositorioFocusNfe.buscarPorId(companyId, id)
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada.', 404)
 
@@ -1490,12 +1517,21 @@ async function obterXmlNota(companyId: string, id: string) {
 }
 
 /**
- * DANFE/DANFSe/DACTe (PDF): cache local primeiro; Focus só se necessário.
+ * DANFE/DANFSe/DACTe (PDF): cache local primeiro; depois Focus (documento oficial).
  * NFe 55 + NFS-e nacional + CTe.
  */
 async function obterDanfeNota(companyId: string, id: string) {
-  const nota = await repositorioFocusNfe.buscarPorId(companyId, id)
-  if (!nota) throw new ErroDaAplicacao('Nota não encontrada.', 404)
+  const recursos = await obterRecursosEntradaNotas(companyId)
+  if (!recursos.baixarPdfFocus) {
+    throw new ErroDaAplicacao(
+      'Recurso Baixar PDF não disponível no plano da empresa.',
+      403
+    )
+  }
+
+  const notaEncontrada = await repositorioFocusNfe.buscarPorId(companyId, id)
+  if (!notaEncontrada) throw new ErroDaAplicacao('Nota não encontrada.', 404)
+  const nota = notaEncontrada
 
   const tipo = nota.tipoDocumento
   const ehNfse = tipo === 'nfse'
@@ -1504,45 +1540,72 @@ async function obterDanfeNota(companyId: string, id: string) {
   const origemXml = (nota.origem ?? '').toLowerCase() === 'xml'
   const agora = Date.now()
   const atualizadoEm = nota.danfeAtualizadoEm?.getTime() ?? 0
-  const dentroDe24h = agora - atualizadoEm < 24 * 60 * 60 * 1000
-  const dentroDe2min = agora - atualizadoEm < 2 * 60 * 1000
+  const dentroCacheIndisponivel =
+    agora - atualizadoEm < recursos.danfeCacheIndisponivelHoras * 60 * 60 * 1000
+  const dentroRateLimit =
+    agora - atualizadoEm < recursos.danfeRateLimitMinutos * 60 * 1000
 
-  // 1) Cache em disco
-  if (nota.danfeCaminho) {
-    const local = await lerDanfePorCaminho(nota.danfeCaminho)
-    if (local) {
-      if (nota.danfeStatus !== 'ok') {
-        await repositorioFocusNfe.atualizarDanfe(nota.id, {
-          danfeStatus: 'ok',
-          danfeAtualizadoEm: new Date(),
-        })
-      }
-      return { id: nota.id, chaveNfe: nota.chaveNfe, tipoDocumento: nota.tipoDocumento, pdf: local, origem: 'cache' as const }
-    }
-  }
-  const localPorId = await lerDanfe(companyId, nota.id)
-  if (localPorId) {
-    const caminho = await salvarDanfe(companyId, nota.id, localPorId)
+  async function persistirPdfLocal(pdf: Buffer, origem: 'cache' | 'focus') {
+    const caminho = await salvarDanfe(companyId, nota.id, pdf)
     await repositorioFocusNfe.atualizarDanfe(nota.id, {
       danfeCaminho: caminho,
       danfeStatus: 'ok',
       danfeAtualizadoEm: new Date(),
     })
-    return { id: nota.id, chaveNfe: nota.chaveNfe, tipoDocumento: nota.tipoDocumento, pdf: localPorId, origem: 'cache' as const }
+    return {
+      id: nota.id,
+      chaveNfe: nota.chaveNfe,
+      tipoDocumento: nota.tipoDocumento,
+      pdf,
+      origem,
+    }
+  }
+
+  // 1) Cache em disco (somente DANFE/DACTe oficial — ignora PDF auxiliar legado)
+  if (nota.danfeCaminho) {
+    const local = await lerDanfePorCaminho(nota.danfeCaminho)
+    if (local) {
+      if (await detectarPdfAuxiliarLegado(local)) {
+        logFocus('warn', 'danfe_cache_auxiliar_invalidado', {
+          notaId: nota.id,
+          chave: nota.chaveNfe,
+        })
+        await removerArquivoDanfe(nota.danfeCaminho)
+        await repositorioFocusNfe.atualizarDanfe(nota.id, {
+          danfeCaminho: null,
+          danfeStatus: null,
+          danfeAtualizadoEm: null,
+        })
+      } else {
+        if (nota.danfeStatus !== 'ok') {
+          await repositorioFocusNfe.atualizarDanfe(nota.id, {
+            danfeStatus: 'ok',
+            danfeAtualizadoEm: new Date(),
+          })
+        }
+        return {
+          id: nota.id,
+          chaveNfe: nota.chaveNfe,
+          tipoDocumento: nota.tipoDocumento,
+          pdf: local,
+          origem: 'cache' as const,
+        }
+      }
+    }
   }
 
   // 2) Status recente: não martelar a Focus
-  if (nota.danfeStatus === 'indisponivel' && dentroDe24h) {
+  if (nota.danfeStatus === 'indisponivel' && dentroCacheIndisponivel) {
     throw new ErroDaAplicacao(
       origemXml
-        ? 'PDF ainda indisponível: esta nota foi importada por XML e não está no DistDFe da Focus. Use Ver nota.'
-        : 'PDF ainda indisponível na Focus para esta nota. Use Ver nota ou tente amanhã. (ciência/XML podem ser necessários)',
+        ? 'DANFE ainda indisponível: esta nota foi importada por XML e não está no DistDFe da Focus. Use Ver nota.'
+        : 'DANFE ainda indisponível na Focus para esta nota. Use Ver nota ou tente amanhã. (ciência/XML podem ser necessários)',
       422
     )
   }
-  if (nota.danfeStatus === 'rate_limit' && dentroDe2min) {
+  if (nota.danfeStatus === 'rate_limit' && dentroRateLimit) {
     throw new ErroDaAplicacao(
-      'Limite da Focus excedido recentemente. Aguarde cerca de 1–2 minutos e tente de novo.',
+      `Limite da Focus excedido recentemente. Aguarde cerca de ${Math.max(1, recursos.danfeRateLimitMinutos)} minuto(s) e tente de novo.`,
       429
     )
   }
@@ -1668,32 +1731,23 @@ async function obterDanfeNota(companyId: string, id: string) {
           ? 'PDF da NFS-e ainda não está disponível na Focus. Use Ver nota ou Baixar XML.'
           : ehCte
             ? 'DACTe ainda não está disponível na Focus. Use Ver nota ou Baixar XML.'
-            : origemXml || (!pdfResp.sucesso && pdfResp.codigo === 'nao_encontrado')
+            : origemXml || pdfResp.codigo === 'nao_encontrado'
               ? 'Focus não encontrou esta NF no DistDFe (comum em notas importadas por XML). O DANFE só vem da Focus se a SEFAZ distribuir a nota. Use Ver nota.'
               : 'DANFE ainda não disponível na Focus (pode faltar ciência ou o PDF ainda não foi gerado). Use Ver nota.',
         422
       )
     }
     throw new ErroDaAplicacao(
-      `Não foi possível baixar o PDF: ${pdfResp.mensagem}`,
+      `Não foi possível baixar o PDF na Focus: ${pdfResp.mensagem}`,
       pdfResp.codigoHttp ?? 502
     )
   }
 
-  const caminho = await salvarDanfe(companyId, nota.id, pdfResp.dados)
-  await repositorioFocusNfe.atualizarDanfe(nota.id, {
-    danfeCaminho: caminho,
-    danfeStatus: 'ok',
-    danfeAtualizadoEm: new Date(),
-  })
+  return persistirPdfLocal(pdfResp.dados, 'focus')
+}
 
-  return {
-    id: nota.id,
-    chaveNfe: nota.chaveNfe,
-    tipoDocumento: nota.tipoDocumento,
-    pdf: pdfResp.dados,
-    origem: 'focus' as const,
-  }
+async function buscarRecursosDocumento(companyId: string): Promise<RecursosEntradaNotas> {
+  return obterRecursosEntradaNotas(companyId)
 }
 
 async function importarXml(companyId: string, xmlBruto: string) {
@@ -1885,6 +1939,7 @@ export const servicoFocusNfe = {
   testarConexao,
   enfileirarSync,
   buscarCota,
+  buscarRecursosDocumento,
   statusJob,
   listarPendentes,
   obterXmlNota,

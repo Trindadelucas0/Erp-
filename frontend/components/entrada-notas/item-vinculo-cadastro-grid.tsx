@@ -1,6 +1,7 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -121,6 +122,7 @@ export function ItemVinculoCadastroGrid({
   onGravarCodigoOriginal,
   codigoOriginalGravado = false,
 }: Props) {
+  const [gravandoCodigo, setGravandoCodigo] = useState(false)
   const vinculado = Boolean(item.produtoId)
   const itensPorEmbalagem = item.itensPorEmbalagem ?? 1
   const temMultiploCompra = itensPorEmbalagem > 1
@@ -239,10 +241,23 @@ export function ItemVinculoCadastroGrid({
                     type="button"
                     variant="link"
                     className="h-auto p-0 text-xs font-normal"
-                    disabled={acao}
-                    onClick={() => void onGravarCodigoOriginal?.()}
+                    disabled={acao || gravandoCodigo}
+                    aria-label={gravandoCodigo ? 'Gravando código original' : 'Gravar código original'}
+                    onClick={async () => {
+                      if (!onGravarCodigoOriginal) return
+                      setGravandoCodigo(true)
+                      try {
+                        await onGravarCodigoOriginal()
+                      } finally {
+                        setGravandoCodigo(false)
+                      }
+                    }}
                   >
-                    Gravar
+                    {gravandoCodigo ? (
+                      <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                    ) : (
+                      'Gravar'
+                    )}
                   </Button>
                 ) : undefined
               }

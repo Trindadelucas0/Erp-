@@ -904,6 +904,7 @@ async function obterDetalhe(
       valorTotal: decimalNum(nota.valorTotal),
       dataEmissao: nota.dataEmissao,
       statusEntrada: nota.statusEntrada,
+      manifestacaoDestinatario: nota.manifestacaoDestinatario ?? null,
       origem: nota.origem,
       etapaAtual: nota.etapaAtual,
       nfeCompleta: nota.nfeCompleta,
@@ -1301,6 +1302,20 @@ async function manifestar(
   return obterDetalhe(companyId, notaId)
 }
 
+async function descancelar(companyId: string, notaId: string) {
+  const nota = await repositorioEntradaNotas.buscarNotaPorId(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  if (nota.statusEntrada !== 'cancelada') {
+    throw new ErroDaAplicacao('Nota não está cancelada.', 409)
+  }
+
+  await repositorioEntradaNotas.atualizarNota(notaId, {
+    statusEntrada: 'em_analise',
+    manifestacaoDestinatario: null,
+  })
+  return analisarNota(companyId, notaId)
+}
+
 async function lancar(
   companyId: string,
   notaId: string,
@@ -1499,6 +1514,7 @@ export const servicoEntradaNotas = {
   definirPedido,
   definirPrazo,
   manifestar,
+  descancelar,
   lancar,
   processarAposXml,
   sincronizarItensPendentesDoXml,

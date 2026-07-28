@@ -256,6 +256,44 @@ describe('servicoEntradaNotas.voltarEtapa', () => {
   })
 })
 
+describe('servicoEntradaNotas.descancelar', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(analisarCadastro).mockResolvedValue({
+      resultado: { status: 'bloqueante', avisos: [], bloqueios: ['Item sem vínculo'] },
+      fornecedorPessoaId: 'fornecedor-1',
+      itensAtualizados: [
+        { id: 'item-1', produtoId: 'produto-errado', vinculoModo: 'barras', criticaCadastro: false },
+      ],
+    } as never)
+  })
+
+  it('reverte nota cancelada para em_analise e limpa manifestacaoDestinatario', async () => {
+    const fake = ligarRepositorioFake(
+      buildNotaFixture({
+        statusEntrada: 'cancelada',
+        manifestacaoDestinatario: 'desconhecimento_da_operacao',
+        etapaAtual: 'lancamento',
+        origemLancamento: null,
+      })
+    )
+
+    const resultado = await servicoEntradaNotas.descancelar('empresa-1', 'nota-1')
+
+    const nota = resultado.nota as Record<string, unknown>
+    expect(nota.statusEntrada).toBe('em_analise')
+    expect(fake.getEstado().manifestacaoDestinatario).toBeNull()
+  })
+
+  it('rejeita descancelar nota que não está cancelada', async () => {
+    ligarRepositorioFake(buildNotaFixture({ statusEntrada: 'em_analise' }))
+
+    await expect(
+      servicoEntradaNotas.descancelar('empresa-1', 'nota-1')
+    ).rejects.toMatchObject({ message: expect.stringContaining('não está cancelada') })
+  })
+})
+
 describe('servicoEntradaNotas.desvincularItem', () => {
   beforeEach(() => {
     vi.clearAllMocks()

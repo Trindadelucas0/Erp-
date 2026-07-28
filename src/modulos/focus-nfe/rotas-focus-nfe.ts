@@ -20,6 +20,11 @@ export async function rotasFocusNfe(aplicacao: FastifyInstance): Promise<void> {
   aplicacao.post('/jobs/sincronizar', { preHandler: autenticado }, controladorFocusNfe.sincronizar)
   aplicacao.get('/jobs/:id', { preHandler: autenticado }, controladorFocusNfe.statusJob)
   aplicacao.get('/cota', { preHandler: autenticado }, controladorFocusNfe.buscarCota)
+  aplicacao.get(
+    '/recursos-documento',
+    { preHandler: autenticado },
+    controladorFocusNfe.buscarRecursosDocumento
+  )
 
   aplicacao.get('/nfe-recebidas', { preHandler: autenticado }, controladorFocusNfe.listarPendentes)
   aplicacao.get(

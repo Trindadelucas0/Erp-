@@ -24,6 +24,8 @@ model Company {
   bairro                      String?
   cidade                      String?
   estado                      String?
+  /// Override parcial de flags/calibração Entrada de Notas (null = só .env).
+  recursosEntradaNotasJson    Json?
   users                       UserCompany[]
   pessoas                     Pessoa[]
   planosFinanceiros           PlanoFinanceiro[]

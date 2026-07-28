@@ -187,6 +187,14 @@ async function manifestar(requisicao: FastifyRequest, resposta: FastifyReply) {
   return resposta.send(dados)
 }
 
+async function descancelar(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const dados = await servicoEntradaNotas.descancelar(
+    companyIdDe(requisicao),
+    notaIdDe(requisicao)
+  )
+  return resposta.send(dados)
+}
+
 async function lancar(requisicao: FastifyRequest, resposta: FastifyReply) {
   const parsed = esquemaLancar.safeParse(requisicao.body)
   if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
@@ -265,6 +273,7 @@ export const controladorEntradaNotas = {
   definirPedido,
   definirPrazo,
   manifestar,
+  descancelar,
   lancar,
   vincularCte,
   desvincularCte,

@@ -2,10 +2,14 @@
  * Cache em disco do PDF DANFE (NFe) / DANFSe (NFS-e).
  * Path relativo gravado em NfeRecebida.danfeCaminho.
  */
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { access, mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { extractText } from 'unpdf'
 
 const PASTA_RAIZ = path.join(process.cwd(), 'uploads', 'nfe-recebidas')
+
+/** PDFs auxiliares legados (gerados do XML) eram pequenos e traziam este aviso. */
+const LIMITE_BYTES_PDF_AUXILIAR = 50_000
 
 export function caminhoRelativoDanfe(companyId: string, notaId: string): string {
   return `uploads/nfe-recebidas/${companyId}/${notaId}.pdf`
@@ -63,5 +67,29 @@ export async function lerDanfePorCaminho(relativo: string): Promise<Buffer | nul
     return await readFile(caminhoAbsolutoPorRelativo(relativo))
   } catch {
     return null
+  }
+}
+
+export async function removerArquivoDanfe(relativo: string | null | undefined): Promise<void> {
+  if (!relativo) return
+  try {
+    await unlink(caminhoAbsolutoPorRelativo(relativo))
+  } catch {
+    /* arquivo já ausente */
+  }
+}
+
+/** Detecta PDF auxiliar legado gerado do XML (recurso removido). */
+export async function detectarPdfAuxiliarLegado(pdf: Buffer): Promise<boolean> {
+  if (pdf.length > LIMITE_BYTES_PDF_AUXILIAR) return false
+  try {
+    const { text } = await extractText(new Uint8Array(pdf), { mergePages: true })
+    const conteudo = String(text)
+    return (
+      conteudo.includes('Documento auxiliar') &&
+      conteudo.includes('gerado do XML')
+    )
+  } catch {
+    return false
   }
 }

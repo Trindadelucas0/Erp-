@@ -40,6 +40,23 @@ const camposOpcionaisDeEmpresa = {
     .or(z.literal('')),
 }
 
+/** Override parcial — campos omitidos/null herdam o .env. */
+export const esquemaOverrideRecursosEntradaNotas = z
+  .object({
+    verNota: z.boolean().nullable().optional(),
+    baixarXml: z.boolean().nullable().optional(),
+    baixarPdfFocus: z.boolean().nullable().optional(),
+    danfeCacheIndisponivelHoras: z
+      .number()
+      .int()
+      .min(0)
+      .max(720)
+      .nullable()
+      .optional(),
+    danfeRateLimitMinutos: z.number().int().min(0).max(120).nullable().optional(),
+  })
+  .strict()
+
 export const esquemaDeCriacaoDeEmpresa = z.object({
   nome: textoCadastroObrigatorio(2),
   cnpj: z
@@ -58,6 +75,8 @@ export const esquemaDeEdicaoDeEmpresa = z.object({
     .refine((v) => v.length === 14, 'CNPJ inválido')
     .refine(validarCnpj, 'CNPJ inválido — verifique os dígitos'),
   ...camposOpcionaisDeEmpresa,
+  /** null limpa override (volta ao .env). Omitido = não altera. */
+  recursosEntradaNotasJson: esquemaOverrideRecursosEntradaNotas.nullable().optional(),
 })
 
 export const esquemaDeAtivarEmpresa = z.object({
@@ -66,3 +85,6 @@ export const esquemaDeAtivarEmpresa = z.object({
 
 export type DadosParaCriarEmpresa = z.infer<typeof esquemaDeCriacaoDeEmpresa>
 export type DadosParaEditarEmpresa = z.infer<typeof esquemaDeEdicaoDeEmpresa>
+export type OverrideRecursosEntradaNotasZod = z.infer<
+  typeof esquemaOverrideRecursosEntradaNotas
+>

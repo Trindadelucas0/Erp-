@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
@@ -112,6 +112,7 @@ type DetalheNota = {
   valorTotal: number | null
   dataEmissao: string | null
   statusEntrada: string
+  manifestacaoDestinatario?: string | null
   origem: string
   etapaAtual: string
   criticasLiberadas: boolean
@@ -158,6 +159,12 @@ function statusAbaDeEtapa(etapa?: ResultadoEtapa | null): StatusDaAba {
   return 'idle'
 }
 
+function abasValidasParaNota(nota: DetalheNota): AbaId[] {
+  if (nota.tipoDocumento === 'nfse') return ['cadastro', 'lancamento']
+  if (nota.tipoDocumento === 'cte') return ['cadastro', 'frete', 'lancamento']
+  return ['cadastro', 'fiscal', 'negociacao', 'frete', 'lancamento']
+}
+
 function abaInicial(nota: DetalheNota): AbaId {
   const etapa = nota.etapaAtual
   const motivo = nota.analise?.motivoParada
@@ -171,6 +178,14 @@ function abaInicial(nota: DetalheNota): AbaId {
   if (motivo === 'cadastro' || etapa === 'cadastro' || etapa === 'servico') return 'cadastro'
   if (etapa === 'lancamento') return 'lancamento'
   return 'cadastro'
+}
+
+function resolverAbaInicial(nota: DetalheNota, abaQuery: string | null): AbaId {
+  const validas = abasValidasParaNota(nota)
+  if (abaQuery && validas.includes(abaQuery as AbaId)) {
+    return abaQuery as AbaId
+  }
+  return abaInicial(nota)
 }
 
 /** Posição efetiva no pipeline — nota finalizada conta como além do fim (pode voltar de qualquer etapa). */
@@ -346,6 +361,7 @@ function EtapaResumo({ etapa }: { etapa?: ResultadoEtapa | null }) {
 function ConteudoDetalheEntrada() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const id = String(params.id)
   const [nota, setNota] = useState<DetalheNota | null>(null)
   const [pedidos, setPedidos] = useState<Array<{ id: string; numero: number; status: string }>>([])
@@ -365,6 +381,11 @@ function ConteudoDetalheEntrada() {
   const [downloadRotulo, setDownloadRotulo] = useState('')
   const [xmlModal, setXmlModal] = useState<{ visualizacao: VisualizacaoNota } | null>(null)
   const [danfeBloqueado, setDanfeBloqueado] = useState(false)
+  const [recursosDoc, setRecursosDoc] = useState({
+    verNota: true,
+    baixarXml: true,
+    baixarPdfFocus: true,
+  })
   const [abaAtiva, setAbaAtiva] = useState<AbaId>('cadastro')
   const [etapaVoltarSelecionada, setEtapaVoltarSelecionada] = useState<EtapaPipeline | ''>('')
   const [chaveCteManual, setChaveCteManual] = useState('')
@@ -384,18 +405,37 @@ function ConteudoDetalheEntrada() {
       setPedidos(data.pedidosDisponiveis ?? [])
       setObsContato(data.nota.observacaoContato ?? '')
       setPrazo(data.nota.prazoPagamentoTexto ?? '')
-      setAbaAtiva(abaInicial(data.nota))
+      setAbaAtiva(resolverAbaInicial(data.nota, searchParams.get('aba')))
     } catch (err) {
       setErro(extrairMensagemApi(err, 'Falha ao carregar nota.'))
       setNota(null)
     } finally {
       setCarregando(false)
     }
-  }, [id])
+  }, [id, searchParams])
 
   useEffect(() => {
     void carregar()
   }, [carregar])
+
+  useEffect(() => {
+    let ativo = true
+    clienteHttp
+      .get<{
+        recursos: {
+          verNota: boolean
+          baixarXml: boolean
+          baixarPdfFocus: boolean
+        }
+      }>('/focus-nfe/recursos-documento')
+      .then(({ data }) => {
+        if (ativo && data.recursos) setRecursosDoc(data.recursos)
+      })
+      .catch(() => {})
+    return () => {
+      ativo = false
+    }
+  }, [])
 
   useEffect(() => {
     let ativo = true
@@ -482,6 +522,7 @@ function ConteudoDetalheEntrada() {
         nota?: DetalheNota
         pedidosDisponiveis?: Array<{ id: string; numero: number; status: string }>
         mensagem?: string
+        sucesso?: boolean
       }>(`/entrada-notas/${id}${path}`, body ?? {})
       if (data.nota) {
         setNota(data.nota)
@@ -500,6 +541,8 @@ function ConteudoDetalheEntrada() {
           setMensagem(
             'Manifestação enviada à Focus. Nota marcada como cancelada — veja o painel Canceladas.'
           )
+        } else if (path === '/descancelar') {
+          setMensagem('Cancelamento desfeito. Nota de volta ao painel Em análise.')
         } else if (path.includes('vincular-cte') || path.includes('definir-prazo')) {
           setMensagem(mensagemAposAnalisar(data.nota))
         } else if (path === '/voltar-etapa') {
@@ -510,6 +553,10 @@ function ConteudoDetalheEntrada() {
         } else if (path === '/vincular-item') {
           setMensagem('Produto vinculado. Concilie os demais itens e clique em Reanalisar.')
         }
+        return true
+      }
+      if (path === '/gravar-codigo-original' && (data.mensagem || data.sucesso)) {
+        if (data.mensagem) setMensagem(data.mensagem)
         return true
       }
       if (data.mensagem) {
@@ -538,6 +585,14 @@ function ConteudoDetalheEntrada() {
       ...(justificativa ? { justificativa } : {}),
     })
     if (ok) setJustificativaManifesto('')
+  }
+
+  async function descancelarNota() {
+    const confirmado = window.confirm(
+      'Desfazer cancelamento: a nota volta para o painel Em análise e o fluxo de entrada é reaberto. Confirma?'
+    )
+    if (!confirmado) return
+    await postAcao('/descancelar')
   }
 
   async function deleteVinculo(vinculoId: string) {
@@ -677,11 +732,7 @@ function ConteudoDetalheEntrada() {
       return cadastroBloqueante || (fiscalBloqueante && !nota?.criticasLiberadas)
     }
     if (idAba === 'frete') {
-      return (
-        cadastroBloqueante ||
-        (fiscalBloqueante && !nota?.criticasLiberadas) ||
-        (negociacaoBloqueante && !nota?.criticasLiberadas)
-      )
+      return false
     }
     if (idAba === 'lancamento') {
       return (
@@ -726,21 +777,28 @@ function ConteudoDetalheEntrada() {
           <p className="font-mono text-xs text-muted-foreground">{nota.chaveNfe}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {recursosDoc.verNota && (
           <Button type="button" variant="outline" size="sm" disabled={xmlBusy} onClick={() => void visualizarXml()}>
             Ver nota
           </Button>
+          )}
+          {recursosDoc.baixarXml && (
           <Button type="button" variant="outline" size="sm" disabled={xmlBusy} onClick={() => void baixarXml()}>
             Baixar XML
           </Button>
+          )}
+          {recursosDoc.baixarPdfFocus && (
           <Button
             type="button"
             variant="outline"
             size="sm"
             disabled={xmlBusy || danfeBloqueado}
+            title="Baixar DANFE/DACTe oficial da Focus"
             onClick={() => void baixarDanfe()}
           >
             Baixar PDF
           </Button>
+          )}
           <Button
             type="button"
             variant="outline"
@@ -843,6 +901,26 @@ function ConteudoDetalheEntrada() {
             </p>
           )}
         </div>
+        {ehNfe55 && (nota.ctesVinculados ?? []).length > 0 && (
+          <div className="mt-3 border-t pt-3 text-sm">
+            <p className="font-medium text-muted-foreground">CT-es vinculados</p>
+            <ul className="mt-1 space-y-1">
+              {nota.ctesVinculados!.map((v) => (
+                <li key={v.id} className="flex flex-wrap items-center gap-2">
+                  <span>
+                    CT-e …{v.cte?.chaveNfe?.slice(-8) ?? '—'}
+                    {v.cte?.nomeEmitente ? ` — ${v.cte.nomeEmitente}` : ''}
+                  </span>
+                  {v.cte?.id && (
+                    <Link className="text-primary underline" href={`/entrada-notas/${v.cte.id}`}>
+                      Abrir CT-e
+                    </Link>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </CardPadrao>
 
       <Abas
@@ -1155,7 +1233,7 @@ function ConteudoDetalheEntrada() {
                 <ul className="mt-2 space-y-1 text-sm">
                   {nota.nfesVinculadas!.map((v) => (
                     <li key={v.id}>
-                      <Link className="underline" href={`/entrada-notas/${v.nfe?.id}`}>
+                      <Link className="underline" href={`/entrada-notas/${v.nfe?.id}?aba=frete`}>
                         NF …{v.nfe?.chaveNfe?.slice(-8)} — {v.nfe?.nomeEmitente}
                       </Link>
                     </li>
@@ -1330,6 +1408,18 @@ function ConteudoDetalheEntrada() {
                 Status <strong>{nota.statusEntrada}</strong>
                 {nota.origemLancamento ? ` · origem ${nota.origemLancamento}` : ''}.
               </p>
+              {nota.statusEntrada === 'cancelada' && nota.manifestacaoDestinatario && (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Manifestação registrada:{' '}
+                  <strong>
+                    {nota.manifestacaoDestinatario === 'desconhecimento_da_operacao'
+                      ? 'Desconhecimento da operação'
+                      : nota.manifestacaoDestinatario === 'operacao_nao_realizada'
+                        ? 'Operação não realizada'
+                        : nota.manifestacaoDestinatario}
+                  </strong>
+                </p>
+              )}
               {(nota.despesasFrete ?? []).length > 0 && (
                 <div className="mt-3 text-sm">
                   <p className="font-medium">Despesas de frete (CT-e)</p>
@@ -1343,9 +1433,21 @@ function ConteudoDetalheEntrada() {
                   </ul>
                 </div>
               )}
-              <Button className="mt-3" type="button" onClick={() => router.push('/entrada-notas')}>
-                Voltar à lista
-              </Button>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {nota.statusEntrada === 'cancelada' && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={acao}
+                    onClick={() => void descancelarNota()}
+                  >
+                    Desfazer cancelamento
+                  </Button>
+                )}
+                <Button type="button" onClick={() => router.push('/entrada-notas')}>
+                  Voltar à lista
+                </Button>
+              </div>
             </CardPadrao>
           )}
         </div>

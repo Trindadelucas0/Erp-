@@ -38,6 +38,16 @@ const ESTADOS_BR = [
   'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO',
 ]
 
+type RecursosEntradaNotasForm = {
+  /** true = sem override (só .env da instalação) */
+  usarEnv: boolean
+  verNota: boolean
+  baixarXml: boolean
+  baixarPdfFocus: boolean
+  danfeCacheIndisponivelHoras: number
+  danfeRateLimitMinutos: number
+}
+
 type Empresa = {
   id: string
   name: string
@@ -52,6 +62,13 @@ type Empresa = {
   bairro?: string | null
   cidade?: string | null
   estado?: string | null
+  recursosEntradaNotasJson?: Partial<{
+    verNota: boolean | null
+    baixarXml: boolean | null
+    baixarPdfFocus: boolean | null
+    danfeCacheIndisponivelHoras: number | null
+    danfeRateLimitMinutos: number | null
+  }> | null
 }
 
 type FormularioEmpresa = {
@@ -66,6 +83,16 @@ type FormularioEmpresa = {
   bairro: string
   cidade: string
   estado: string
+  recursos: RecursosEntradaNotasForm
+}
+
+const recursosPadraoForm: RecursosEntradaNotasForm = {
+  usarEnv: true,
+  verNota: true,
+  baixarXml: true,
+  baixarPdfFocus: true,
+  danfeCacheIndisponivelHoras: 24,
+  danfeRateLimitMinutos: 2,
 }
 
 const formularioVazio: FormularioEmpresa = {
@@ -80,6 +107,7 @@ const formularioVazio: FormularioEmpresa = {
   bairro: '',
   cidade: '',
   estado: '',
+  recursos: { ...recursosPadraoForm },
 }
 
 function extrairMensagemDeErro(erro: unknown, mensagemPadrao: string): string {
@@ -100,6 +128,21 @@ function extrairMensagemDeErro(erro: unknown, mensagemPadrao: string): string {
   return dados?.mensagem || dados?.message || mensagemPadrao
 }
 
+function recursosDaEmpresa(empresa: Empresa): RecursosEntradaNotasForm {
+  const raw = empresa.recursosEntradaNotasJson
+  if (!raw || typeof raw !== 'object') {
+    return { ...recursosPadraoForm }
+  }
+  return {
+    usarEnv: false,
+    verNota: raw.verNota ?? true,
+    baixarXml: raw.baixarXml ?? true,
+    baixarPdfFocus: raw.baixarPdfFocus ?? true,
+    danfeCacheIndisponivelHoras: raw.danfeCacheIndisponivelHoras ?? 24,
+    danfeRateLimitMinutos: raw.danfeRateLimitMinutos ?? 2,
+  }
+}
+
 function empresaParaFormulario(empresa: Empresa): FormularioEmpresa {
   return {
     nome: empresa.name,
@@ -113,6 +156,7 @@ function empresaParaFormulario(empresa: Empresa): FormularioEmpresa {
     bairro: empresa.bairro || '',
     cidade: empresa.cidade || '',
     estado: empresa.estado || '',
+    recursos: recursosDaEmpresa(empresa),
   }
 }
 
@@ -160,9 +204,19 @@ function ConteudoDaPaginaDeCadastros() {
 
   function atualizarCampo<K extends keyof FormularioEmpresa>(
     campo: K,
-    valor: string
+    valor: FormularioEmpresa[K]
   ) {
     setForm((f) => ({ ...f, [campo]: valor }))
+  }
+
+  function atualizarRecurso<K extends keyof RecursosEntradaNotasForm>(
+    campo: K,
+    valor: RecursosEntradaNotasForm[K]
+  ) {
+    setForm((f) => ({
+      ...f,
+      recursos: { ...f.recursos, [campo]: valor },
+    }))
   }
 
   function abrirModalNovo() {
@@ -254,6 +308,20 @@ function ConteudoDaPaginaDeCadastros() {
       bairro: form.bairro || undefined,
       cidade: form.cidade || undefined,
       estado: form.estado || undefined,
+      ...(modoEdicao
+        ? {
+            recursosEntradaNotasJson: form.recursos.usarEnv
+              ? null
+              : {
+                  verNota: form.recursos.verNota,
+                  baixarXml: form.recursos.baixarXml,
+                  baixarPdfFocus: form.recursos.baixarPdfFocus,
+                  danfeCacheIndisponivelHoras:
+                    form.recursos.danfeCacheIndisponivelHoras,
+                  danfeRateLimitMinutos: form.recursos.danfeRateLimitMinutos,
+                },
+          }
+        : {}),
     }
 
     try {
@@ -533,6 +601,93 @@ function ConteudoDaPaginaDeCadastros() {
               />
             </div>
           </div>
+
+          {(modoEdicao || modoVisualizacao) && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Plano — Entrada de Notas
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Controla Ver nota, Baixar XML e Baixar PDF. Sem override, a empresa
+                  herda o .env da instalação (base para planos comerciais).
+                </p>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="size-4 rounded border-input"
+                    checked={form.recursos.usarEnv}
+                    disabled={modoVisualizacao}
+                    onChange={(e) => atualizarRecurso('usarEnv', e.target.checked)}
+                  />
+                  Usar padrões do .env (sem override nesta empresa)
+                </label>
+                {!form.recursos.usarEnv && (
+                  <div className="space-y-2 rounded-md border border-border p-3">
+                    {(
+                      [
+                        ['verNota', 'Ver nota'],
+                        ['baixarXml', 'Baixar XML'],
+                        ['baixarPdfFocus', 'Baixar PDF (Focus — DANFE/DACTe oficial)'],
+                      ] as const
+                    ).map(([campo, rotulo]) => (
+                      <label key={campo} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          className="size-4 rounded border-input"
+                          checked={form.recursos[campo]}
+                          disabled={modoVisualizacao}
+                          onChange={(e) => atualizarRecurso(campo, e.target.checked)}
+                        />
+                        {rotulo}
+                      </label>
+                    ))}
+                    <div className="grid gap-3 pt-2 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">
+                          Cache PDF indisponível (horas)
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={720}
+                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm disabled:opacity-50"
+                          value={form.recursos.danfeCacheIndisponivelHoras}
+                          disabled={modoVisualizacao}
+                          onChange={(e) =>
+                            atualizarRecurso(
+                              'danfeCacheIndisponivelHoras',
+                              Math.max(0, Number(e.target.value) || 0)
+                            )
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">
+                          Cooldown rate limit (minutos)
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={120}
+                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm disabled:opacity-50"
+                          value={form.recursos.danfeRateLimitMinutos}
+                          disabled={modoVisualizacao}
+                          onChange={(e) =>
+                            atualizarRecurso(
+                              'danfeRateLimitMinutos',
+                              Math.max(0, Number(e.target.value) || 0)
+                            )
+                          }
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
           </fieldset>
         </form>
       </Modal>

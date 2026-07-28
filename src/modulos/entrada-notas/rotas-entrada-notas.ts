@@ -65,6 +65,7 @@ export async function rotasEntradaNotas(aplicacao: FastifyInstance): Promise<voi
   aplicacao.post('/:id/definir-pedido', { preHandler: autenticado }, controladorEntradaNotas.definirPedido)
   aplicacao.post('/:id/definir-prazo', { preHandler: autenticado }, controladorEntradaNotas.definirPrazo)
   aplicacao.post('/:id/manifestar', { preHandler: autenticado }, controladorEntradaNotas.manifestar)
+  aplicacao.post('/:id/descancelar', { preHandler: autenticado }, controladorEntradaNotas.descancelar)
   aplicacao.post('/:id/lancar', { preHandler: autenticado }, controladorEntradaNotas.lancar)
   aplicacao.post('/:id/vincular-cte', { preHandler: autenticado }, controladorEntradaNotas.vincularCte)
   aplicacao.delete(

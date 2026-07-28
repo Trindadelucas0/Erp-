@@ -95,7 +95,11 @@ async function obterXml(requisicao: FastifyRequest, resposta: FastifyReply) {
   const { id } = requisicao.params as { id: string }
   const q = requisicao.query as { modo?: string }
   const visualizar = (q.modo ?? '').toLowerCase() === 'visualizar'
-  const dados = await servicoFocusNfe.obterXmlNota(companyIdDe(requisicao), id)
+  const dados = await servicoFocusNfe.obterXmlNota(
+    companyIdDe(requisicao),
+    id,
+    visualizar ? 'visualizar' : 'download'
+  )
 
   if (visualizar) {
     return resposta.send({
@@ -116,6 +120,11 @@ async function obterXml(requisicao: FastifyRequest, resposta: FastifyReply) {
     .header('Content-Type', 'application/xml; charset=utf-8')
     .header('Content-Disposition', `attachment; filename="${nomeArquivo}"`)
     .send(dados.xml)
+}
+
+async function buscarRecursosDocumento(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const recursos = await servicoFocusNfe.buscarRecursosDocumento(companyIdDe(requisicao))
+  return resposta.send({ recursos })
 }
 
 async function obterDanfe(requisicao: FastifyRequest, resposta: FastifyReply) {
@@ -173,6 +182,7 @@ export const controladorFocusNfe = {
   testarConexao,
   sincronizar,
   buscarCota,
+  buscarRecursosDocumento,
   statusJob,
   listarPendentes,
   obterXml,

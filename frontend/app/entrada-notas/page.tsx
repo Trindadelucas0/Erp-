@@ -72,6 +72,22 @@ type CotaFocus = {
   custoExtraCentavos: number
 }
 
+type RecursosDocumento = {
+  verNota: boolean
+  baixarXml: boolean
+  baixarPdfFocus: boolean
+  danfeCacheIndisponivelHoras: number
+  danfeRateLimitMinutos: number
+}
+
+const RECURSOS_PADRAO: RecursosDocumento = {
+  verNota: true,
+  baixarXml: true,
+  baixarPdfFocus: true,
+  danfeCacheIndisponivelHoras: 24,
+  danfeRateLimitMinutos: 2,
+}
+
 type DetalhesCotaEsgotada = {
   usados?: number
   cota?: number
@@ -224,6 +240,7 @@ function ConteudoEntradaNotas() {
   const [pagina, setPagina] = useState(1)
   const [itensPorPagina, setItensPorPagina] = useState<ItensPorPagina>(10)
   const [cotaFocus, setCotaFocus] = useState<CotaFocus | null>(null)
+  const [recursosDoc, setRecursosDoc] = useState<RecursosDocumento>(RECURSOS_PADRAO)
   const [modalCotaAberto, setModalCotaAberto] = useState(false)
   const [detalhesCotaModal, setDetalhesCotaModal] = useState<DetalhesCotaEsgotada | null>(null)
   const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<
@@ -243,6 +260,21 @@ function ConteudoEntradaNotas() {
       /* cota é informativa — não bloqueia a tela */
     }
   }, [])
+
+  const carregarRecursosDocumento = useCallback(async () => {
+    try {
+      const { data } = await clienteHttp.get<{ recursos: RecursosDocumento }>(
+        '/focus-nfe/recursos-documento'
+      )
+      if (data.recursos) setRecursosDoc(data.recursos)
+    } catch {
+      /* herda padrões até a API responder */
+    }
+  }, [])
+
+  useEffect(() => {
+    void carregarRecursosDocumento()
+  }, [carregarRecursosDocumento])
 
   useEffect(() => {
     const salvos = lerFiltrosSalvos()
@@ -593,7 +625,14 @@ function ConteudoEntradaNotas() {
   }
 
   async function baixarDanfeNota(n: NotaPendente) {
-    if (!n.temDanfe && (n.danfeStatus === 'indisponivel' || n.danfeStatus === 'rate_limit')) {
+    if (!recursosDoc.baixarPdfFocus) {
+      setErro('Baixar PDF não está disponível no plano da empresa.')
+      return
+    }
+    const bloqueadoFocus =
+      !n.temDanfe &&
+      (n.danfeStatus === 'indisponivel' || n.danfeStatus === 'rate_limit')
+    if (bloqueadoFocus) {
       setErro(
         n.danfeStatus === 'rate_limit'
           ? 'Limite Focus excedido. Aguarde 1–2 minutos e tente de novo.'
@@ -1060,6 +1099,7 @@ function ConteudoEntradaNotas() {
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex flex-wrap gap-1">
+                        {recursosDoc.verNota && (
                         <Button
                           type="button"
                           variant="outline"
@@ -1076,6 +1116,8 @@ function ConteudoEntradaNotas() {
                             'Ver nota'
                           )}
                         </Button>
+                        )}
+                        {recursosDoc.baixarXml && (
                         <Button
                           type="button"
                           variant="ghost"
@@ -1092,6 +1134,8 @@ function ConteudoEntradaNotas() {
                             'XML'
                           )}
                         </Button>
+                        )}
+                        {recursosDoc.baixarPdfFocus && (
                         <Button
                           type="button"
                           variant="ghost"
@@ -1106,10 +1150,10 @@ function ConteudoEntradaNotas() {
                             n.temDanfe
                               ? 'PDF em cache no sistema'
                               : n.danfeStatus === 'indisponivel'
-                                ? 'PDF indisponível na Focus — use Ver nota'
+                                ? 'DANFE indisponível na Focus — use Ver nota'
                                 : n.danfeStatus === 'rate_limit'
                                   ? 'Aguarde 1–2 min (limite Focus)'
-                                  : 'Baixar PDF (DANFE/DANFSe/DACTe)'
+                                  : 'Baixar DANFE/DACTe da Focus'
                           }
                           onClick={() => void baixarDanfeNota(n)}
                         >
@@ -1124,6 +1168,7 @@ function ConteudoEntradaNotas() {
                             prefixoPdfDocumento(n.tipoDocumento)
                           )}
                         </Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1203,6 +1248,7 @@ function ConteudoEntradaNotas() {
               <Button type="button" variant="outline" onClick={() => setXmlModal(null)}>
                 Fechar
               </Button>
+              {recursosDoc.baixarXml && (
               <Button
                 type="button"
                 variant="outline"
@@ -1214,6 +1260,8 @@ function ConteudoEntradaNotas() {
               >
                 Baixar XML
               </Button>
+              )}
+              {recursosDoc.baixarPdfFocus && (
               <Button
                 type="button"
                 onClick={() => {
@@ -1241,6 +1289,7 @@ function ConteudoEntradaNotas() {
               >
                 Baixar PDF
               </Button>
+              )}
             </div>
           ) : null
         }

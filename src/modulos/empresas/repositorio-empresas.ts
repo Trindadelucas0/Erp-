@@ -3,6 +3,7 @@
  */
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import { normalizarCnpj } from '../../compartilhado/validacoes/documentos.js'
+import { Prisma } from '@prisma/client'
 import type {
   DadosParaCriarEmpresa,
   DadosParaEditarEmpresa,
@@ -81,6 +82,14 @@ async function atualizar(idDaEmpresa: string, dados: DadosParaEditarEmpresa) {
       bairro: dados.bairro || null,
       cidade: dados.cidade || null,
       estado: dados.estado || null,
+      ...(dados.recursosEntradaNotasJson !== undefined
+        ? {
+            recursosEntradaNotasJson:
+              dados.recursosEntradaNotasJson === null
+                ? Prisma.DbNull
+                : dados.recursosEntradaNotasJson,
+          }
+        : {}),
     },
   })
 }
