@@ -16,6 +16,8 @@ vi.mock('./repositorio-entrada-notas.js', () => ({
     gravarCodigoOriginalVinculo: vi.fn(),
     mapaCodigoOriginalPorProduto: vi.fn(),
     atualizarFiscalProduto: vi.fn(),
+    mapaSugestaoCfopEntradaPorCodigo: vi.fn(),
+    buscarCfopEntradaAtivo: vi.fn(),
     listarNotasPendentesPorDocumento: vi.fn(),
     listarNotasPendentesSemFornecedor: vi.fn(),
   },
@@ -139,6 +141,7 @@ function buildNotaFixture(overrides: Record<string, unknown> = {}) {
         valorTotal: 10,
         pesoKg: null,
         custoFreteRateado: null,
+        cfopEntradaId: null,
         produtoId: 'produto-errado',
         vinculoModo: 'barras',
         criticaCadastro: false,
@@ -168,7 +171,9 @@ function ligarRepositorioFake(estadoInicial: ReturnType<typeof buildNotaFixture>
   vi.mocked(repositorioEntradaNotas.atualizarItem).mockImplementation(async (id, dados) => {
     notaEstado = {
       ...notaEstado,
-      itens: notaEstado.itens.map((item) => (item.id === id ? { ...item, ...dados } : item)),
+      itens: notaEstado.itens.map((item) =>
+        item.id === id ? { ...item, ...dados } : item
+      ) as typeof notaEstado.itens,
     }
     return notaEstado.itens.find((item) => item.id === id) as never
   })
@@ -317,6 +322,7 @@ describe('servicoEntradaNotas.vincularItem', () => {
             valorTotal: 10,
             pesoKg: null,
             custoFreteRateado: null,
+            cfopEntradaId: null,
             produtoId: null,
             vinculoModo: 'desvinculado',
             criticaCadastro: true,
@@ -339,6 +345,7 @@ describe('servicoEntradaNotas.vincularItem', () => {
             valorTotal: 20,
             pesoKg: null,
             custoFreteRateado: null,
+            cfopEntradaId: null,
             produtoId: null,
             vinculoModo: null,
             criticaCadastro: true,

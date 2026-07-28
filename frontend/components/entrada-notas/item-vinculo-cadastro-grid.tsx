@@ -1,6 +1,8 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 export type ItemVinculoCadastro = {
   id: string
@@ -8,17 +10,21 @@ export type ItemVinculoCadastro = {
   descricao: string | null
   gtin: string | null
   codigoProduto: string | null
-  ncm: string | null
   quantidade: number | null
   valorUnitario: number | null
   produtoId: string | null
   vinculoModo: string | null
   criticaCadastro: boolean
+  codigoFornecedorVinculo?: string | null
+  /** Múltiplo de compra (itens por embalagem) do vínculo produto × fornecedor da nota; 1 quando não configurado */
+  itensPorEmbalagem?: number
+  /** quantidade (NF) × itensPorEmbalagem — prévia da quantidade em unidade de venda */
+  qtdTotalUn?: number | null
   produto: {
     id: string
     nomeVenda: string
     sku: string | null
-    ncm: string | null
+    codigoBarras?: string | null
   } | null
 }
 
@@ -29,23 +35,56 @@ export type ProdutoBuscaVinculo = {
   codigoBarras?: string | null
 }
 
-function normalizarNcm(valor?: string | null): string {
-  return (valor ?? '').replace(/\D/g, '').trim()
-}
-
-export function itemPrecisaImportarNcm(item: ItemVinculoCadastro): boolean {
-  if (!item.produtoId || !item.produto) return false
-  const ncmNf = normalizarNcm(item.ncm)
-  if (!ncmNf) return false
-  const ncmProd = normalizarNcm(item.produto.ncm)
-  return ncmNf !== ncmProd
-}
-
-function rotuloVinculoModo(modo: string | null): string {
+function rotuloVinculoModo(modo: string | null): string | null {
   if (modo === 'barras') return 'código de barras'
   if (modo === 'codigo_original') return 'código original'
   if (modo === 'manual') return 'manual'
-  return modo ?? 'vinculado'
+  if (!modo || modo === 'desvinculado') return null
+  return modo
+}
+
+function normalizarGtin(gtin: string | null | undefined): string | null {
+  const limpo = (gtin ?? '').replace(/\D/g, '')
+  if (!limpo || /^0+$/.test(limpo)) return null
+  return limpo
+}
+
+function formatarGtin(gtin: string | null | undefined): string {
+  return normalizarGtin(gtin) ?? 'sem GTIN'
+}
+
+function formatarCodigoOriginal(valor: string | null | undefined): string {
+  const limpo = (valor ?? '').trim()
+  return limpo || '—'
+}
+
+function formatarValorUnitario(valor: number | null | undefined): string {
+  if (valor == null) return '—'
+  return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+function formatarQtdUnit(quantidade: number | null, valorUnitario: number | null): string {
+  const qtd = quantidade ?? '—'
+  return `${qtd} × ${formatarValorUnitario(valorUnitario)}`
+}
+
+type LinhaEspelhoProps = {
+  rotulo: string
+  valor: string
+  valorClassName?: string
+  acao?: ReactNode
+}
+
+function LinhaEspelho({ rotulo, valor, valorClassName, acao }: LinhaEspelhoProps) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+      <dt className="font-medium text-foreground/80">{rotulo}</dt>
+      <dd className={cn('font-mono', valorClassName)}>
+        {valor}
+        {acao ? <span className="ml-1.5 inline-flex align-baseline">{acao}</span> : null}
+      </dd>
+    </div>
+  )
 }
 
 type Props = {
@@ -60,7 +99,6 @@ type Props = {
   onBuscaChange: (valor: string) => void
   onBuscar: () => void
   onVincular: (produtoId: string) => void | Promise<void>
-  onImportarNcm: () => void
   onDesvincular: () => void | Promise<void>
   onGravarCodigoOriginal?: () => void | Promise<void>
   /** Após gravar com sucesso nesta sessão da tela */
@@ -79,13 +117,56 @@ export function ItemVinculoCadastroGrid({
   onBuscaChange,
   onBuscar,
   onVincular,
-  onImportarNcm,
   onDesvincular,
   onGravarCodigoOriginal,
   codigoOriginalGravado = false,
 }: Props) {
-  const precisaNcm = itemPrecisaImportarNcm(item)
   const vinculado = Boolean(item.produtoId)
+  const itensPorEmbalagem = item.itensPorEmbalagem ?? 1
+  const temMultiploCompra = itensPorEmbalagem > 1
+
+  const gtinNf = formatarGtin(item.gtin)
+  const gtinSistema = vinculado ? formatarGtin(item.produto?.codigoBarras) : 'sem GTIN'
+  const gtinBate =
+    vinculado && gtinNf !== 'sem GTIN' && gtinNf === gtinSistema
+
+  const codOrigNf = formatarCodigoOriginal(item.codigoProduto)
+  const codOrigSistemaRaw =
+    item.codigoFornecedorVinculo?.trim() ||
+    (codigoOriginalGravado && item.codigoProduto ? item.codigoProduto.trim() : '')
+  const codOrigSistema = vinculado ? formatarCodigoOriginal(codOrigSistemaRaw) : '—'
+  const codOrigBate =
+    vinculado &&
+    codOrigNf !== '—' &&
+    codOrigSistema !== '—' &&
+    codOrigNf.toLowerCase() === codOrigSistema.toLowerCase()
+
+  const qtdUnitTexto = formatarQtdUnit(item.quantidade, item.valorUnitario)
+  const podeGravarOriginal =
+    vinculado &&
+    !finalizada &&
+    Boolean(item.codigoProduto?.trim()) &&
+    !codigoOriginalGravado &&
+    Boolean(onGravarCodigoOriginal)
+
+  const rotuloVinculo = rotuloVinculoModo(item.vinculoModo)
+
+  const dlEspelho = (
+    <dl className="grid gap-1 text-xs text-muted-foreground">
+      <LinhaEspelho rotulo="Código de barras" valor={gtinNf} />
+      <LinhaEspelho rotulo="Código original" valor={codOrigNf} />
+      <LinhaEspelho rotulo="Qtd × unit." valor={qtdUnitTexto} valorClassName="font-sans" />
+      {temMultiploCompra && (
+        <div className="flex flex-wrap gap-x-2">
+          <dt className="font-medium text-foreground/80">Qtd embalagem</dt>
+          <dd>
+            {itensPorEmbalagem} · Qtd total UN:{' '}
+            <span className="font-medium text-foreground">{item.qtdTotalUn ?? '—'}</span>
+          </dd>
+        </div>
+      )}
+    </dl>
+  )
 
   return (
     <article className="overflow-hidden rounded-md border text-sm">
@@ -98,81 +179,102 @@ export function ItemVinculoCadastroGrid({
           <p className="font-medium">
             #{item.nItem} {item.descricao ?? '—'}
           </p>
-          <dl className="grid gap-1 text-xs text-muted-foreground">
-            <div className="flex flex-wrap gap-x-2">
-              <dt className="font-medium text-foreground/80">Código de barras</dt>
-              <dd className="font-mono">{item.gtin ?? '—'}</dd>
-            </div>
-            <div className="flex flex-wrap gap-x-2">
-              <dt className="font-medium text-foreground/80">NCM</dt>
-              <dd className="font-mono">{item.ncm ?? '—'}</dd>
-            </div>
-            <div className="flex flex-wrap gap-x-2">
-              <dt className="font-medium text-foreground/80">Código original</dt>
-              <dd className="font-mono">{item.codigoProduto ?? '—'}</dd>
-            </div>
-            <div className="flex flex-wrap gap-x-2">
-              <dt className="font-medium text-foreground/80">Qtd × unit.</dt>
-              <dd>
-                {item.quantidade ?? '—'} ×{' '}
-                {item.valorUnitario != null
-                  ? item.valorUnitario.toLocaleString('pt-BR', {
-                      style: 'currency',
-                      currency: 'BRL',
-                    })
-                  : '—'}
-              </dd>
-            </div>
-          </dl>
+          {dlEspelho}
         </section>
 
         <section
-          className={
+          className={cn(
+            'relative flex min-h-full min-w-0 flex-col space-y-2 p-3',
             vinculado
-              ? 'min-w-0 space-y-2 border-l-4 border-l-emerald-500 bg-emerald-50 p-3 dark:bg-emerald-950/30'
-              : 'min-w-0 space-y-2 border-l-4 border-l-destructive bg-destructive/10 p-3'
-          }
+              ? 'border-l-4 border-l-emerald-500 bg-emerald-50 dark:bg-emerald-950/30'
+              : 'border-l-4 border-l-destructive bg-destructive/10'
+          )}
           aria-label="Produto do sistema"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs font-bold uppercase tracking-wider text-foreground">SISTEMA</p>
             <span
-              className={
+              className={cn(
+                'rounded-full px-2 py-0.5 text-xs font-semibold',
                 vinculado
-                  ? 'rounded-full bg-emerald-600/15 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300'
-                  : 'rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-semibold text-destructive'
-              }
+                  ? 'bg-emerald-600/15 text-emerald-700 dark:text-emerald-300'
+                  : 'bg-destructive/15 text-destructive'
+              )}
             >
               {vinculado ? 'Vinculado' : 'Sem vínculo'}
             </span>
           </div>
+
           {item.produto ? (
-            <>
-              <p className="font-medium">
-                {item.produto.nomeVenda}
-                {item.produto.sku ? (
-                  <span className="ml-1 font-mono text-xs text-muted-foreground">
-                    ({item.produto.sku})
-                  </span>
-                ) : null}
-              </p>
-              <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
-                Vínculo: {rotuloVinculoModo(item.vinculoModo)}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                NCM cadastro:{' '}
-                <span className="font-mono">{item.produto.ncm ?? '—'}</span>
-              </p>
-            </>
+            <p className="font-medium">
+              {item.produto.nomeVenda}
+              {item.produto.sku ? (
+                <span className="ml-1 font-mono text-xs text-muted-foreground">
+                  ({item.produto.sku})
+                </span>
+              ) : null}
+            </p>
           ) : (
             <p className="font-medium text-destructive">Sem vínculo</p>
           )}
+
+          <dl className="flex-1 grid gap-1 text-xs text-muted-foreground">
+            <LinhaEspelho
+              rotulo="Código de barras"
+              valor={gtinSistema}
+              valorClassName={cn(
+                gtinBate && 'font-semibold text-emerald-700 dark:text-emerald-300',
+                gtinSistema === 'sem GTIN' && 'text-muted-foreground'
+              )}
+            />
+            <LinhaEspelho
+              rotulo="Código original"
+              valor={codOrigSistema}
+              valorClassName={cn(
+                codOrigBate && 'font-semibold text-emerald-700 dark:text-emerald-300'
+              )}
+              acao={
+                podeGravarOriginal ? (
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="h-auto p-0 text-xs font-normal"
+                    disabled={acao}
+                    onClick={() => void onGravarCodigoOriginal?.()}
+                  >
+                    Gravar
+                  </Button>
+                ) : undefined
+              }
+            />
+            <LinhaEspelho
+              rotulo="Qtd × unit."
+              valor={qtdUnitTexto}
+              valorClassName="font-sans text-foreground"
+            />
+            {temMultiploCompra && (
+              <div className="flex flex-wrap gap-x-2">
+                <dt className="font-medium text-foreground/80">Qtd embalagem</dt>
+                <dd>
+                  {itensPorEmbalagem} · Qtd total UN:{' '}
+                  <span className="font-medium text-foreground">{item.qtdTotalUn ?? '—'}</span>
+                </dd>
+              </div>
+            )}
+          </dl>
+
+          {vinculado && rotuloVinculo && (
+            <p className="text-right text-[10px] text-muted-foreground/70">
+              vínculo: {rotuloVinculo}
+            </p>
+          )}
+
           {item.criticaCadastro && (
             <p className="text-xs text-destructive">Crítica de cadastro — concilie o produto</p>
           )}
 
           {!finalizada && (
-            <div className="flex flex-wrap gap-2 pt-1">
+            <div className="flex flex-wrap gap-1.5 pt-0.5">
               {!item.produtoId && (
                 <Button type="button" size="sm" disabled={acao} onClick={onAbrirBusca}>
                   Conciliar produto
@@ -180,7 +282,13 @@ export function ItemVinculoCadastroGrid({
               )}
               {item.produtoId && (
                 <>
-                  <Button type="button" size="sm" variant="outline" disabled={acao} onClick={onAbrirBusca}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={acao}
+                    onClick={onAbrirBusca}
+                  >
                     Trocar vínculo
                   </Button>
                   <Button
@@ -194,39 +302,11 @@ export function ItemVinculoCadastroGrid({
                   </Button>
                 </>
               )}
-              {item.produtoId && precisaNcm && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={acao}
-                  onClick={onImportarNcm}
-                >
-                  Importar NCM
-                </Button>
-              )}
-              {item.produtoId && item.codigoProduto && onGravarCodigoOriginal && (
-                codigoOriginalGravado ? (
-                  <span className="inline-flex h-8 items-center rounded-md bg-emerald-600/15 px-2.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
-                    Cód. original gravado
-                  </span>
-                ) : (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    disabled={acao}
-                    onClick={() => void onGravarCodigoOriginal()}
-                  >
-                    Gravar cód. original
-                  </Button>
-                )
-              )}
             </div>
           )}
 
           {buscando && (
-            <div className="mt-2 space-y-2 rounded-md border border-dashed p-3">
+            <div className="mt-1 space-y-2 rounded-md border border-dashed p-3">
               <div className="flex gap-2">
                 <input
                   className="min-w-0 flex-1 rounded-md border bg-background px-3 py-2 text-sm"

@@ -508,6 +508,9 @@ async function executarSync(companyId: string, jobId: string) {
             break
           }
           if (existentePre?.nfeCompleta && existentePre.xmlConteudo) {
+            // Nota já tem XML completo — não rebaixa da Focus, mas repara itens
+            // caso um pipeline anterior tenha falhado antes de gravá-los.
+            await servicoEntradaNotas.sincronizarItensPendentesDoXml(companyId, existentePre.id)
             if (mapeado.versaoFocus > maxVersao) maxVersao = mapeado.versaoFocus
             if (temConfigBanco && maxVersao > credenciais.ultimaVersao) {
               await repositorioFocusNfe.atualizarUltimaVersao(companyId, maxVersao)
@@ -1431,6 +1434,11 @@ async function obterXmlNota(companyId: string, id: string) {
       origem: 'focus',
     })
     await servicoEntradaNotas.processarAposXml(companyId, nota.id)
+  } else {
+    // XML já estava no banco — repara itens caso um pipeline anterior tenha
+    // falhado antes de gravá-los, para o grid da nota não ficar dessincronizado
+    // do que "Ver nota" mostra aqui.
+    await servicoEntradaNotas.sincronizarItensPendentesDoXml(companyId, nota.id)
   }
 
   const atualizada = await repositorioFocusNfe.buscarPorId(companyId, id)
@@ -1808,6 +1816,7 @@ async function importarXml(companyId: string, xmlBruto: string) {
 async function reprocessarXmlsLocais(companyId: string) {
   const lista = await repositorioFocusNfe.listarComXmlPendenteCampos(companyId)
   let ok = 0
+  let itensRecuperados = 0
   for (const item of lista) {
     if (!item.xmlConteudo) continue
     const campos = extrairCamposResumoDoXml(item.xmlConteudo)
@@ -1823,6 +1832,11 @@ async function reprocessarXmlsLocais(companyId: string) {
       nfeCompleta: true,
     })
     ok += 1
+    const { itensAdicionados } = await servicoEntradaNotas.sincronizarItensPendentesDoXml(
+      companyId,
+      item.id
+    )
+    if (itensAdicionados > 0) itensRecuperados += 1
   }
   const vinculadas = await servicoEntradaNotas.vincularFornecedoresNasNotasPendentes(companyId)
   const vinculosCte = await servicoEntradaNotas.processarVinculosCtePendentes(companyId, {
@@ -1832,12 +1846,14 @@ async function reprocessarXmlsLocais(companyId: string) {
   logFocus('info', 'reprocessar_xmls', {
     companyId,
     ok,
+    itensRecuperados,
     vinculadas,
     ctesVinculados: vinculosCte.vinculados,
     ctesImportFocus: vinculosCte.importadosFocus,
   })
   return {
     processados: ok,
+    itensRecuperados,
     vinculadas,
     ctesVinculados: vinculosCte.vinculados,
     ctesImportFocus: vinculosCte.importadosFocus,

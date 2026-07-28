@@ -26,6 +26,11 @@ export const esquemaImportarFiscal = z.object({
   origem: z.boolean().optional(),
 })
 
+export const esquemaDefinirCfopEntrada = z.object({
+  itemId: z.string().uuid(),
+  cfopId: z.string().uuid(),
+})
+
 export const esquemaContatoFornecedor = z.object({
   observacao: z.string().min(1, 'Informe a observação do contato'),
 })

@@ -18,6 +18,10 @@ import {
 } from '@/components/entrada-notas/conteudo-visualizacao-nota'
 import { BarraCarregamentoDownload } from '@/components/entrada-notas/barra-carregamento-download'
 import { ItemVinculoCadastroGrid } from '@/components/entrada-notas/item-vinculo-cadastro-grid'
+import {
+  ItemVinculoFiscalGrid,
+  type CfopOpcaoEntrada,
+} from '@/components/entrada-notas/item-vinculo-fiscal-grid'
 import { CheckCircle2 } from 'lucide-react'
 import {
   ehDocumentalEntrada,
@@ -66,10 +70,18 @@ type ItemNota = {
   criticaNegociacao: boolean
   /** cProd da NF já está em ProdutoFornecedor.codigoFornecedor */
   codigoOriginalGravado?: boolean
+  /** Código do fornecedor gravado no vínculo produto × fornecedor */
+  codigoFornecedorVinculo?: string | null
+  /** Múltiplo de compra (itens por embalagem) do vínculo produto × fornecedor da nota; 1 quando não configurado */
+  itensPorEmbalagem?: number
+  /** quantidade (NF) × itensPorEmbalagem — prévia da quantidade em unidade de venda */
+  qtdTotalUn?: number | null
+  cfopEntrada: { id: string; codigo: string; nome: string } | null
   produto: {
     id: string
     nomeVenda: string
     sku: string | null
+    codigoBarras: string | null
     ncm: string | null
     codigoOrigem: string | null
   } | null
@@ -137,21 +149,6 @@ const ROTULOS_ETAPA: Record<EtapaPipeline, string> = {
   fiscal: 'Fiscal',
   negociacao: 'Negociação',
   frete: 'Frete / CT-e',
-}
-
-function normalizarNcm(valor?: string | null): string {
-  return (valor ?? '').replace(/\D/g, '').trim()
-}
-
-function itemPrecisaImportarFiscal(item: ItemNota): boolean {
-  if (!item.produtoId || !item.produto) return false
-  const ncmNf = normalizarNcm(item.ncm)
-  const ncmProd = normalizarNcm(item.produto.ncm)
-  if (ncmNf && ncmNf !== ncmProd) return true
-  const origNf = (item.origem ?? '').trim()
-  const origProd = (item.produto.codigoOrigem ?? '').trim()
-  if (origNf && origNf !== origProd) return true
-  return false
 }
 
 function statusAbaDeEtapa(etapa?: ResultadoEtapa | null): StatusDaAba {
@@ -274,6 +271,54 @@ function rotuloModFrete(mod: string | null | undefined): string {
   return mapa[m] ?? (m || '—')
 }
 
+function CardManifestoDestinatario({
+  acao,
+  justificativa,
+  onJustificativaChange,
+  onManifestar,
+}: {
+  acao: boolean
+  justificativa: string
+  onJustificativaChange: (valor: string) => void
+  onManifestar: (tipo: 'desconhecimento' | 'nao_realizada') => void
+}) {
+  return (
+    <CardPadrao titulo="Manifestação do destinatário">
+      <p className="mb-3 text-sm text-muted-foreground">
+        Use quando a nota não pode seguir no fluxo normal (ex.: CST/CFOP impeditivo ou operação que
+        a empresa não reconhece). A nota vai para o painel <strong>Canceladas</strong> e não pode
+        mais ser lançada.
+      </p>
+      <textarea
+        className="mb-3 min-h-[70px] w-full rounded-md border bg-background px-3 py-2 text-sm"
+        value={justificativa}
+        onChange={(e) => onJustificativaChange(e.target.value)}
+        placeholder="Justificativa (obrigatória para operação não realizada)"
+      />
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="destructive"
+          disabled={acao}
+          onClick={() => onManifestar('desconhecimento')}
+        >
+          Desconhecimento da operação
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="destructive"
+          disabled={acao || justificativa.trim().length < 15}
+          onClick={() => onManifestar('nao_realizada')}
+        >
+          Operação não realizada
+        </Button>
+      </div>
+    </CardPadrao>
+  )
+}
+
 function EtapaResumo({ etapa }: { etapa?: ResultadoEtapa | null }) {
   if (!etapa) return <p className="text-sm text-muted-foreground">Pendente</p>
   return (
@@ -304,11 +349,13 @@ function ConteudoDetalheEntrada() {
   const id = String(params.id)
   const [nota, setNota] = useState<DetalheNota | null>(null)
   const [pedidos, setPedidos] = useState<Array<{ id: string; numero: number; status: string }>>([])
+  const [cfopsEntrada, setCfopsEntrada] = useState<CfopOpcaoEntrada[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
   const [mensagem, setMensagem] = useState<string | null>(null)
   const [senha, setSenha] = useState('')
   const [obsContato, setObsContato] = useState('')
+  const [justificativaManifesto, setJustificativaManifesto] = useState('')
   const [prazo, setPrazo] = useState('')
   const [buscaProduto, setBuscaProduto] = useState('')
   const [produtos, setProdutos] = useState<ProdutoBusca[]>([])
@@ -349,6 +396,19 @@ function ConteudoDetalheEntrada() {
   useEffect(() => {
     void carregar()
   }, [carregar])
+
+  useEffect(() => {
+    let ativo = true
+    clienteHttp
+      .get<{ cfops: CfopOpcaoEntrada[] }>('/cfops', { params: { tipo: 'entrada' } })
+      .then(({ data }) => {
+        if (ativo) setCfopsEntrada(data.cfops ?? [])
+      })
+      .catch(() => {})
+    return () => {
+      ativo = false
+    }
+  }, [])
 
   async function baixarXml() {
     setXmlBusy(true)
@@ -436,6 +496,10 @@ function ConteudoDetalheEntrada() {
           data.nota.statusEntrada === 'entrada_consolidada'
         ) {
           setMensagem(`Nota lançada: ${data.nota.statusEntrada}.`)
+        } else if (path === '/manifestar') {
+          setMensagem(
+            'Manifestação enviada à Focus. Nota marcada como cancelada — veja o painel Canceladas.'
+          )
         } else if (path.includes('vincular-cte') || path.includes('definir-prazo')) {
           setMensagem(mensagemAposAnalisar(data.nota))
         } else if (path === '/voltar-etapa') {
@@ -460,6 +524,20 @@ function ConteudoDetalheEntrada() {
     } finally {
       setAcao(false)
     }
+  }
+
+  async function manifestar(tipo: 'desconhecimento' | 'nao_realizada') {
+    const rotulo = tipo === 'desconhecimento' ? 'Desconhecimento da operação' : 'Operação não realizada'
+    const confirmado = window.confirm(
+      `${rotulo}: a nota vai para o painel Canceladas e não poderá mais ser lançada. Confirma?`
+    )
+    if (!confirmado) return
+    const justificativa = justificativaManifesto.trim()
+    const ok = await postAcao('/manifestar', {
+      tipo,
+      ...(justificativa ? { justificativa } : {}),
+    })
+    if (ok) setJustificativaManifesto('')
   }
 
   async function deleteVinculo(vinculoId: string) {
@@ -835,13 +913,6 @@ function ConteudoDetalheEntrada() {
                       setProdutos([])
                       setBuscaProduto('')
                     }}
-                    onImportarNcm={() =>
-                      postAcao('/importar-fiscal-produto', {
-                        itemId: item.id,
-                        ncm: true,
-                        origem: false,
-                      })
-                    }
                     onDesvincular={async () => {
                       await postAcao('/desvincular-item', { itemId: item.id })
                     }}
@@ -884,38 +955,30 @@ function ConteudoDetalheEntrada() {
               devolução.
             </p>
           </CardPadrao>
-          <CardPadrao titulo="Itens — NCM / origem / CST">
-            <div className="space-y-3">
+          <CardPadrao titulo="Itens — NCM / origem / CST / CFOP de entrada">
+            <div className="space-y-4">
               {nota.itens.map((item) => (
-                <div key={item.id} className="rounded-md border p-3 text-sm">
-                  <p className="font-medium">
-                    #{item.nItem} {item.descricao ?? '—'}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    NCM {item.ncm ?? '—'} · CFOP {item.cfop ?? '—'} · CST {item.cst ?? '—'} · orig{' '}
-                    {item.origem ?? '—'}
-                  </p>
-                  {item.criticaFiscal && <p className="text-destructive">crítica fiscal</p>}
-                  {!finalizada && item.produtoId && itemPrecisaImportarFiscal(item) && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="mt-2"
-                      disabled={acao}
-                      onClick={() =>
-                        postAcao('/importar-fiscal-produto', {
-                          itemId: item.id,
-                          ncm: true,
-                          origem: true,
-                        })
-                      }
-                    >
-                      Importar NCM/origem da NF
-                    </Button>
-                  )}
-                </div>
+                <ItemVinculoFiscalGrid
+                  key={item.id}
+                  item={item}
+                  finalizada={finalizada}
+                  acao={acao}
+                  cfopsEntrada={cfopsEntrada}
+                  onImportarFiscal={() =>
+                    postAcao('/importar-fiscal-produto', {
+                      itemId: item.id,
+                      ncm: true,
+                      origem: true,
+                    })
+                  }
+                  onDefinirCfopEntrada={async (cfopId) => {
+                    await postAcao('/definir-cfop-entrada', { itemId: item.id, cfopId })
+                  }}
+                />
               ))}
+              {nota.itens.length === 0 && (
+                <p className="text-sm text-muted-foreground">Sem itens. Reanalisar ou reimporte o XML.</p>
+              )}
             </div>
           </CardPadrao>
           {!finalizada && (
@@ -954,6 +1017,14 @@ function ConteudoDetalheEntrada() {
                 </Button>
               </div>
             </CardPadrao>
+          )}
+          {!finalizada && (
+            <CardManifestoDestinatario
+              acao={acao}
+              justificativa={justificativaManifesto}
+              onJustificativaChange={setJustificativaManifesto}
+              onManifestar={(tipo) => void manifestar(tipo)}
+            />
           )}
         </div>
       )}
@@ -1035,15 +1106,6 @@ function ConteudoDetalheEntrada() {
                 >
                   Contato fornecedor
                 </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="destructive"
-                  disabled={acao}
-                  onClick={() => postAcao('/manifestar', { tipo: 'desconhecimento' })}
-                >
-                  Desconhecimento
-                </Button>
               </div>
               <textarea
                 className="mt-3 min-h-[70px] w-full rounded-md border bg-background px-3 py-2 text-sm"
@@ -1052,6 +1114,14 @@ function ConteudoDetalheEntrada() {
                 placeholder="Observação contato"
               />
             </CardPadrao>
+          )}
+          {!finalizada && (
+            <CardManifestoDestinatario
+              acao={acao}
+              justificativa={justificativaManifesto}
+              onJustificativaChange={setJustificativaManifesto}
+              onManifestar={(tipo) => void manifestar(tipo)}
+            />
           )}
         </div>
       )}

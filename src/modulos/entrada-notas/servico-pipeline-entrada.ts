@@ -42,6 +42,45 @@ function decimalNum(v: { toNumber?: () => number } | number | null | undefined):
   return Number(v)
 }
 
+/**
+ * Itens por embalagem (múltiplo de compra) do vínculo produto × fornecedor da nota.
+ * Mesma regra do Pedido de Compra (`multiplicadorEntrada`): sem vínculo válido, retorna 1.
+ */
+function resolverItensPorEmbalagem(
+  fornecedores: Array<{ fornecedorPessoaId: string; multiplicadorEntrada: unknown }> | undefined,
+  fornecedorPessoaId: string | null | undefined
+): number {
+  if (!fornecedorPessoaId || !fornecedores?.length) return 1
+  const vinculo = fornecedores.find((f) => f.fornecedorPessoaId === fornecedorPessoaId)
+  const valor = decimalNum(vinculo?.multiplicadorEntrada as never)
+  return valor != null && Number.isFinite(valor) && valor > 0 ? valor : 1
+}
+
+/**
+ * Extrai e grava os itens do XML (NfeRecebidaItem) só quando a nota ainda não
+ * tem nenhum — nunca sobrescreve itens já gravados (preserva vínculo/CFOP de entrada
+ * já escolhidos). NFS-e/CTe, nota inexistente ou sem XML: no-op silencioso (sem throw)
+ * para poder ser chamada em pontos "best effort" (abrir detalhe, BUSCAR, sync, Ver nota).
+ */
+async function sincronizarItensPendentesDoXml(
+  companyId: string,
+  notaId: string
+): Promise<{ itensAdicionados: number }> {
+  const nota = await repositorioEntradaNotas.buscarNotaPorId(companyId, notaId)
+  if (!nota || nota.tipoDocumento === 'nfse' || nota.tipoDocumento === 'cte' || !nota.xmlConteudo) {
+    return { itensAdicionados: 0 }
+  }
+
+  const qtd = await repositorioEntradaNotas.contarItens(notaId)
+  if (qtd > 0) return { itensAdicionados: 0 }
+
+  const itens = extrairItensDoXml(nota.xmlConteudo)
+  if (itens.length === 0) return { itensAdicionados: 0 }
+
+  await repositorioEntradaNotas.substituirItensDoXml(notaId, itens)
+  return { itensAdicionados: itens.length }
+}
+
 async function garantirItensDoXml(companyId: string, notaId: string) {
   const nota = await repositorioEntradaNotas.buscarNotaPorId(companyId, notaId)
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
@@ -52,13 +91,9 @@ async function garantirItensDoXml(companyId: string, notaId: string) {
     throw new ErroDaAplicacao('Nota sem XML. Importe o XML ou baixe pela Focus antes de analisar.', 400)
   }
 
-  const qtd = await repositorioEntradaNotas.contarItens(notaId)
-  const campos = extrairCamposResumoDoXml(nota.xmlConteudo)
-  if (qtd === 0) {
-    const itens = extrairItensDoXml(nota.xmlConteudo)
-    await repositorioEntradaNotas.substituirItensDoXml(notaId, itens)
-  }
+  await sincronizarItensPendentesDoXml(companyId, notaId)
 
+  const campos = extrairCamposResumoDoXml(nota.xmlConteudo)
   if (campos.prazoPagamentoXml && !nota.prazoPagamentoXml) {
     await repositorioEntradaNotas.atualizarNota(notaId, {
       prazoPagamentoXml: campos.prazoPagamentoXml,
@@ -66,6 +101,29 @@ async function garantirItensDoXml(companyId: string, notaId: string) {
   }
 
   return nota
+}
+
+/**
+ * Preenche o CFOP de entrada sugerido (Cfop.cfopSugestaoEntradaId) nos itens que ainda
+ * não têm escolha gravada. Nunca sobrescreve uma escolha manual já feita pelo usuário.
+ */
+async function sugerirCfopEntradaItensSemEscolha(
+  companyId: string,
+  itens: Array<{ id: string; cfop: string | null; cfopEntradaId: string | null }>
+) {
+  const pendentes = itens.filter((i) => !i.cfopEntradaId && i.cfop)
+  if (pendentes.length === 0) return
+
+  const sugestoes = await repositorioEntradaNotas.mapaSugestaoCfopEntradaPorCodigo(
+    companyId,
+    pendentes.map((i) => i.cfop as string)
+  )
+  for (const item of pendentes) {
+    const sugestao = item.cfop ? sugestoes.get(item.cfop) : undefined
+    if (sugestao) {
+      await repositorioEntradaNotas.atualizarItem(item.id, { cfopEntradaId: sugestao.id })
+    }
+  }
 }
 
 async function carregarRegras(companyId: string): Promise<RegrasFiscaisJson | null> {
@@ -547,6 +605,8 @@ async function analisarNota(
   analise.fiscal = fiscal.resultado
   await repositorioEntradaNotas.atualizarNota(notaId, { etapaAtual: 'fiscal' })
 
+  await sugerirCfopEntradaItensSemEscolha(companyId, nota.itens)
+
   const fiscalBloqueado = !podeAvancarFiscal(fiscal.resultado, nota.criticasLiberadas)
   if (fiscalBloqueado || opcoes?.pararEm === 'fiscal') {
     analise.motivoParada = fiscalBloqueado ? 'fiscal' : null
@@ -782,6 +842,21 @@ async function obterDetalhe(
     if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
   }
 
+  // Nota NFe 55 já analisada mas sem itens (falha pontual num pipeline anterior,
+  // sync que pulou XML já "completo", etc.) — repara ao abrir, sem exigir clique
+  // em Reanalisar. Só entra aqui se o bloco acima não rodou (analiseJson já existia).
+  if (
+    statusesAbertos.includes(nota.statusEntrada) &&
+    (nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento) &&
+    nota.xmlConteudo &&
+    nota.itens.length === 0
+  ) {
+    const { itensAdicionados } = await sincronizarItensPendentesDoXml(companyId, notaId)
+    if (itensAdicionados > 0) {
+      return analisarNota(companyId, notaId)
+    }
+  }
+
   // CT-e com chave e sem vínculo: ao abrir o detalhe sempre tenta Focus
   // pela chave do próprio XML (não depende de análise antiga / “aguarde o sync”).
   // jaRetentouVinculoCte evita loop quando analisarNota retorna via obterDetalhe.
@@ -891,9 +966,17 @@ async function obterDetalhe(
       })),
       itens: nota.itens.map((i) => {
         const cProd = (i.codigoProduto ?? '').trim().toLowerCase()
-        const noVinculo =
-          i.produtoId != null ? (codigosVinculo.get(i.produtoId) ?? '') : ''
-        const codigoOriginalGravado = Boolean(i.produtoId && cProd && noVinculo === cProd)
+        const codigoFornecedorVinculo =
+          i.produtoId != null ? (codigosVinculo.get(i.produtoId) ?? '').trim() || null : null
+        const noVinculoNorm = (codigoFornecedorVinculo ?? '').toLowerCase()
+        const codigoOriginalGravado = Boolean(i.produtoId && cProd && noVinculoNorm === cProd)
+        const quantidade = decimalNum(i.quantidade)
+        const itensPorEmbalagem = resolverItensPorEmbalagem(
+          i.produto?.fornecedores,
+          nota.fornecedorPessoaId
+        )
+        const qtdTotalUn =
+          quantidade != null ? Math.round(quantidade * itensPorEmbalagem * 1e6) / 1e6 : null
         return {
           id: i.id,
           nItem: i.nItem,
@@ -904,7 +987,7 @@ async function obterDetalhe(
           cfop: i.cfop,
           cst: i.cst,
           origem: i.origem,
-          quantidade: decimalNum(i.quantidade),
+          quantidade,
           valorUnitario: decimalNum(i.valorUnitario),
           valorTotal: decimalNum(i.valorTotal),
           pesoKg: decimalNum(i.pesoKg),
@@ -915,7 +998,22 @@ async function obterDetalhe(
           criticaFiscal: i.criticaFiscal,
           criticaNegociacao: i.criticaNegociacao,
           codigoOriginalGravado,
-          produto: i.produto,
+          codigoFornecedorVinculo,
+          itensPorEmbalagem,
+          qtdTotalUn,
+          cfopEntrada: i.cfopEntrada
+            ? { id: i.cfopEntrada.id, codigo: i.cfopEntrada.codigo, nome: i.cfopEntrada.nome }
+            : null,
+          produto: i.produto
+            ? {
+                id: i.produto.id,
+                nomeVenda: i.produto.nomeVenda,
+                sku: i.produto.sku,
+                codigoBarras: i.produto.codigoBarras,
+                ncm: i.produto.ncm,
+                codigoOrigem: i.produto.codigoOrigem,
+              }
+            : null,
         }
       }),
     },
@@ -1089,6 +1187,30 @@ async function importarFiscalProduto(
     codigoOrigem: campos.origem ? item.origem : undefined,
   })
   return analisarNota(companyId, notaId)
+}
+
+/**
+ * Troca manualmente o CFOP de entrada de um item (aba Fiscal). Não roda o pipeline
+ * inteiro nem muda a regra de bloqueio de CST/CFOP — é só a classificação de entrada.
+ */
+async function definirCfopEntrada(
+  companyId: string,
+  notaId: string,
+  itemId: string,
+  cfopId: string
+) {
+  const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  const item = nota.itens.find((i) => i.id === itemId)
+  if (!item) throw new ErroDaAplicacao('Item não encontrado', 404)
+
+  const cfop = await repositorioEntradaNotas.buscarCfopEntradaAtivo(companyId, cfopId)
+  if (!cfop) {
+    throw new ErroDaAplicacao('CFOP de entrada não encontrado, inativo ou de saída.', 400)
+  }
+
+  await repositorioEntradaNotas.atualizarItem(itemId, { cfopEntradaId: cfop.id })
+  return obterDetalhe(companyId, notaId)
 }
 
 async function liberarCriticas(companyId: string, notaId: string, usuarioId: string, senha: string) {
@@ -1370,6 +1492,7 @@ export const servicoEntradaNotas = {
   voltarEtapa,
   gravarCodigoOriginal,
   importarFiscalProduto,
+  definirCfopEntrada,
   liberarCriticas,
   cancelarLiberacaoCriticas,
   contatoFornecedor,
@@ -1378,6 +1501,7 @@ export const servicoEntradaNotas = {
   manifestar,
   lancar,
   processarAposXml,
+  sincronizarItensPendentesDoXml,
   reanalisarNotasPendentesPorDocumento,
   vincularFornecedoresNasNotasPendentes,
   processarVinculosCtePendentes,

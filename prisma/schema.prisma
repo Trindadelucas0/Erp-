@@ -246,12 +246,16 @@ model NfeRecebidaItem {
   criticaFiscal      Boolean     @default(false)
   criticaNegociacao  Boolean     @default(false)
   custoFreteRateado  Decimal?    @db.Decimal(18, 4)
+  /// CFOP de entrada sugerido (Cfop.cfopSugestaoEntradaId) ou escolhido manualmente pelo usuário na aba Fiscal
+  cfopEntradaId      String?
+  cfopEntrada        Cfop?       @relation(fields: [cfopEntradaId], references: [id], onDelete: SetNull)
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
 
   @@unique([nfeRecebidaId, nItem])
   @@index([nfeRecebidaId])
   @@index([produtoId])
+  @@index([cfopEntradaId])
 }
 
 // ─── Cadastro Unificado de Pessoas ───────────────────────────────────────────
@@ -533,6 +537,7 @@ model Cfop {
   cfopsComSugestao      Cfop[]                         @relation("CfopSugestaoEntrada")
   fornecedores          FornecedorCfopEntrada[]
   paresPlanoCfop        FornecedorParPlanoCfopPadrao[]
+  itensEntradaComCfop   NfeRecebidaItem[]
   createdAt             DateTime                       @default(now())
 
   @@unique([codigo, companyId])

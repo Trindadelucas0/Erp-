@@ -16,10 +16,17 @@ const includeNotaCompleta = {
           id: true,
           nomeVenda: true,
           sku: true,
+          codigoBarras: true,
           ncm: true,
           codigoOrigem: true,
           pesoKg: true,
+          fornecedores: {
+            select: { fornecedorPessoaId: true, multiplicadorEntrada: true },
+          },
         },
+      },
+      cfopEntrada: {
+        select: { id: true, codigo: true, nome: true },
       },
     },
   },
@@ -147,6 +154,7 @@ async function atualizarItem(
     criticaFiscal?: boolean
     criticaNegociacao?: boolean
     custoFreteRateado?: number | null
+    cfopEntradaId?: string | null
   }
 ) {
   return clientePrisma.nfeRecebidaItem.update({ where: { id }, data })
@@ -278,8 +286,48 @@ async function mapaCodigoOriginalPorProduto(
   })
 
   return new Map(
-    vinculos.map((v) => [v.produtoId, (v.codigoFornecedor ?? '').trim().toLowerCase()])
+    vinculos.map((v) => [v.produtoId, (v.codigoFornecedor ?? '').trim()])
   )
+}
+
+/**
+ * Para cada código de CFOP da NF, busca o CFOP cadastrado da empresa com esse código
+ * e devolve o CFOP de entrada que ele sugere (`Cfop.cfopSugestaoEntradaId`).
+ * Chave do mapa = código do CFOP na NF (ex.: "5201").
+ */
+async function mapaSugestaoCfopEntradaPorCodigo(
+  companyId: string,
+  codigos: string[]
+): Promise<Map<string, { id: string; codigo: string; nome: string }>> {
+  const unicos = [...new Set(codigos.filter(Boolean))]
+  if (unicos.length === 0) return new Map()
+
+  const cfops = await clientePrisma.cfop.findMany({
+    where: { companyId, codigo: { in: unicos } },
+    select: {
+      codigo: true,
+      cfopSugestaoEntrada: { select: { id: true, codigo: true, nome: true } },
+    },
+  })
+
+  const mapa = new Map<string, { id: string; codigo: string; nome: string }>()
+  for (const c of cfops) {
+    if (c.cfopSugestaoEntrada) mapa.set(c.codigo, c.cfopSugestaoEntrada)
+  }
+  return mapa
+}
+
+/** Valida que o CFOP escolhido manualmente pertence à empresa, está ativo e é de entrada/importação. */
+async function buscarCfopEntradaAtivo(companyId: string, cfopId: string) {
+  return clientePrisma.cfop.findFirst({
+    where: {
+      id: cfopId,
+      companyId,
+      ativo: true,
+      natureza: { in: ['entrada', 'importacao'] },
+    },
+    select: { id: true, codigo: true, nome: true },
+  })
 }
 
 async function atualizarFiscalProduto(
@@ -346,6 +394,8 @@ export const repositorioEntradaNotas = {
   gravarCodigoOriginalVinculo,
   mapaCodigoOriginalPorProduto,
   atualizarFiscalProduto,
+  mapaSugestaoCfopEntradaPorCodigo,
+  buscarCfopEntradaAtivo,
   contarItens,
   listarNotasPendentesPorDocumento,
   listarNotasPendentesSemFornecedor,
