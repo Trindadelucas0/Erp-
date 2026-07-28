@@ -99,7 +99,9 @@ export async function analisarCadastro(params: {
   }
 
   if (exigirItens && params.itens.length === 0) {
-    avisos.push('Nota sem itens parseados do XML. Reimporte o XML ou complete o download na Focus.')
+    bloqueios.push(
+      'Nota sem itens parseados do XML. Reimporte o XML ou complete o download na Focus.'
+    )
   }
 
   const status =

@@ -11,6 +11,7 @@ import {
   extrairCamposResumoDoXml,
   extrairItensDoXml,
   normalizarXmlNfe,
+  xmlNfeTemItensParseaveis,
 } from '../focus-nfe/parser-xml-nfe.js'
 import { logFocus } from '../focus-nfe/logs-focus-nfe.js'
 import { analisarCadastro } from './analise-cadastro/analisar-cadastro.js'
@@ -738,7 +739,25 @@ async function analisarNota(
     return await obterDetalhe(companyId, notaId)
   }
 
-  // Auto-lançamento
+  // Auto-lançamento — nunca sem itens parseados
+  if (nota.itens.length === 0) {
+    analise.autoLancado = false
+    analise.motivoParada = 'cadastro'
+    analise.cadastro = {
+      status: 'bloqueante',
+      avisos: [],
+      bloqueios: [
+        'Nota sem itens parseados do XML. Reimporte o XML ou complete o download na Focus.',
+      ],
+    }
+    await repositorioEntradaNotas.atualizarNota(notaId, {
+      analiseJson: asJson(analise),
+      etapaAtual: 'cadastro',
+      statusEntrada: 'em_analise',
+    })
+    return await obterDetalhe(companyId, notaId)
+  }
+
   analise.autoLancado = true
   analise.motivoParada = null
   await aplicarRateioEDespesasFrete(companyId, notaId)
@@ -823,7 +842,7 @@ async function aplicarRateioEDespesasFrete(companyId: string, notaId: string) {
 async function obterDetalhe(
   companyId: string,
   notaId: string,
-  opcoes?: { jaRetentouVinculoCte?: boolean }
+  opcoes?: { jaRetentouVinculoCte?: boolean; jaReparouItens?: boolean }
 ): Promise<{
   nota: Record<string, unknown>
   pedidosDisponiveis: Array<{ id: string; numero: number; status: string }>
@@ -842,17 +861,55 @@ async function obterDetalhe(
     if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
   }
 
-  // Nota NFe 55 já analisada mas sem itens (falha pontual num pipeline anterior,
-  // sync que pulou XML já "completo", etc.) — repara ao abrir, sem exigir clique
-  // em Reanalisar. Só entra aqui se o bloco acima não rodou (analiseJson já existia).
+  // Nota NFe 55 sem itens (falha de pipeline / sync / XML só resNFe) — repara ao abrir.
+  // Inclui notas já lançadas indevidamente sem itens (reabre + reanalisa).
   if (
-    statusesAbertos.includes(nota.statusEntrada) &&
+    !opcoes?.jaReparouItens &&
     (nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento) &&
-    nota.xmlConteudo &&
+    nota.statusEntrada !== 'cancelada' &&
     nota.itens.length === 0
   ) {
-    const { itensAdicionados } = await sincronizarItensPendentesDoXml(companyId, notaId)
+    let itensAdicionados = 0
+    if (nota.xmlConteudo) {
+      ;({ itensAdicionados } = await sincronizarItensPendentesDoXml(companyId, notaId))
+    }
+    // XML ausente ou só resumo DistDFe (resNFe): tenta baixar NFe completa na Focus.
+    if (itensAdicionados === 0 && (!nota.xmlConteudo || !xmlNfeTemItensParseaveis(nota.xmlConteudo))) {
+      try {
+        await clientePrisma.nfeRecebida.update({
+          where: { id: notaId },
+          data: { nfeCompleta: false },
+        })
+        const { servicoFocusNfe } = await import('../focus-nfe/servico-focus-nfe.js')
+        await servicoFocusNfe.obterXmlNota(companyId, notaId, 'visualizar')
+        ;({ itensAdicionados } = await sincronizarItensPendentesDoXml(companyId, notaId))
+      } catch (erro) {
+        logFocus('warn', 'entrada_reparo_xml_focus_falhou', {
+          companyId,
+          notaId,
+          chave: nota.chaveNfe,
+          mensagem: erro instanceof Error ? erro.message : String(erro),
+        })
+      }
+    }
     if (itensAdicionados > 0) {
+      const finalizada =
+        nota.statusEntrada === 'entrada_contagem' ||
+        nota.statusEntrada === 'entrada_consolidada'
+      if (finalizada) {
+        await repositorioEntradaNotas.atualizarNota(notaId, {
+          statusEntrada: 'em_analise',
+          etapaAtual: 'cadastro',
+          origemLancamento: null,
+        })
+        logFocus('warn', 'entrada_reaberta_sem_itens', {
+          companyId,
+          notaId,
+          chave: nota.chaveNfe,
+          statusAntes: nota.statusEntrada,
+          itensAdicionados,
+        })
+      }
       return analisarNota(companyId, notaId)
     }
   }
@@ -1333,6 +1390,15 @@ async function lancar(
   }
   if (nota.statusEntrada === 'cancelada') {
     throw new ErroDaAplicacao('Nota cancelada — não é possível lançar.', 409)
+  }
+  if (
+    (nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento) &&
+    nota.itens.length === 0
+  ) {
+    throw new ErroDaAplicacao(
+      'Nota sem itens parseados do XML. Reimporte o XML ou complete o download na Focus antes de lançar.',
+      400
+    )
   }
 
   const gate = pipelineProntoParaLancar(

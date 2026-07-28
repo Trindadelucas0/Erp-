@@ -518,6 +518,18 @@ export function extrairItensDoXml(xmlBruto: string): ItemXmlNfe[] {
   return itens
 }
 
+/**
+ * True se o XML é NFe completa com itens (`det`), não só resumo DistDFe (`resNFe`).
+ * Usado para `nfeCompleta` — sem isso o sync para de rebaixar e o Cadastro fica sem linhas.
+ */
+export function xmlNfeTemItensParseaveis(xmlBruto: string | null | undefined): boolean {
+  if (!xmlBruto) return false
+  const xml = normalizarXmlNfe(xmlBruto)
+  if (!xml) return false
+  if (/<(?:[\w.]+:)?resNFe\b/i.test(xml)) return false
+  return todosBlocosTag(xml, 'det').length > 0
+}
+
 export type VisualizacaoNotaFiscal = {
   tipoDocumento: 'nfe55' | 'nfse' | 'cte' | 'desconhecido'
   chaveNfe: string | null

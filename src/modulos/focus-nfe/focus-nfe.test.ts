@@ -8,8 +8,10 @@ import {
   extrairChavesNfeReferenciadasDoCte,
   extrairModFreteDoXml,
   extrairCamposResumoDoXml,
+  extrairItensDoXml,
   detectarDocumentoFiscalXml,
   montarVisualizacaoDoXml,
+  xmlNfeTemItensParseaveis,
 } from './parser-xml-nfe.js'
 import {
   mascararCnpj,
@@ -336,5 +338,20 @@ describe('sanitizarRegrasFiscais', () => {
       REGRAS_FISCAIS_PADRAO.observacao
     )
     expect(sanitizarObservacaoFiscal('Confere NCM na entrada')).toBe('Confere NCM na entrada')
+  })
+})
+
+describe('xmlNfeTemItensParseaveis', () => {
+  it('rejeita resNFe DistDFe', () => {
+    const resumo =
+      '<?xml version="1.0"?><resNFe versao="1.01"><chNFe>35260701637895007498550060014668861777153110</chNFe><vNF>100</vNF></resNFe>'
+    expect(xmlNfeTemItensParseaveis(resumo)).toBe(false)
+  })
+
+  it('aceita NFe com det', () => {
+    const nfe =
+      '<nfeProc><NFe><infNFe><det nItem="1"><prod><cProd>1</cProd><xProd>X</xProd><qCom>1</qCom><vUnCom>1</vUnCom><vProd>1</vProd></prod></det></infNFe></NFe></nfeProc>'
+    expect(xmlNfeTemItensParseaveis(nfe)).toBe(true)
+    expect(extrairItensDoXml(nfe)).toHaveLength(1)
   })
 })

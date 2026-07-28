@@ -16,6 +16,7 @@ import {
   normalizarXmlNfe,
   detectarDocumentoFiscalXml,
   montarVisualizacaoDoXml,
+  xmlNfeTemItensParseaveis,
 } from './parser-xml-nfe.js'
 import { repositorioFocusNfe } from './repositorio-focus-nfe.js'
 import {
@@ -515,7 +516,11 @@ async function executarSync(companyId: string, jobId: string) {
             pushLog(`nfe: cota mensal esgotada (${usadosNoMes}/${cotaMensal}) — pausando lote`)
             break
           }
-          if (existentePre?.nfeCompleta && existentePre.xmlConteudo) {
+          if (
+            existentePre?.nfeCompleta &&
+            existentePre.xmlConteudo &&
+            xmlNfeTemItensParseaveis(existentePre.xmlConteudo)
+          ) {
             // Nota já tem XML completo — não rebaixa da Focus, mas repara itens
             // caso um pipeline anterior tenha falhado antes de gravá-los.
             await servicoEntradaNotas.sincronizarItensPendentesDoXml(companyId, existentePre.id)
@@ -1186,7 +1191,11 @@ async function completarXmlDaFocus(
 ): Promise<ResultadoXml> {
   const chave = item.chave_nfe
   const existente = await repositorioFocusNfe.buscarPorChave(companyId, chave)
-  if (existente?.xmlConteudo && existente.nfeCompleta) {
+  if (
+    existente?.xmlConteudo &&
+    existente.nfeCompleta &&
+    xmlNfeTemItensParseaveis(existente.xmlConteudo)
+  ) {
     return { ok: true, rateLimit: false }
   }
 
@@ -1218,6 +1227,16 @@ async function completarXmlDaFocus(
     return { ok: false, rateLimit, mensagem: xmlResp.sucesso === false ? xmlResp.mensagem : 'vazio' }
   }
 
+  const xmlCompleto = xmlNfeTemItensParseaveis(xmlResp.dados)
+  if (!xmlCompleto) {
+    pushLog(`xml ${chave.slice(-8)}: recebido resumo DistDFe (resNFe) — ainda sem itens`)
+    logFocus('warn', 'sync_xml_resumo_sem_itens', {
+      companyId,
+      chave: chave.slice(-8),
+      bytes: xmlResp.dados.length,
+    })
+  }
+
   const campos = extrairCamposResumoDoXml(xmlResp.dados)
   const { registro } = await repositorioFocusNfe.upsertNfeRecebida({
     companyId,
@@ -1228,13 +1247,13 @@ async function completarXmlDaFocus(
     dataEmissao: campos.dataEmissao,
     valorTotal: campos.valorTotal,
     xmlConteudo: xmlResp.dados,
-    nfeCompleta: true,
+    nfeCompleta: xmlCompleto,
     origem: 'focus',
     situacao: item.situacao ?? 'autorizada',
     manifestacaoDestinatario: item.manifestacao_destinatario ?? 'ciencia',
   })
   await servicoEntradaNotas.processarAposXml(companyId, registro.id)
-  return { ok: true, rateLimit: false }
+  return { ok: xmlCompleto, rateLimit: false }
 }
 
 async function enfileirarSync(
@@ -1405,10 +1424,25 @@ async function obterXmlNota(
 
   let xml = nota.xmlConteudo
   let origemXml: 'banco' | 'focus' = 'banco'
+  const precisaXmlCompleto =
+    !xml ||
+    ((nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento) &&
+      !xmlNfeTemItensParseaveis(xml))
 
-  if (!xml) {
+  if (precisaXmlCompleto) {
     const credenciais = await obterCredenciais(companyId)
     const tipo = nota.tipoDocumento
+    if (tipo !== 'nfse' && tipo !== 'cte') {
+      const man = (nota.manifestacaoDestinatario ?? '').toLowerCase()
+      if (!man || man === 'nulo' || man === 'null') {
+        await clienteFocusNfe.manifestar(
+          credenciais.apiToken,
+          credenciais.homologacao,
+          nota.chaveNfe,
+          'ciencia'
+        )
+      }
+    }
     const xmlResp =
       tipo === 'nfse'
         ? await clienteFocusNfe.baixarXmlNfse(
@@ -1447,6 +1481,8 @@ async function obterXmlNota(
     const campos = extrairCamposResumoDoXml(xml)
     const tipoPersistido =
       tipo === 'nfse' || tipo === 'cte' ? tipo : 'nfe55'
+    const nfeCompleta =
+      tipoPersistido !== 'nfe55' ? true : xmlNfeTemItensParseaveis(xml)
     await repositorioFocusNfe.upsertNfeRecebida({
       companyId,
       chaveNfe: nota.chaveNfe,
@@ -1457,7 +1493,7 @@ async function obterXmlNota(
       dataEmissao: campos.dataEmissao ?? nota.dataEmissao,
       valorTotal: campos.valorTotal ?? (nota.valorTotal != null ? Number(nota.valorTotal) : null),
       xmlConteudo: xml,
-      nfeCompleta: true,
+      nfeCompleta,
       origem: 'focus',
     })
     await servicoEntradaNotas.processarAposXml(companyId, nota.id)
@@ -1883,7 +1919,7 @@ async function reprocessarXmlsLocais(companyId: string) {
       dataEmissao: campos.dataEmissao,
       valorTotal: campos.valorTotal,
       xmlConteudo: item.xmlConteudo,
-      nfeCompleta: true,
+      nfeCompleta: xmlNfeTemItensParseaveis(item.xmlConteudo),
     })
     ok += 1
     const { itensAdicionados } = await servicoEntradaNotas.sincronizarItensPendentesDoXml(

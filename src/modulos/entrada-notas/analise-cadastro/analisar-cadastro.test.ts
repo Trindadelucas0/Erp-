@@ -101,4 +101,25 @@ describe('analisarCadastro — auto-match de itens', () => {
       { id: 'item-2', produtoId: null, vinculoModo: 'desvinculado', criticaCadastro: true },
     ])
   })
+
+  it('NFe sem itens parseados é bloqueante (não só aviso)', async () => {
+    const resultado = await analisarCadastro({
+      ...base,
+      itens: [],
+    })
+
+    expect(resultado.resultado.status).toBe('bloqueante')
+    expect(resultado.resultado.bloqueios[0]).toContain('sem itens parseados')
+    expect(resultado.resultado.avisos).toHaveLength(0)
+  })
+
+  it('exigirItens=false (NFS-e) não bloqueia por lista vazia', async () => {
+    const resultado = await analisarCadastro({
+      ...base,
+      itens: [],
+      exigirItens: false,
+    })
+
+    expect(resultado.resultado.bloqueios.some((b) => b.includes('sem itens'))).toBe(false)
+  })
 })

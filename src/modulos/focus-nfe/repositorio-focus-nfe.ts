@@ -4,6 +4,19 @@
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import { normalizarDocumento } from '../../compartilhado/validacoes/documentos.js'
 import { REGRAS_FISCAIS_PADRAO } from './esquema-focus-nfe.js'
+import { xmlNfeTemItensParseaveis } from './parser-xml-nfe.js'
+
+function resolverNfeCompleta(params: {
+  tipoDocumento: string | null | undefined
+  xmlConteudo: string | null | undefined
+  nfeCompleta?: boolean
+}): boolean {
+  const tipo = params.tipoDocumento ?? 'nfe55'
+  if (tipo !== 'nfe55') return params.nfeCompleta ?? false
+  if (!params.xmlConteudo) return false
+  if (!xmlNfeTemItensParseaveis(params.xmlConteudo)) return false
+  return params.nfeCompleta ?? true
+}
 
 async function buscarConfigPorEmpresa(companyId: string) {
   return clientePrisma.configuracaoFocusNfe.findUnique({ where: { companyId } })
@@ -262,11 +275,18 @@ async function upsertNfeRecebida(dados: {
 }) {
   const existente = await buscarPorChave(dados.companyId, dados.chaveNfe)
   if (existente) {
+    const tipoDocumento = dados.tipoDocumento ?? existente.tipoDocumento
+    const xmlConteudo = dados.xmlConteudo ?? existente.xmlConteudo
+    const nfeCompleta = resolverNfeCompleta({
+      tipoDocumento,
+      xmlConteudo,
+      nfeCompleta: dados.nfeCompleta ?? existente.nfeCompleta,
+    })
     return {
       registro: await clientePrisma.nfeRecebida.update({
         where: { id: existente.id },
         data: {
-          tipoDocumento: dados.tipoDocumento ?? existente.tipoDocumento,
+          tipoDocumento,
           nomeEmitente: dados.nomeEmitente ?? existente.nomeEmitente,
           documentoEmitente: dados.documentoEmitente ?? existente.documentoEmitente,
           cnpjDestinatario: dados.cnpjDestinatario ?? existente.cnpjDestinatario,
@@ -275,10 +295,10 @@ async function upsertNfeRecebida(dados: {
           situacao: dados.situacao ?? existente.situacao,
           manifestacaoDestinatario:
             dados.manifestacaoDestinatario ?? existente.manifestacaoDestinatario,
-          nfeCompleta: dados.nfeCompleta ?? existente.nfeCompleta,
+          nfeCompleta,
           tipoNfe: dados.tipoNfe ?? existente.tipoNfe,
           versaoFocus: dados.versaoFocus ?? existente.versaoFocus,
-          xmlConteudo: dados.xmlConteudo ?? existente.xmlConteudo,
+          xmlConteudo,
           ...(dados.etapaAtual ? { etapaAtual: dados.etapaAtual } : {}),
           ...(dados.modFrete !== undefined ? { modFrete: dados.modFrete } : {}),
           ...(dados.chaveNfeReferenciada !== undefined
@@ -290,12 +310,18 @@ async function upsertNfeRecebida(dados: {
     }
   }
 
+  const tipoDocumento = dados.tipoDocumento ?? 'nfe55'
+  const nfeCompleta = resolverNfeCompleta({
+    tipoDocumento,
+    xmlConteudo: dados.xmlConteudo,
+    nfeCompleta: dados.nfeCompleta,
+  })
   return {
     registro: await clientePrisma.nfeRecebida.create({
       data: {
         companyId: dados.companyId,
         chaveNfe: dados.chaveNfe,
-        tipoDocumento: dados.tipoDocumento ?? 'nfe55',
+        tipoDocumento,
         nomeEmitente: dados.nomeEmitente,
         documentoEmitente: dados.documentoEmitente,
         cnpjDestinatario: dados.cnpjDestinatario,
@@ -303,7 +329,7 @@ async function upsertNfeRecebida(dados: {
         dataEmissao: dados.dataEmissao,
         situacao: dados.situacao,
         manifestacaoDestinatario: dados.manifestacaoDestinatario,
-        nfeCompleta: dados.nfeCompleta ?? false,
+        nfeCompleta,
         tipoNfe: dados.tipoNfe,
         versaoFocus: dados.versaoFocus ?? 0,
         origem: dados.origem ?? 'focus',
