@@ -1,10 +1,22 @@
 /**
- * Repara cursor DistDFe NFe quando ultimaVersaoNfeRecebida avançou além
- * das notas persistidas (bug antigo do x-max-version no lote incompleto).
+ * Repara cursor DistDFe quando ultimaVersao* avançou além das notas persistidas
+ * (bug antigo do x-max-version no lote incompleto ou falha de XML CT-e avançando cursor).
  */
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
+
+type TipoCursor = {
+  campo: 'ultimaVersaoNfeRecebida' | 'ultimaVersaoNfseRecebida' | 'ultimaVersaoCteRecebida'
+  tipoDocumento: 'nfe55' | 'nfse' | 'cte'
+  rotulo: string
+}
+
+const TIPOS: TipoCursor[] = [
+  { campo: 'ultimaVersaoNfeRecebida', tipoDocumento: 'nfe55', rotulo: 'nfe' },
+  { campo: 'ultimaVersaoNfseRecebida', tipoDocumento: 'nfse', rotulo: 'nfse' },
+  { campo: 'ultimaVersaoCteRecebida', tipoDocumento: 'cte', rotulo: 'cte' },
+]
 
 async function main() {
   const companies = await prisma.configuracaoFocusNfe.findMany({
@@ -18,26 +30,28 @@ async function main() {
   })
 
   for (const cfg of companies) {
-    const maxNfe = await prisma.nfeRecebida.aggregate({
-      where: { companyId: cfg.companyId, tipoDocumento: 'nfe55' },
-      _max: { versaoFocus: true },
-      _count: true,
-    })
-    const maxSalvo = maxNfe._max.versaoFocus ?? 0
-    const cursor = cfg.ultimaVersaoNfeRecebida ?? 0
-
-    if (cursor > maxSalvo && maxNfe._count > 0) {
-      await prisma.configuracaoFocusNfe.update({
-        where: { companyId: cfg.companyId },
-        data: { ultimaVersaoNfeRecebida: maxSalvo },
+    for (const tipo of TIPOS) {
+      const maxDoc = await prisma.nfeRecebida.aggregate({
+        where: { companyId: cfg.companyId, tipoDocumento: tipo.tipoDocumento },
+        _max: { versaoFocus: true },
+        _count: true,
       })
-      console.log(
-        `reparado companyId=${cfg.companyId} nfe cursor ${cursor} → ${maxSalvo} (notas=${maxNfe._count})`
-      )
-    } else {
-      console.log(
-        `ok companyId=${cfg.companyId} nfe cursor=${cursor} maxSalvo=${maxSalvo} notas=${maxNfe._count}`
-      )
+      const maxSalvo = maxDoc._max.versaoFocus ?? 0
+      const cursor = cfg[tipo.campo] ?? 0
+
+      if (cursor > maxSalvo && maxDoc._count > 0) {
+        await prisma.configuracaoFocusNfe.update({
+          where: { companyId: cfg.companyId },
+          data: { [tipo.campo]: maxSalvo },
+        })
+        console.log(
+          `reparado companyId=${cfg.companyId} ${tipo.rotulo} cursor ${cursor} → ${maxSalvo} (notas=${maxDoc._count})`
+        )
+      } else {
+        console.log(
+          `ok companyId=${cfg.companyId} ${tipo.rotulo} cursor=${cursor} maxSalvo=${maxSalvo} notas=${maxDoc._count}`
+        )
+      }
     }
   }
 }

@@ -18,6 +18,32 @@ import {
   mensagemErroFocusAmigavel,
 } from './mensagens-focus-nfe.js'
 import { analisarFiscalBasico } from '../entrada-notas/analise-fiscal/analisar-fiscal-basico.js'
+import { decisaoAvancoCursorCteAposXml } from './servico-focus-nfe.js'
+
+describe('sync CT-e — cursor DistDFe', () => {
+  it('avanca cursor quando XML ok ou nao somos tomador (decisao definitiva)', () => {
+    expect(decisaoAvancoCursorCteAposXml({ ok: true, rateLimit: false })).toBe('avancar')
+    expect(
+      decisaoAvancoCursorCteAposXml({ ok: false, rateLimit: false, ignorado: true })
+    ).toBe('avancar')
+  })
+
+  it('nao avanca cursor quando XML falha (retry no proximo sync)', () => {
+    expect(
+      decisaoAvancoCursorCteAposXml({
+        ok: false,
+        rateLimit: false,
+        mensagem: '404 Not Found',
+      })
+    ).toBe('retry')
+  })
+
+  it('pausa lote em rate limit Focus', () => {
+    expect(
+      decisaoAvancoCursorCteAposXml({ ok: false, rateLimit: true, mensagem: '429' })
+    ).toBe('pausar')
+  })
+})
 
 describe('Focus NFe — Basic Auth', () => {
   it('monta Basic com token e senha vazia', () => {
@@ -167,6 +193,27 @@ describe('parser XML NF-e', () => {
     expect(extrairCnpjTomadorCte(xmlTomadorRem)).toBe('46388683000105')
     // Destinatário permanece o dest, não o tomador
     expect(extrairCamposResumoDoXml(xmlTomadorRem).cnpjDestinatario).toBe('55700950000110')
+  })
+
+  it('extrai tomador CTe com layout toma3 (Focus/Hivelog) sem confundir toma com toma3', () => {
+    const chave = '53260742035781000108570010000054061000000000'
+    const xml = `<?xml version="1.0"?>
+      <cteProc>
+        <CTe xmlns="http://www.portalfiscal.inf.br/cte">
+          <infCte Id="CTe${chave}">
+            <ide>
+              <dhEmi>2026-07-28T11:12:49-03:00</dhEmi>
+              <toma3><toma>3</toma></toma3>
+            </ide>
+            <emit><CNPJ>42035781000108</CNPJ><xNome>RAM CARGAS BSB EIRELI</xNome></emit>
+            <rem><CNPJ>61064838014193</CNPJ><xNome>Saint-Gobain</xNome></rem>
+            <dest><CNPJ>34221243000171</CNPJ><xNome>CONEXAO COMERCIAL</xNome></dest>
+            <vPrest><vTPrest>742.10</vTPrest></vPrest>
+          </infCte>
+        </CTe>
+      </cteProc>`
+    expect(extrairCnpjTomadorCte(xml)).toBe('34221243000171')
+    expect(extrairCamposResumoDoXml(xml).cnpjDestinatario).toBe('34221243000171')
   })
 
   it('extrai tomador CTe toma=4 (outros) e fail-closed sem documento', () => {

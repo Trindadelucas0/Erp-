@@ -365,6 +365,13 @@ type ResultadoXml = {
   mensagem?: string
 }
 
+/** Decisão de cursor DistDFe após tentativa de XML do CT-e (exportado para testes). */
+export function decisaoAvancoCursorCteAposXml(res: ResultadoXml): 'avancar' | 'pausar' | 'retry' {
+  if (res.rateLimit) return 'pausar'
+  if (res.ok || res.ignorado) return 'avancar'
+  return 'retry'
+}
+
 async function executarSync(companyId: string, jobId: string) {
   const linhasLog: string[] = []
   const pushLog = (msg: string) => {
@@ -800,7 +807,17 @@ async function executarSync(companyId: string, jobId: string) {
             const existente = await repositorioFocusNfe.buscarPorChave(companyId, chave)
             if (existente?.xmlConteudo && existente.nfeCompleta) {
               const tomadorXml = extrairCnpjTomadorCte(existente.xmlConteudo)
-              if (compararTomadorComEmpresa(tomadorXml, cnpj) !== true) {
+              const comparacaoLocal = compararTomadorComEmpresa(tomadorXml, cnpj)
+              if (comparacaoLocal === null) {
+                pushLog(`cte tomador ilegivel no xml local ${chave.slice(-8)} — sem avancar cursor`)
+                logFocus('warn', 'sync_cte_tomador_ilegivel_sem_avancar_cursor', {
+                  companyId,
+                  chave: chave.slice(-8),
+                  fonte: 'xml_local',
+                })
+                break
+              }
+              if (comparacaoLocal === false) {
                 pushLog(`cte ignorado: nao somos tomador ${chave.slice(-8)}`)
                 logFocus('info', 'sync_cte_ignorado_nao_tomador', {
                   companyId,
@@ -846,19 +863,27 @@ async function executarSync(companyId: string, jobId: string) {
               pushLog(
                 `xml cte ${chave.slice(-8)}: ${xmlResp.sucesso === false ? xmlResp.mensagem : 'vazio'}`
               )
-              maxVersaoCte = await avancarCursorCte(
+              logFocus('warn', 'sync_cte_xml_falhou_sem_avancar_cursor', {
                 companyId,
-                credenciais,
-                temConfigBanco,
-                maxVersaoCte,
-                versaoItem
-              )
-              processados += 1
-              continue
+                chave: chave.slice(-8),
+                http: xmlResp.sucesso === false ? xmlResp.codigoHttp ?? '' : '',
+                mensagem: xmlResp.sucesso === false ? xmlResp.mensagem : 'vazio',
+              })
+              break
             }
 
             const tomadorXml = extrairCnpjTomadorCte(xmlResp.dados)
-            if (compararTomadorComEmpresa(tomadorXml, cnpj) !== true) {
+            const comparacaoXml = compararTomadorComEmpresa(tomadorXml, cnpj)
+            if (comparacaoXml === null) {
+              pushLog(`cte tomador ilegivel no xml ${chave.slice(-8)} — sem avancar cursor`)
+              logFocus('warn', 'sync_cte_tomador_ilegivel_sem_avancar_cursor', {
+                companyId,
+                chave: chave.slice(-8),
+                fonte: 'xml',
+              })
+              break
+            }
+            if (comparacaoXml === false) {
               pushLog(`cte ignorado: nao somos tomador ${chave.slice(-8)}`)
               logFocus('info', 'sync_cte_ignorado_nao_tomador', {
                 companyId,
@@ -921,7 +946,7 @@ async function executarSync(companyId: string, jobId: string) {
             continue
           }
 
-          // Resumo já confirma que somos tomador.
+          // Resumo já confirma que somos tomador — só persiste após XML OK (sem upsert prematuro).
           const mapeado = mapearResumoCte(item)
           const existentePre = await repositorioFocusNfe.buscarPorChave(companyId, mapeado.chaveNfe)
           if (!existentePre && !podeCriarNotaNova()) {
@@ -941,17 +966,45 @@ async function executarSync(companyId: string, jobId: string) {
             continue
           }
 
-          const { criado, registro } = await repositorioFocusNfe.upsertNfeRecebida({
+          const xmlRes = await completarXmlCteDaFocus(
             companyId,
-            ...mapeado,
-            origem: 'focus',
-          })
-          if (criado) {
+            credenciais.apiToken,
+            credenciais.homologacao,
+            chave,
+            existentePre?.id ?? '',
+            cnpj,
+            pushLog,
+            {
+              versaoFocus: mapeado.versaoFocus,
+              situacao: item.status ?? item.situacao ?? 'autorizada',
+            }
+          )
+          const decisaoCursor = decisaoAvancoCursorCteAposXml(xmlRes)
+          if (decisaoCursor === 'pausar') {
+            rateLimit = true
+            pushLog('cte: lote pausado por rate limit Focus')
+            break
+          }
+          if (decisaoCursor === 'retry') {
+            logFocus('warn', 'sync_cte_xml_falhou_sem_avancar_cursor', {
+              companyId,
+              chave: chave.slice(-8),
+              mensagem: xmlRes.mensagem ?? '',
+            })
+            break
+          }
+          if (xmlRes.ignorado) {
+            pushLog(`cte ignorado: nao somos tomador ${chave.slice(-8)}`)
+            if (existentePre && !existentePre.nfeCompleta) {
+              await repositorioFocusNfe.removerNfeRecebidaPorId(existentePre.id)
+            }
+          } else if (!existentePre) {
             novasCte += 1
             usadosNoMes += 1
           } else {
             atualizadasCte += 1
           }
+
           maxVersaoCte = await avancarCursorCte(
             companyId,
             credenciais,
@@ -959,25 +1012,6 @@ async function executarSync(companyId: string, jobId: string) {
             maxVersaoCte,
             mapeado.versaoFocus
           )
-
-          const xmlRes = await completarXmlCteDaFocus(
-            companyId,
-            credenciais.apiToken,
-            credenciais.homologacao,
-            chave,
-            registro.id,
-            cnpj,
-            pushLog
-          )
-          if (xmlRes.rateLimit) {
-            rateLimit = true
-            pushLog('cte: lote pausado por rate limit Focus')
-            break
-          }
-          if (xmlRes.ignorado) {
-            pushLog(`cte ignorado: nao somos tomador ${chave.slice(-8)}`)
-          }
-
           processados += 1
           await repositorioFocusNfe.atualizarJob(jobId, {
             progresso: Math.min(95, 50 + processados * 4),
@@ -1129,12 +1163,22 @@ async function completarXmlCteDaFocus(
   chave: string,
   registroId: string,
   cnpjEmpresa: string,
-  pushLog: (msg: string) => void
+  pushLog: (msg: string) => void,
+  meta?: { versaoFocus?: number; situacao?: string | null }
 ): Promise<ResultadoXml> {
   const existente = await repositorioFocusNfe.buscarPorChave(companyId, chave)
   if (existente?.xmlConteudo && existente.nfeCompleta) {
     const tomador = extrairCnpjTomadorCte(existente.xmlConteudo)
-    if (compararTomadorComEmpresa(tomador, cnpjEmpresa) !== true) {
+    const comparacao = compararTomadorComEmpresa(tomador, cnpjEmpresa)
+    if (comparacao === null) {
+      logFocus('warn', 'sync_cte_tomador_ilegivel_sem_avancar_cursor', {
+        companyId,
+        chave: chave.slice(-8),
+        fonte: 'xml_local_completar',
+      })
+      return { ok: false, rateLimit: false, mensagem: 'tomador ilegivel no xml local' }
+    }
+    if (comparacao === false) {
       logFocus('info', 'sync_cte_ignorado_nao_tomador', {
         companyId,
         chave: chave.slice(-8),
@@ -1153,12 +1197,24 @@ async function completarXmlCteDaFocus(
   }
 
   const tomador = extrairCnpjTomadorCte(xmlResp.dados)
-  if (compararTomadorComEmpresa(tomador, cnpjEmpresa) !== true) {
+  const comparacao = compararTomadorComEmpresa(tomador, cnpjEmpresa)
+  if (comparacao === null) {
+    logFocus('warn', 'sync_cte_tomador_ilegivel_sem_avancar_cursor', {
+      companyId,
+      chave: chave.slice(-8),
+      fonte: 'xml_completar',
+    })
+    return { ok: false, rateLimit: false, mensagem: 'tomador ilegivel no xml' }
+  }
+  if (comparacao === false) {
     logFocus('info', 'sync_cte_ignorado_nao_tomador', {
       companyId,
       chave: chave.slice(-8),
       fonte: 'xml_completar',
     })
+    if (existente && !existente.nfeCompleta) {
+      await repositorioFocusNfe.removerNfeRecebidaPorId(existente.id)
+    }
     return { ok: false, rateLimit: false, ignorado: true }
   }
 
@@ -1175,7 +1231,8 @@ async function completarXmlCteDaFocus(
     xmlConteudo: xmlResp.dados,
     nfeCompleta: true,
     origem: 'focus',
-    situacao: existente?.situacao ?? 'autorizada',
+    situacao: meta?.situacao ?? existente?.situacao ?? 'autorizada',
+    versaoFocus: meta?.versaoFocus ?? existente?.versaoFocus,
     etapaAtual: 'servico',
   })
   await servicoEntradaNotas.processarAposXml(companyId, registro.id ?? registroId)
@@ -1828,7 +1885,14 @@ async function importarXml(companyId: string, xmlBruto: string) {
       )
     }
     const tomador = extrairCnpjTomadorCte(xml)
-    if (compararTomadorComEmpresa(tomador, normalizarCnpj(empresa.cnpj)) !== true) {
+    const comparacaoImport = compararTomadorComEmpresa(tomador, normalizarCnpj(empresa.cnpj))
+    if (comparacaoImport === null) {
+      throw new ErroDaAplicacao(
+        'CTe com tomador ilegível no XML (ide/toma ou toma3/toma4). Confirme o arquivo completo do CT-e.',
+        400
+      )
+    }
+    if (comparacaoImport === false) {
       throw new ErroDaAplicacao(
         'CTe ignorado: empresa não é tomadora do frete. Só importe CTe em que o CNPJ da empresa seja o tomador do serviço.',
         400

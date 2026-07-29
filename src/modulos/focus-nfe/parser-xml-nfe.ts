@@ -65,8 +65,9 @@ function desembrulharCdata(conteudo: string): string {
 
 export function extrairCampoXml(xmlBruto: string, tag: string): string | null {
   const xml = normalizarXmlNfe(xmlBruto)
+  // `\b` evita que `toma` case `toma3`/`toma4` (layout CT-e comum Focus/Hivelog).
   const re = new RegExp(
-    `<(?:[\\w.]+:)?${tag}[^>]*>([\\s\\S]*?)</(?:[\\w.]+:)?${tag}>`,
+    `<(?:[\\w.]+:)?${tag}\\b[^>]*>([\\s\\S]*?)</(?:[\\w.]+:)?${tag}\\b>`,
     'i'
   )
   const m = xml.match(re)
@@ -280,10 +281,11 @@ export function extrairCnpjTomadorCte(xmlBruto: string): string | null {
   const toma3 = blocoTag(xml, 'toma3')
   const toma4 = blocoTag(xml, 'toma4')
 
+  // Preferir toma3/toma4 (layout Focus/Hivelog) antes de ide/toma solto.
   const indicador =
-    (ide ? extrairCampoXml(ide, 'toma') : null) ??
     (toma3 ? extrairCampoXml(toma3, 'toma') : null) ??
-    (toma4 ? extrairCampoXml(toma4, 'toma') : null)
+    (toma4 ? extrairCampoXml(toma4, 'toma') : null) ??
+    (ide ? extrairCampoXml(ide, 'toma') : null)
 
   const rem = blocoTag(xml, 'rem')
   const exped = blocoTag(xml, 'exped')

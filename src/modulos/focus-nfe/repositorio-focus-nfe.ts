@@ -372,6 +372,10 @@ async function atualizarDanfe(
   })
 }
 
+async function removerNfeRecebidaPorId(id: string) {
+  return clientePrisma.nfeRecebida.delete({ where: { id } })
+}
+
 export const repositorioFocusNfe = {
   buscarConfigPorEmpresa,
   salvarConfig,
@@ -392,4 +396,5 @@ export const repositorioFocusNfe = {
   upsertNfeRecebida,
   buscarEmpresaCnpj,
   atualizarDanfe,
+  removerNfeRecebidaPorId,
 }
