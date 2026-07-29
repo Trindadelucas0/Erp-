@@ -28,6 +28,11 @@ import {
 import type { Prisma } from '@prisma/client'
 import { ratearCustoFrete } from './ratear-custo-frete.js'
 import { servicoVinculoCte } from './servico-vinculo-cte.js'
+import {
+  extrairFlagsFornecedorDaNota,
+  resolverModoDocumentalEntrada,
+  type FlagsFornecedorEntrada,
+} from './resolver-modo-documental-entrada.js'
 import { randomUUID } from 'crypto'
 
 type EtapaPipeline = 'cadastro' | 'fiscal' | 'negociacao' | 'frete'
@@ -41,6 +46,32 @@ function decimalNum(v: { toNumber?: () => number } | number | null | undefined):
   if (typeof v === 'number') return v
   if (typeof v.toNumber === 'function') return v.toNumber()
   return Number(v)
+}
+
+/** Flags de tipo do fornecedor (Consumo/Prestador/exigir itens) para o pipeline. */
+async function obterFlagsFornecedorEntrada(
+  companyId: string,
+  nota: {
+    fornecedorPessoaId: string | null
+    documentoEmitente: string | null
+    fornecedorPessoa?: {
+      papeis?: Array<{ dadosFornecedor?: FlagsFornecedorEntrada | null } | null>
+    } | null
+  }
+): Promise<FlagsFornecedorEntrada | null> {
+  const doInclude = extrairFlagsFornecedorDaNota(nota)
+  if (doInclude) return doInclude
+
+  let pessoaId = nota.fornecedorPessoaId
+  if (!pessoaId && nota.documentoEmitente) {
+    const fornecedor = await repositorioEntradaNotas.buscarFornecedorPorCnpj(
+      companyId,
+      nota.documentoEmitente
+    )
+    pessoaId = fornecedor?.id ?? null
+  }
+  if (!pessoaId) return null
+  return repositorioEntradaNotas.buscarFlagsFornecedorEntrada(pessoaId)
 }
 
 /**
@@ -552,10 +583,14 @@ async function analisarNota(
 
   await repositorioEntradaNotas.atualizarNota(notaId, { statusEntrada: 'em_analise' })
 
+  const flagsFornecedor = await obterFlagsFornecedorEntrada(companyId, nota)
+  const modoDocumental = resolverModoDocumentalEntrada(flagsFornecedor)
+
   const cadastro = await analisarCadastro({
     companyId,
     documentoEmitente: nota.documentoEmitente,
     fornecedorPessoaId: nota.fornecedorPessoaId,
+    modoDocumental,
     itens: nota.itens.map((i) => ({
       id: i.id,
       gtin: i.gtin,
@@ -638,7 +673,7 @@ async function analisarNota(
   let pedido = null as Awaited<ReturnType<typeof repositorioEntradaNotas.buscarPedidoComItens>>
   if (nota.pedidoCompraId) {
     pedido = await repositorioEntradaNotas.buscarPedidoComItens(companyId, nota.pedidoCompraId)
-  } else if (nota.fornecedorPessoaId) {
+  } else if (nota.fornecedorPessoaId && !modoDocumental) {
     const abertos = await repositorioEntradaNotas.listarPedidosAbertosFornecedor(
       companyId,
       nota.fornecedorPessoaId
@@ -675,6 +710,7 @@ async function analisarNota(
       : null,
     prazoNf: nota.prazoPagamentoXml,
     prazoInformadoUsuario: nota.prazoPagamentoTexto,
+    modoDocumental,
   })
 
   for (const item of negociacao.itensCritica) {
@@ -1014,12 +1050,24 @@ async function obterDetalhe(
       regraRateioFrete:
         nota.fornecedorPessoa?.papeis?.[0]?.dadosFornecedor?.regraRateioFrete ?? 'valor',
       fornecedor: nota.fornecedorPessoa
-        ? {
-            id: nota.fornecedorPessoa.id,
-            nome: nota.fornecedorPessoa.nome,
-            cnpj: nota.fornecedorPessoa.cnpj,
-            nomeFantasia: nota.fornecedorPessoa.nomeFantasia,
-          }
+        ? (() => {
+            const df = nota.fornecedorPessoa.papeis?.[0]?.dadosFornecedor
+            const flags: FlagsFornecedorEntrada = {
+              tipoRevenda: df?.tipoRevenda ?? false,
+              tipoConsumo: df?.tipoConsumo ?? false,
+              tipoPrestadorServico: df?.tipoPrestadorServico ?? false,
+              exigirItensEntrada: df?.exigirItensEntrada ?? false,
+              permitirVinculoManual: df?.permitirVinculoManual ?? false,
+            }
+            return {
+              id: nota.fornecedorPessoa.id,
+              nome: nota.fornecedorPessoa.nome,
+              cnpj: nota.fornecedorPessoa.cnpj,
+              nomeFantasia: nota.fornecedorPessoa.nomeFantasia,
+              ...flags,
+              modoDocumental: resolverModoDocumentalEntrada(flags),
+            }
+          })()
         : null,
       analise: sanitizarAnaliseExibicao(nota.tipoDocumento, nota.analiseJson as AnaliseJson | null),
       ctesVinculados: (nota.vinculosComoNfe ?? []).map((v) => ({
@@ -1151,10 +1199,14 @@ async function recalcularSomenteCadastro(companyId: string, notaId: string) {
   const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
 
+  const flagsFornecedor = await obterFlagsFornecedorEntrada(companyId, nota)
+  const modoDocumental = resolverModoDocumentalEntrada(flagsFornecedor)
+
   const cadastro = await analisarCadastro({
     companyId,
     documentoEmitente: nota.documentoEmitente,
     fornecedorPessoaId: nota.fornecedorPessoaId,
+    modoDocumental,
     itens: nota.itens.map((i) => ({
       id: i.id,
       gtin: i.gtin,

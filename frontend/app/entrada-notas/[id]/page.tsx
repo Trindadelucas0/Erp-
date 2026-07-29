@@ -140,7 +140,18 @@ type DetalheNota = {
   chaveNfeReferenciada?: string | null
   exigeCte?: boolean
   regraRateioFrete?: string
-  fornecedor: { id: string; nome: string; cnpj: string | null; nomeFantasia: string | null } | null
+  fornecedor: {
+    id: string
+    nome: string
+    cnpj: string | null
+    nomeFantasia: string | null
+    tipoRevenda?: boolean
+    tipoConsumo?: boolean
+    tipoPrestadorServico?: boolean
+    exigirItensEntrada?: boolean
+    permitirVinculoManual?: boolean
+    modoDocumental?: boolean
+  } | null
   analise: Analise | null
   ctesVinculados?: CteVinculado[]
   nfesVinculadas?: Array<{
@@ -1204,6 +1215,14 @@ function ConteudoDetalheEntrada() {
               </p>
             ) : (
               <div className="space-y-4">
+                {nota.fornecedor?.modoDocumental ? (
+                  <p className="rounded-md border border-dashed bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                    Entrada documental (uso/consumo) — vínculo de produto não exigido
+                    {nota.fornecedor.permitirVinculoManual
+                      ? '. Você pode conciliar manualmente se quiser.'
+                      : '.'}
+                  </p>
+                ) : null}
                 {nota.itens.map((item) => (
                   <ItemVinculoCadastroGrid
                     key={item.id}
@@ -1213,6 +1232,11 @@ function ConteudoDetalheEntrada() {
                     buscando={itemVinculando === item.id}
                     buscaProduto={buscaProduto}
                     produtos={produtos}
+                    permitirAcoesVinculo={
+                      !nota.fornecedor?.modoDocumental ||
+                      Boolean(nota.fornecedor.permitirVinculoManual)
+                    }
+                    vinculoNaoExigido={Boolean(nota.fornecedor?.modoDocumental)}
                     onAbrirBusca={() => abrirBuscaProduto(item)}
                     onFecharBusca={() => {
                       setItemVinculando(null)

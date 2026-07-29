@@ -33,6 +33,8 @@ export function analisarNegociacao(params: {
   } | null
   prazoNf: string | null
   prazoInformadoUsuario: string | null
+  /** Consumo/Prestador documental: não exige PO. */
+  modoDocumental?: boolean
 }): {
   resultado: ResultadoEtapa
   classificacao: ClassificacaoNegociacao
@@ -41,8 +43,22 @@ export function analisarNegociacao(params: {
   const avisos: string[] = []
   const bloqueios: string[] = []
   const itensCritica: Array<{ id: string; criticaNegociacao: boolean }> = []
+  const modoDocumental = params.modoDocumental === true
 
   if (!params.pedido) {
+    if (modoDocumental) {
+      avisos.push(
+        'Entrada documental (uso/consumo): pedido de compra não exigido — liberação sem casamento com PO.'
+      )
+      for (const item of params.itensNf) {
+        itensCritica.push({ id: item.id, criticaNegociacao: false })
+      }
+      return {
+        resultado: { status: avisos.length > 0 ? 'aviso' : 'ok', avisos, bloqueios },
+        classificacao: 'sem_pedido',
+        itensCritica,
+      }
+    }
     bloqueios.push(
       'Nenhum pedido de compra aberto vinculado ao fornecedor. Selecione um pedido, libere críticas ou use Contato / Desconhecimento.'
     )

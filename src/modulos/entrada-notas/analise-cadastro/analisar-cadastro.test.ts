@@ -122,4 +122,35 @@ describe('analisarCadastro — auto-match de itens', () => {
 
     expect(resultado.resultado.bloqueios.some((b) => b.includes('sem itens'))).toBe(false)
   })
+
+  it('modoDocumental=true não bloqueia item sem vínculo (entrada uso/consumo)', async () => {
+    vi.mocked(repositorioEntradaNotas.buscarProdutoPorGtin).mockResolvedValue(null as never)
+
+    const resultado = await analisarCadastro({
+      ...base,
+      modoDocumental: true,
+      itens: [{ id: 'item-1', gtin: '000', codigoProduto: '000002', produtoId: null, vinculoModo: null }],
+    })
+
+    expect(resultado.resultado.status).toBe('aviso')
+    expect(resultado.resultado.bloqueios).toHaveLength(0)
+    expect(resultado.resultado.avisos[0]).toContain('documental')
+    expect(resultado.itensAtualizados[0]).toMatchObject({
+      produtoId: null,
+      criticaCadastro: false,
+    })
+  })
+
+  it('modoDocumental=true também não bloqueia item desvinculado manualmente', async () => {
+    const resultado = await analisarCadastro({
+      ...base,
+      modoDocumental: true,
+      itens: [
+        { id: 'item-1', gtin: '789', codigoProduto: null, produtoId: null, vinculoModo: 'desvinculado' },
+      ],
+    })
+
+    expect(resultado.resultado.bloqueios).toHaveLength(0)
+    expect(resultado.itensAtualizados[0].criticaCadastro).toBe(false)
+  })
 })

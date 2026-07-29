@@ -19,6 +19,11 @@ export async function analisarCadastro(params: {
   itens: ItemCadastro[]
   /** NFe 55 exige itens; NFS-e não (serviço). Default true. */
   exigirItens?: boolean
+  /**
+   * Consumo/Prestador sem Revenda e sem exigirItensEntrada:
+   * não bloqueia por item sem produto (entrada documental).
+   */
+  modoDocumental?: boolean
 }): Promise<{
   resultado: ResultadoEtapa
   fornecedorPessoaId: string | null
@@ -32,6 +37,7 @@ export async function analisarCadastro(params: {
   const avisos: string[] = []
   const bloqueios: string[] = []
   const exigirItens = params.exigirItens !== false
+  const modoDocumental = params.modoDocumental === true
 
   let fornecedorPessoaId = params.fornecedorPessoaId
   if (!fornecedorPessoaId && params.documentoEmitente) {
@@ -87,15 +93,25 @@ export async function analisarCadastro(params: {
     }
 
     if (!produtoId) {
-      critica = true
-      bloqueios.push(
-        desvinculadoManualmente
-          ? `Item desvinculado manualmente (GTIN: ${item.gtin ?? '—'} / cProd: ${item.codigoProduto ?? '—'}). Use busca manual para conciliar.`
-          : `Item sem vínculo de produto (GTIN: ${item.gtin ?? '—'} / cProd: ${item.codigoProduto ?? '—'}). Use busca manual.`
-      )
+      if (modoDocumental) {
+        critica = false
+      } else {
+        critica = true
+        bloqueios.push(
+          desvinculadoManualmente
+            ? `Item desvinculado manualmente (GTIN: ${item.gtin ?? '—'} / cProd: ${item.codigoProduto ?? '—'}). Use busca manual para conciliar.`
+            : `Item sem vínculo de produto (GTIN: ${item.gtin ?? '—'} / cProd: ${item.codigoProduto ?? '—'}). Use busca manual.`
+        )
+      }
     }
 
     itensAtualizados.push({ id: item.id, produtoId, vinculoModo, criticaCadastro: critica })
+  }
+
+  if (modoDocumental && itensAtualizados.some((i) => !i.produtoId)) {
+    avisos.push(
+      'Entrada documental (uso/consumo): vínculo de produto não exigido. Itens seguem só para conferência da NF.'
+    )
   }
 
   if (exigirItens && params.itens.length === 0) {

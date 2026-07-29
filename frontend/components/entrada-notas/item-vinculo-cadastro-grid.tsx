@@ -143,6 +143,13 @@ type Props = {
   onGravarCodigoOriginal?: () => void | Promise<void>
   /** Após gravar com sucesso nesta sessão da tela */
   codigoOriginalGravado?: boolean
+  /**
+   * Entrada documental (uso/consumo): vínculo não obrigatório.
+   * Se false, oculta Conciliar/Trocar/Desvincular.
+   */
+  permitirAcoesVinculo?: boolean
+  /** Soften “Sem vínculo” quando documental e produto não exigido */
+  vinculoNaoExigido?: boolean
 }
 
 export function ItemVinculoCadastroGrid({
@@ -160,9 +167,12 @@ export function ItemVinculoCadastroGrid({
   onDesvincular,
   onGravarCodigoOriginal,
   codigoOriginalGravado = false,
+  permitirAcoesVinculo = true,
+  vinculoNaoExigido = false,
 }: Props) {
   const [gravandoCodigo, setGravandoCodigo] = useState(false)
   const vinculado = Boolean(item.produtoId)
+  const pendenteDocumental = !vinculado && vinculoNaoExigido
   const itensPorEmbalagem = item.itensPorEmbalagem ?? 1
   const temMultiploCompra = itensPorEmbalagem > 1
 
@@ -237,7 +247,9 @@ export function ItemVinculoCadastroGrid({
             'relative flex min-h-full min-w-0 flex-col space-y-2 p-3',
             vinculado
               ? 'border-l-4 border-l-emerald-500 bg-emerald-50 dark:bg-emerald-950/30'
-              : 'border-l-4 border-l-destructive bg-destructive/10'
+              : pendenteDocumental
+                ? 'border-l-4 border-l-muted-foreground/40 bg-muted/20'
+                : 'border-l-4 border-l-destructive bg-destructive/10'
           )}
           aria-label="Produto do sistema"
         >
@@ -248,17 +260,21 @@ export function ItemVinculoCadastroGrid({
                 'rounded-full px-2 py-0.5 text-xs font-semibold',
                 vinculado
                   ? 'bg-emerald-600/15 text-emerald-700 dark:text-emerald-300'
-                  : 'bg-destructive/15 text-destructive'
+                  : pendenteDocumental
+                    ? 'bg-muted text-muted-foreground'
+                    : 'bg-destructive/15 text-destructive'
               )}
             >
-              {vinculado ? 'Vinculado' : 'Sem vínculo'}
+              {vinculado ? 'Vinculado' : pendenteDocumental ? 'Não exigido' : 'Sem vínculo'}
             </span>
           </div>
 
           {item.produto ? (
             <p className="font-medium">{rotuloProdutoSistema(item.produto)}</p>
           ) : (
-            <p className="font-medium text-destructive">Sem vínculo</p>
+            <p className={cn('font-medium', pendenteDocumental ? 'text-muted-foreground' : 'text-destructive')}>
+              {pendenteDocumental ? 'Vínculo não exigido (uso/consumo)' : 'Sem vínculo'}
+            </p>
           )}
 
           <dl className="flex-1 grid gap-1 text-xs text-muted-foreground">
@@ -332,11 +348,11 @@ export function ItemVinculoCadastroGrid({
             </p>
           )}
 
-          {item.criticaCadastro && (
+          {item.criticaCadastro && !vinculoNaoExigido && (
             <p className="text-xs text-destructive">Crítica de cadastro — concilie o produto</p>
           )}
 
-          {!finalizada && (
+          {!finalizada && permitirAcoesVinculo && (
             <div className="flex flex-wrap gap-1.5 pt-0.5">
               {!item.produtoId && (
                 <Button type="button" size="sm" disabled={acao} onClick={onAbrirBusca}>
@@ -368,7 +384,7 @@ export function ItemVinculoCadastroGrid({
             </div>
           )}
 
-          {buscando && (
+          {buscando && permitirAcoesVinculo && (
             <div className="mt-1 space-y-2 rounded-md border border-dashed p-3">
               <div className="flex gap-2">
                 <input

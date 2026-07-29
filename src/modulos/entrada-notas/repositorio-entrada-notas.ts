@@ -41,7 +41,18 @@ const includeNotaCompleta = {
       papeis: {
         where: { papel: 'fornecedor' as const, ativo: true },
         take: 1,
-        include: { dadosFornecedor: { select: { regraRateioFrete: true } } },
+        include: {
+          dadosFornecedor: {
+            select: {
+              regraRateioFrete: true,
+              tipoRevenda: true,
+              tipoConsumo: true,
+              tipoPrestadorServico: true,
+              exigirItensEntrada: true,
+              permitirVinculoManual: true,
+            },
+          },
+        },
       },
     },
   },
@@ -213,6 +224,24 @@ async function buscarFornecedorPorCnpj(companyId: string, documento: string) {
     },
     select: { id: true, nome: true, cnpj: true, cpf: true, nomeFantasia: true },
   })
+}
+
+async function buscarFlagsFornecedorEntrada(pessoaId: string) {
+  const papel = await clientePrisma.pessoaPapel.findFirst({
+    where: { pessoaId, papel: 'fornecedor', ativo: true },
+    select: {
+      dadosFornecedor: {
+        select: {
+          tipoRevenda: true,
+          tipoConsumo: true,
+          tipoPrestadorServico: true,
+          exigirItensEntrada: true,
+          permitirVinculoManual: true,
+        },
+      },
+    },
+  })
+  return papel?.dadosFornecedor ?? null
 }
 
 async function buscarProdutoPorGtin(companyId: string, gtin: string) {
@@ -446,6 +475,7 @@ async function listarNotasPendentesSemFornecedor(companyId: string) {
 
 export const repositorioEntradaNotas = {
   buscarNotaCompleta,
+  buscarFlagsFornecedorEntrada,
   buscarNotaPorId,
   substituirItensDoXml,
   backfillUnidadeItensDoXml,

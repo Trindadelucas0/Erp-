@@ -10,6 +10,7 @@ vi.mock('./repositorio-entrada-notas.js', () => ({
     atualizarNota: vi.fn(),
     atualizarItem: vi.fn(),
     buscarFornecedorPorCnpj: vi.fn(),
+    buscarFlagsFornecedorEntrada: vi.fn(),
     buscarProdutoPorGtin: vi.fn(),
     buscarProdutoPorCodigoOriginal: vi.fn(),
     listarPedidosAbertosFornecedor: vi.fn(),
@@ -238,6 +239,7 @@ function ligarRepositorioFake(estadoInicial: Record<string, unknown>) {
   })
   vi.mocked(repositorioEntradaNotas.listarPedidosAbertosFornecedor).mockResolvedValue([])
   vi.mocked(repositorioEntradaNotas.mapaCodigoOriginalPorProduto).mockResolvedValue(new Map())
+  vi.mocked(repositorioEntradaNotas.buscarFlagsFornecedorEntrada).mockResolvedValue(null)
 
   return { getEstado: () => notaEstado }
 }
