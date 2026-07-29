@@ -55,6 +55,7 @@ type ItemNota = {
   descricao: string | null
   gtin: string | null
   codigoProduto: string | null
+  unidade?: string | null
   ncm: string | null
   cfop: string | null
   cst: string | null
@@ -83,6 +84,8 @@ type ItemNota = {
     nomeVenda: string
     sku: string | null
     codigoBarras: string | null
+    marca: string | null
+    unidade: string | null
     ncm: string | null
     codigoOrigem: string | null
   } | null
@@ -149,7 +152,13 @@ type DetalheNota = {
   itens: ItemNota[]
 }
 
-type ProdutoBusca = { id: string; nomeVenda: string; sku?: string | null; codigoBarras?: string | null }
+type ProdutoBusca = {
+  id: string
+  nomeVenda: string
+  sku?: string | null
+  codigoBarras?: string | null
+  marca?: string | null
+}
 
 type AbaId = 'cadastro' | 'fiscal' | 'negociacao' | 'frete' | 'lancamento'
 

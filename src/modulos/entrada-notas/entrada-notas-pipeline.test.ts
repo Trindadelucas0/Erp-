@@ -16,6 +16,7 @@ const xmlAmostra = `
       <NCM>22021000</NCM>
       <CFOP>5102</CFOP>
       <qCom>10.0000</qCom>
+      <uCom>UN</uCom>
       <vUnCom>5.5000</vUnCom>
       <vProd>55.00</vProd>
     </prod>
@@ -36,6 +37,7 @@ describe('parser itens XML', () => {
     expect(itens[0].cst).toBe('00')
     expect(itens[0].origem).toBe('0')
     expect(itens[0].quantidade).toBe(10)
+    expect(itens[0].unidade).toBe('UN')
     expect(itens[0].valorUnitario).toBe(5.5)
   })
 

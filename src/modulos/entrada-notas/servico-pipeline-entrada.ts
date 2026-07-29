@@ -72,11 +72,14 @@ async function sincronizarItensPendentesDoXml(
     return { itensAdicionados: 0 }
   }
 
-  const qtd = await repositorioEntradaNotas.contarItens(notaId)
-  if (qtd > 0) return { itensAdicionados: 0 }
-
   const itens = extrairItensDoXml(nota.xmlConteudo)
   if (itens.length === 0) return { itensAdicionados: 0 }
+
+  const qtd = await repositorioEntradaNotas.contarItens(notaId)
+  if (qtd > 0) {
+    await repositorioEntradaNotas.backfillUnidadeItensDoXml(notaId, itens)
+    return { itensAdicionados: 0 }
+  }
 
   await repositorioEntradaNotas.substituirItensDoXml(notaId, itens)
   return { itensAdicionados: itens.length }
@@ -874,6 +877,16 @@ async function obterDetalhe(
     if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
   }
 
+  if (
+    nota.xmlConteudo &&
+    nota.itens.length > 0 &&
+    (nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento)
+  ) {
+    await sincronizarItensPendentesDoXml(companyId, notaId)
+    nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+    if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  }
+
   // Nota NFe 55 sem itens (falha de pipeline / sync / XML só resNFe) — repara ao abrir.
   // Inclui notas já lançadas indevidamente sem itens (reabre + reanalisa).
   if (
@@ -1069,6 +1082,7 @@ async function obterDetalhe(
           cfop: i.cfop,
           cst: i.cst,
           origem: i.origem,
+          unidade: i.unidade,
           quantidade,
           valorUnitario: decimalNum(i.valorUnitario),
           valorTotal: decimalNum(i.valorTotal),
@@ -1092,6 +1106,8 @@ async function obterDetalhe(
                 nomeVenda: i.produto.nomeVenda,
                 sku: i.produto.sku,
                 codigoBarras: i.produto.codigoBarras,
+                marca: i.produto.marca,
+                unidade: i.produto.unidade,
                 ncm: i.produto.ncm,
                 codigoOrigem: i.produto.codigoOrigem,
               }

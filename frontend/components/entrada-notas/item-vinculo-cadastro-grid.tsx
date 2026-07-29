@@ -11,6 +11,7 @@ export type ItemVinculoCadastro = {
   descricao: string | null
   gtin: string | null
   codigoProduto: string | null
+  unidade?: string | null
   quantidade: number | null
   valorUnitario: number | null
   produtoId: string | null
@@ -26,6 +27,8 @@ export type ItemVinculoCadastro = {
     nomeVenda: string
     sku: string | null
     codigoBarras?: string | null
+    marca?: string | null
+    unidade?: string | null
   } | null
 }
 
@@ -34,6 +37,7 @@ export type ProdutoBuscaVinculo = {
   nomeVenda: string
   sku?: string | null
   codigoBarras?: string | null
+  marca?: string | null
 }
 
 function rotuloVinculoModo(modo: string | null): string | null {
@@ -67,6 +71,41 @@ function formatarValorUnitario(valor: number | null | undefined): string {
 function formatarQtdUnit(quantidade: number | null, valorUnitario: number | null): string {
   const qtd = quantidade ?? '—'
   return `${qtd} × ${formatarValorUnitario(valorUnitario)}`
+}
+
+function formatarUnidade(valor: string | null | undefined): string {
+  const limpo = (valor ?? '').trim()
+  return limpo || '—'
+}
+
+function rotuloProdutoSistema(produto: NonNullable<ItemVinculoCadastro['produto']>) {
+  const extras: string[] = []
+  const marca = produto.marca?.trim()
+  const unidade = produto.unidade?.trim()
+  if (marca) extras.push(marca)
+  if (unidade) extras.push(unidade)
+
+  return (
+    <>
+      {produto.nomeVenda}
+      {produto.sku ? (
+        <span className="ml-1 font-mono text-xs text-muted-foreground">({produto.sku})</span>
+      ) : null}
+      {extras.length > 0 ? (
+        <span className="ml-1 text-xs text-muted-foreground">· {extras.join(' · ')}</span>
+      ) : null}
+    </>
+  )
+}
+
+function rotuloProdutoBusca(produto: ProdutoBuscaVinculo): string {
+  const partes: string[] = []
+  let nome = produto.nomeVenda
+  if (produto.sku) nome += ` (${produto.sku})`
+  partes.push(nome)
+  const marca = produto.marca?.trim()
+  if (marca) partes.push(marca)
+  return partes.join(' · ')
 }
 
 type LinhaEspelhoProps = {
@@ -143,6 +182,14 @@ export function ItemVinculoCadastroGrid({
     codOrigSistema !== '—' &&
     codOrigNf.toLowerCase() === codOrigSistema.toLowerCase()
 
+  const unidadeNf = formatarUnidade(item.unidade)
+  const unidadeSistema = vinculado ? formatarUnidade(item.produto?.unidade) : '—'
+  const unidadeBate =
+    vinculado &&
+    unidadeNf !== '—' &&
+    unidadeSistema !== '—' &&
+    unidadeNf.toLowerCase() === unidadeSistema.toLowerCase()
+
   const qtdUnitTexto = formatarQtdUnit(item.quantidade, item.valorUnitario)
   const podeGravarOriginal =
     vinculado &&
@@ -155,6 +202,7 @@ export function ItemVinculoCadastroGrid({
 
   const dlEspelho = (
     <dl className="grid gap-1 text-xs text-muted-foreground">
+      <LinhaEspelho rotulo="Unidade" valor={unidadeNf} />
       <LinhaEspelho rotulo="Código de barras" valor={gtinNf} />
       <LinhaEspelho rotulo="Código original" valor={codOrigNf} />
       <LinhaEspelho rotulo="Qtd × unit." valor={qtdUnitTexto} valorClassName="font-sans" />
@@ -208,19 +256,19 @@ export function ItemVinculoCadastroGrid({
           </div>
 
           {item.produto ? (
-            <p className="font-medium">
-              {item.produto.nomeVenda}
-              {item.produto.sku ? (
-                <span className="ml-1 font-mono text-xs text-muted-foreground">
-                  ({item.produto.sku})
-                </span>
-              ) : null}
-            </p>
+            <p className="font-medium">{rotuloProdutoSistema(item.produto)}</p>
           ) : (
             <p className="font-medium text-destructive">Sem vínculo</p>
           )}
 
           <dl className="flex-1 grid gap-1 text-xs text-muted-foreground">
+            <LinhaEspelho
+              rotulo="Unidade"
+              valor={unidadeSistema}
+              valorClassName={cn(
+                unidadeBate && 'font-semibold text-emerald-700 dark:text-emerald-300'
+              )}
+            />
             <LinhaEspelho
               rotulo="Código de barras"
               valor={gtinSistema}
@@ -346,9 +394,7 @@ export function ItemVinculoCadastroGrid({
                     key={p.id}
                     className="flex items-center justify-between gap-2 rounded px-2 py-1 hover:bg-muted"
                   >
-                    <span className="min-w-0 flex-1 truncate text-left">
-                      {p.nomeVenda} {p.sku ? `(${p.sku})` : ''}
-                    </span>
+                    <span className="min-w-0 flex-1 truncate text-left">{rotuloProdutoBusca(p)}</span>
                     <Button
                       type="button"
                       size="sm"

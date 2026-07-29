@@ -256,6 +256,8 @@ model NfeRecebidaItem {
   cfop               String?
   cst                String?
   origem             String?
+  /// Unidade comercial do item na NF (uCom do XML)
+  unidade            String?
   quantidade         Decimal?    @db.Decimal(18, 4)
   valorUnitario      Decimal?    @db.Decimal(18, 4)
   valorTotal         Decimal?    @db.Decimal(18, 2)

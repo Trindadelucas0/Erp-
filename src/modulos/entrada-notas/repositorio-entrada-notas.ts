@@ -19,6 +19,8 @@ const includeNotaCompleta = {
           codigoBarras: true,
           ncm: true,
           codigoOrigem: true,
+          marca: true,
+          unidade: true,
           pesoKg: true,
           fornecedores: {
             select: { fornecedorPessoaId: true, multiplicadorEntrada: true },
@@ -114,6 +116,7 @@ async function substituirItensDoXml(nfeRecebidaId: string, itens: ItemXmlNfe[]) 
       cfop: item.cfop,
       cst: item.cst,
       origem: item.origem,
+      unidade: item.unidade,
       quantidade: item.quantidade,
       valorUnitario: item.valorUnitario,
       valorTotal: item.valorTotal,
@@ -387,6 +390,28 @@ async function contarItens(nfeRecebidaId: string) {
   return clientePrisma.nfeRecebidaItem.count({ where: { nfeRecebidaId } })
 }
 
+/** Preenche unidade (uCom) em itens já gravados sem sobrescrever vínculos. */
+async function backfillUnidadeItensDoXml(nfeRecebidaId: string, itensXml: ItemXmlNfe[]) {
+  const mapa = new Map(
+    itensXml.map((item) => {
+      const unidade = item.unidade?.trim()
+      return [item.nItem, unidade || null] as const
+    })
+  )
+  const itensSemUnidade = await clientePrisma.nfeRecebidaItem.findMany({
+    where: { nfeRecebidaId, unidade: null },
+    select: { id: true, nItem: true },
+  })
+  for (const item of itensSemUnidade) {
+    const unidade = mapa.get(item.nItem)
+    if (!unidade) continue
+    await clientePrisma.nfeRecebidaItem.update({
+      where: { id: item.id },
+      data: { unidade },
+    })
+  }
+}
+
 /** Notas em aberto cujo emitente bate com o documento (normalizado A-Z/0-9). */
 async function listarNotasPendentesPorDocumento(companyId: string, documento: string) {
   const limpo = normalizarDocumento(documento)
@@ -423,6 +448,7 @@ export const repositorioEntradaNotas = {
   buscarNotaCompleta,
   buscarNotaPorId,
   substituirItensDoXml,
+  backfillUnidadeItensDoXml,
   atualizarNota,
   atualizarItem,
   criarTratativa,

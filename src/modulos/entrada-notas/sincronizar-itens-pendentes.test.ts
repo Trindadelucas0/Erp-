@@ -6,6 +6,7 @@ vi.mock('./repositorio-entrada-notas.js', () => ({
     buscarNotaPorId: vi.fn(),
     contarItens: vi.fn(),
     substituirItensDoXml: vi.fn(),
+    backfillUnidadeItensDoXml: vi.fn(),
     atualizarNota: vi.fn(),
     atualizarItem: vi.fn(),
     buscarFornecedorPorCnpj: vi.fn(),
@@ -106,11 +107,16 @@ describe('servicoEntradaNotas.sincronizarItensPendentesDoXml', () => {
       xmlConteudo: xmlAmostra,
     } as never)
     vi.mocked(repositorioEntradaNotas.contarItens).mockResolvedValue(1)
+    vi.mocked(repositorioEntradaNotas.backfillUnidadeItensDoXml).mockResolvedValue(undefined)
 
     const resultado = await servicoEntradaNotas.sincronizarItensPendentesDoXml('empresa-1', 'nota-1')
 
     expect(resultado.itensAdicionados).toBe(0)
     expect(repositorioEntradaNotas.substituirItensDoXml).not.toHaveBeenCalled()
+    expect(repositorioEntradaNotas.backfillUnidadeItensDoXml).toHaveBeenCalledWith(
+      'nota-1',
+      expect.arrayContaining([expect.objectContaining({ codigoProduto: 'ABC123' } as Partial<ItemXmlNfe>)])
+    )
   })
 
   it('não faz nada para NFS-e/CTe (sem itens de produto por design)', async () => {

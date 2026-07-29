@@ -187,6 +187,7 @@ export type ItemXmlNfe = {
   cfop: string | null
   cst: string | null
   origem: string | null
+  unidade: string | null
   quantidade: number | null
   valorUnitario: number | null
   valorTotal: number | null
@@ -510,6 +511,7 @@ export function extrairItensDoXml(xmlBruto: string): ItemXmlNfe[] {
       cfop: prod ? extrairCampoXml(prod, 'CFOP') : null,
       cst,
       origem,
+      unidade: prod ? extrairCampoXml(prod, 'uCom') : null,
       quantidade: parseValor(prod ? extrairCampoXml(prod, 'qCom') : null),
       valorUnitario: parseValor(prod ? extrairCampoXml(prod, 'vUnCom') : null),
       valorTotal: parseValor(prod ? extrairCampoXml(prod, 'vProd') : null),
