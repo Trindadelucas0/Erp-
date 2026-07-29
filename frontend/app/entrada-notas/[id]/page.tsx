@@ -11,6 +11,7 @@ import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/ui/modal'
+import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
 import { Abas } from '@/components/ui/abas'
 import {
   ConteudoVisualizacaoNota,
@@ -103,6 +104,13 @@ type CteVinculado = {
   } | null
 }
 
+type TratativaNota = {
+  id: string
+  texto: string
+  createdAt: string
+  usuario: { id: string; name: string; email: string } | null
+}
+
 type DetalheNota = {
   id: string
   chaveNfe: string
@@ -121,6 +129,10 @@ type DetalheNota = {
   origemLancamento: string | null
   prazoPagamentoXml: string | null
   prazoPagamentoTexto: string | null
+  problemaDesfecho?: string | null
+  problemaMarcadoEm?: string | null
+  problemaResolvidoEm?: string | null
+  tratativas?: TratativaNota[]
   modFrete?: string | null
   chaveNfeReferenciada?: string | null
   exigeCte?: boolean
@@ -206,7 +218,13 @@ function etapaEfetiva(nota: DetalheNota): EtapaPipeline | 'lancamento' {
 
 /** Etapas anteriores à posição atual — únicas para as quais faz sentido "voltar". */
 function etapasVoltarDisponiveis(nota: DetalheNota, ehDocumental: boolean): EtapaPipeline[] {
-  if (nota.statusEntrada === 'cancelada') return []
+  if (
+    nota.statusEntrada === 'cancelada' ||
+    nota.statusEntrada === 'com_problema' ||
+    nota.statusEntrada === 'problema_resolvido'
+  ) {
+    return []
+  }
   const validas: EtapaPipeline[] = ehDocumental ? ['cadastro'] : ORDEM_ETAPAS
   const atual = etapaEfetiva(nota)
   const indiceAtual = atual === 'lancamento' ? ORDEM_ETAPAS.length : ORDEM_ETAPAS.indexOf(atual)
@@ -290,11 +308,15 @@ function CardManifestoDestinatario({
   acao,
   justificativa,
   onJustificativaChange,
+  senha,
+  onSenhaChange,
   onManifestar,
 }: {
   acao: boolean
   justificativa: string
   onJustificativaChange: (valor: string) => void
+  senha: string
+  onSenhaChange: (valor: string) => void
   onManifestar: (tipo: 'desconhecimento' | 'nao_realizada') => void
 }) {
   return (
@@ -302,7 +324,7 @@ function CardManifestoDestinatario({
       <p className="mb-3 text-sm text-muted-foreground">
         Use quando a nota não pode seguir no fluxo normal (ex.: CST/CFOP impeditivo ou operação que
         a empresa não reconhece). A nota vai para o painel <strong>Canceladas</strong> e não pode
-        mais ser lançada.
+        mais ser lançada. <strong>Desconhecer operação</strong> exige senha.
       </p>
       <textarea
         className="mb-3 min-h-[70px] w-full rounded-md border bg-background px-3 py-2 text-sm"
@@ -310,15 +332,27 @@ function CardManifestoDestinatario({
         onChange={(e) => onJustificativaChange(e.target.value)}
         placeholder="Justificativa (obrigatória para operação não realizada)"
       />
+      <div className="mb-3 max-w-xs">
+        <Label htmlFor="senha-desconhecer">Senha (desconhecer operação)</Label>
+        <input
+          id="senha-desconhecer"
+          type="password"
+          className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm"
+          value={senha}
+          onChange={(e) => onSenhaChange(e.target.value)}
+          placeholder="Senha do usuário"
+          autoComplete="current-password"
+        />
+      </div>
       <div className="flex flex-wrap gap-2">
         <Button
           type="button"
           size="sm"
           variant="destructive"
-          disabled={acao}
+          disabled={acao || !senha.trim()}
           onClick={() => onManifestar('desconhecimento')}
         >
-          Desconhecimento da operação
+          Desconhecer operação
         </Button>
         <Button
           type="button"
@@ -330,6 +364,118 @@ function CardManifestoDestinatario({
           Operação não realizada
         </Button>
       </div>
+    </CardPadrao>
+  )
+}
+
+function CardProblemaNota({
+  acao,
+  statusEntrada,
+  problemaDesfecho,
+  tratativas,
+  textoTratativa,
+  onTextoTratativaChange,
+  senha,
+  onSenhaChange,
+  onEnviarTratativa,
+  onResolver,
+  onDesconhecer,
+}: {
+  acao: boolean
+  statusEntrada: string
+  problemaDesfecho?: string | null
+  tratativas: TratativaNota[]
+  textoTratativa: string
+  onTextoTratativaChange: (valor: string) => void
+  senha: string
+  onSenhaChange: (valor: string) => void
+  onEnviarTratativa: () => void
+  onResolver: () => void
+  onDesconhecer: () => void
+}) {
+  const aberta = statusEntrada === 'com_problema'
+  const resolvida = statusEntrada === 'problema_resolvido'
+
+  return (
+    <CardPadrao titulo="Nota com problema">
+      <p className="mb-3 text-sm text-muted-foreground">
+        {resolvida
+          ? `Problema encerrado com desfecho: ${problemaDesfecho === 'solucao' ? 'Solução' : problemaDesfecho ?? '—'}. A nota saiu do fluxo de entrada.`
+          : 'Registre as tratativas com o fornecedor. O desfecho pode ser solução (sai do fluxo) ou desconhecer operação (Canceladas).'}
+      </p>
+
+      <div className="mb-4 max-h-64 space-y-3 overflow-y-auto rounded-md border bg-muted/20 p-3">
+        {tratativas.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhuma tratativa registrada ainda.</p>
+        ) : (
+          tratativas.map((t) => (
+            <div key={t.id} className="rounded-md border bg-background p-3 text-sm">
+              <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">{t.usuario?.name ?? 'Usuário'}</span>
+                <span>
+                  {t.createdAt
+                    ? new Date(t.createdAt).toLocaleString('pt-BR')
+                    : '—'}
+                </span>
+              </div>
+              <p className="whitespace-pre-wrap">{t.texto}</p>
+            </div>
+          ))
+        )}
+      </div>
+
+      {aberta && (
+        <div className="mb-4 space-y-2">
+          <Label htmlFor="tratativa-texto">Nova tratativa</Label>
+          <textarea
+            id="tratativa-texto"
+            className="min-h-[80px] w-full rounded-md border bg-background px-3 py-2 text-sm"
+            value={textoTratativa}
+            onChange={(e) => onTextoTratativaChange(e.target.value)}
+            placeholder="Ex.: liguei no fornecedor; vão bonificar X itens / desconto no boleto…"
+          />
+          <Button
+            type="button"
+            size="sm"
+            disabled={acao || !textoTratativa.trim()}
+            onClick={onEnviarTratativa}
+          >
+            Registrar tratativa
+          </Button>
+        </div>
+      )}
+
+      {aberta && (
+        <div className="space-y-3 border-t pt-3">
+          <p className="text-sm font-medium">Desfecho</p>
+          <div className="max-w-xs">
+            <Label htmlFor="senha-problema-desconhecer">Senha (desconhecer operação)</Label>
+            <input
+              id="senha-problema-desconhecer"
+              type="password"
+              className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm"
+              value={senha}
+              onChange={(e) => onSenhaChange(e.target.value)}
+              placeholder="Senha do usuário"
+              autoComplete="current-password"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" disabled={acao} onClick={onResolver}>
+              Registrar solução
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              disabled={acao || !senha.trim()}
+              onClick={onDesconhecer}
+            >
+              Desconhecer operação
+            </Button>
+          </div>
+        </div>
+      )}
     </CardPadrao>
   )
 }
@@ -370,8 +516,10 @@ function ConteudoDetalheEntrada() {
   const [erro, setErro] = useState<string | null>(null)
   const [mensagem, setMensagem] = useState<string | null>(null)
   const [senha, setSenha] = useState('')
+  const [senhaDesconhecer, setSenhaDesconhecer] = useState('')
   const [obsContato, setObsContato] = useState('')
   const [justificativaManifesto, setJustificativaManifesto] = useState('')
+  const [textoTratativa, setTextoTratativa] = useState('')
   const [prazo, setPrazo] = useState('')
   const [buscaProduto, setBuscaProduto] = useState('')
   const [produtos, setProdutos] = useState<ProdutoBusca[]>([])
@@ -380,6 +528,7 @@ function ConteudoDetalheEntrada() {
   const [xmlBusy, setXmlBusy] = useState(false)
   const [downloadRotulo, setDownloadRotulo] = useState('')
   const [xmlModal, setXmlModal] = useState<{ visualizacao: VisualizacaoNota } | null>(null)
+  const [modalMarcarProblema, setModalMarcarProblema] = useState(false)
   const [danfeBloqueado, setDanfeBloqueado] = useState(false)
   const [recursosDoc, setRecursosDoc] = useState({
     verNota: true,
@@ -543,6 +692,12 @@ function ConteudoDetalheEntrada() {
           )
         } else if (path === '/descancelar') {
           setMensagem('Cancelamento desfeito. Nota de volta ao painel Em análise.')
+        } else if (path === '/marcar-problema') {
+          setMensagem('Nota marcada com problema — veja o painel Com problemas.')
+        } else if (path === '/resolver-problema') {
+          setMensagem('Problema resolvido. A nota saiu do fluxo de entrada.')
+        } else if (path === '/tratativas') {
+          setMensagem('Tratativa registrada.')
         } else if (path.includes('vincular-cte') || path.includes('definir-prazo')) {
           setMensagem(mensagemAposAnalisar(data.nota))
         } else if (path === '/voltar-etapa') {
@@ -574,17 +729,45 @@ function ConteudoDetalheEntrada() {
   }
 
   async function manifestar(tipo: 'desconhecimento' | 'nao_realizada') {
-    const rotulo = tipo === 'desconhecimento' ? 'Desconhecimento da operação' : 'Operação não realizada'
+    const rotulo = tipo === 'desconhecimento' ? 'Desconhecer operação' : 'Operação não realizada'
     const confirmado = window.confirm(
       `${rotulo}: a nota vai para o painel Canceladas e não poderá mais ser lançada. Confirma?`
     )
     if (!confirmado) return
+    if (tipo === 'desconhecimento' && !senhaDesconhecer.trim()) {
+      setErro('Senha obrigatória para desconhecer a operação.')
+      return
+    }
     const justificativa = justificativaManifesto.trim()
     const ok = await postAcao('/manifestar', {
       tipo,
       ...(justificativa ? { justificativa } : {}),
+      ...(tipo === 'desconhecimento' ? { senha: senhaDesconhecer } : {}),
     })
-    if (ok) setJustificativaManifesto('')
+    if (ok) {
+      setJustificativaManifesto('')
+      setSenhaDesconhecer('')
+    }
+  }
+
+  async function marcarComProblema() {
+    const ok = await postAcao('/marcar-problema', {})
+    if (ok) setModalMarcarProblema(false)
+  }
+
+  async function enviarTratativa() {
+    const texto = textoTratativa.trim()
+    if (!texto) return
+    const ok = await postAcao('/tratativas', { texto })
+    if (ok) setTextoTratativa('')
+  }
+
+  async function resolverProblemaSolucao() {
+    const confirmado = window.confirm(
+      'Registrar solução? A nota sai do fluxo de entrada (painel Com problemas como Resolvida).'
+    )
+    if (!confirmado) return
+    await postAcao('/resolver-problema', { desfecho: 'solucao' })
   }
 
   async function descancelarNota() {
@@ -654,7 +837,17 @@ function ConteudoDetalheEntrada() {
   const finalizada =
     nota?.statusEntrada === 'entrada_contagem' ||
     nota?.statusEntrada === 'entrada_consolidada' ||
-    nota?.statusEntrada === 'cancelada'
+    nota?.statusEntrada === 'cancelada' ||
+    nota?.statusEntrada === 'problema_resolvido'
+
+  const comProblema = nota?.statusEntrada === 'com_problema'
+  const problemaResolvido = nota?.statusEntrada === 'problema_resolvido'
+  const pipelineBloqueado = finalizada || comProblema
+  const podeMarcarProblema =
+    Boolean(nota) &&
+    !['entrada_contagem', 'entrada_consolidada', 'cancelada', 'com_problema', 'problema_resolvido'].includes(
+      nota!.statusEntrada
+    )
 
   const ehDocumental = ehDocumentalEntrada(nota?.tipoDocumento)
   const ehNfse = nota?.tipoDocumento === 'nfse'
@@ -803,11 +996,22 @@ function ConteudoDetalheEntrada() {
             type="button"
             variant="outline"
             size="sm"
-            disabled={acao || finalizada}
+            disabled={acao || pipelineBloqueado}
             onClick={() => postAcao('/analisar', { forcarReparseItens: true })}
           >
             Reanalisar
           </Button>
+          {podeMarcarProblema && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={acao}
+              onClick={() => setModalMarcarProblema(true)}
+            >
+              Marcar com problema
+            </Button>
+          )}
           {opcoesVoltarEtapa.length > 0 && (
             <div className="flex items-center gap-1">
               <select
@@ -841,6 +1045,32 @@ function ConteudoDetalheEntrada() {
 
       {erro && <p className="text-sm text-destructive">{erro}</p>}
       {mensagem && <p className="text-sm text-emerald-700 dark:text-emerald-400">{mensagem}</p>}
+
+      {(comProblema || problemaResolvido) && nota && (
+        <CardProblemaNota
+          acao={acao}
+          statusEntrada={nota.statusEntrada}
+          problemaDesfecho={nota.problemaDesfecho}
+          tratativas={nota.tratativas ?? []}
+          textoTratativa={textoTratativa}
+          onTextoTratativaChange={setTextoTratativa}
+          senha={senhaDesconhecer}
+          onSenhaChange={setSenhaDesconhecer}
+          onEnviarTratativa={() => void enviarTratativa()}
+          onResolver={() => void resolverProblemaSolucao()}
+          onDesconhecer={() => void manifestar('desconhecimento')}
+        />
+      )}
+
+      <ModalConfirmacao
+        aberto={modalMarcarProblema}
+        titulo="Marcar com problema?"
+        mensagem="A nota sai do fluxo normal (Em análise) e vai para o painel Com problemas, onde você registra tratativas com o fornecedor."
+        textoConfirmar="Marcar com problema"
+        textoCancelar="Cancelar"
+        aoConfirmar={() => void marcarComProblema()}
+        aoCancelar={() => !acao && setModalMarcarProblema(false)}
+      />
 
       <Modal
         aberto={Boolean(xmlModal)}
@@ -969,7 +1199,7 @@ function ConteudoDetalheEntrada() {
                   <ItemVinculoCadastroGrid
                     key={item.id}
                     item={item}
-                    finalizada={finalizada}
+                    finalizada={pipelineBloqueado}
                     acao={acao}
                     buscando={itemVinculando === item.id}
                     buscaProduto={buscaProduto}
@@ -1039,7 +1269,7 @@ function ConteudoDetalheEntrada() {
                 <ItemVinculoFiscalGrid
                   key={item.id}
                   item={item}
-                  finalizada={finalizada}
+                  finalizada={pipelineBloqueado}
                   acao={acao}
                   cfopsEntrada={cfopsEntrada}
                   onImportarFiscal={() =>
@@ -1059,7 +1289,7 @@ function ConteudoDetalheEntrada() {
               )}
             </div>
           </CardPadrao>
-          {!finalizada && (
+          {!pipelineBloqueado && (
             <CardPadrao titulo="Liberar críticas (NCM/origem)">
               {motivoBloqueioLiberacao && (
                 <p className="mb-3 text-sm text-amber-700 dark:text-amber-400">{motivoBloqueioLiberacao}</p>
@@ -1096,11 +1326,13 @@ function ConteudoDetalheEntrada() {
               </div>
             </CardPadrao>
           )}
-          {!finalizada && (
+          {!pipelineBloqueado && (
             <CardManifestoDestinatario
               acao={acao}
               justificativa={justificativaManifesto}
               onJustificativaChange={setJustificativaManifesto}
+              senha={senhaDesconhecer}
+              onSenhaChange={setSenhaDesconhecer}
               onManifestar={(tipo) => void manifestar(tipo)}
             />
           )}
@@ -1119,7 +1351,7 @@ function ConteudoDetalheEntrada() {
                 <select
                   className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
                   value={nota.pedidoCompraId ?? ''}
-                  disabled={finalizada || acao}
+                  disabled={pipelineBloqueado || acao}
                   onChange={(e) => {
                     if (e.target.value)
                       void postAcao('/definir-pedido', { pedidoCompraId: e.target.value })
@@ -1139,7 +1371,7 @@ function ConteudoDetalheEntrada() {
                   id="prazo"
                   className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
                   value={prazo}
-                  disabled={finalizada}
+                  disabled={pipelineBloqueado}
                   onChange={(e) => setPrazo(e.target.value)}
                   placeholder={nota.prazoPagamentoXml ?? 'Ex.: 30/60 dias'}
                 />
@@ -1147,7 +1379,7 @@ function ConteudoDetalheEntrada() {
               <Button
                 type="button"
                 size="sm"
-                disabled={finalizada || acao || !prazo.trim()}
+                disabled={pipelineBloqueado || acao || !prazo.trim()}
                 onClick={() => postAcao('/definir-prazo', { prazo })}
               >
                 Salvar prazo e reanalisar
@@ -1157,7 +1389,7 @@ function ConteudoDetalheEntrada() {
               <p className="mt-2 text-xs text-muted-foreground">Prazo no XML: {nota.prazoPagamentoXml}</p>
             )}
           </CardPadrao>
-          {!finalizada && (
+          {!pipelineBloqueado && (
             <CardPadrao titulo="Controles">
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -1193,11 +1425,13 @@ function ConteudoDetalheEntrada() {
               />
             </CardPadrao>
           )}
-          {!finalizada && (
+          {!pipelineBloqueado && (
             <CardManifestoDestinatario
               acao={acao}
               justificativa={justificativaManifesto}
               onJustificativaChange={setJustificativaManifesto}
+              senha={senhaDesconhecer}
+              onSenhaChange={setSenhaDesconhecer}
               onManifestar={(tipo) => void manifestar(tipo)}
             />
           )}
@@ -1362,7 +1596,7 @@ function ConteudoDetalheEntrada() {
 
       {abaAtiva === 'lancamento' && (
         <div className="space-y-4">
-          {!finalizada ? (
+          {!pipelineBloqueado ? (
             <CardPadrao titulo="Lançamento">
               <p className="mb-3 text-sm text-muted-foreground">
                 {ehDocumental
@@ -1403,10 +1637,21 @@ function ConteudoDetalheEntrada() {
               </div>
             </CardPadrao>
           ) : (
-            <CardPadrao titulo="Finalizada">
+            <CardPadrao
+              titulo={
+                comProblema || problemaResolvido
+                  ? 'Fora do fluxo (com problema)'
+                  : 'Finalizada'
+              }
+            >
               <p className="text-sm">
                 Status <strong>{nota.statusEntrada}</strong>
                 {nota.origemLancamento ? ` · origem ${nota.origemLancamento}` : ''}.
+                {comProblema
+                  ? ' Use o card Nota com problema para tratativas e desfecho.'
+                  : problemaResolvido
+                    ? ' Problema resolvido — nota fora do fluxo de entrada.'
+                    : ''}
               </p>
               {nota.statusEntrada === 'cancelada' && nota.manifestacaoDestinatario && (
                 <p className="mt-2 text-sm text-muted-foreground">

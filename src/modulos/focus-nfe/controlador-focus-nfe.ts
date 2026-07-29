@@ -76,7 +76,7 @@ async function listarPendentes(requisicao: FastifyRequest, resposta: FastifyRepl
     busca?: string
   }
   const painelRaw = (q.painel ?? 'analise').toLowerCase()
-  const painelValidos = ['analise', 'contagem', 'consolidada', 'cancelada'] as const
+  const painelValidos = ['analise', 'contagem', 'consolidada', 'problemas', 'cancelada'] as const
   type Painel = (typeof painelValidos)[number]
   const painel: Painel = painelValidos.includes(painelRaw as Painel)
     ? (painelRaw as Painel)

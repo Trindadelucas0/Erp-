@@ -73,6 +73,12 @@ const includeNotaCompleta = {
     },
   },
   despesasEntrada: true,
+  tratativas: {
+    orderBy: { createdAt: 'asc' as const },
+    include: {
+      usuario: { select: { id: true, name: true, email: true } },
+    },
+  },
 } as const
 
 export type NotaCompletaEntrada = Prisma.NfeRecebidaGetPayload<{
@@ -137,11 +143,44 @@ async function atualizarNota(
     manifestacaoDestinatario?: string | null
     modFrete?: string | null
     chaveNfeReferenciada?: string | null
+    problemaDesfecho?: string | null
+    problemaMarcadoEm?: Date | null
+    problemaResolvidoEm?: Date | null
   }
 ) {
   return clientePrisma.nfeRecebida.update({
     where: { id },
     data: data as Prisma.NfeRecebidaUncheckedUpdateInput,
+  })
+}
+
+async function criarTratativa(dados: {
+  companyId: string
+  nfeRecebidaId: string
+  usuarioId: string
+  texto: string
+}) {
+  return clientePrisma.nfeRecebidaTratativa.create({
+    data: {
+      id: randomUUID(),
+      companyId: dados.companyId,
+      nfeRecebidaId: dados.nfeRecebidaId,
+      usuarioId: dados.usuarioId,
+      texto: dados.texto,
+    },
+    include: {
+      usuario: { select: { id: true, name: true, email: true } },
+    },
+  })
+}
+
+async function listarTratativas(companyId: string, nfeRecebidaId: string) {
+  return clientePrisma.nfeRecebidaTratativa.findMany({
+    where: { companyId, nfeRecebidaId },
+    orderBy: { createdAt: 'asc' },
+    include: {
+      usuario: { select: { id: true, name: true, email: true } },
+    },
   })
 }
 
@@ -386,6 +425,8 @@ export const repositorioEntradaNotas = {
   substituirItensDoXml,
   atualizarNota,
   atualizarItem,
+  criarTratativa,
+  listarTratativas,
   buscarFornecedorPorCnpj,
   buscarProdutoPorGtin,
   buscarProdutoPorCodigoOriginal,

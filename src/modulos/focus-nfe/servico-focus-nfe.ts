@@ -1340,7 +1340,7 @@ async function listarPendentes(
   filtros?: {
     dataDe?: string
     dataAte?: string
-    painel?: 'analise' | 'contagem' | 'consolidada' | 'cancelada'
+    painel?: 'analise' | 'contagem' | 'consolidada' | 'problemas' | 'cancelada'
     busca?: string
   }
 ) {

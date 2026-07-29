@@ -118,7 +118,7 @@ function formatarCustoExtraCentavos(centavos: number): string {
   })
 }
 
-type PainelEntrada = 'analise' | 'contagem' | 'consolidada' | 'cancelada'
+type PainelEntrada = 'analise' | 'contagem' | 'consolidada' | 'problemas' | 'cancelada'
 
 type FiltrosEntradaSalvos = {
   dataDe: string
@@ -143,6 +143,7 @@ const PAINEIS: Array<{ id: PainelEntrada; rotulo: string }> = [
   { id: 'analise', rotulo: 'Em análise' },
   { id: 'contagem', rotulo: 'Liberadas p/ contagem' },
   { id: 'consolidada', rotulo: 'Consolidadas' },
+  { id: 'problemas', rotulo: 'Com problemas' },
   { id: 'cancelada', rotulo: 'Canceladas' },
 ]
 
@@ -1095,7 +1096,15 @@ function ConteudoEntradaNotas() {
                       <BadgeStatus variante="inativo">{rotuloOrigem(n.origem)}</BadgeStatus>
                     </td>
                     <td className="hidden px-4 py-3 md:table-cell">
-                      <BadgeStatus variante="info">{n.etapaAtual}</BadgeStatus>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <BadgeStatus variante="info">{n.etapaAtual}</BadgeStatus>
+                        {n.statusEntrada === 'problema_resolvido' ? (
+                          <BadgeStatus variante="sucesso">Resolvida</BadgeStatus>
+                        ) : null}
+                        {n.statusEntrada === 'com_problema' ? (
+                          <BadgeStatus variante="reprovado">Com problema</BadgeStatus>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex flex-wrap gap-1">

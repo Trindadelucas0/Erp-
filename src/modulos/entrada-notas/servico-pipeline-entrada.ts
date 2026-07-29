@@ -277,6 +277,12 @@ async function voltarEtapa(
   if (nota.statusEntrada === 'cancelada') {
     throw new ErroDaAplicacao('Nota cancelada — não é possível voltar etapa.', 409)
   }
+  if (nota.statusEntrada === 'com_problema' || nota.statusEntrada === 'problema_resolvido') {
+    throw new ErroDaAplicacao(
+      'Nota com problema — não é possível voltar etapa. Resolva ou desconheça a operação.',
+      409
+    )
+  }
 
   const etapasValidas = etapasVoltarValidas(nota.tipoDocumento)
   if (!etapasValidas.includes(etapaDestino)) {
@@ -514,9 +520,16 @@ async function analisarNota(
   if (
     base.statusEntrada === 'entrada_contagem' ||
     base.statusEntrada === 'entrada_consolidada' ||
-    base.statusEntrada === 'cancelada'
+    base.statusEntrada === 'cancelada' ||
+    base.statusEntrada === 'com_problema' ||
+    base.statusEntrada === 'problema_resolvido'
   ) {
-    throw new ErroDaAplicacao('Nota já finalizada ou cancelada.', 409)
+    throw new ErroDaAplicacao(
+      base.statusEntrada === 'com_problema' || base.statusEntrada === 'problema_resolvido'
+        ? 'Nota com problema — use tratativas, solução ou desconhecer operação.'
+        : 'Nota já finalizada ou cancelada.',
+      409
+    )
   }
 
   if (base.tipoDocumento === 'nfse') {
@@ -969,6 +982,17 @@ async function obterDetalhe(
       observacaoContato: nota.observacaoContato,
       pedidoCompraId: nota.pedidoCompraId,
       origemLancamento: nota.origemLancamento,
+      problemaDesfecho: nota.problemaDesfecho ?? null,
+      problemaMarcadoEm: nota.problemaMarcadoEm ?? null,
+      problemaResolvidoEm: nota.problemaResolvidoEm ?? null,
+      tratativas: (nota.tratativas ?? []).map((t) => ({
+        id: t.id,
+        texto: t.texto,
+        createdAt: t.createdAt,
+        usuario: t.usuario
+          ? { id: t.usuario.id, name: t.usuario.name, email: t.usuario.email }
+          : null,
+      })),
       prazoPagamentoXml: nota.prazoPagamentoXml,
       prazoPagamentoTexto: nota.prazoPagamentoTexto,
       modFrete: nota.modFrete ?? null,
@@ -1333,10 +1357,32 @@ async function manifestar(
   companyId: string,
   notaId: string,
   tipo: 'desconhecimento' | 'nao_realizada',
-  justificativa?: string
+  justificativa?: string,
+  usuarioId?: string,
+  senha?: string
 ) {
   const nota = await repositorioEntradaNotas.buscarNotaPorId(companyId, notaId)
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  if (nota.statusEntrada === 'problema_resolvido') {
+    throw new ErroDaAplicacao('Nota com problema já resolvida — não é possível manifestar.', 409)
+  }
+  if (
+    nota.statusEntrada === 'entrada_contagem' ||
+    nota.statusEntrada === 'entrada_consolidada' ||
+    nota.statusEntrada === 'cancelada'
+  ) {
+    throw new ErroDaAplicacao('Nota já finalizada ou cancelada.', 409)
+  }
+
+  if (tipo === 'desconhecimento') {
+    if (!senha?.trim()) {
+      throw new ErroDaAplicacao('Senha obrigatória para desconhecer a operação.', 400)
+    }
+    if (!usuarioId) throw new ErroDaAplicacao('Usuário não autenticado', 401)
+    const ok = await servicoDeAutenticacao.verificarSenhaDoUsuario(usuarioId, senha)
+    if (!ok) throw new ErroDaAplicacao('Senha inválida.', 403)
+  }
+
   const cfg = await repositorioFocusNfe.buscarConfigPorEmpresa(companyId)
   if (!cfg?.apiToken) throw new ErroDaAplicacao('Configure o token Focus NFe', 400)
 
@@ -1351,10 +1397,119 @@ async function manifestar(
     justificativa
   )
 
+  const vinhaComProblema = nota.statusEntrada === 'com_problema'
   await repositorioEntradaNotas.atualizarNota(notaId, {
     statusEntrada: 'cancelada',
     manifestacaoDestinatario: tipoApi,
     etapaAtual: 'lancamento',
+    ...(tipo === 'desconhecimento' && vinhaComProblema
+      ? {
+          problemaDesfecho: 'desconhecimento',
+          problemaResolvidoEm: new Date(),
+        }
+      : {}),
+  })
+  return obterDetalhe(companyId, notaId)
+}
+
+const STATUS_BLOQUEADOS_MARCAR_PROBLEMA = [
+  'entrada_contagem',
+  'entrada_consolidada',
+  'cancelada',
+  'problema_resolvido',
+] as const
+
+async function marcarProblema(companyId: string, notaId: string) {
+  const nota = await repositorioEntradaNotas.buscarNotaPorId(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  if (nota.statusEntrada === 'com_problema') {
+    return obterDetalhe(companyId, notaId)
+  }
+  if (
+    (STATUS_BLOQUEADOS_MARCAR_PROBLEMA as readonly string[]).includes(nota.statusEntrada)
+  ) {
+    throw new ErroDaAplicacao(
+      'Não é possível marcar esta nota com problema no status atual.',
+      409
+    )
+  }
+
+  await repositorioEntradaNotas.atualizarNota(notaId, {
+    statusEntrada: 'com_problema',
+    problemaMarcadoEm: new Date(),
+    problemaDesfecho: null,
+    problemaResolvidoEm: null,
+  })
+  return obterDetalhe(companyId, notaId)
+}
+
+async function listarTratativas(companyId: string, notaId: string) {
+  const nota = await repositorioEntradaNotas.buscarNotaPorId(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  const tratativas = await repositorioEntradaNotas.listarTratativas(companyId, notaId)
+  return {
+    tratativas: tratativas.map((t) => ({
+      id: t.id,
+      texto: t.texto,
+      createdAt: t.createdAt,
+      usuario: t.usuario
+        ? { id: t.usuario.id, name: t.usuario.name, email: t.usuario.email }
+        : null,
+    })),
+  }
+}
+
+async function adicionarTratativa(
+  companyId: string,
+  notaId: string,
+  usuarioId: string,
+  texto: string
+) {
+  const nota = await repositorioEntradaNotas.buscarNotaPorId(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  if (nota.statusEntrada !== 'com_problema' && nota.statusEntrada !== 'problema_resolvido') {
+    throw new ErroDaAplicacao(
+      'Tratativas só podem ser registradas em notas com problema.',
+      409
+    )
+  }
+  if (nota.statusEntrada === 'problema_resolvido') {
+    throw new ErroDaAplicacao(
+      'Nota com problema já resolvida — tratativas ficam somente para consulta.',
+      409
+    )
+  }
+
+  await repositorioEntradaNotas.criarTratativa({
+    companyId,
+    nfeRecebidaId: notaId,
+    usuarioId,
+    texto: texto.trim(),
+  })
+  return obterDetalhe(companyId, notaId)
+}
+
+async function resolverProblema(
+  companyId: string,
+  notaId: string,
+  desfecho: 'solucao'
+) {
+  const nota = await repositorioEntradaNotas.buscarNotaPorId(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  if (nota.statusEntrada !== 'com_problema') {
+    throw new ErroDaAplicacao(
+      'Só é possível registrar solução em nota no painel Com problemas.',
+      409
+    )
+  }
+  if (desfecho !== 'solucao') {
+    throw new ErroDaAplicacao('Desfecho inválido.', 400)
+  }
+
+  await repositorioEntradaNotas.atualizarNota(notaId, {
+    statusEntrada: 'problema_resolvido',
+    problemaDesfecho: 'solucao',
+    problemaResolvidoEm: new Date(),
   })
   return obterDetalhe(companyId, notaId)
 }
@@ -1390,6 +1545,12 @@ async function lancar(
   }
   if (nota.statusEntrada === 'cancelada') {
     throw new ErroDaAplicacao('Nota cancelada — não é possível lançar.', 409)
+  }
+  if (nota.statusEntrada === 'com_problema' || nota.statusEntrada === 'problema_resolvido') {
+    throw new ErroDaAplicacao(
+      'Nota com problema — não é possível lançar. Resolva ou desconheça a operação.',
+      409
+    )
   }
   if (
     (nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento) &&
@@ -1438,7 +1599,9 @@ async function processarAposXml(companyId: string, notaId: string) {
     if (
       nota.statusEntrada === 'entrada_contagem' ||
       nota.statusEntrada === 'entrada_consolidada' ||
-      nota.statusEntrada === 'cancelada'
+      nota.statusEntrada === 'cancelada' ||
+      nota.statusEntrada === 'com_problema' ||
+      nota.statusEntrada === 'problema_resolvido'
     ) {
       return
     }
@@ -1580,6 +1743,10 @@ export const servicoEntradaNotas = {
   definirPedido,
   definirPrazo,
   manifestar,
+  marcarProblema,
+  listarTratativas,
+  adicionarTratativa,
+  resolverProblema,
   descancelar,
   lancar,
   processarAposXml,

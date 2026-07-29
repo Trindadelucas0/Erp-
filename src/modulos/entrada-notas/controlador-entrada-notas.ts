@@ -15,6 +15,9 @@ import {
   esquemaLancar,
   esquemaLiberarCriticas,
   esquemaManifestar,
+  esquemaMarcarProblema,
+  esquemaResolverProblema,
+  esquemaTratativa,
   esquemaVincularCte,
   esquemaVincularItem,
   esquemaVoltarEtapa,
@@ -182,7 +185,50 @@ async function manifestar(requisicao: FastifyRequest, resposta: FastifyReply) {
     companyIdDe(requisicao),
     notaIdDe(requisicao),
     parsed.data.tipo,
-    parsed.data.justificativa
+    parsed.data.justificativa,
+    usuarioIdDe(requisicao),
+    parsed.data.senha
+  )
+  return resposta.send(dados)
+}
+
+async function marcarProblema(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parsed = esquemaMarcarProblema.safeParse(requisicao.body ?? {})
+  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
+  const dados = await servicoEntradaNotas.marcarProblema(
+    companyIdDe(requisicao),
+    notaIdDe(requisicao)
+  )
+  return resposta.send(dados)
+}
+
+async function listarTratativas(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const dados = await servicoEntradaNotas.listarTratativas(
+    companyIdDe(requisicao),
+    notaIdDe(requisicao)
+  )
+  return resposta.send(dados)
+}
+
+async function adicionarTratativa(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parsed = esquemaTratativa.safeParse(requisicao.body)
+  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
+  const dados = await servicoEntradaNotas.adicionarTratativa(
+    companyIdDe(requisicao),
+    notaIdDe(requisicao),
+    usuarioIdDe(requisicao),
+    parsed.data.texto
+  )
+  return resposta.send(dados)
+}
+
+async function resolverProblema(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parsed = esquemaResolverProblema.safeParse(requisicao.body)
+  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
+  const dados = await servicoEntradaNotas.resolverProblema(
+    companyIdDe(requisicao),
+    notaIdDe(requisicao),
+    parsed.data.desfecho
   )
   return resposta.send(dados)
 }
@@ -273,6 +319,10 @@ export const controladorEntradaNotas = {
   definirPedido,
   definirPrazo,
   manifestar,
+  marcarProblema,
+  listarTratativas,
+  adicionarTratativa,
+  resolverProblema,
   descancelar,
   lancar,
   vincularCte,

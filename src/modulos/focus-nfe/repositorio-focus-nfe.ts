@@ -150,7 +150,7 @@ async function listarNfesPorPainel(
   filtros?: {
     dataDe?: Date
     dataAte?: Date
-    painel?: 'analise' | 'contagem' | 'consolidada' | 'cancelada'
+    painel?: 'analise' | 'contagem' | 'consolidada' | 'problemas' | 'cancelada'
     busca?: string
   }
 ) {
@@ -159,6 +159,7 @@ async function listarNfesPorPainel(
     analise: ['pendente', 'em_analise', 'stand_by'],
     contagem: ['entrada_contagem'],
     consolidada: ['entrada_consolidada'],
+    problemas: ['com_problema', 'problema_resolvido'],
     cancelada: ['cancelada'],
   }
   const statuses = statusPorPainel[painel] ?? statusPorPainel.analise
