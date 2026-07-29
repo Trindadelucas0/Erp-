@@ -1,6 +1,7 @@
 /**
  * Regras de negócio Focus NFe / Entrada de Notas (base).
  */
+import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { importarCtePorChave } from './importar-cte-por-chave.js'
 import { clienteFocusNfe, type NfeRecebidaResumoFocus, type NfseRecebidaResumoFocus, type CteRecebidaResumoFocus, type RespostaFocus } from './cliente-focus-nfe.js'
 import { tentarTravarFocus, liberarTravaFocus } from './fila-focus-nfe.js'
