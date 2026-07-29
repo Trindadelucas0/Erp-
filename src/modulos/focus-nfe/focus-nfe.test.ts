@@ -45,6 +45,22 @@ describe('sync CT-e — cursor DistDFe', () => {
   })
 })
 
+describe('importarCtePorChave — validação de chave', () => {
+  it('rejeita chave que nao e modelo 57', async () => {
+    const { importarCtePorChave } = await import('./importar-cte-por-chave.js')
+    const r = await importarCtePorChave('company-teste', '35200114200166000187550010000000011000000015')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.motivo).toBe('chave_invalida')
+  })
+
+  it('rejeita chave com tamanho invalido', async () => {
+    const { importarCtePorChave } = await import('./importar-cte-por-chave.js')
+    const r = await importarCtePorChave('company-teste', '123')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.motivo).toBe('chave_invalida')
+  })
+})
+
 describe('Focus NFe — Basic Auth', () => {
   it('monta Basic com token e senha vazia', () => {
     const header = montarAuthParaTeste('meuToken123')

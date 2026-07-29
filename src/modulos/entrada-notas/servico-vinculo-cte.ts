@@ -643,6 +643,18 @@ async function vincularCteManual(
     cte = await clientePrisma.nfeRecebida.findFirst({
       where: { companyId, chaveNfe: chave, tipoDocumento: 'cte' },
     })
+    // CT-e ainda não no banco: puxa sozinho da Focus pela chave (igual sync DistDFe).
+    if (!cte && chave.length === 44) {
+      const { importarCtePorChave } = await import('../focus-nfe/importar-cte-por-chave.js')
+      const importado = await importarCtePorChave(companyId, chave)
+      if (importado.ok) {
+        cte = await clientePrisma.nfeRecebida.findFirst({
+          where: { id: importado.cteId, companyId, tipoDocumento: 'cte' },
+        })
+      } else if (importado.motivo !== 'chave_invalida') {
+        throw new ErroDaAplicacao(importado.mensagem, 400)
+      }
+    }
   }
   if (!cte) throw new ErroDaAplicacao('CT-e não encontrado na empresa.', 404)
 

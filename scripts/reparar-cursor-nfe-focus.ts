@@ -1,6 +1,9 @@
 /**
  * Repara cursor DistDFe quando ultimaVersao* avançou além das notas persistidas
  * (bug antigo do x-max-version no lote incompleto ou falha de XML CT-e avançando cursor).
+ *
+ * CT-e especial: se cursor > 0 e **zero** CT-es salvos, DistDFe ficou travado
+ * (ex.: bug toma3 avançou cursor sem gravar) → reset para 0.
  */
 import { PrismaClient } from '@prisma/client'
 
@@ -38,18 +41,31 @@ async function main() {
       })
       const maxSalvo = maxDoc._max.versaoFocus ?? 0
       const cursor = cfg[tipo.campo] ?? 0
+      const qtd = maxDoc._count as number
 
-      if (cursor > maxSalvo && maxDoc._count > 0) {
+      // DistDFe travado: cursor avançou e nenhum documento do tipo foi salvo.
+      if (tipo.tipoDocumento === 'cte' && cursor > 0 && qtd === 0) {
+        await prisma.configuracaoFocusNfe.update({
+          where: { companyId: cfg.companyId },
+          data: { ultimaVersaoCteRecebida: 0 },
+        })
+        console.log(
+          `reparado companyId=${cfg.companyId} cte cursor ${cursor} → 0 (nenhum cte salvo — DistDFe travado)`
+        )
+        continue
+      }
+
+      if (cursor > maxSalvo && qtd > 0) {
         await prisma.configuracaoFocusNfe.update({
           where: { companyId: cfg.companyId },
           data: { [tipo.campo]: maxSalvo },
         })
         console.log(
-          `reparado companyId=${cfg.companyId} ${tipo.rotulo} cursor ${cursor} → ${maxSalvo} (notas=${maxDoc._count})`
+          `reparado companyId=${cfg.companyId} ${tipo.rotulo} cursor ${cursor} → ${maxSalvo} (notas=${qtd})`
         )
       } else {
         console.log(
-          `ok companyId=${cfg.companyId} ${tipo.rotulo} cursor=${cursor} maxSalvo=${maxSalvo} notas=${maxDoc._count}`
+          `ok companyId=${cfg.companyId} ${tipo.rotulo} cursor=${cursor} maxSalvo=${maxSalvo} notas=${qtd}`
         )
       }
     }
