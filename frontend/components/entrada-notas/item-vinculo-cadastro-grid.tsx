@@ -201,6 +201,13 @@ export function ItemVinculoCadastroGrid({
     unidadeNf.toLowerCase() === unidadeSistema.toLowerCase()
 
   const qtdUnitTexto = formatarQtdUnit(item.quantidade, item.valorUnitario)
+  const valorUnitarioSistema =
+    temMultiploCompra && item.valorUnitario != null
+      ? item.valorUnitario / itensPorEmbalagem
+      : item.valorUnitario
+  const qtdEmbalagemTextoSistema = temMultiploCompra
+    ? `${itensPorEmbalagem} · ${formatarQtdUnit(item.qtdTotalUn ?? null, valorUnitarioSistema ?? null)}`
+    : null
   const podeGravarOriginal =
     vinculado &&
     !finalizada &&
@@ -216,15 +223,6 @@ export function ItemVinculoCadastroGrid({
       <LinhaEspelho rotulo="Código de barras" valor={gtinNf} />
       <LinhaEspelho rotulo="Código original" valor={codOrigNf} />
       <LinhaEspelho rotulo="Qtd × unit." valor={qtdUnitTexto} valorClassName="font-sans" />
-      {temMultiploCompra && (
-        <div className="flex flex-wrap gap-x-2">
-          <dt className="font-medium text-foreground/80">Qtd embalagem</dt>
-          <dd>
-            {itensPorEmbalagem} · Qtd total UN:{' '}
-            <span className="font-medium text-foreground">{item.qtdTotalUn ?? '—'}</span>
-          </dd>
-        </div>
-      )}
     </dl>
   )
 
@@ -326,20 +324,13 @@ export function ItemVinculoCadastroGrid({
                 ) : undefined
               }
             />
-            <LinhaEspelho
-              rotulo="Qtd × unit."
-              valor={qtdUnitTexto}
-              valorClassName="font-sans text-foreground"
-            />
-            {temMultiploCompra && (
-              <div className="flex flex-wrap gap-x-2">
-                <dt className="font-medium text-foreground/80">Qtd embalagem</dt>
-                <dd>
-                  {itensPorEmbalagem} · Qtd total UN:{' '}
-                  <span className="font-medium text-foreground">{item.qtdTotalUn ?? '—'}</span>
-                </dd>
-              </div>
-            )}
+            {temMultiploCompra ? (
+              <LinhaEspelho
+                rotulo="Qtd embalagem"
+                valor={qtdEmbalagemTextoSistema ?? '—'}
+                valorClassName="font-sans text-foreground"
+              />
+            ) : null}
           </dl>
 
           {vinculado && rotuloVinculo && (
