@@ -10,6 +10,7 @@ import {
   esquemaDefinirPrazo,
   esquemaDesvincularItem,
   esquemaDefinirCfopEntrada,
+  esquemaDefinirCfopEntradaCte,
   esquemaGravarCodigoOriginal,
   esquemaImportarFiscal,
   esquemaFinanceiroFrete,
@@ -121,6 +122,17 @@ async function definirCfopEntrada(requisicao: FastifyRequest, resposta: FastifyR
     companyIdDe(requisicao),
     notaIdDe(requisicao),
     parsed.data.itemId,
+    parsed.data.cfopId
+  )
+  return resposta.send(dados)
+}
+
+async function definirCfopEntradaCte(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parsed = esquemaDefinirCfopEntradaCte.safeParse(requisicao.body)
+  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
+  const dados = await servicoEntradaNotas.definirCfopEntradaCte(
+    companyIdDe(requisicao),
+    notaIdDe(requisicao),
     parsed.data.cfopId
   )
   return resposta.send(dados)
@@ -325,6 +337,7 @@ export const controladorEntradaNotas = {
   gravarCodigoOriginal,
   importarFiscal,
   definirCfopEntrada,
+  definirCfopEntradaCte,
   liberarCriticas,
   cancelarLiberacao,
   contato,

@@ -52,6 +52,11 @@ export async function rotasEntradaNotas(aplicacao: FastifyInstance): Promise<voi
     controladorEntradaNotas.definirCfopEntrada
   )
   aplicacao.post(
+    '/:id/definir-cfop-entrada-cte',
+    { preHandler: autenticado },
+    controladorEntradaNotas.definirCfopEntradaCte
+  )
+  aplicacao.post(
     '/:id/liberar-criticas',
     { preHandler: autenticado },
     controladorEntradaNotas.liberarCriticas

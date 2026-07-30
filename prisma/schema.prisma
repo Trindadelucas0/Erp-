@@ -166,6 +166,9 @@ model NfeRecebida {
   modFrete                 String?
   /// CTe: 1ª chave de NF-e referenciada no XML (infDoc/infNFe)
   chaveNfeReferenciada     String?
+  /// CTe: CFOP de entrada sugerido (Cfop.cfopSugestaoEntradaId) ou escolhido manualmente na aba Frete/CT-e
+  cfopEntradaId            String?
+  cfopEntrada              Cfop?     @relation("NfeRecebidaCfopEntrada", fields: [cfopEntradaId], references: [id], onDelete: SetNull)
   /// solucao | desconhecimento | devolucao | null
   problemaDesfecho         String?
   problemaMarcadoEm        DateTime?
@@ -184,6 +187,7 @@ model NfeRecebida {
   @@index([companyId, fornecedorPessoaId])
   @@index([companyId, tipoDocumento])
   @@index([companyId, chaveNfeReferenciada])
+  @@index([cfopEntradaId])
 }
 
 model NfeRecebidaTratativa {
@@ -238,6 +242,8 @@ model DespesaEntradaDocumento {
   /// Prévia financeiro (stub) — número do documento / título futuro
   numeroDocumento   String?
   vencimento        DateTime?
+  /// Prévia com N duplicatas: [{ numeroDocumento, vencimento, valor }]
+  parcelas          Json?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
@@ -565,6 +571,7 @@ model Cfop {
   fornecedores          FornecedorCfopEntrada[]
   paresPlanoCfop        FornecedorParPlanoCfopPadrao[]
   itensEntradaComCfop   NfeRecebidaItem[]
+  documentosEntradaComCfop NfeRecebida[]               @relation("NfeRecebidaCfopEntrada")
   createdAt             DateTime                       @default(now())
 
   @@unique([codigo, companyId])

@@ -9,9 +9,11 @@ import { repositorioFocusNfe } from '../focus-nfe/repositorio-focus-nfe.js'
 import { clienteFocusNfe } from '../focus-nfe/cliente-focus-nfe.js'
 import {
   extrairCamposResumoDoXml,
+  extrairCfopDoXmlCte,
   extrairDadosTransporteDoXmlNfe,
   extrairIcmsDoXmlCte,
   extrairItensDoXml,
+  extrairSugestaoFinanceiroDoXmlCte,
   normalizarXmlNfe,
   xmlNfeTemItensParseaveis,
 } from '../focus-nfe/parser-xml-nfe.js'
@@ -161,6 +163,31 @@ async function sugerirCfopEntradaItensSemEscolha(
       await repositorioEntradaNotas.atualizarItem(item.id, { cfopEntradaId: sugestao.id })
     }
   }
+}
+
+/**
+ * Preenche o CFOP de entrada sugerido no documento CT-e (NfeRecebida.cfopEntradaId)
+ * a partir do CFOP do XML (`ide/CFOP`). Nunca sobrescreve escolha manual.
+ * Retorna true se gravou sugestão.
+ */
+async function sugerirCfopEntradaCteSemEscolha(
+  companyId: string,
+  cte: { id: string; tipoDocumento?: string | null; xmlConteudo?: string | null; cfopEntradaId?: string | null }
+): Promise<boolean> {
+  if (cte.tipoDocumento != null && cte.tipoDocumento !== 'cte') return false
+  if (cte.cfopEntradaId || !cte.xmlConteudo) return false
+
+  const cfopXml = extrairCfopDoXmlCte(cte.xmlConteudo)
+  if (!cfopXml) return false
+
+  const sugestoes = await repositorioEntradaNotas.mapaSugestaoCfopEntradaPorCodigo(companyId, [
+    cfopXml,
+  ])
+  const sugestao = sugestoes.get(cfopXml)
+  if (!sugestao) return false
+
+  await repositorioEntradaNotas.atualizarNota(cte.id, { cfopEntradaId: sugestao.id })
+  return true
 }
 
 async function carregarRegras(companyId: string): Promise<RegrasFiscaisJson | null> {
@@ -439,6 +466,9 @@ async function analisarNotaDocumental(
       importarFocusSeAusente: true,
     })
     falhaImportNfeRef = resultadoVinculo.falhaImport
+    nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+    if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+    await sugerirCfopEntradaCteSemEscolha(companyId, nota)
     nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
     if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
   }
@@ -1038,6 +1068,28 @@ async function obterDetalhe(
     return analisarNota(companyId, notaId)
   }
 
+  // CFOP de entrada do CT-e (próprio documento ou CT-es vinculados à NF)
+  let sugeriuCfopCte = false
+  if (nota.tipoDocumento === 'cte') {
+    sugeriuCfopCte = await sugerirCfopEntradaCteSemEscolha(companyId, nota)
+  } else if (nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento) {
+    for (const v of nota.vinculosComoNfe ?? []) {
+      const cte = v.cteRecebida
+      if (!cte) continue
+      const ok = await sugerirCfopEntradaCteSemEscolha(companyId, {
+        id: cte.id,
+        tipoDocumento: 'cte',
+        xmlConteudo: cte.xmlConteudo,
+        cfopEntradaId: cte.cfopEntradaId,
+      })
+      if (ok) sugeriuCfopCte = true
+    }
+  }
+  if (sugeriuCfopCte) {
+    nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+    if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  }
+
   let pedidosDisponiveis: Array<{ id: string; numero: number; status: string }> = []
   if (nota.fornecedorPessoaId) {
     const abertos = await repositorioEntradaNotas.listarPedidosAbertosFornecedor(
@@ -1091,6 +1143,22 @@ async function obterDetalhe(
       prazoPagamentoTexto: nota.prazoPagamentoTexto,
       modFrete: nota.modFrete ?? null,
       chaveNfeReferenciada: nota.chaveNfeReferenciada ?? null,
+      cfopXml:
+        nota.tipoDocumento === 'cte' && nota.xmlConteudo
+          ? extrairCfopDoXmlCte(nota.xmlConteudo)
+          : null,
+      cfopEntrada:
+        nota.tipoDocumento === 'cte' && nota.cfopEntrada
+          ? {
+              id: nota.cfopEntrada.id,
+              codigo: nota.cfopEntrada.codigo,
+              nome: nota.cfopEntrada.nome,
+            }
+          : null,
+      sugestaoFinanceiroFrete:
+        nota.tipoDocumento === 'cte' && nota.xmlConteudo
+          ? extrairSugestaoFinanceiroDoXmlCte(nota.xmlConteudo)
+          : null,
       exigeCte: exigeCtePorModFrete(nota.modFrete),
       regraRateioFrete: regraRateioFreteCadastro(
         nota.fornecedorPessoa?.papeis?.[0]?.dadosFornecedor?.regraRateioFrete
@@ -1123,6 +1191,10 @@ async function obterDetalhe(
       ctesVinculados: (nota.vinculosComoNfe ?? []).map((v) => {
         const cte = v.cteRecebida
         const icms = cte?.xmlConteudo ? extrairIcmsDoXmlCte(cte.xmlConteudo) : null
+        const cfop = cte?.xmlConteudo ? extrairCfopDoXmlCte(cte.xmlConteudo) : null
+        const sugestaoFinanceiroFrete = cte?.xmlConteudo
+          ? extrairSugestaoFinanceiroDoXmlCte(cte.xmlConteudo)
+          : null
         const despesaStub = cte?.despesasEntrada?.[0] ?? null
         return {
           id: v.id,
@@ -1130,6 +1202,15 @@ async function obterDetalhe(
           chaveNfeReferenciada: v.chaveNfeReferenciada,
           valorFrete: decimalNum(v.valorFrete),
           icms,
+          cfop,
+          cfopEntrada: cte?.cfopEntrada
+            ? {
+                id: cte.cfopEntrada.id,
+                codigo: cte.cfopEntrada.codigo,
+                nome: cte.cfopEntrada.nome,
+              }
+            : null,
+          sugestaoFinanceiroFrete,
           financeiro: despesaStub
             ? {
                 id: despesaStub.id,
@@ -1139,6 +1220,11 @@ async function obterDetalhe(
                   : null,
                 valor: decimalNum(despesaStub.valor),
                 status: despesaStub.status,
+                parcelas: parcelasJsonParaResposta(despesaStub.parcelas, {
+                  numeroDocumento: despesaStub.numeroDocumento ?? null,
+                  vencimento: despesaStub.vencimento,
+                  valor: decimalNum(despesaStub.valor),
+                }),
               }
             : null,
           cte: cte
@@ -1175,6 +1261,11 @@ async function obterDetalhe(
         pessoaId: d.pessoaId,
         numeroDocumento: d.numeroDocumento ?? null,
         vencimento: d.vencimento ? d.vencimento.toISOString().slice(0, 10) : null,
+        parcelas: parcelasJsonParaResposta(d.parcelas, {
+          numeroDocumento: d.numeroDocumento ?? null,
+          vencimento: d.vencimento,
+          valor: decimalNum(d.valor),
+        }),
       })),
       itens: nota.itens.map((i) => {
         const cProd = (i.codigoProduto ?? '').trim().toLowerCase()
@@ -1435,6 +1526,26 @@ async function definirCfopEntrada(
 
   await repositorioEntradaNotas.atualizarItem(itemId, { cfopEntradaId: cfop.id })
   return obterDetalhe(companyId, notaId)
+}
+
+/**
+ * Troca manualmente o CFOP de entrada do documento CT-e (aba Frete/CT-e).
+ * Não roda o pipeline nem altera gate de frete — só classificação de entrada.
+ */
+async function definirCfopEntradaCte(companyId: string, cteId: string, cfopId: string) {
+  const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, cteId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  if (nota.tipoDocumento !== 'cte') {
+    throw new ErroDaAplicacao('CFOP de entrada do frete só se aplica a documentos CT-e.', 400)
+  }
+
+  const cfop = await repositorioEntradaNotas.buscarCfopEntradaAtivo(companyId, cfopId)
+  if (!cfop) {
+    throw new ErroDaAplicacao('CFOP de entrada não encontrado, inativo ou de saída.', 400)
+  }
+
+  await repositorioEntradaNotas.atualizarNota(cteId, { cfopEntradaId: cfop.id })
+  return obterDetalhe(companyId, cteId)
 }
 
 async function liberarCriticas(companyId: string, notaId: string, usuarioId: string, senha: string) {
@@ -1795,17 +1906,163 @@ async function desvincularCte(companyId: string, notaId: string, vinculoId: stri
 }
 
 /**
- * Stub financeiro do frete (prévia contas a pagar): número, vencimento e valor
- * gravados em DespesaEntradaDocumento do CT-e vinculado — sem gerar título/AP.
+ * Stub financeiro do frete (prévia contas a pagar): N duplicatas
+ * (número, vencimento e valor) em DespesaEntradaDocumento — sem gerar título/AP.
+ * Soma das parcelas deve bater com o Valor Frete (total do transporte).
  */
+const TOLERANCIA_PARCELAS_FRETE = 0.01
+
+type ParcelaFinanceiroFrete = {
+  numeroDocumento?: string | null
+  vencimento?: string | null
+  valor: number
+}
+
+function parseVencimentoParcela(raw: string | null | undefined): Date | null {
+  if (raw == null || !String(raw).trim()) return null
+  const s = String(raw).trim()
+  const d = new Date(s.length === 10 ? `${s}T12:00:00` : s)
+  if (Number.isNaN(d.getTime())) {
+    throw new ErroDaAplicacao('Data de vencimento inválida', 400)
+  }
+  return d
+}
+
+function normalizarParcelasFinanceiroFrete(
+  dados: {
+    parcelas?: ParcelaFinanceiroFrete[]
+    numeroDocumento?: string | null
+    vencimento?: string | null
+    valor?: number
+  }
+): Array<{ numeroDocumento: string | null; vencimento: Date | null; valor: number }> {
+  const origem =
+    dados.parcelas != null && dados.parcelas.length > 0
+      ? dados.parcelas
+      : [
+          {
+            numeroDocumento: dados.numeroDocumento ?? null,
+            vencimento: dados.vencimento ?? null,
+            valor: Number(dados.valor),
+          },
+        ]
+
+  const normalizadas: Array<{
+    numeroDocumento: string | null
+    vencimento: Date | null
+    valor: number
+  }> = []
+
+  for (const p of origem) {
+    const valor = Number(p.valor)
+    if (!Number.isFinite(valor) || valor < 0) {
+      throw new ErroDaAplicacao('Valor de parcela inválido', 400)
+    }
+    if (valor <= 0) {
+      throw new ErroDaAplicacao('Informe o valor (R$) de cada parcela', 400)
+    }
+    normalizadas.push({
+      numeroDocumento:
+        p.numeroDocumento != null ? String(p.numeroDocumento).trim() || null : null,
+      vencimento: parseVencimentoParcela(p.vencimento),
+      valor: Math.round(valor * 100) / 100,
+    })
+  }
+
+  if (normalizadas.length > 1) {
+    for (const p of normalizadas) {
+      if (!p.vencimento) {
+        throw new ErroDaAplicacao(
+          'Informe a data de vencimento de cada parcela quando houver mais de uma',
+          400
+        )
+      }
+    }
+  }
+
+  return normalizadas
+}
+
+function parcelasJsonParaResposta(
+  parcelas: unknown,
+  fallback: {
+    numeroDocumento: string | null
+    vencimento: Date | null
+    valor: number | null
+  }
+): Array<{
+  numeroDocumento: string | null
+  vencimento: string | null
+  valor: number | null
+}> {
+  if (Array.isArray(parcelas) && parcelas.length > 0) {
+    return parcelas.map((p) => {
+      const row = p as {
+        numeroDocumento?: string | null
+        vencimento?: string | Date | null
+        valor?: number | null
+      }
+      let venc: string | null = null
+      if (row.vencimento != null && String(row.vencimento).trim()) {
+        const raw = String(row.vencimento)
+        venc = raw.length >= 10 ? raw.slice(0, 10) : raw
+      }
+      return {
+        numeroDocumento: row.numeroDocumento ?? null,
+        vencimento: venc,
+        valor: row.valor != null ? Number(row.valor) : null,
+      }
+    })
+  }
+  return [
+    {
+      numeroDocumento: fallback.numeroDocumento,
+      vencimento: fallback.vencimento
+        ? fallback.vencimento.toISOString().slice(0, 10)
+        : null,
+      valor: fallback.valor,
+    },
+  ]
+}
+
+function resolverTotalTransporteFrete(nota: {
+  tipoDocumento: string | null
+  valorTotal: unknown
+  xmlConteudo: string | null
+  vinculosComoNfe?: Array<{
+    valorFrete: unknown
+    cteRecebida?: { valorTotal: unknown } | null
+  }> | null
+}): number {
+  if (nota.tipoDocumento === 'cte') {
+    return decimalNum(nota.valorTotal as { toNumber?: () => number } | number | null) ?? 0
+  }
+  const vinculos = nota.vinculosComoNfe ?? []
+  const somaCtes = vinculos.reduce((acc, v) => {
+    const n =
+      decimalNum(v.valorFrete as { toNumber?: () => number } | number | null) ??
+      decimalNum(v.cteRecebida?.valorTotal as { toNumber?: () => number } | number | null) ??
+      0
+    return acc + (Number.isFinite(n) ? n : 0)
+  }, 0)
+  if (somaCtes > 0) return Math.round(somaCtes * 100) / 100
+  if (nota.xmlConteudo && (nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento)) {
+    const transp = extrairDadosTransporteDoXmlNfe(nota.xmlConteudo)
+    const freteNf = transp?.valorFreteNf
+    return freteNf != null && Number.isFinite(freteNf) ? Math.round(freteNf * 100) / 100 : 0
+  }
+  return 0
+}
+
 async function salvarFinanceiroFrete(
   companyId: string,
   notaId: string,
   dados: {
     cteId?: string
+    parcelas?: ParcelaFinanceiroFrete[]
     numeroDocumento?: string | null
     vencimento?: string | null
-    valor: number
+    valor?: number
   }
 ) {
   const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
@@ -1829,35 +2086,29 @@ async function salvarFinanceiroFrete(
   }
   if (!cteId) throw new ErroDaAplicacao('Vincule um CT-e antes de gravar o financeiro do frete', 400)
 
-  const cte =
-    nota.tipoDocumento === 'cte' && nota.id === cteId
-      ? nota
-      : nota.vinculosComoNfe?.find((v) => v.cteRecebidaId === cteId)?.cteRecebida
-  if (!cte && nota.tipoDocumento !== 'cte') {
-    const existe = await clientePrisma.nfeRecebida.findFirst({
-      where: { id: cteId, companyId, tipoDocumento: 'cte' },
-      select: { id: true, fornecedorPessoaId: true },
-    })
-    if (!existe) throw new ErroDaAplicacao('CT-e não encontrado', 404)
-  }
-
-  // Garante que o CT-e está vinculado à NF (exceto quando a própria nota é o CT-e)
   if (nota.tipoDocumento !== 'cte') {
-    const vinculo = nota.vinculosComoNfe?.find((v) => v.cteRecebidaId === cteId)
-    if (!vinculo) throw new ErroDaAplicacao('CT-e não está vinculado a esta NF', 400)
+    const existeCte = nota.vinculosComoNfe?.find((v) => v.cteRecebidaId === cteId)
+    if (!existeCte) {
+      const existe = await clientePrisma.nfeRecebida.findFirst({
+        where: { id: cteId, companyId, tipoDocumento: 'cte' },
+        select: { id: true },
+      })
+      if (!existe) throw new ErroDaAplicacao('CT-e não encontrado', 404)
+      throw new ErroDaAplicacao('CT-e não está vinculado a esta NF', 400)
+    }
   }
 
-  const valor = Number(dados.valor)
-  if (!Number.isFinite(valor) || valor < 0) {
-    throw new ErroDaAplicacao('Valor inválido', 400)
+  const parcelas = normalizarParcelasFinanceiroFrete(dados)
+  const soma = Math.round(parcelas.reduce((s, p) => s + p.valor, 0) * 100) / 100
+  const totalTransporte = resolverTotalTransporteFrete(nota)
+  if (totalTransporte <= 0) {
+    throw new ErroDaAplicacao('Valor Frete (total do transporte) não encontrado na nota', 400)
   }
-
-  let vencimento: Date | null = null
-  if (dados.vencimento != null && String(dados.vencimento).trim()) {
-    const raw = String(dados.vencimento).trim()
-    const d = new Date(raw.length === 10 ? `${raw}T12:00:00` : raw)
-    if (Number.isNaN(d.getTime())) throw new ErroDaAplicacao('Data de vencimento inválida', 400)
-    vencimento = d
+  if (Math.abs(soma - totalTransporte) > TOLERANCIA_PARCELAS_FRETE) {
+    throw new ErroDaAplicacao(
+      `Soma das duplicatas (${soma.toFixed(2)}) difere do Valor Frete / total do transporte (${totalTransporte.toFixed(2)})`,
+      400
+    )
   }
 
   const pessoaId =
@@ -1866,8 +2117,12 @@ async function salvarFinanceiroFrete(
       : (nota.vinculosComoNfe?.find((v) => v.cteRecebidaId === cteId)?.cteRecebida
           ?.fornecedorPessoaId ?? null)
 
-  const numeroDocumento =
-    dados.numeroDocumento != null ? String(dados.numeroDocumento).trim() || null : null
+  const primeira = parcelas[0]!
+  const parcelasJson = parcelas.map((p) => ({
+    numeroDocumento: p.numeroDocumento,
+    vencimento: p.vencimento ? p.vencimento.toISOString().slice(0, 10) : null,
+    valor: p.valor,
+  }))
 
   await clientePrisma.despesaEntradaDocumento.upsert({
     where: {
@@ -1878,18 +2133,20 @@ async function salvarFinanceiroFrete(
       companyId,
       nfeRecebidaId: cteId,
       pessoaId,
-      valor,
+      valor: soma,
       status: 'pendente',
       origem: 'cte',
-      numeroDocumento,
-      vencimento,
+      numeroDocumento: primeira.numeroDocumento,
+      vencimento: primeira.vencimento,
+      parcelas: parcelasJson as Prisma.InputJsonValue,
       updatedAt: new Date(),
     },
     update: {
       pessoaId,
-      valor,
-      numeroDocumento,
-      vencimento,
+      valor: soma,
+      numeroDocumento: primeira.numeroDocumento,
+      vencimento: primeira.vencimento,
+      parcelas: parcelasJson as Prisma.InputJsonValue,
       updatedAt: new Date(),
     },
   })
@@ -1982,6 +2239,7 @@ export const servicoEntradaNotas = {
   gravarCodigoOriginal,
   importarFiscalProduto,
   definirCfopEntrada,
+  definirCfopEntradaCte,
   liberarCriticas,
   cancelarLiberacaoCriticas,
   contatoFornecedor,

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  extrairCfopDoXmlCte,
   extrairDadosTransporteDoXmlNfe,
   extrairIcmsDoXmlCte,
+  extrairSugestaoFinanceiroDoXmlCte,
 } from './parser-xml-nfe.js'
 
 describe('extrairDadosTransporteDoXmlNfe', () => {
@@ -21,6 +23,51 @@ describe('extrairDadosTransporteDoXmlNfe', () => {
       pesoBruto: 15.5,
       pesoLiquido: 13.5,
       valorFreteNf: 50,
+    })
+  })
+})
+
+describe('extrairCfopDoXmlCte', () => {
+  it('lê CFOP de ide/CFOP', () => {
+    const xml = `<?xml version="1.0"?>
+<cteProc><CTe><infCte Id="CTe35240111111111111111570010000000011123456789">
+  <ide><CFOP>5353</CFOP><nCT>1</nCT><serie>1</serie></ide>
+  <vPrest><vTPrest>742.10</vTPrest></vPrest>
+</infCte></CTe></cteProc>`
+    expect(extrairCfopDoXmlCte(xml)).toBe('5353')
+  })
+
+  it('retorna null quando não há CFOP', () => {
+    const xml = `<?xml version="1.0"?>
+<cteProc><CTe><infCte Id="CTe35240111111111111111570010000000011123456789">
+  <ide><nCT>1</nCT></ide>
+</infCte></CTe></cteProc>`
+    expect(extrairCfopDoXmlCte(xml)).toBeNull()
+  })
+})
+
+describe('extrairSugestaoFinanceiroDoXmlCte', () => {
+  it('lê nCT e vRec para a prévia financeira', () => {
+    const xml = `<?xml version="1.0"?>
+<cteProc><CTe><infCte Id="CTe35240111111111111111570010000000011123456789">
+  <ide><CFOP>5353</CFOP><nCT>5406</nCT><serie>1</serie></ide>
+  <vPrest><vTPrest>800.00</vTPrest><vRec>742.10</vRec></vPrest>
+</infCte></CTe></cteProc>`
+    expect(extrairSugestaoFinanceiroDoXmlCte(xml)).toEqual({
+      numeroDocumento: '5406',
+      valor: 742.1,
+    })
+  })
+
+  it('não usa vTPrest quando vRec está ausente', () => {
+    const xml = `<?xml version="1.0"?>
+<cteProc><CTe><infCte Id="CTe35240111111111111111570010000000011123456789">
+  <ide><nCT>99</nCT></ide>
+  <vPrest><vTPrest>800.00</vTPrest></vPrest>
+</infCte></CTe></cteProc>`
+    expect(extrairSugestaoFinanceiroDoXmlCte(xml)).toEqual({
+      numeroDocumento: '99',
+      valor: null,
     })
   })
 })

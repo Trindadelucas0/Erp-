@@ -23,7 +23,9 @@ import {
   ItemVinculoFiscalGrid,
   type CfopOpcaoEntrada,
 } from '@/components/entrada-notas/item-vinculo-fiscal-grid'
+import { CfopEntradaFreteCampos } from '@/components/entrada-notas/cfop-entrada-frete'
 import { CheckCircle2 } from 'lucide-react'
+import { distribuirParcelasIguais } from '@/lib/parcelas-pagamento-pedido'
 import {
   ehDocumentalEntrada,
   prefixoPdfDocumento,
@@ -91,23 +93,44 @@ type ItemNota = {
   } | null
 }
 
+type ParcelaFinanceiroFrete = {
+  numeroDocumento: string
+  vencimento: string
+  valor: string
+}
+
+type FinanceiroStub = {
+  id: string
+  numeroDocumento: string | null
+  vencimento: string | null
+  valor: number | null
+  status: string
+  parcelas?: Array<{
+    numeroDocumento: string | null
+    vencimento: string | null
+    valor: number | null
+  }>
+}
+
+type SugestaoFinanceiroFrete = {
+  numeroDocumento: string | null
+  valor: number | null
+}
+
 type CteVinculado = {
   id: string
   origemVinculo: string
   chaveNfeReferenciada: string | null
   valorFrete: number | null
+  cfop?: string | null
+  cfopEntrada?: { id: string; codigo: string; nome: string } | null
+  sugestaoFinanceiroFrete?: SugestaoFinanceiroFrete | null
   icms?: {
     baseCalculoIcms: number | null
     aliquotaIcms: number | null
     valorIcms: number | null
   } | null
-  financeiro?: {
-    id: string
-    numeroDocumento: string | null
-    vencimento: string | null
-    valor: number | null
-    status: string
-  } | null
+  financeiro?: FinanceiroStub | null
   cte: {
     id: string
     chaveNfe: string
@@ -157,6 +180,9 @@ type DetalheNota = {
   tratativas?: TratativaNota[]
   modFrete?: string | null
   chaveNfeReferenciada?: string | null
+  cfopXml?: string | null
+  cfopEntrada?: { id: string; codigo: string; nome: string } | null
+  sugestaoFinanceiroFrete?: SugestaoFinanceiroFrete | null
   exigeCte?: boolean
   regraRateioFrete?: string | null
   transporteXml?: TransporteXml | null
@@ -187,6 +213,11 @@ type DetalheNota = {
     pessoaId: string | null
     numeroDocumento?: string | null
     vencimento?: string | null
+    parcelas?: Array<{
+      numeroDocumento: string | null
+      vencimento: string | null
+      valor: number | null
+    }>
   }>
   itens: ItemNota[]
 }
@@ -381,6 +412,82 @@ function formatNumBr(n: number | null | undefined, casas = 2): string {
 function formatMoedaBr(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return '—'
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+const TOLERANCIA_PARCELAS_FRETE = 0.01
+
+function parcelaFinanceiroVazia(): ParcelaFinanceiroFrete {
+  return { numeroDocumento: '', vencimento: '', valor: '' }
+}
+
+function stubParaParcelasUi(
+  stub:
+    | {
+        numeroDocumento?: string | null
+        vencimento?: string | null
+        valor?: number | null
+        parcelas?: Array<{
+          numeroDocumento: string | null
+          vencimento: string | null
+          valor: number | null
+        }>
+      }
+    | null
+    | undefined,
+  defaults: { numeroDocumento?: string; valor?: number | null }
+): ParcelaFinanceiroFrete[] {
+  if (stub?.parcelas && stub.parcelas.length > 0) {
+    return stub.parcelas.map((p) => ({
+      numeroDocumento: p.numeroDocumento ?? '',
+      vencimento: p.vencimento ?? '',
+      valor: p.valor != null && Number.isFinite(p.valor) ? String(p.valor) : '',
+    }))
+  }
+  const valor =
+    stub?.valor ?? defaults.valor ?? null
+  return [
+    {
+      numeroDocumento: stub?.numeroDocumento ?? defaults.numeroDocumento ?? '',
+      vencimento: stub?.vencimento ?? '',
+      valor: valor != null && Number.isFinite(valor) ? String(valor) : '',
+    },
+  ]
+}
+
+function somaParcelasFinanceiro(parcelas: ParcelaFinanceiroFrete[]): number {
+  return Math.round(
+    parcelas.reduce((s, p) => {
+      const n = Number(p.valor)
+      return s + (Number.isFinite(n) ? n : 0)
+    }, 0) * 100
+  ) / 100
+}
+
+/** Divide o total do transporte igualmente entre as parcelas (centavos na última). */
+function ratearParcelasIguaisFrete(
+  parcelas: ParcelaFinanceiroFrete[],
+  totalTransporte: number
+): ParcelaFinanceiroFrete[] {
+  if (parcelas.length === 0) return parcelas
+  const valores = distribuirParcelasIguais(parcelas.length, totalTransporte)
+  return parcelas.map((p, i) => ({
+    ...p,
+    valor: String(valores[i] ?? 0),
+  }))
+}
+
+function resolverTotalTransporteUi(nota: DetalheNota): number {
+  if (nota.tipoDocumento === 'cte') {
+    return nota.valorTotal != null && Number.isFinite(nota.valorTotal) ? nota.valorTotal : 0
+  }
+  const ctes = nota.ctesVinculados ?? []
+  const soma = ctes.reduce((acc, v) => {
+    const n = v.valorFrete ?? v.cte?.valorTotal ?? 0
+    return acc + (Number.isFinite(n) ? n : 0)
+  }, 0)
+  if (soma > 0) return Math.round(soma * 100) / 100
+  const nf = nota.transporteXml?.valorFreteNf
+  return nf != null && Number.isFinite(nf) ? Math.round(nf * 100) / 100 : 0
 }
 
 function CardManifestoDestinatario({
@@ -617,9 +724,9 @@ function ConteudoDetalheEntrada() {
   const [abaAtiva, setAbaAtiva] = useState<AbaId>('cadastro')
   const [etapaVoltarSelecionada, setEtapaVoltarSelecionada] = useState<EtapaPipeline | ''>('')
   const [chaveCteManual, setChaveCteManual] = useState('')
-  const [finNumeroDoc, setFinNumeroDoc] = useState('')
-  const [finVencimento, setFinVencimento] = useState('')
-  const [finValor, setFinValor] = useState('')
+  const [finParcelas, setFinParcelas] = useState<ParcelaFinanceiroFrete[]>([
+    parcelaFinanceiroVazia(),
+  ])
   const [codigosOriginaisGravados, setCodigosOriginaisGravados] = useState<Record<string, true>>(
     {}
   )
@@ -653,39 +760,45 @@ function ConteudoDetalheEntrada() {
     if (!nota) return
     if (nota.tipoDocumento === 'cte') {
       const fin = (nota.despesasFrete ?? [])[0]
-      setFinNumeroDoc(
-        fin?.numeroDocumento ?? (nota.chaveNfe ? nota.chaveNfe.slice(-8) : '')
+      const sugestao = nota.sugestaoFinanceiroFrete
+      setFinParcelas(
+        stubParaParcelasUi(fin, {
+          numeroDocumento: sugestao?.numeroDocumento ?? '',
+          valor: sugestao?.valor ?? null,
+        })
       )
-      setFinVencimento(fin?.vencimento ?? '')
-      const valor = fin?.valor ?? nota.valorTotal
-      setFinValor(valor != null && Number.isFinite(valor) ? String(valor) : '')
       return
     }
     const primeiro = (nota.ctesVinculados ?? [])[0]
     const fin = primeiro?.financeiro
-    const valorFrete =
-      primeiro?.valorFrete ??
-      primeiro?.cte?.valorTotal ??
-      nota.transporteXml?.valorFreteNf ??
-      null
-    setFinNumeroDoc(
-      fin?.numeroDocumento ??
-        (primeiro?.cte?.chaveNfe ? primeiro.cte.chaveNfe.slice(-8) : '')
+    const sugestao = primeiro?.sugestaoFinanceiroFrete
+    setFinParcelas(
+      stubParaParcelasUi(fin, {
+        numeroDocumento: sugestao?.numeroDocumento ?? '',
+        valor: sugestao?.valor ?? null,
+      })
     )
-    setFinVencimento(fin?.vencimento ?? '')
-    const valor = fin?.valor ?? valorFrete
-    setFinValor(valor != null && Number.isFinite(valor) ? String(valor) : '')
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reidrata só quando vínculos/despesa mudam
   }, [
     nota?.id,
     nota?.tipoDocumento,
-    nota?.valorTotal,
-    nota?.chaveNfe,
+    nota?.sugestaoFinanceiroFrete?.numeroDocumento,
+    nota?.sugestaoFinanceiroFrete?.valor,
     (nota?.despesasFrete ?? [])
-      .map((d) => `${d.id}:${d.numeroDocumento ?? ''}:${d.vencimento ?? ''}:${d.valor ?? ''}`)
+      .map(
+        (d) =>
+          `${d.id}:${d.numeroDocumento ?? ''}:${d.vencimento ?? ''}:${d.valor ?? ''}:${(d.parcelas ?? [])
+            .map((p) => `${p.numeroDocumento ?? ''}:${p.vencimento ?? ''}:${p.valor ?? ''}`)
+            .join(',')}`
+      )
       .join('|'),
     (nota?.ctesVinculados ?? [])
-      .map((v) => `${v.id}:${v.financeiro?.id ?? ''}:${v.financeiro?.valor ?? ''}`)
+      .map(
+        (v) =>
+          `${v.id}:${v.financeiro?.id ?? ''}:${v.financeiro?.valor ?? ''}:${v.sugestaoFinanceiroFrete?.numeroDocumento ?? ''}:${v.sugestaoFinanceiroFrete?.valor ?? ''}:${(v.financeiro?.parcelas ?? [])
+            .map((p) => `${p.numeroDocumento ?? ''}:${p.vencimento ?? ''}:${p.valor ?? ''}`)
+            .join(',')}`
+      )
       .join('|'),
   ])
 
@@ -798,7 +911,7 @@ function ConteudoDetalheEntrada() {
       if (data.nota) {
         setNota(data.nota)
         setPedidos(data.pedidosDisponiveis ?? [])
-        if (path !== '/financeiro-frete') {
+        if (path !== '/financeiro-frete' && path !== '/definir-cfop-entrada-cte') {
           setAbaAtiva(abaInicial(data.nota))
         }
         if (path === '/analisar' || path.startsWith('/analisar')) {
@@ -848,6 +961,32 @@ function ConteudoDetalheEntrada() {
       return false
     } catch (err) {
       setErro(extrairMensagemApi(err, 'Falha na ação.'))
+      return false
+    } finally {
+      setAcao(false)
+    }
+  }
+
+  /** Define CFOP de entrada no documento CT-e e recarrega a nota atual (NF ou o próprio CT-e). */
+  async function definirCfopEntradaCte(cteId: string, cfopId: string): Promise<boolean> {
+    if (cteId === id) {
+      return postAcao('/definir-cfop-entrada-cte', { cfopId })
+    }
+    setAcao(true)
+    setErro(null)
+    setMensagem(null)
+    try {
+      await clienteHttp.post(`/entrada-notas/${cteId}/definir-cfop-entrada-cte`, { cfopId })
+      const { data } = await clienteHttp.get<{
+        nota: DetalheNota
+        pedidosDisponiveis: Array<{ id: string; numero: number; status: string }>
+      }>(`/entrada-notas/${id}`)
+      setNota(data.nota)
+      setPedidos(data.pedidosDisponiveis ?? [])
+      setMensagem('CFOP de entrada do CT-e atualizado.')
+      return true
+    } catch (err) {
+      setErro(extrairMensagemApi(err, 'Falha ao definir CFOP de entrada do CT-e.'))
       return false
     } finally {
       setAcao(false)
@@ -1613,6 +1752,8 @@ function ConteudoDetalheEntrada() {
                         v.icms.aliquotaIcms != null ||
                         v.icms.valorIcms != null)
                   )?.icms ?? null
+                const cteComCfop =
+                  ctes.find((v) => v.cfop || v.cfopEntrada || v.cte?.id) ?? ctes[0] ?? null
                 const valorFreteSoma = ctes.reduce((acc, v) => {
                   const n = v.valorFrete ?? v.cte?.valorTotal ?? 0
                   return acc + (Number.isFinite(n) ? n : 0)
@@ -1655,6 +1796,29 @@ function ConteudoDetalheEntrada() {
                       <dt className="text-muted-foreground">Valor ICMS</dt>
                       <dd className="font-medium">{formatMoedaBr(icms?.valorIcms)}</dd>
                     </div>
+                    {cteComCfop?.cte?.id ? (
+                      <CfopEntradaFreteCampos
+                        cfopXml={cteComCfop.cfop}
+                        cfopEntrada={cteComCfop.cfopEntrada}
+                        cfopsEntrada={cfopsEntrada}
+                        finalizada={finalizada}
+                        acao={acao}
+                        onDefinirCfopEntrada={(cfopId) =>
+                          void definirCfopEntradaCte(cteComCfop.cte!.id, cfopId)
+                        }
+                      />
+                    ) : (
+                      <>
+                        <div>
+                          <dt className="text-muted-foreground">CFOP do CT-e</dt>
+                          <dd className="font-medium">—</dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">CFOP de entrada</dt>
+                          <dd className="font-medium">—</dd>
+                        </div>
+                      </>
+                    )}
                     <div>
                       <dt className="text-muted-foreground">Forma de rateio</dt>
                       <dd className="font-medium">
@@ -1671,6 +1835,21 @@ function ConteudoDetalheEntrada() {
                   </dl>
                 )
               })()}
+            </CardPadrao>
+          )}
+
+          {ehCte && (
+            <CardPadrao titulo="CFOP do frete">
+              <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
+                <CfopEntradaFreteCampos
+                  cfopXml={nota.cfopXml}
+                  cfopEntrada={nota.cfopEntrada}
+                  cfopsEntrada={cfopsEntrada}
+                  finalizada={finalizada}
+                  acao={acao}
+                  onDefinirCfopEntrada={(cfopId) => void definirCfopEntradaCte(nota.id, cfopId)}
+                />
+              </dl>
             </CardPadrao>
           )}
 
@@ -1719,7 +1898,7 @@ function ConteudoDetalheEntrada() {
                 <ul className="space-y-2 text-sm">
                   {nota.ctesVinculados!.map((v) => (
                     <li key={v.id} className="flex flex-wrap items-center justify-between gap-2 rounded border p-2">
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <p className="font-medium">
                           …{v.cte?.chaveNfe?.slice(-8)} · {v.cte?.nomeEmitente ?? '—'}
                         </p>
@@ -1730,6 +1909,19 @@ function ConteudoDetalheEntrada() {
                             currency: 'BRL',
                           }) ?? '—'}
                         </p>
+                        {v.cte?.id && (
+                          <CfopEntradaFreteCampos
+                            compacto
+                            cfopXml={v.cfop}
+                            cfopEntrada={v.cfopEntrada}
+                            cfopsEntrada={cfopsEntrada}
+                            finalizada={finalizada}
+                            acao={acao}
+                            onDefinirCfopEntrada={(cfopId) =>
+                              void definirCfopEntradaCte(v.cte!.id, cfopId)
+                            }
+                          />
+                        )}
                       </div>
                       <div className="flex gap-2">
                         {v.cte?.id && (
@@ -1813,69 +2005,178 @@ function ConteudoDetalheEntrada() {
             <CardPadrao titulo="Financeiro (prévia)">
               <p className="mb-3 text-xs text-muted-foreground">
                 Prévia — contas a pagar será gerado no lançamento (futuro). Hoje só grava stub
-                (número, vencimento e valor) sem título no financeiro.
+                (duplicatas: número, vencimento e valor) sem título no financeiro. Ao adicionar
+                parcela o valor é dividido por igual; você pode ajustar depois. A soma deve bater
+                com o Valor Frete (total do transporte).
               </p>
               {ehNfe55 && (nota.ctesVinculados ?? []).length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   Vincule um CT-e para preencher o financeiro do frete.
                 </p>
               ) : (
-                <div className="flex flex-wrap items-end gap-3">
-                  <div className="min-w-[140px]">
-                    <Label htmlFor="fin-numero-doc">Número do documento</Label>
-                    <input
-                      id="fin-numero-doc"
-                      className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
-                      value={finNumeroDoc}
-                      onChange={(e) => setFinNumeroDoc(e.target.value)}
-                      disabled={finalizada || pipelineBloqueado}
-                      autoComplete="off"
-                    />
-                  </div>
-                  <div className="min-w-[140px]">
-                    <Label htmlFor="fin-vencimento">Data de vencimento</Label>
-                    <input
-                      id="fin-vencimento"
-                      type="date"
-                      className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
-                      value={finVencimento}
-                      onChange={(e) => setFinVencimento(e.target.value)}
-                      disabled={finalizada || pipelineBloqueado}
-                    />
-                  </div>
-                  <div className="min-w-[140px]">
-                    <Label htmlFor="fin-valor">Valor</Label>
-                    <input
-                      id="fin-valor"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
-                      value={finValor}
-                      onChange={(e) => setFinValor(e.target.value)}
-                      disabled={finalizada || pipelineBloqueado}
-                    />
-                  </div>
-                  {!finalizada && !pipelineBloqueado && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={acao || finValor === '' || Number.isNaN(Number(finValor))}
-                      onClick={() => {
-                        const cteId =
-                          ehCte ? nota.id : (nota.ctesVinculados ?? [])[0]?.cte?.id
-                        void postAcao('/financeiro-frete', {
-                          cteId,
-                          numeroDocumento: finNumeroDoc || null,
-                          vencimento: finVencimento || null,
-                          valor: Number(finValor),
-                        })
-                      }}
-                    >
-                      Salvar prévia
-                    </Button>
-                  )}
-                </div>
+                (() => {
+                  const totalTransporte = resolverTotalTransporteUi(nota)
+                  const somaDup = somaParcelasFinanceiro(finParcelas)
+                  const somaBate =
+                    totalTransporte > 0 &&
+                    Math.abs(somaDup - totalTransporte) <= TOLERANCIA_PARCELAS_FRETE
+                  const valoresOk = finParcelas.every((p) => {
+                    const n = Number(p.valor)
+                    return p.valor !== '' && Number.isFinite(n) && n > 0
+                  })
+                  const vencOk =
+                    finParcelas.length === 1 ||
+                    finParcelas.every((p) => Boolean(p.vencimento?.trim()))
+                  const podeSalvar = !acao && valoresOk && vencOk && somaBate
+                  return (
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap gap-4 text-sm">
+                        <p>
+                          <span className="text-muted-foreground">Total transporte (Valor Frete): </span>
+                          <span className="font-medium">{formatMoedaBr(totalTransporte || null)}</span>
+                        </p>
+                        <p>
+                          <span className="text-muted-foreground">Soma das duplicatas: </span>
+                          <span
+                            className={
+                              somaBate
+                                ? 'font-medium text-emerald-700 dark:text-emerald-400'
+                                : 'font-medium text-amber-700 dark:text-amber-400'
+                            }
+                          >
+                            {formatMoedaBr(somaDup)}
+                          </span>
+                        </p>
+                      </div>
+                      {!somaBate && valoresOk && totalTransporte > 0 && (
+                        <p className="text-xs text-amber-700 dark:text-amber-400">
+                          A soma das duplicatas deve ser igual ao Valor Frete (
+                          {formatMoedaBr(totalTransporte)}).
+                        </p>
+                      )}
+                      <div className="space-y-2">
+                        {finParcelas.map((parcela, index) => (
+                          <div
+                            key={index}
+                            className="flex flex-wrap items-end gap-3 rounded-md border border-border/60 p-2"
+                          >
+                            <div className="min-w-[120px] flex-1">
+                              <Label htmlFor={`fin-numero-doc-${index}`}>Número do documento</Label>
+                              <input
+                                id={`fin-numero-doc-${index}`}
+                                className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
+                                value={parcela.numeroDocumento}
+                                onChange={(e) => {
+                                  const v = e.target.value
+                                  setFinParcelas((prev) =>
+                                    prev.map((p, i) =>
+                                      i === index ? { ...p, numeroDocumento: v } : p
+                                    )
+                                  )
+                                }}
+                                disabled={finalizada || pipelineBloqueado}
+                                autoComplete="off"
+                              />
+                            </div>
+                            <div className="min-w-[140px]">
+                              <Label htmlFor={`fin-vencimento-${index}`}>Data de vencimento</Label>
+                              <input
+                                id={`fin-vencimento-${index}`}
+                                type="date"
+                                className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
+                                value={parcela.vencimento}
+                                onChange={(e) => {
+                                  const v = e.target.value
+                                  setFinParcelas((prev) =>
+                                    prev.map((p, i) =>
+                                      i === index ? { ...p, vencimento: v } : p
+                                    )
+                                  )
+                                }}
+                                disabled={finalizada || pipelineBloqueado}
+                              />
+                            </div>
+                            <div className="min-w-[120px]">
+                              <Label htmlFor={`fin-valor-${index}`}>Valor</Label>
+                              <input
+                                id={`fin-valor-${index}`}
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
+                                value={parcela.valor}
+                                onChange={(e) => {
+                                  const v = e.target.value
+                                  setFinParcelas((prev) =>
+                                    prev.map((p, i) => (i === index ? { ...p, valor: v } : p))
+                                  )
+                                }}
+                                disabled={finalizada || pipelineBloqueado}
+                              />
+                            </div>
+                            {!finalizada && !pipelineBloqueado && finParcelas.length > 1 && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={acao}
+                                onClick={() =>
+                                  setFinParcelas((prev) =>
+                                    ratearParcelasIguaisFrete(
+                                      prev.filter((_, i) => i !== index),
+                                      totalTransporte
+                                    )
+                                  )
+                                }
+                              >
+                                Remover
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      {!finalizada && !pipelineBloqueado && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={acao}
+                            onClick={() =>
+                              setFinParcelas((prev) =>
+                                ratearParcelasIguaisFrete(
+                                  [...prev, parcelaFinanceiroVazia()],
+                                  totalTransporte
+                                )
+                              )
+                            }
+                          >
+                            Adicionar parcela
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={!podeSalvar}
+                            onClick={() => {
+                              const cteId =
+                                ehCte ? nota.id : (nota.ctesVinculados ?? [])[0]?.cte?.id
+                              void postAcao('/financeiro-frete', {
+                                cteId,
+                                parcelas: finParcelas.map((p) => ({
+                                  numeroDocumento: p.numeroDocumento || null,
+                                  vencimento: p.vencimento || null,
+                                  valor: Number(p.valor),
+                                })),
+                              })
+                            }}
+                          >
+                            Salvar prévia
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()
               )}
             </CardPadrao>
           )}

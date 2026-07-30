@@ -435,6 +435,20 @@ export type IcmsXmlCte = {
 }
 
 /**
+ * CFOP do CT-e (`ide/CFOP`). Somente leitura — usado na aba Frete/CT-e.
+ */
+export function extrairCfopDoXmlCte(xmlBruto: string): string | null {
+  const xml = normalizarXmlNfe(xmlBruto)
+  if (!xml || detectarDocumentoFiscalXml(xml) !== 'cte') return null
+
+  const ide = blocoTag(xml, 'ide')
+  const cfop =
+    (ide ? extrairCampoXml(ide, 'CFOP') : null) ?? extrairCampoXml(xml, 'CFOP')
+  const codigo = (cfop ?? '').replace(/\D/g, '').trim()
+  return codigo || null
+}
+
+/**
  * ICMS do CT-e (`imp/ICMS` → grupo CST: ICMS00, ICMS20, ICMS45, ICMS60, ICMS90, ICMSOutraUF…).
  * Grupos padrão usam `vBC`/`pICMS`/`vICMS`; ICMSOutraUF usa `vBCOutraUF`/`pICMSOutraUF`/`vICMSOutraUF`.
  */
@@ -470,6 +484,34 @@ export function extrairIcmsDoXmlCte(xmlBruto: string): IcmsXmlCte | null {
   if (baseCalculoIcms == null && aliquotaIcms == null && valorIcms == null) return null
 
   return { baseCalculoIcms, aliquotaIcms, valorIcms }
+}
+
+export type SugestaoFinanceiroXmlCte = {
+  numeroDocumento: string | null
+  valor: number | null
+}
+
+/**
+ * Sugestão para o card Financeiro (prévia): número = `ide/nCT`, valor = `vPrest/vRec`.
+ * Não altera `valorTotal` do resumo (que continua preferindo `vTPrest`).
+ */
+export function extrairSugestaoFinanceiroDoXmlCte(
+  xmlBruto: string
+): SugestaoFinanceiroXmlCte | null {
+  const xml = normalizarXmlNfe(xmlBruto)
+  if (!xml || detectarDocumentoFiscalXml(xml) !== 'cte') return null
+
+  const ide = blocoTag(xml, 'ide')
+  const vPrest = blocoTag(xml, 'vPrest')
+  const numeroRaw =
+    (ide ? extrairCampoXml(ide, 'nCT') : null) ?? extrairCampoXml(xml, 'nCT')
+  const numeroDocumento = (numeroRaw ?? '').trim() || null
+  const valor =
+    parseValor(vPrest ? extrairCampoXml(vPrest, 'vRec') : null) ??
+    parseValor(extrairCampoXml(xml, 'vRec'))
+
+  if (numeroDocumento == null && valor == null) return null
+  return { numeroDocumento, valor }
 }
 
 /** Resumo de XML CTe (conhecimento de transporte). */

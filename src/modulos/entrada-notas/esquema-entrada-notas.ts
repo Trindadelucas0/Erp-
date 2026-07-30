@@ -31,6 +31,11 @@ export const esquemaDefinirCfopEntrada = z.object({
   cfopId: z.string().uuid(),
 })
 
+/** CFOP de entrada do documento CT-e (aba Frete/CT-e). */
+export const esquemaDefinirCfopEntradaCte = z.object({
+  cfopId: z.string().uuid(),
+})
+
 export const esquemaContatoFornecedor = z.object({
   observacao: z.string().min(1, 'Informe a observação do contato'),
 })
@@ -90,10 +95,27 @@ export const esquemaVincularCte = z
     message: 'Informe a chave do CT-e ou o id',
   })
 
-/** Stub financeiro frete (prévia) — sem gerar contas a pagar. */
-export const esquemaFinanceiroFrete = z.object({
-  cteId: z.string().uuid().optional(),
+/** Uma duplicata/parcela da prévia financeira do frete. */
+export const esquemaParcelaFinanceiroFrete = z.object({
   numeroDocumento: z.string().max(60).nullable().optional(),
   vencimento: z.string().nullable().optional(),
   valor: z.number().finite().nonnegative(),
 })
+
+/** Stub financeiro frete (prévia) — sem gerar contas a pagar. */
+export const esquemaFinanceiroFrete = z
+  .object({
+    cteId: z.string().uuid().optional(),
+    /** Formato novo: N duplicatas. */
+    parcelas: z.array(esquemaParcelaFinanceiroFrete).min(1).optional(),
+    /** Formato antigo (1 parcela) — fallback. */
+    numeroDocumento: z.string().max(60).nullable().optional(),
+    vencimento: z.string().nullable().optional(),
+    valor: z.number().finite().nonnegative().optional(),
+  })
+  .refine(
+    (d) =>
+      (d.parcelas != null && d.parcelas.length > 0) ||
+      (d.valor != null && Number.isFinite(d.valor)),
+    { message: 'Informe ao menos uma parcela ou o valor' }
+  )

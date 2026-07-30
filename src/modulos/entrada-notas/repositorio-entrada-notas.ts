@@ -8,6 +8,9 @@ import { randomUUID } from 'crypto'
 import type { Prisma } from '@prisma/client'
 
 const includeNotaCompleta = {
+  cfopEntrada: {
+    select: { id: true, codigo: true, nome: true },
+  },
   itens: {
     orderBy: { nItem: 'asc' as const },
     include: {
@@ -69,6 +72,10 @@ const includeNotaCompleta = {
           statusEntrada: true,
           fornecedorPessoaId: true,
           xmlConteudo: true,
+          cfopEntradaId: true,
+          cfopEntrada: {
+            select: { id: true, codigo: true, nome: true },
+          },
           despesasEntrada: {
             where: { origem: 'cte' },
             take: 1,
@@ -165,6 +172,7 @@ async function atualizarNota(
     problemaDesfecho?: string | null
     problemaMarcadoEm?: Date | null
     problemaResolvidoEm?: Date | null
+    cfopEntradaId?: string | null
   }
 ) {
   return clientePrisma.nfeRecebida.update({
