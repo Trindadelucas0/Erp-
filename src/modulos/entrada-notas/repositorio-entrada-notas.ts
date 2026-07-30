@@ -68,6 +68,11 @@ const includeNotaCompleta = {
           dataEmissao: true,
           statusEntrada: true,
           fornecedorPessoaId: true,
+          xmlConteudo: true,
+          despesasEntrada: {
+            where: { origem: 'cte' },
+            take: 1,
+          },
         },
       },
     },

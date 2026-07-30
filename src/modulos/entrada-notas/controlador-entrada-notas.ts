@@ -12,6 +12,7 @@ import {
   esquemaDefinirCfopEntrada,
   esquemaGravarCodigoOriginal,
   esquemaImportarFiscal,
+  esquemaFinanceiroFrete,
   esquemaLancar,
   esquemaLiberarCriticas,
   esquemaManifestar,
@@ -275,6 +276,17 @@ async function desvincularCte(requisicao: FastifyRequest, resposta: FastifyReply
   return resposta.send(dados)
 }
 
+async function salvarFinanceiroFrete(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parsed = esquemaFinanceiroFrete.safeParse(requisicao.body ?? {})
+  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
+  const dados = await servicoEntradaNotas.salvarFinanceiroFrete(
+    companyIdDe(requisicao),
+    notaIdDe(requisicao),
+    parsed.data
+  )
+  return resposta.send(dados)
+}
+
 async function vincularFornecedoresPendentes(requisicao: FastifyRequest, resposta: FastifyReply) {
   const vinculadas = await servicoEntradaNotas.vincularFornecedoresNasNotasPendentes(
     companyIdDe(requisicao)
@@ -327,6 +339,7 @@ export const controladorEntradaNotas = {
   lancar,
   vincularCte,
   desvincularCte,
+  salvarFinanceiroFrete,
   vincularFornecedoresPendentes,
   vincularCtesPendentes,
   ctesAguardandoNf,

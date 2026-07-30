@@ -9,6 +9,8 @@ import { repositorioFocusNfe } from '../focus-nfe/repositorio-focus-nfe.js'
 import { clienteFocusNfe } from '../focus-nfe/cliente-focus-nfe.js'
 import {
   extrairCamposResumoDoXml,
+  extrairDadosTransporteDoXmlNfe,
+  extrairIcmsDoXmlCte,
   extrairItensDoXml,
   normalizarXmlNfe,
   xmlNfeTemItensParseaveis,
@@ -1070,23 +1072,44 @@ async function obterDetalhe(
           })()
         : null,
       analise: sanitizarAnaliseExibicao(nota.tipoDocumento, nota.analiseJson as AnaliseJson | null),
-      ctesVinculados: (nota.vinculosComoNfe ?? []).map((v) => ({
-        id: v.id,
-        origemVinculo: v.origemVinculo,
-        chaveNfeReferenciada: v.chaveNfeReferenciada,
-        valorFrete: decimalNum(v.valorFrete),
-        cte: v.cteRecebida
-          ? {
-              id: v.cteRecebida.id,
-              chaveNfe: v.cteRecebida.chaveNfe,
-              nomeEmitente: v.cteRecebida.nomeEmitente,
-              documentoEmitente: v.cteRecebida.documentoEmitente,
-              valorTotal: decimalNum(v.cteRecebida.valorTotal),
-              dataEmissao: v.cteRecebida.dataEmissao,
-              statusEntrada: v.cteRecebida.statusEntrada,
-            }
+      transporteXml:
+        nota.xmlConteudo && (nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento)
+          ? extrairDadosTransporteDoXmlNfe(nota.xmlConteudo)
           : null,
-      })),
+      ctesVinculados: (nota.vinculosComoNfe ?? []).map((v) => {
+        const cte = v.cteRecebida
+        const icms = cte?.xmlConteudo ? extrairIcmsDoXmlCte(cte.xmlConteudo) : null
+        const despesaStub = cte?.despesasEntrada?.[0] ?? null
+        return {
+          id: v.id,
+          origemVinculo: v.origemVinculo,
+          chaveNfeReferenciada: v.chaveNfeReferenciada,
+          valorFrete: decimalNum(v.valorFrete),
+          icms,
+          financeiro: despesaStub
+            ? {
+                id: despesaStub.id,
+                numeroDocumento: despesaStub.numeroDocumento ?? null,
+                vencimento: despesaStub.vencimento
+                  ? despesaStub.vencimento.toISOString().slice(0, 10)
+                  : null,
+                valor: decimalNum(despesaStub.valor),
+                status: despesaStub.status,
+              }
+            : null,
+          cte: cte
+            ? {
+                id: cte.id,
+                chaveNfe: cte.chaveNfe,
+                nomeEmitente: cte.nomeEmitente,
+                documentoEmitente: cte.documentoEmitente,
+                valorTotal: decimalNum(cte.valorTotal),
+                dataEmissao: cte.dataEmissao,
+                statusEntrada: cte.statusEntrada,
+              }
+            : null,
+        }
+      }),
       nfesVinculadas: (nota.vinculosComoCte ?? []).map((v) => ({
         id: v.id,
         origemVinculo: v.origemVinculo,
@@ -1106,6 +1129,8 @@ async function obterDetalhe(
         status: d.status,
         origem: d.origem,
         pessoaId: d.pessoaId,
+        numeroDocumento: d.numeroDocumento ?? null,
+        vencimento: d.vencimento ? d.vencimento.toISOString().slice(0, 10) : null,
       })),
       itens: nota.itens.map((i) => {
         const cProd = (i.codigoProduto ?? '').trim().toLowerCase()
@@ -1721,6 +1746,109 @@ async function desvincularCte(companyId: string, notaId: string, vinculoId: stri
 }
 
 /**
+ * Stub financeiro do frete (prévia contas a pagar): número, vencimento e valor
+ * gravados em DespesaEntradaDocumento do CT-e vinculado — sem gerar título/AP.
+ */
+async function salvarFinanceiroFrete(
+  companyId: string,
+  notaId: string,
+  dados: {
+    cteId?: string
+    numeroDocumento?: string | null
+    vencimento?: string | null
+    valor: number
+  }
+) {
+  const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  if (nota.tipoDocumento === 'nfse') {
+    throw new ErroDaAplicacao('Financeiro de frete não se aplica a NFS-e', 400)
+  }
+
+  const statusesBloqueados = ['cancelada', 'com_problema', 'problema_resolvido']
+  if (statusesBloqueados.includes(nota.statusEntrada)) {
+    throw new ErroDaAplicacao('Nota fora do fluxo de entrada', 400)
+  }
+
+  let cteId = dados.cteId?.trim() || ''
+  if (!cteId) {
+    if (nota.tipoDocumento === 'cte') {
+      cteId = nota.id
+    } else {
+      cteId = nota.vinculosComoNfe?.[0]?.cteRecebidaId ?? ''
+    }
+  }
+  if (!cteId) throw new ErroDaAplicacao('Vincule um CT-e antes de gravar o financeiro do frete', 400)
+
+  const cte =
+    nota.tipoDocumento === 'cte' && nota.id === cteId
+      ? nota
+      : nota.vinculosComoNfe?.find((v) => v.cteRecebidaId === cteId)?.cteRecebida
+  if (!cte && nota.tipoDocumento !== 'cte') {
+    const existe = await clientePrisma.nfeRecebida.findFirst({
+      where: { id: cteId, companyId, tipoDocumento: 'cte' },
+      select: { id: true, fornecedorPessoaId: true },
+    })
+    if (!existe) throw new ErroDaAplicacao('CT-e não encontrado', 404)
+  }
+
+  // Garante que o CT-e está vinculado à NF (exceto quando a própria nota é o CT-e)
+  if (nota.tipoDocumento !== 'cte') {
+    const vinculo = nota.vinculosComoNfe?.find((v) => v.cteRecebidaId === cteId)
+    if (!vinculo) throw new ErroDaAplicacao('CT-e não está vinculado a esta NF', 400)
+  }
+
+  const valor = Number(dados.valor)
+  if (!Number.isFinite(valor) || valor < 0) {
+    throw new ErroDaAplicacao('Valor inválido', 400)
+  }
+
+  let vencimento: Date | null = null
+  if (dados.vencimento != null && String(dados.vencimento).trim()) {
+    const raw = String(dados.vencimento).trim()
+    const d = new Date(raw.length === 10 ? `${raw}T12:00:00` : raw)
+    if (Number.isNaN(d.getTime())) throw new ErroDaAplicacao('Data de vencimento inválida', 400)
+    vencimento = d
+  }
+
+  const pessoaId =
+    nota.tipoDocumento === 'cte'
+      ? nota.fornecedorPessoaId
+      : (nota.vinculosComoNfe?.find((v) => v.cteRecebidaId === cteId)?.cteRecebida
+          ?.fornecedorPessoaId ?? null)
+
+  const numeroDocumento =
+    dados.numeroDocumento != null ? String(dados.numeroDocumento).trim() || null : null
+
+  await clientePrisma.despesaEntradaDocumento.upsert({
+    where: {
+      nfeRecebidaId_origem: { nfeRecebidaId: cteId, origem: 'cte' },
+    },
+    create: {
+      id: randomUUID(),
+      companyId,
+      nfeRecebidaId: cteId,
+      pessoaId,
+      valor,
+      status: 'pendente',
+      origem: 'cte',
+      numeroDocumento,
+      vencimento,
+      updatedAt: new Date(),
+    },
+    update: {
+      pessoaId,
+      valor,
+      numeroDocumento,
+      vencimento,
+      updatedAt: new Date(),
+    },
+  })
+
+  return obterDetalhe(companyId, notaId)
+}
+
+/**
  * Após cadastrar fornecedor: reanalisa NFs em aberto do mesmo CNPJ/CPF
  * (vincula fornecedor e segue o pipeline sem clique em Reanalisar).
  */
@@ -1825,4 +1953,5 @@ export const servicoEntradaNotas = {
   listarCtesAguardandoNf,
   vincularCte,
   desvincularCte,
+  salvarFinanceiroFrete,
 }

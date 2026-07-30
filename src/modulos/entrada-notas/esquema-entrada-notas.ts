@@ -89,3 +89,11 @@ export const esquemaVincularCte = z
   .refine((d) => Boolean(d.chaveCte || d.cteId), {
     message: 'Informe a chave do CT-e ou o id',
   })
+
+/** Stub financeiro frete (prévia) — sem gerar contas a pagar. */
+export const esquemaFinanceiroFrete = z.object({
+  cteId: z.string().uuid().optional(),
+  numeroDocumento: z.string().max(60).nullable().optional(),
+  vencimento: z.string().nullable().optional(),
+  valor: z.number().finite().nonnegative(),
+})

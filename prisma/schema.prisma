@@ -235,6 +235,8 @@ model DespesaEntradaDocumento {
   status            String           @default("pendente")
   /// cte
   origem            String           @default("cte")
+  /// Prévia financeiro (stub) — número do documento / título futuro
+  numeroDocumento   String?
   vencimento        DateTime?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt

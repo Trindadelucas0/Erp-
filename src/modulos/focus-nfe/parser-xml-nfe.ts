@@ -370,6 +370,90 @@ export function extrairModFreteDoXml(xmlBruto: string): string | null {
   return digito.slice(0, 1)
 }
 
+export type DadosTransporteXmlNfe = {
+  qtdVolumes: number | null
+  pesoBruto: number | null
+  pesoLiquido: number | null
+  /** Frete declarado na NF (`ICMSTot/vFrete`), não o valor do CT-e. */
+  valorFreteNf: number | null
+}
+
+/**
+ * Volumes/pesos do bloco `transp/vol` e `vFrete` do total da NFe 55.
+ * Soma `qVol` / `pesoB` / `pesoL` quando há vários `<vol>`.
+ */
+export function extrairDadosTransporteDoXmlNfe(xmlBruto: string): DadosTransporteXmlNfe | null {
+  const xml = normalizarXmlNfe(xmlBruto)
+  if (!xml || detectarDocumentoFiscalXml(xml) !== 'nfe55') return null
+
+  const transp = blocoTag(xml, 'transp')
+  const vols = transp ? todosBlocosTag(transp, 'vol') : todosBlocosTag(xml, 'vol')
+
+  let qtdVolumes = 0
+  let pesoBruto = 0
+  let pesoLiquido = 0
+  let temVol = false
+  let temPesoB = false
+  let temPesoL = false
+
+  for (const vol of vols) {
+    temVol = true
+    const q = parseValor(extrairCampoXml(vol, 'qVol'))
+    if (q != null) qtdVolumes += q
+    const pb = parseValor(extrairCampoXml(vol, 'pesoB'))
+    if (pb != null) {
+      pesoBruto += pb
+      temPesoB = true
+    }
+    const pl = parseValor(extrairCampoXml(vol, 'pesoL'))
+    if (pl != null) {
+      pesoLiquido += pl
+      temPesoL = true
+    }
+  }
+
+  const total = blocoTag(xml, 'total')
+  const icmsTot = total ? blocoTag(total, 'ICMSTot') : null
+  const valorFreteNf =
+    parseValor(icmsTot ? extrairCampoXml(icmsTot, 'vFrete') : null) ??
+    parseValor(extrairCampoXml(xml, 'vFrete'))
+
+  if (!temVol && valorFreteNf == null) return null
+
+  return {
+    qtdVolumes: temVol ? qtdVolumes : null,
+    pesoBruto: temPesoB ? pesoBruto : null,
+    pesoLiquido: temPesoL ? pesoLiquido : null,
+    valorFreteNf,
+  }
+}
+
+export type IcmsXmlCte = {
+  baseCalculoIcms: number | null
+  aliquotaIcms: number | null
+  valorIcms: number | null
+}
+
+/**
+ * ICMS do CT-e (`imp/ICMS` → grupo CST: ICMS00, ICMS20, ICMS45, ICMS60, ICMS90…).
+ */
+export function extrairIcmsDoXmlCte(xmlBruto: string): IcmsXmlCte | null {
+  const xml = normalizarXmlNfe(xmlBruto)
+  if (!xml || detectarDocumentoFiscalXml(xml) !== 'cte') return null
+
+  const imp = blocoTag(xml, 'imp')
+  const icms = (imp ? blocoTag(imp, 'ICMS') : null) ?? blocoTag(xml, 'ICMS')
+  const escopo = icms ?? xml
+
+  const baseCalculoIcms = parseValor(extrairCampoXml(escopo, 'vBC'))
+  const aliquotaIcms = parseValor(extrairCampoXml(escopo, 'pICMS'))
+  const valorIcms = parseValor(extrairCampoXml(escopo, 'vICMS'))
+
+  if (baseCalculoIcms == null && aliquotaIcms == null && valorIcms == null) return null
+
+  return { baseCalculoIcms, aliquotaIcms, valorIcms }
+}
+
 /** Resumo de XML CTe (conhecimento de transporte). */
 export function extrairCamposResumoDoXmlCte(xmlBruto: string): CamposResumoXmlNfe {
   const xml = normalizarXmlNfe(xmlBruto)
