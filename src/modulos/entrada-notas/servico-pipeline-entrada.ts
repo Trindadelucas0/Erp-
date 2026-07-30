@@ -1333,6 +1333,12 @@ async function vincularItem(
   }
   const item = nota.itens.find((i) => i.id === itemId)
   if (!item) throw new ErroDaAplicacao('Item não encontrado', 404)
+  if (item.produtoId) {
+    throw new ErroDaAplicacao(
+      'Vínculo travado — item já conciliado. Corrija o cadastro do produto se houver divergência.',
+      409
+    )
+  }
 
   const produto = await clientePrisma.produto.findFirst({
     where: { id: produtoId, companyId },
@@ -1350,9 +1356,8 @@ async function vincularItem(
 }
 
 /**
- * Desfaz um vínculo produto × item (vínculo errado por código de barras/manual).
- * `vinculoModo='desvinculado'` marca o item para o auto-match (barras/código
- * original) não religar sozinho — só volta a ter produto após conciliação manual.
+ * Endpoint legado: desvincular na entrada está desativado.
+ * Itens já vinculados ficam travados — correção de divergência no cadastro do produto.
  */
 async function desvincularItem(companyId: string, notaId: string, itemId: string) {
   const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
@@ -1362,14 +1367,14 @@ async function desvincularItem(companyId: string, notaId: string, itemId: string
   }
   const item = nota.itens.find((i) => i.id === itemId)
   if (!item) throw new ErroDaAplicacao('Item não encontrado', 404)
+  if (item.produtoId) {
+    throw new ErroDaAplicacao(
+      'Vínculo travado — não é possível desvincular na entrada. Corrija o cadastro do produto.',
+      409
+    )
+  }
 
-  await repositorioEntradaNotas.atualizarItem(itemId, {
-    produtoId: null,
-    vinculoModo: 'desvinculado',
-    criticaCadastro: true,
-  })
-
-  return recalcularSomenteCadastro(companyId, notaId)
+  throw new ErroDaAplicacao('Item sem vínculo de produto para desvincular.', 400)
 }
 
 async function gravarCodigoOriginal(companyId: string, notaId: string, itemId: string) {

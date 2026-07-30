@@ -953,6 +953,7 @@ function ConteudoDetalheEntrada() {
   }
 
   function abrirBuscaProduto(item: ItemNota) {
+    if (item.produtoId) return
     const termo = termoBuscaProdutoItem(item)
     setItemVinculando(item.id)
     setBuscaProduto(termo)
@@ -1359,9 +1360,6 @@ function ConteudoDetalheEntrada() {
                       setItemVinculando(null)
                       setProdutos([])
                       setBuscaProduto('')
-                    }}
-                    onDesvincular={async () => {
-                      await postAcao('/desvincular-item', { itemId: item.id })
                     }}
                     codigoOriginalGravado={
                       Boolean(item.codigoOriginalGravado) ||

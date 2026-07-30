@@ -139,13 +139,12 @@ type Props = {
   onBuscaChange: (valor: string) => void
   onBuscar: () => void
   onVincular: (produtoId: string) => void | Promise<void>
-  onDesvincular: () => void | Promise<void>
   onGravarCodigoOriginal?: () => void | Promise<void>
   /** Após gravar com sucesso nesta sessão da tela */
   codigoOriginalGravado?: boolean
   /**
    * Entrada documental (uso/consumo): vínculo não obrigatório.
-   * Se false, oculta Conciliar/Trocar/Desvincular.
+   * Se false, oculta Conciliar produto.
    */
   permitirAcoesVinculo?: boolean
   /** Soften “Sem vínculo” quando documental e produto não exigido */
@@ -164,7 +163,6 @@ export function ItemVinculoCadastroGrid({
   onBuscaChange,
   onBuscar,
   onVincular,
-  onDesvincular,
   onGravarCodigoOriginal,
   codigoOriginalGravado = false,
   permitirAcoesVinculo = true,
@@ -343,39 +341,21 @@ export function ItemVinculoCadastroGrid({
             <p className="text-xs text-destructive">Crítica de cadastro — concilie o produto</p>
           )}
 
-          {!finalizada && permitirAcoesVinculo && (
+          {vinculado && !finalizada && (
+            <p className="text-xs text-muted-foreground">
+              Vínculo travado — ajuste no cadastro do produto se houver divergência.
+            </p>
+          )}
+
+          {!finalizada && permitirAcoesVinculo && !item.produtoId && (
             <div className="flex flex-wrap gap-1.5 pt-0.5">
-              {!item.produtoId && (
-                <Button type="button" size="sm" disabled={acao} onClick={onAbrirBusca}>
-                  Conciliar produto
-                </Button>
-              )}
-              {item.produtoId && (
-                <>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={acao}
-                    onClick={onAbrirBusca}
-                  >
-                    Trocar vínculo
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    disabled={acao}
-                    onClick={() => void onDesvincular()}
-                  >
-                    Desvincular
-                  </Button>
-                </>
-              )}
+              <Button type="button" size="sm" disabled={acao} onClick={onAbrirBusca}>
+                Conciliar produto
+              </Button>
             </div>
           )}
 
-          {buscando && permitirAcoesVinculo && (
+          {buscando && permitirAcoesVinculo && !item.produtoId && (
             <div className="mt-1 space-y-2 rounded-md border border-dashed p-3">
               <div className="flex gap-2">
                 <input

@@ -302,25 +302,16 @@ describe('servicoEntradaNotas.desvincularItem', () => {
     mockAnalisarCadastroPassthrough()
   })
 
-  it('zera o vínculo do item, marca vinculoModo=desvinculado e reabre nota lançada', async () => {
+  it('rejeita desvincular item já vinculado (vínculo travado)', async () => {
     ligarRepositorioFake(buildNotaFixture())
 
-    const resultado = await servicoEntradaNotas.desvincularItem('empresa-1', 'nota-1', 'item-1')
-
-    const nota = resultado.nota as { statusEntrada: string; origemLancamento: string | null }
-    expect(nota.statusEntrada).toBe('em_analise')
-    expect(nota.origemLancamento).toBeNull()
-
-    const item = (
-      resultado.nota as { itens: Array<{ id: string; produtoId: string | null; vinculoModo: string | null }> }
-    ).itens.find((i) => i.id === 'item-1')
-    expect(item?.produtoId).toBeNull()
-    expect(item?.vinculoModo).toBe('desvinculado')
-
-    const analise = (resultado.nota as { analise: { cadastro: { status: string }; motivoParada: string | null } })
-      .analise
-    expect(analise.cadastro.status).toBe('bloqueante')
-    expect(analise.motivoParada).toBe('cadastro')
+    await expect(
+      servicoEntradaNotas.desvincularItem('empresa-1', 'nota-1', 'item-1')
+    ).rejects.toMatchObject({
+      message: expect.stringContaining('Vínculo travado'),
+      statusCode: 409,
+    })
+    expect(repositorioEntradaNotas.atualizarItem).not.toHaveBeenCalled()
   })
 
   it('rejeita desvincular item em nota cancelada', async () => {
@@ -329,6 +320,47 @@ describe('servicoEntradaNotas.desvincularItem', () => {
     await expect(
       servicoEntradaNotas.desvincularItem('empresa-1', 'nota-1', 'item-1')
     ).rejects.toBeInstanceOf(ErroDaAplicacao)
+    expect(repositorioEntradaNotas.atualizarItem).not.toHaveBeenCalled()
+  })
+
+  it('rejeita desvincular item sem produto', async () => {
+    ligarRepositorioFake(
+      buildNotaFixture({
+        statusEntrada: 'em_analise',
+        itens: [
+          {
+            id: 'item-1',
+            nItem: 1,
+            descricao: 'Sem vínculo',
+            gtin: null,
+            codigoProduto: null,
+            ncm: null,
+            cfop: null,
+            cst: null,
+            origem: null,
+            quantidade: 1,
+            valorUnitario: 10,
+            valorTotal: 10,
+            pesoKg: null,
+            custoFreteRateado: null,
+            cfopEntradaId: null,
+            produtoId: null,
+            vinculoModo: null,
+            criticaCadastro: true,
+            criticaFiscal: false,
+            criticaNegociacao: false,
+            produto: null,
+          },
+        ],
+      })
+    )
+
+    await expect(
+      servicoEntradaNotas.desvincularItem('empresa-1', 'nota-1', 'item-1')
+    ).rejects.toMatchObject({
+      message: expect.stringContaining('sem vínculo'),
+      statusCode: 400,
+    })
     expect(repositorioEntradaNotas.atualizarItem).not.toHaveBeenCalled()
   })
 })
@@ -416,9 +448,52 @@ describe('servicoEntradaNotas.vincularItem', () => {
     expect(analisarNegociacao).not.toHaveBeenCalled()
   })
 
+  it('rejeita trocar vínculo de item já vinculado', async () => {
+    ligarRepositorioFake(buildNotaFixture({ statusEntrada: 'em_analise', etapaAtual: 'cadastro', origemLancamento: null }))
+
+    await expect(
+      servicoEntradaNotas.vincularItem('empresa-1', 'nota-1', 'item-1', 'produto-2')
+    ).rejects.toMatchObject({
+      message: expect.stringContaining('Vínculo travado'),
+      statusCode: 409,
+    })
+    expect(repositorioEntradaNotas.atualizarItem).not.toHaveBeenCalled()
+  })
+
   it('rejeita vincular produto inexistente', async () => {
     vi.mocked(clientePrisma.produto.findFirst).mockResolvedValue(null)
-    ligarRepositorioFake(buildNotaFixture({ statusEntrada: 'em_analise', etapaAtual: 'cadastro', origemLancamento: null }))
+    ligarRepositorioFake(
+      buildNotaFixture({
+        statusEntrada: 'em_analise',
+        etapaAtual: 'cadastro',
+        origemLancamento: null,
+        itens: [
+          {
+            id: 'item-1',
+            nItem: 1,
+            descricao: 'Sem vínculo',
+            gtin: null,
+            codigoProduto: null,
+            ncm: null,
+            cfop: null,
+            cst: null,
+            origem: null,
+            quantidade: 1,
+            valorUnitario: 10,
+            valorTotal: 10,
+            pesoKg: null,
+            custoFreteRateado: null,
+            cfopEntradaId: null,
+            produtoId: null,
+            vinculoModo: null,
+            criticaCadastro: true,
+            criticaFiscal: false,
+            criticaNegociacao: false,
+            produto: null,
+          },
+        ],
+      })
+    )
 
     await expect(
       servicoEntradaNotas.vincularItem('empresa-1', 'nota-1', 'item-1', 'produto-inexistente')
