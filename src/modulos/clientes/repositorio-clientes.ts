@@ -185,7 +185,7 @@ type CamposNormalizados = {
   cnaesArray?: { codigo: string; descricao?: string | null; principal?: boolean }[]
 }
 
-function normalizarDocumento(dados: DadosParaCriarCliente | DadosParaEditarCliente): CamposNormalizados {
+function normalizarCamposCliente(dados: DadosParaCriarCliente | DadosParaEditarCliente): CamposNormalizados {
   const ieNormalizada =
     dados.tipo === 'PJ' ? normalizarIe(dados.ie) : null
 
@@ -421,7 +421,7 @@ function dadosDaPessoaDeCampos(campos: CamposNormalizados) {
 }
 
 async function criar(dados: DadosParaCriarCliente, companyId: string) {
-  const campos = normalizarDocumento(dados)
+  const campos = normalizarCamposCliente(dados)
   const documento = campos.tipo === 'PF' ? campos.cpf : campos.cnpj
   const msgDuplicado =
     campos.tipo === 'PF'
@@ -529,7 +529,7 @@ async function criar(dados: DadosParaCriarCliente, companyId: string) {
 }
 
 async function atualizar(id: string, dados: DadosParaEditarCliente) {
-  const campos = normalizarDocumento(dados)
+  const campos = normalizarCamposCliente(dados)
 
   return clientePrisma.$transaction(async (tx) => {
     await tx.pessoa.update({

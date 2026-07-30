@@ -279,7 +279,7 @@ function normalizarPrazos(prazos?: (number | null)[] | null) {
   }
 }
 
-function normalizarDocumento(dados: DadosParaCriarFornecedor | DadosParaEditarFornecedor): CamposNormalizados {
+function normalizarCamposFornecedor(dados: DadosParaCriarFornecedor | DadosParaEditarFornecedor): CamposNormalizados {
   const prazos = normalizarPrazos(dados.prazosPagamento)
   const ieNormalizada =
     dados.tipo === 'PJ' ? normalizarIe(dados.ie) : null
@@ -757,7 +757,7 @@ async function sincronizarRelacoesPessoa(
 }
 
 async function criar(dados: DadosParaCriarFornecedor, companyId: string) {
-  const campos = normalizarDocumento(dados)
+  const campos = normalizarCamposFornecedor(dados)
   const documento = campos.tipo === 'PF' ? campos.cpf : campos.cnpj
   const msgDuplicado =
     campos.tipo === 'PF'
@@ -875,7 +875,7 @@ async function criar(dados: DadosParaCriarFornecedor, companyId: string) {
 }
 
 async function atualizar(id: string, dados: DadosParaEditarFornecedor, companyId: string) {
-  const campos = normalizarDocumento(dados)
+  const campos = normalizarCamposFornecedor(dados)
 
   return clientePrisma.$transaction(async (tx) => {
     await tx.pessoa.update({

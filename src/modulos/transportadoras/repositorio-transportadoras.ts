@@ -179,7 +179,7 @@ type CamposNormalizados = {
   dadosBancariosArray?: DadosBancarioItem[]
 }
 
-function normalizarDocumento(dados: DadosParaCriarTransportadora | DadosParaEditarTransportadora): CamposNormalizados {
+function normalizarCamposTransportadora(dados: DadosParaCriarTransportadora | DadosParaEditarTransportadora): CamposNormalizados {
   const ieNormalizada =
     dados.tipo === 'PJ' ? normalizarIe(dados.ie) : null
 
@@ -510,7 +510,7 @@ async function sincronizarContatosEnderecos(
 }
 
 async function criar(dados: DadosParaCriarTransportadora, companyId: string) {
-  const campos = normalizarDocumento(dados)
+  const campos = normalizarCamposTransportadora(dados)
   const documento = campos.tipo === 'PF' ? campos.cpf : campos.cnpj
   const msgDuplicado =
     campos.tipo === 'PF'
@@ -609,7 +609,7 @@ async function criar(dados: DadosParaCriarTransportadora, companyId: string) {
 }
 
 async function atualizar(id: string, dados: DadosParaEditarTransportadora) {
-  const campos = normalizarDocumento(dados)
+  const campos = normalizarCamposTransportadora(dados)
 
   return clientePrisma.$transaction(async (tx) => {
     await tx.pessoa.update({
