@@ -73,6 +73,12 @@ function formatarQtdUnit(quantidade: number | null, valorUnitario: number | null
   return `${qtd} × ${formatarValorUnitario(valorUnitario)}`
 }
 
+function formatarDetalheEmbalagens(qtdEmbalagens: number, undPorEmbalagem: number): string {
+  const n = Number.isFinite(qtdEmbalagens) ? qtdEmbalagens : 0
+  const rotulo = n === 1 ? 'embalagem' : 'embalagens'
+  return `(${n} ${rotulo} com ${undPorEmbalagem} und cada)`
+}
+
 function formatarUnidade(valor: string | null | undefined): string {
   const limpo = (valor ?? '').trim()
   return limpo || '—'
@@ -110,7 +116,7 @@ function rotuloProdutoBusca(produto: ProdutoBuscaVinculo): string {
 
 type LinhaEspelhoProps = {
   rotulo: string
-  valor: string
+  valor: ReactNode
   valorClassName?: string
   acao?: ReactNode
 }
@@ -199,13 +205,14 @@ export function ItemVinculoCadastroGrid({
     unidadeNf.toLowerCase() === unidadeSistema.toLowerCase()
 
   const qtdUnitTexto = formatarQtdUnit(item.quantidade, item.valorUnitario)
-  const valorUnitarioSistema =
-    temMultiploCompra && item.valorUnitario != null
-      ? item.valorUnitario / itensPorEmbalagem
-      : item.valorUnitario
-  const qtdEmbalagemTextoSistema = temMultiploCompra
-    ? `${itensPorEmbalagem} · ${formatarQtdUnit(item.qtdTotalUn ?? null, valorUnitarioSistema ?? null)}`
-    : null
+  const qtdEntradaValorSistema = temMultiploCompra ? (
+    <>
+      <span>{item.qtdTotalUn ?? '—'}</span>
+      <span className="ml-1.5 font-sans text-[11px] font-normal leading-none text-muted-foreground">
+        {formatarDetalheEmbalagens(item.quantidade ?? 0, itensPorEmbalagem)}
+      </span>
+    </>
+  ) : null
   const podeGravarOriginal =
     vinculado &&
     !finalizada &&
@@ -324,8 +331,8 @@ export function ItemVinculoCadastroGrid({
             />
             {temMultiploCompra ? (
               <LinhaEspelho
-                rotulo="Qtd embalagem"
-                valor={qtdEmbalagemTextoSistema ?? '—'}
+                rotulo="Qtd entrada"
+                valor={qtdEntradaValorSistema ?? '—'}
                 valorClassName="font-sans text-foreground"
               />
             ) : null}

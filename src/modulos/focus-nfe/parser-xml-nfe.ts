@@ -435,7 +435,8 @@ export type IcmsXmlCte = {
 }
 
 /**
- * ICMS do CT-e (`imp/ICMS` → grupo CST: ICMS00, ICMS20, ICMS45, ICMS60, ICMS90…).
+ * ICMS do CT-e (`imp/ICMS` → grupo CST: ICMS00, ICMS20, ICMS45, ICMS60, ICMS90, ICMSOutraUF…).
+ * Grupos padrão usam `vBC`/`pICMS`/`vICMS`; ICMSOutraUF usa `vBCOutraUF`/`pICMSOutraUF`/`vICMSOutraUF`.
  */
 export function extrairIcmsDoXmlCte(xmlBruto: string): IcmsXmlCte | null {
   const xml = normalizarXmlNfe(xmlBruto)
@@ -443,11 +444,28 @@ export function extrairIcmsDoXmlCte(xmlBruto: string): IcmsXmlCte | null {
 
   const imp = blocoTag(xml, 'imp')
   const icms = (imp ? blocoTag(imp, 'ICMS') : null) ?? blocoTag(xml, 'ICMS')
-  const escopo = icms ?? xml
+  const escopo = icms ?? imp ?? xml
 
-  const baseCalculoIcms = parseValor(extrairCampoXml(escopo, 'vBC'))
-  const aliquotaIcms = parseValor(extrairCampoXml(escopo, 'pICMS'))
-  const valorIcms = parseValor(extrairCampoXml(escopo, 'vICMS'))
+  // Preferir bloco ICMSOutraUF quando presente (tags vBC/pICMS/vICMS não existem nesse grupo).
+  const outraUf = blocoTag(escopo, 'ICMSOutraUF')
+  if (outraUf) {
+    const baseCalculoIcms = parseValor(extrairCampoXml(outraUf, 'vBCOutraUF'))
+    const aliquotaIcms = parseValor(extrairCampoXml(outraUf, 'pICMSOutraUF'))
+    const valorIcms = parseValor(extrairCampoXml(outraUf, 'vICMSOutraUF'))
+    if (baseCalculoIcms != null || aliquotaIcms != null || valorIcms != null) {
+      return { baseCalculoIcms, aliquotaIcms, valorIcms }
+    }
+  }
+
+  const baseCalculoIcms =
+    parseValor(extrairCampoXml(escopo, 'vBC')) ??
+    parseValor(extrairCampoXml(escopo, 'vBCOutraUF'))
+  const aliquotaIcms =
+    parseValor(extrairCampoXml(escopo, 'pICMS')) ??
+    parseValor(extrairCampoXml(escopo, 'pICMSOutraUF'))
+  const valorIcms =
+    parseValor(extrairCampoXml(escopo, 'vICMS')) ??
+    parseValor(extrairCampoXml(escopo, 'vICMSOutraUF'))
 
   if (baseCalculoIcms == null && aliquotaIcms == null && valorIcms == null) return null
 

@@ -1604,9 +1604,16 @@ function ConteudoDetalheEntrada() {
 
               {(() => {
                 const transp = nota.transporteXml
-                const cte0 = (nota.ctesVinculados ?? [])[0]
-                const icms = cte0?.icms
-                const valorFreteSoma = (nota.ctesVinculados ?? []).reduce((acc, v) => {
+                const ctes = nota.ctesVinculados ?? []
+                const icms =
+                  ctes.find(
+                    (v) =>
+                      v.icms &&
+                      (v.icms.baseCalculoIcms != null ||
+                        v.icms.aliquotaIcms != null ||
+                        v.icms.valorIcms != null)
+                  )?.icms ?? null
+                const valorFreteSoma = ctes.reduce((acc, v) => {
                   const n = v.valorFrete ?? v.cte?.valorTotal ?? 0
                   return acc + (Number.isFinite(n) ? n : 0)
                 }, 0)

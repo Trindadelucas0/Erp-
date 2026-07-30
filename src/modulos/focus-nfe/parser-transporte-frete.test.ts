@@ -43,4 +43,22 @@ describe('extrairIcmsDoXmlCte', () => {
       valorIcms: 89.05,
     })
   })
+
+  it('lê vBCOutraUF pICMSOutraUF vICMSOutraUF do grupo ICMSOutraUF', () => {
+    const xml = `<?xml version="1.0"?>
+<cteProc><CTe><infCte Id="CTe35240111111111111111570010000000011123456789">
+  <imp><ICMS><ICMSOutraUF>
+    <CST>90</CST>
+    <vBCOutraUF>742.10</vBCOutraUF>
+    <pICMSOutraUF>12.00</pICMSOutraUF>
+    <vICMSOutraUF>89.05</vICMSOutraUF>
+  </ICMSOutraUF></ICMS></imp>
+  <vPrest><vTPrest>742.10</vTPrest></vPrest>
+</infCte></CTe></cteProc>`
+    expect(extrairIcmsDoXmlCte(xml)).toEqual({
+      baseCalculoIcms: 742.1,
+      aliquotaIcms: 12,
+      valorIcms: 89.05,
+    })
+  })
 })
