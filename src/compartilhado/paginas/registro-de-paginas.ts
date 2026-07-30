@@ -158,7 +158,11 @@ export function montarPaginasPermitidasParaUsuario(
     paginasPorChave.has('cfops') ||
     paginasPorChave.has('planos-financeiros') ||
     permissoesEfetivas.includes('financeiro:view')
-  if (temParametroFinanceiro && !paginasPorChave.has('configuracoes')) {
+  const temParametroLogistica = permissoesEfetivas.includes('produtos:view')
+  if (
+    (temParametroFinanceiro || temParametroLogistica) &&
+    !paginasPorChave.has('configuracoes')
+  ) {
     const config = resolverPaginaPorChave('configuracoes')
     if (config) paginasPorChave.set('configuracoes', config)
   }

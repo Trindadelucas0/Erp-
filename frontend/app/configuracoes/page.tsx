@@ -11,6 +11,7 @@ import { PortaoAssinaturaComSenha } from '@/components/compartilhado/portao-assi
 import { PainelConfiguracaoZapsign } from '@/components/assinatura-zapsign/painel-configuracao-zapsign'
 import { ListaDocumentosZapsign } from '@/components/assinatura-zapsign/lista-documentos-zapsign'
 import { PainelConfiguracaoFocusNfe } from '@/components/focus-nfe/painel-configuracao-focus-nfe'
+import { PainelUnidadesMedida } from '@/components/configuracoes/painel-unidades-medida'
 import { ConteudoDaPaginaCfops } from '@/app/cfops/conteudo-pagina-cfops'
 import { ConteudoDaPaginaPlanosFinanceiros } from '@/app/planos-financeiros/conteudo-pagina-planos-financeiros'
 import { CardPadrao } from '@/components/ui/card-padrao'
@@ -32,7 +33,7 @@ import {
 } from '@/lib/atalhos/interpretar-tecla'
 import type { AtalhoConfigurado, ChaveDaAcao } from '@/lib/atalhos/tipos'
 
-type AbaConfig = 'geral' | 'vendas' | 'financeiro' | 'fiscal'
+type AbaConfig = 'geral' | 'vendas' | 'logistica' | 'financeiro' | 'fiscal'
 type SecaoFiscal = 'cfop' | 'buscador'
 
 const ABAS_ASSINATURA = [
@@ -349,9 +350,11 @@ function ConteudoDaPaginaDeConfiguracoes() {
   const podeFinanceiro = usePermissao('financeiro:view')
   const podeConfig = usePermissao('configuracoes:view')
 
+  const podeProdutos = usePermissao('produtos:view')
   const podeGeral = ehAdmin || podeConfig
   const podeAssinatura = ehAdmin
   const podeAtalhos = ehAdmin || podeConfig
+  const podeLogistica = ehAdmin || podeConfig || podeProdutos
   const podeFinanceiroAba = ehAdmin || podeFinanceiro
   const podeFiscalCfop = ehAdmin || podeFinanceiro
   const podeBuscadorNf = ehAdmin
@@ -365,6 +368,7 @@ function ConteudoDaPaginaDeConfiguracoes() {
     if (ehAdmin) {
       lista.push({ id: 'vendas', rotulo: 'Vendas' })
     }
+    if (podeLogistica) lista.push({ id: 'logistica', rotulo: 'Logística' })
     if (podeFinanceiroAba) lista.push({ id: 'financeiro', rotulo: 'Financeiro' })
     if (podeFiscal) lista.push({ id: 'fiscal', rotulo: 'Fiscal' })
     return lista
@@ -373,6 +377,7 @@ function ConteudoDaPaginaDeConfiguracoes() {
     podeAssinatura,
     podeAtalhos,
     ehAdmin,
+    podeLogistica,
     podeFinanceiroAba,
     podeFiscal,
   ])
@@ -433,6 +438,8 @@ function ConteudoDaPaginaDeConfiguracoes() {
       )}
 
       {abaAtiva === 'vendas' && <PlaceholderAba nome="Vendas" />}
+
+      {abaAtiva === 'logistica' && podeLogistica && <PainelUnidadesMedida />}
 
       {abaAtiva === 'financeiro' && podeFinanceiroAba && (
         <ConteudoDaPaginaPlanosFinanceiros />
