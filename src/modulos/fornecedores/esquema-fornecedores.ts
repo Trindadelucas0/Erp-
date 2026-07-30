@@ -80,10 +80,10 @@ const camposComuns = {
     nulParaUndefined,
     z.enum(MODALIDADES_TRANSPORTE_FORNECEDOR).optional()
   ),
-  regraRateioFrete: z
-    .enum(['valor', 'peso', 'quantidade', 'igual'])
-    .optional()
-    .default('valor'),
+  regraRateioFrete: z.preprocess(
+    nulParaUndefined,
+    z.enum(['valor', 'peso', 'quantidade', 'igual']).optional()
+  ),
 }
 
 export const esquemaDeContatoItem = z

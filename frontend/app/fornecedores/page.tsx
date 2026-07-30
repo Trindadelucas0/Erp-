@@ -221,7 +221,7 @@ const FORM_VAZIO: FormFornecedor = {
   permitirVinculoManual: false,
   exigirItensEntrada: false,
   modalidadeTransportePadrao: '',
-  regraRateioFrete: 'valor',
+  regraRateioFrete: '',
   prazosPagamento: ['', '', '', '', '', ''],
   planosFinanceiros: [],
   cfopsEntrada: [],
@@ -283,7 +283,7 @@ function fornecedorParaForm(f: Fornecedor): FormFornecedor {
     permitirVinculoManual: f.permitirVinculoManual ?? false,
     exigirItensEntrada: f.exigirItensEntrada ?? false,
     modalidadeTransportePadrao: normalizarModalidadeTransporte(f.modalidadeTransportePadrao),
-    regraRateioFrete: f.regraRateioFrete || 'valor',
+    regraRateioFrete: f.regraRateioFrete || '',
     prazosPagamento: prazos.slice(0, 6).map((p) => (p != null ? String(p) : '')),
     planosFinanceiros: f.planosFinanceiros ?? [],
     cfopsEntrada: f.cfopsEntrada ?? [],
@@ -1225,7 +1225,7 @@ function ConteudoDaPaginaDeFornecedores() {
       permitirVinculoManual: form.permitirVinculoManual,
       exigirItensEntrada: form.exigirItensEntrada,
       modalidadeTransportePadrao: form.modalidadeTransportePadrao || undefined,
-      regraRateioFrete: form.regraRateioFrete || 'valor',
+      regraRateioFrete: form.regraRateioFrete || null,
       prazosPagamento,
       planosFinanceirosIds: form.planosFinanceiros.map((p) => p.id),
       cfopsEntradaIds: form.cfopsEntrada.map((c) => c.id),
@@ -1830,28 +1830,41 @@ function ConteudoDaPaginaDeFornecedores() {
                   </div>
                 </div>
 
-                <SelectPadrao
-                  rotulo="Tipo de frete"
-                  valor={form.modalidadeTransportePadrao}
-                  aoMudar={(v) => set('modalidadeTransportePadrao', v)}
-                  opcoes={MODALIDADES}
-                  placeholder="Selecione"
-                  disabled={somenteLeitura}
-                />
+                <div className="space-y-1">
+                  <SelectPadrao
+                    rotulo="Tipo de frete"
+                    valor={form.modalidadeTransportePadrao}
+                    aoMudar={(v) => set('modalidadeTransportePadrao', v)}
+                    opcoes={MODALIDADES}
+                    placeholder="Selecione"
+                    disabled={somenteLeitura}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Usado no Pedido de compra como sugestão. Na Entrada de Notas vale o frete da
+                    nota fiscal (modFrete).
+                  </p>
+                </div>
 
-                <SelectPadrao
-                  rotulo="Regra de rateio do frete (CT-e)"
-                  valor={form.regraRateioFrete}
-                  aoMudar={(v) => set('regraRateioFrete', v)}
-                  opcoes={[
-                    { value: 'valor', label: 'Proporcional ao valor dos itens' },
-                    { value: 'peso', label: 'Proporcional ao peso' },
-                    { value: 'quantidade', label: 'Proporcional à quantidade' },
-                    { value: 'igual', label: 'Igual entre os itens' },
-                  ]}
-                  placeholder="Selecione"
-                  disabled={somenteLeitura}
-                />
+                <div className="space-y-1">
+                  <SelectPadrao
+                    rotulo="Regra de rateio do frete (CT-e)"
+                    valor={form.regraRateioFrete}
+                    aoMudar={(v) => set('regraRateioFrete', v)}
+                    opcoes={[
+                      { value: 'valor', label: 'Proporcional ao valor dos itens' },
+                      { value: 'peso', label: 'Proporcional ao peso' },
+                      { value: 'quantidade', label: 'Proporcional à quantidade' },
+                      { value: 'igual', label: 'Igual entre os itens' },
+                    ]}
+                    placeholder="Selecione"
+                    disabled={somenteLeitura}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Usada na Entrada de Notas para ratear o custo do CT-e nos itens. Se ficar
+                    vazia e houver frete a ratear, a aba Frete trava até o cadastro ser
+                    ajustado.
+                  </p>
+                </div>
 
                 {(form.tipoConsumo || form.tipoPrestadorServico) && (
                   <div className="space-y-2">

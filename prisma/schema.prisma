@@ -410,8 +410,8 @@ model DadosFornecedor {
   prazoPagamento5            Int?
   prazoPagamento6            Int?
   modalidadeTransportePadrao String?
-  /// valor | peso | quantidade | igual — rateio do CT-e nos itens da NF
-  regraRateioFrete           String  @default("valor")
+  /// valor | peso | quantidade | igual — rateio do CT-e nos itens da NF (null = não cadastrado)
+  regraRateioFrete           String?
   observacoes                String?
 
   planosFinanceiros    FornecedorPlanoFinanceiro[]

@@ -206,6 +206,21 @@ function exigeCtePorModFrete(modFrete: string | null | undefined): boolean {
   return (modFrete ?? '').trim() === '1'
 }
 
+/** Precisa ratear quando frete é destinatário ou já há CT-e vinculado. */
+function exigeRateioFrete(
+  modFrete: string | null | undefined,
+  qtdCtes: number
+): boolean {
+  return exigeCtePorModFrete(modFrete) || qtdCtes > 0
+}
+
+function regraRateioFreteCadastro(
+  regra: string | null | undefined
+): string | null {
+  const r = (regra ?? '').trim()
+  return r || null
+}
+
 function podeAvancarFrete(etapa: ResultadoEtapa | null | undefined): boolean {
   if (!etapa) return true
   return etapa.status !== 'bloqueante'
@@ -252,7 +267,8 @@ function pipelineProntoParaLancar(
     return {
       ok: false,
       mensagem:
-        'Frete por conta do destinatário: vincule um CT-e (automático ou manual) antes de lançar.',
+        analise.frete?.bloqueios?.[0] ??
+        'Frete bloqueante: vincule o CT-e ou cadastre a regra de rateio no fornecedor antes de lançar.',
     }
   }
   return { ok: true }
@@ -765,6 +781,26 @@ async function analisarNota(
     return await obterDetalhe(companyId, notaId)
   }
 
+  const regraRateio = regraRateioFreteCadastro(
+    nota.fornecedorPessoa?.papeis?.[0]?.dadosFornecedor?.regraRateioFrete
+  )
+  if (exigeRateioFrete(modFrete, qtdCtes) && !regraRateio) {
+    analise.frete = {
+      status: 'bloqueante',
+      avisos: [],
+      bloqueios: [
+        'Cadastre a Regra de rateio do frete (CT-e) no fornecedor antes de continuar. Sem essa regra não é possível ratear o custo do frete nos itens.',
+      ],
+    }
+    analise.motivoParada = 'frete'
+    await repositorioEntradaNotas.atualizarNota(notaId, {
+      analiseJson: asJson(analise),
+      etapaAtual: 'frete',
+      statusEntrada: 'em_analise',
+    })
+    return await obterDetalhe(companyId, notaId)
+  }
+
   if (exigeCtePorModFrete(modFrete)) {
     analise.frete = {
       status: 'ok',
@@ -844,8 +880,15 @@ async function aplicarRateioEDespesasFrete(companyId: string, notaId: string) {
     return acc + n
   }, 0)
 
-  const regra =
-    nota.fornecedorPessoa?.papeis?.[0]?.dadosFornecedor?.regraRateioFrete ?? 'valor'
+  const regra = regraRateioFreteCadastro(
+    nota.fornecedorPessoa?.papeis?.[0]?.dadosFornecedor?.regraRateioFrete
+  )
+  if (!regra) {
+    throw new ErroDaAplicacao(
+      'Cadastre a Regra de rateio do frete (CT-e) no fornecedor antes de lançar.',
+      400
+    )
+  }
 
   const rateio = ratearCustoFrete({
     regra,
@@ -1049,8 +1092,9 @@ async function obterDetalhe(
       modFrete: nota.modFrete ?? null,
       chaveNfeReferenciada: nota.chaveNfeReferenciada ?? null,
       exigeCte: exigeCtePorModFrete(nota.modFrete),
-      regraRateioFrete:
-        nota.fornecedorPessoa?.papeis?.[0]?.dadosFornecedor?.regraRateioFrete ?? 'valor',
+      regraRateioFrete: regraRateioFreteCadastro(
+        nota.fornecedorPessoa?.papeis?.[0]?.dadosFornecedor?.regraRateioFrete
+      ),
       fornecedor: nota.fornecedorPessoa
         ? (() => {
             const df = nota.fornecedorPessoa.papeis?.[0]?.dadosFornecedor

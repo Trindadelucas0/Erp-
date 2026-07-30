@@ -158,7 +158,7 @@ type DetalheNota = {
   modFrete?: string | null
   chaveNfeReferenciada?: string | null
   exigeCte?: boolean
-  regraRateioFrete?: string
+  regraRateioFrete?: string | null
   transporteXml?: TransporteXml | null
   fornecedor: {
     id: string
@@ -353,7 +353,8 @@ function rotuloModFrete(mod: string | null | undefined): string {
 }
 
 function rotuloRegraRateio(regra: string | null | undefined): string {
-  const r = (regra ?? 'valor').trim().toLowerCase()
+  const r = (regra ?? '').trim().toLowerCase()
+  if (!r) return '—'
   const mapa: Record<string, string> = {
     valor: 'Por valor',
     peso: 'Por peso',
@@ -361,6 +362,12 @@ function rotuloRegraRateio(regra: string | null | undefined): string {
     igual: 'Igual entre itens',
   }
   return mapa[r] ?? r
+}
+
+function bloqueioRegraRateioAusente(etapa?: ResultadoEtapa | null): boolean {
+  return (etapa?.bloqueios ?? []).some((b) =>
+    b.toLowerCase().includes('regra de rateio')
+  )
 }
 
 function formatNumBr(n: number | null | undefined, casas = 2): string {
@@ -1575,6 +1582,19 @@ function ConteudoDetalheEntrada() {
           {ehNfe55 && (
             <CardPadrao titulo="Frete da mercadoria">
               <EtapaResumo etapa={nota.analise?.frete} />
+              {bloqueioRegraRateioAusente(nota.analise?.frete) && (
+                <div className="mt-3 space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                  <p className="text-destructive">
+                    Ajuste o cadastro do fornecedor (aba Outros → Regra de rateio do frete) e
+                    depois clique em Reanalisar nesta nota.
+                  </p>
+                  {nota.fornecedor?.id && (
+                    <Button type="button" size="sm" variant="outline" asChild>
+                      <Link href="/fornecedores">Abrir fornecedores</Link>
+                    </Button>
+                  )}
+                </div>
+              )}
               <p className="mt-2 text-sm">
                 <span className="text-muted-foreground">modFrete:</span> {rotuloModFrete(nota.modFrete)}
               </p>

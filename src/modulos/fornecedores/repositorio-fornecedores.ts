@@ -138,7 +138,7 @@ function mapearParaFornecedorView(pessoa: PessoaComRelacoes) {
     permitirVinculoManual: df?.permitirVinculoManual ?? false,
     exigirItensEntrada: df?.exigirItensEntrada ?? false,
     modalidadeTransportePadrao: df?.modalidadeTransportePadrao ?? null,
-    regraRateioFrete: df?.regraRateioFrete ?? 'valor',
+    regraRateioFrete: df?.regraRateioFrete ?? null,
     prazosPagamento: df ? mapearPrazosPagamento(df) : [null, null, null, null, null, null],
     planosFinanceiros:
       df?.planosFinanceiros.map((p) => ({
@@ -256,7 +256,7 @@ type CamposNormalizados = {
   prazoPagamento5: number | null
   prazoPagamento6: number | null
   modalidadeTransportePadrao: string | null
-  regraRateioFrete: string
+  regraRateioFrete: string | null
   planosFinanceirosIds: string[]
   cfopsEntradaIds: string[]
   fornecedoresVinculadosIds: string[]
@@ -312,7 +312,7 @@ function normalizarDocumento(dados: DadosParaCriarFornecedor | DadosParaEditarFo
     permitirVinculoManual: dados.permitirVinculoManual ?? false,
     exigirItensEntrada: dados.exigirItensEntrada ?? false,
     modalidadeTransportePadrao: dados.modalidadeTransportePadrao ?? null,
-    regraRateioFrete: dados.regraRateioFrete ?? 'valor',
+    regraRateioFrete: dados.regraRateioFrete ?? null,
     ...prazos,
     planosFinanceirosIds: dados.planosFinanceirosIds ?? [],
     cfopsEntradaIds: dados.cfopsEntradaIds ?? [],
@@ -698,7 +698,7 @@ function dadosFornecedorDeCampos(campos: CamposNormalizados) {
     prazoPagamento5: campos.prazoPagamento5,
     prazoPagamento6: campos.prazoPagamento6,
     modalidadeTransportePadrao: campos.modalidadeTransportePadrao,
-    regraRateioFrete: campos.regraRateioFrete || 'valor',
+    regraRateioFrete: campos.regraRateioFrete || null,
   }
 }
 
