@@ -749,7 +749,7 @@ function ConteudoDetalheEntrada() {
         const { data } = await clienteHttp.get<{
           nota: DetalheNota
           pedidosDisponiveis: Array<{ id: string; numero: number; status: string }>
-        }>(`/entrada-notas/${id}`)
+        }>(`/entrada-notas/${id}`, { timeout: 30_000 })
         setNota(data.nota)
         setPedidos(data.pedidosDisponiveis ?? [])
         setObsContato(data.nota.observacaoContato ?? '')
@@ -759,7 +759,15 @@ function ConteudoDetalheEntrada() {
           setErro(data.nota.avisoReparoXml)
         }
       } catch (err) {
-        setErro(extrairMensagemApi(err, 'Falha ao carregar nota.'))
+        const axiosCode =
+          err && typeof err === 'object' && 'code' in err
+            ? String((err as { code?: string }).code ?? '')
+            : ''
+        const msgTimeout =
+          axiosCode === 'ECONNABORTED' || axiosCode === 'ETIMEDOUT'
+            ? 'A nota demorou demais para abrir. Tente de novo; se persistir, use Reanalisar ou Importar XML.'
+            : extrairMensagemApi(err, 'Falha ao carregar nota.')
+        setErro(msgTimeout)
         setNota(null)
       } finally {
         setCarregando(false)

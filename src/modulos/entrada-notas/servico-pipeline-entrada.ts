@@ -18,7 +18,6 @@ import {
   xmlNfeTemItensParseaveis,
 } from '../focus-nfe/parser-xml-nfe.js'
 import { logFocus } from '../focus-nfe/logs-focus-nfe.js'
-import { obterRecursosEntradaNotas } from '../focus-nfe/config-recursos-entrada-notas.js'
 import { analisarCadastro } from './analise-cadastro/analisar-cadastro.js'
 import { analisarFiscalItens } from './analise-fiscal/analisar-fiscal-itens.js'
 import { analisarNegociacao } from './analise-negociacao/analisar-negociacao.js'
@@ -1000,7 +999,8 @@ async function obterDetalhe(
     nota.xmlConteudo &&
     !nota.analiseJson
   ) {
-    await processarAposXml(companyId, notaId)
+    // Abertura do detalhe: nunca aguarda Focus (fila serial do agendador trava a UI).
+    await processarAposXml(companyId, notaId, { importarFocusSeAusente: false })
     nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
     if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
   }
@@ -1015,8 +1015,7 @@ async function obterDetalhe(
     if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
   }
 
-  // Nota NFe 55 sem itens (falha de pipeline / sync / XML só resNFe) — repara ao abrir.
-  // Inclui notas já lançadas indevidamente sem itens (reabre + reanalisa).
+  // NFe 55 sem itens: só repara com XML local. Focus fica em Reanalisar / Ver nota / BUSCAR.
   let avisoReparoXml: string | null = null
   if (
     !opcoes?.jaReparouItens &&
@@ -1028,66 +1027,15 @@ async function obterDetalhe(
     if (nota.xmlConteudo) {
       ;({ itensAdicionados } = await sincronizarItensPendentesDoXml(companyId, notaId))
     }
-    // XML ausente ou só resumo DistDFe (resNFe): tenta baixar NFe completa na Focus.
     if (itensAdicionados === 0 && (!nota.xmlConteudo || !xmlNfeTemItensParseaveis(nota.xmlConteudo))) {
-      const recursos = await obterRecursosEntradaNotas(companyId)
-      const atualizadoEm = nota.danfeAtualizadoEm?.getTime() ?? 0
-      const cooldownMs = recursos.danfeRateLimitMinutos * 60 * 1000
-      const statusCooldown =
-        nota.danfeStatus === 'rate_limit' || nota.danfeStatus === 'indisponivel'
-      const dentroCooldown =
-        statusCooldown && atualizadoEm > 0 && Date.now() - atualizadoEm < cooldownMs
-
-      if (dentroCooldown) {
-        const min = Math.max(1, recursos.danfeRateLimitMinutos)
-        avisoReparoXml =
-          nota.danfeStatus === 'rate_limit'
-            ? `Limite Focus excedido recentemente. Aguarde cerca de ${min} minuto(s) e tente de novo, ou use Importar XML na lista.`
-            : `Focus indisponível recentemente para este XML. Aguarde cerca de ${min} minuto(s) ou use Importar XML na lista.`
-        logFocus('warn', 'entrada_reparo_xml_focus_cooldown', {
-          companyId,
-          notaId,
-          chave: nota.chaveNfe,
-          minutos: min,
-          danfeStatus: nota.danfeStatus ?? '',
-        })
-      } else {
-        try {
-          await clientePrisma.nfeRecebida.update({
-            where: { id: notaId },
-            data: { nfeCompleta: false },
-          })
-          const { servicoFocusNfe } = await import('../focus-nfe/servico-focus-nfe.js')
-          await servicoFocusNfe.obterXmlNota(companyId, notaId, 'visualizar')
-          ;({ itensAdicionados } = await sincronizarItensPendentesDoXml(companyId, notaId))
-        } catch (erro) {
-          const status =
-            erro instanceof ErroDaAplicacao ? erro.statusCode : undefined
-          const mensagem = erro instanceof Error ? erro.message : String(erro)
-          logFocus('warn', 'entrada_reparo_xml_focus_falhou', {
-            companyId,
-            notaId,
-            chave: nota.chaveNfe,
-            mensagem,
-          })
-          if (status === 429) {
-            await repositorioFocusNfe.atualizarDanfe(notaId, {
-              danfeStatus: 'rate_limit',
-              danfeAtualizadoEm: new Date(),
-            })
-            const min = Math.max(1, recursos.danfeRateLimitMinutos)
-            avisoReparoXml =
-              `Limite Focus excedido ao baixar o XML. Aguarde cerca de ${min} minuto(s) ou use Importar XML na lista.`
-          } else {
-            await repositorioFocusNfe.atualizarDanfe(notaId, {
-              danfeStatus: 'indisponivel',
-              danfeAtualizadoEm: new Date(),
-            })
-            avisoReparoXml =
-              'Não foi possível completar o XML pela Focus. Tente de novo em instantes ou use Importar XML na lista.'
-          }
-        }
-      }
+      avisoReparoXml =
+        'XML incompleto ou sem itens. Use Reanalisar, Ver nota ou Importar XML / BUSCAR na lista — abrir o detalhe não consulta a Focus.'
+      logFocus('info', 'entrada_reparo_xml_adiado_sem_focus', {
+        companyId,
+        notaId,
+        chave: nota.chaveNfe,
+        temXml: Boolean(nota.xmlConteudo),
+      })
     }
     if (itensAdicionados > 0) {
       const finalizada =
@@ -1916,8 +1864,14 @@ async function lancar(
 
 /**
  * Após import/sync com XML: persiste itens e tenta pipeline automático.
+ * `importarFocusSeAusente` (default true): sync/import batem Focus no CT-e.
+ * Abertura do detalhe passa false — não bloqueia na fila serial Focus.
  */
-async function processarAposXml(companyId: string, notaId: string) {
+async function processarAposXml(
+  companyId: string,
+  notaId: string,
+  opcoes?: { importarFocusSeAusente?: boolean }
+) {
   try {
     const nota = await repositorioEntradaNotas.buscarNotaPorId(companyId, notaId)
     if (!nota?.xmlConteudo) return
@@ -1931,11 +1885,13 @@ async function processarAposXml(companyId: string, notaId: string) {
       return
     }
 
+    const importarFocus = opcoes?.importarFocusSeAusente !== false
+
     if (nota.tipoDocumento === 'cte') {
       await servicoVinculoCte.tentarVincularCteAutomatico(companyId, notaId, {
-        importarFocusSeAusente: true,
+        importarFocusSeAusente: importarFocus,
       })
-      await analisarNota(companyId, notaId)
+      await analisarNota(companyId, notaId, { importarFocusSeAusente: importarFocus })
       return
     }
 
