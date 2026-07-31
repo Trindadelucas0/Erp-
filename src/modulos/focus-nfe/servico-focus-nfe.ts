@@ -1240,8 +1240,26 @@ async function listarPendentes(
  * Obtém XML da nota: banco primeiro; se faltar, busca na Focus, salva e processa.
  * Inclui `visualizacao` legível (cabeçalho + itens) montada a partir do XML.
  * `modo`: visualizar exige flag verNota; download exige baixarXml.
+ * Chamadas concorrentes para o mesmo id (ex.: Strict Mode / remount) compartilham uma Promise.
  */
+const obterXmlEmVoo = new Map<string, Promise<Awaited<ReturnType<typeof obterXmlNotaInterno>>>>()
+
 async function obterXmlNota(
+  companyId: string,
+  id: string,
+  modo: 'visualizar' | 'download' = 'download'
+) {
+  const chave = `${companyId}:${id}:${modo}`
+  const existente = obterXmlEmVoo.get(chave)
+  if (existente) return existente
+  const promessa = obterXmlNotaInterno(companyId, id, modo).finally(() => {
+    if (obterXmlEmVoo.get(chave) === promessa) obterXmlEmVoo.delete(chave)
+  })
+  obterXmlEmVoo.set(chave, promessa)
+  return promessa
+}
+
+async function obterXmlNotaInterno(
   companyId: string,
   id: string,
   modo: 'visualizar' | 'download' = 'download'
@@ -1308,8 +1326,15 @@ async function obterXmlNota(
         xmlResp.sucesso === false
           ? xmlResp.mensagem
           : 'Focus devolveu XML vazio.'
+      const eh429 = xmlResp.sucesso === false && xmlResp.codigoHttp === 429
+      if (eh429) {
+        await repositorioFocusNfe.atualizarDanfe(nota.id, {
+          danfeStatus: 'rate_limit',
+          danfeAtualizadoEm: new Date(),
+        })
+      }
       throw new ErroDaAplicacao(
-        xmlResp.sucesso === false && xmlResp.codigoHttp === 429
+        eh429
           ? `Limite Focus excedido. Tente de novo em instantes. (${msg})`
           : `Não foi possível obter o XML: ${msg}`,
         xmlResp.sucesso === false ? (xmlResp.codigoHttp ?? 502) : 502
@@ -1346,6 +1371,7 @@ async function obterXmlNota(
   }
 
   const atualizada = await repositorioFocusNfe.buscarPorId(companyId, id)
+  if (!xml) throw new ErroDaAplicacao('XML da nota indisponível.', 502)
   const visualizacao = montarVisualizacaoDoXml(xml)
 
   // Prefere dados já persistidos quando o parser do XML vier incompleto
@@ -1758,23 +1784,31 @@ async function reprocessarXmlsLocais(companyId: string) {
   for (const item of lista) {
     if (!item.xmlConteudo) continue
     const campos = extrairCamposResumoDoXml(item.xmlConteudo)
+    const tipo = item.tipoDocumento ?? 'nfe55'
+    // CT-e/NFS-e não têm det/prod de NFe — xmlNfeTemItensParseaveis seria false e
+    // marcava nfeCompleta=false a cada BUSCAR, forçando re-download infinito no DistDFe.
+    const nfeCompleta =
+      tipo === 'nfe55' ? xmlNfeTemItensParseaveis(item.xmlConteudo) : true
     await repositorioFocusNfe.upsertNfeRecebida({
       companyId,
       chaveNfe: item.chaveNfe,
+      tipoDocumento: tipo,
       nomeEmitente: campos.nomeEmitente,
       documentoEmitente: campos.documentoEmitente,
       cnpjDestinatario: campos.cnpjDestinatario,
       dataEmissao: campos.dataEmissao,
       valorTotal: campos.valorTotal,
       xmlConteudo: item.xmlConteudo,
-      nfeCompleta: xmlNfeTemItensParseaveis(item.xmlConteudo),
+      nfeCompleta,
     })
     ok += 1
-    const { itensAdicionados } = await servicoEntradaNotas.sincronizarItensPendentesDoXml(
-      companyId,
-      item.id
-    )
-    if (itensAdicionados > 0) itensRecuperados += 1
+    if (tipo === 'nfe55') {
+      const { itensAdicionados } = await servicoEntradaNotas.sincronizarItensPendentesDoXml(
+        companyId,
+        item.id
+      )
+      if (itensAdicionados > 0) itensRecuperados += 1
+    }
   }
   const vinculadas = await servicoEntradaNotas.vincularFornecedoresNasNotasPendentes(companyId)
   const vinculosCte = await servicoEntradaNotas.processarVinculosCtePendentes(companyId, {

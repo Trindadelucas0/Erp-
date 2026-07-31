@@ -18,6 +18,7 @@ import {
   xmlNfeTemItensParseaveis,
 } from '../focus-nfe/parser-xml-nfe.js'
 import { logFocus } from '../focus-nfe/logs-focus-nfe.js'
+import { obterRecursosEntradaNotas } from '../focus-nfe/config-recursos-entrada-notas.js'
 import { analisarCadastro } from './analise-cadastro/analisar-cadastro.js'
 import { analisarFiscalItens } from './analise-fiscal/analisar-fiscal-itens.js'
 import { analisarNegociacao } from './analise-negociacao/analisar-negociacao.js'
@@ -446,11 +447,15 @@ async function voltarEtapa(
  *
  * CTe: cadastro da transportadora + vínculo com NF-e (chave do XML). Não auto-lança
  * sozinho quando há chave referenciada — o frete entra na NF de mercadoria.
+ *
+ * `importarFocusSeAusente` (default true): Reanalisar/BUSCAR batem Focus pela NF.
+ * Abertura do detalhe passa false — só vínculo local.
  */
 async function analisarNotaDocumental(
   companyId: string,
   notaId: string,
-  tipo: 'nfse' | 'cte'
+  tipo: 'nfse' | 'cte',
+  opcoesDoc?: { importarFocusSeAusente?: boolean }
 ): Promise<{
   nota: Record<string, unknown>
   pedidosDisponiveis: Array<{ id: string; numero: number; status: string }>
@@ -462,8 +467,9 @@ async function analisarNotaDocumental(
 
   let falhaImportNfeRef: string | undefined
   if (tipo === 'cte') {
+    const importarFocus = opcoesDoc?.importarFocusSeAusente !== false
     const resultadoVinculo = await servicoVinculoCte.tentarVincularCteAutomatico(companyId, notaId, {
-      importarFocusSeAusente: true,
+      importarFocusSeAusente: importarFocus,
     })
     falhaImportNfeRef = resultadoVinculo.falhaImport
     nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
@@ -530,7 +536,7 @@ async function analisarNotaDocumental(
           ]
         : chaveRef
           ? [
-              `CTe referencia a NF ${chaveRef.slice(-8)}… (chave ${chaveRef}). A importação automática pela Focus não concluiu — use “Buscar NF pela chave” ou importe o XML da NF.`,
+              `CTe referencia a NF ${chaveRef.slice(-8)}… (chave ${chaveRef}). NF ainda não está no ERP — use Reanalisar / BUSCAR (Focus) ou importe o XML da NF.`,
             ]
           : [
               'CTe sem chave de NF-e no XML. Vincule manualmente pela tela da NF de mercadoria ou aguarde NF com frete destinatário.',
@@ -586,14 +592,23 @@ async function analisarNotaNfse(companyId: string, notaId: string) {
   return analisarNotaDocumental(companyId, notaId, 'nfse')
 }
 
-async function analisarNotaCte(companyId: string, notaId: string) {
-  return analisarNotaDocumental(companyId, notaId, 'cte')
+async function analisarNotaCte(
+  companyId: string,
+  notaId: string,
+  opcoes?: { importarFocusSeAusente?: boolean }
+) {
+  return analisarNotaDocumental(companyId, notaId, 'cte', opcoes)
 }
 
 async function analisarNota(
   companyId: string,
   notaId: string,
-  opcoes?: { forcarReparseItens?: boolean; pararEm?: EtapaPipeline }
+  opcoes?: {
+    forcarReparseItens?: boolean
+    pararEm?: EtapaPipeline
+    /** CT-e: default true (Reanalisar). Abertura do detalhe passa false. */
+    importarFocusSeAusente?: boolean
+  }
 ): Promise<{
   nota: Record<string, unknown>
   pedidosDisponiveis: Array<{ id: string; numero: number; status: string }>
@@ -618,7 +633,9 @@ async function analisarNota(
     return analisarNotaNfse(companyId, notaId)
   }
   if (base.tipoDocumento === 'cte') {
-    return analisarNotaCte(companyId, notaId)
+    return analisarNotaCte(companyId, notaId, {
+      importarFocusSeAusente: opcoes?.importarFocusSeAusente,
+    })
   }
 
   if (opcoes?.forcarReparseItens && base.xmlConteudo) {
@@ -1000,6 +1017,7 @@ async function obterDetalhe(
 
   // Nota NFe 55 sem itens (falha de pipeline / sync / XML só resNFe) — repara ao abrir.
   // Inclui notas já lançadas indevidamente sem itens (reabre + reanalisa).
+  let avisoReparoXml: string | null = null
   if (
     !opcoes?.jaReparouItens &&
     (nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento) &&
@@ -1012,21 +1030,63 @@ async function obterDetalhe(
     }
     // XML ausente ou só resumo DistDFe (resNFe): tenta baixar NFe completa na Focus.
     if (itensAdicionados === 0 && (!nota.xmlConteudo || !xmlNfeTemItensParseaveis(nota.xmlConteudo))) {
-      try {
-        await clientePrisma.nfeRecebida.update({
-          where: { id: notaId },
-          data: { nfeCompleta: false },
-        })
-        const { servicoFocusNfe } = await import('../focus-nfe/servico-focus-nfe.js')
-        await servicoFocusNfe.obterXmlNota(companyId, notaId, 'visualizar')
-        ;({ itensAdicionados } = await sincronizarItensPendentesDoXml(companyId, notaId))
-      } catch (erro) {
-        logFocus('warn', 'entrada_reparo_xml_focus_falhou', {
+      const recursos = await obterRecursosEntradaNotas(companyId)
+      const atualizadoEm = nota.danfeAtualizadoEm?.getTime() ?? 0
+      const cooldownMs = recursos.danfeRateLimitMinutos * 60 * 1000
+      const statusCooldown =
+        nota.danfeStatus === 'rate_limit' || nota.danfeStatus === 'indisponivel'
+      const dentroCooldown =
+        statusCooldown && atualizadoEm > 0 && Date.now() - atualizadoEm < cooldownMs
+
+      if (dentroCooldown) {
+        const min = Math.max(1, recursos.danfeRateLimitMinutos)
+        avisoReparoXml =
+          nota.danfeStatus === 'rate_limit'
+            ? `Limite Focus excedido recentemente. Aguarde cerca de ${min} minuto(s) e tente de novo, ou use Importar XML na lista.`
+            : `Focus indisponível recentemente para este XML. Aguarde cerca de ${min} minuto(s) ou use Importar XML na lista.`
+        logFocus('warn', 'entrada_reparo_xml_focus_cooldown', {
           companyId,
           notaId,
           chave: nota.chaveNfe,
-          mensagem: erro instanceof Error ? erro.message : String(erro),
+          minutos: min,
+          danfeStatus: nota.danfeStatus ?? '',
         })
+      } else {
+        try {
+          await clientePrisma.nfeRecebida.update({
+            where: { id: notaId },
+            data: { nfeCompleta: false },
+          })
+          const { servicoFocusNfe } = await import('../focus-nfe/servico-focus-nfe.js')
+          await servicoFocusNfe.obterXmlNota(companyId, notaId, 'visualizar')
+          ;({ itensAdicionados } = await sincronizarItensPendentesDoXml(companyId, notaId))
+        } catch (erro) {
+          const status =
+            erro instanceof ErroDaAplicacao ? erro.statusCode : undefined
+          const mensagem = erro instanceof Error ? erro.message : String(erro)
+          logFocus('warn', 'entrada_reparo_xml_focus_falhou', {
+            companyId,
+            notaId,
+            chave: nota.chaveNfe,
+            mensagem,
+          })
+          if (status === 429) {
+            await repositorioFocusNfe.atualizarDanfe(notaId, {
+              danfeStatus: 'rate_limit',
+              danfeAtualizadoEm: new Date(),
+            })
+            const min = Math.max(1, recursos.danfeRateLimitMinutos)
+            avisoReparoXml =
+              `Limite Focus excedido ao baixar o XML. Aguarde cerca de ${min} minuto(s) ou use Importar XML na lista.`
+          } else {
+            await repositorioFocusNfe.atualizarDanfe(notaId, {
+              danfeStatus: 'indisponivel',
+              danfeAtualizadoEm: new Date(),
+            })
+            avisoReparoXml =
+              'Não foi possível completar o XML pela Focus. Tente de novo em instantes ou use Importar XML na lista.'
+          }
+        }
       }
     }
     if (itensAdicionados > 0) {
@@ -1051,8 +1111,8 @@ async function obterDetalhe(
     }
   }
 
-  // CT-e com chave e sem vínculo: ao abrir o detalhe sempre tenta Focus
-  // pela chave do próprio XML (não depende de análise antiga / “aguarde o sync”).
+  // CT-e sem vínculo: abertura do detalhe só tenta vínculo LOCAL (sem Focus).
+  // Focus fica no Reanalisar / BUSCAR — igual lista com forcarRetryFocus=false.
   // jaRetentouVinculoCte evita loop quando analisarNota retorna via obterDetalhe.
   const semVinculoCte = (nota.vinculosComoCte ?? []).length === 0
   const temChaveRef =
@@ -1065,7 +1125,18 @@ async function obterDetalhe(
     temChaveRef &&
     semVinculoCte
   ) {
-    return analisarNota(companyId, notaId)
+    const vinculoLocal = await servicoVinculoCte.tentarVincularCteAutomatico(companyId, notaId, {
+      importarFocusSeAusente: false,
+    })
+    if (vinculoLocal.vinculado) {
+      return analisarNota(companyId, notaId, { importarFocusSeAusente: false })
+    }
+    nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+    if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+    if (!nota.analiseJson) {
+      return analisarNota(companyId, notaId, { importarFocusSeAusente: false })
+    }
+    // Já tem análise (ex.: vinculo_nfe) — devolve rápido sem martelar Focus.
   }
 
   // CFOP de entrada do CT-e (próprio documento ou CT-es vinculados à NF)
@@ -1131,6 +1202,7 @@ async function obterDetalhe(
       problemaDesfecho: nota.problemaDesfecho ?? null,
       problemaMarcadoEm: nota.problemaMarcadoEm ?? null,
       problemaResolvidoEm: nota.problemaResolvidoEm ?? null,
+      avisoReparoXml,
       tratativas: (nota.tratativas ?? []).map((t) => ({
         id: t.id,
         texto: t.texto,

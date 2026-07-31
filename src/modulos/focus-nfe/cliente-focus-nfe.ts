@@ -35,6 +35,8 @@ export type RespostaErro = {
   mensagem: string
   codigoHttp?: number
   codigo?: string
+  /** Segundos sugeridos pela Focus (header Retry-After ou corpo). */
+  retryAfterSec?: number
 }
 export type RespostaFocus<T> = RespostaSucesso<T> | RespostaErro
 
@@ -91,16 +93,53 @@ export type CteRecebidaResumoFocus = {
   nome_tomador?: string | null
 }
 
-let ultimaChamadaEm = 0
+let ultimaFimEm = 0
+/**
+ * Uma request Focus por vez: só libera a fila após o fetch terminar,
+ * com intervalo mínimo entre o fim de uma e o início da próxima.
+ */
+let filaFocus: Promise<void> = Promise.resolve()
+/** GETs idênticos em voo compartilham a mesma Promise (ex.: 4× abrir detalhe da mesma NF). */
+const getEmVoo = new Map<string, Promise<RespostaFocus<unknown>>>()
 
-async function aguardarRateLimit(): Promise<void> {
+async function comFilaSerial<T>(fn: () => Promise<T>): Promise<T> {
+  const anterior = filaFocus
+  let liberar!: () => void
+  filaFocus = new Promise<void>((resolve) => {
+    liberar = resolve
+  })
+  await anterior.catch(() => undefined)
+
   const agora = Date.now()
-  const espera = INTERVALO_MIN_MS - (agora - ultimaChamadaEm)
+  const espera = INTERVALO_MIN_MS - (agora - ultimaFimEm)
   if (espera > 0) {
     logFocusVerbose('rate_limit_espera', { ms: espera })
     await new Promise((r) => setTimeout(r, espera))
   }
-  ultimaChamadaEm = Date.now()
+
+  try {
+    return await fn()
+  } finally {
+    ultimaFimEm = Date.now()
+    liberar()
+  }
+}
+
+function chaveGetEmVoo(
+  metodo: string,
+  caminho: string,
+  homologacao: boolean,
+  query?: Record<string, string | number | undefined>,
+  accept?: string
+): string | null {
+  if (metodo !== 'GET') return null
+  const q = query
+    ? Object.keys(query)
+        .sort()
+        .map((k) => `${k}=${query[k] ?? ''}`)
+        .join('&')
+    : ''
+  return `${homologacao ? 'H' : 'P'}|${caminho}|${q}|${accept ?? ''}`
 }
 
 function montarAuth(token: string): string {
@@ -111,14 +150,35 @@ function baseUrl(homologacao: boolean): string {
   return homologacao ? URL_HOMOLOG : URL_PROD
 }
 
-/** Extrai segundos de espera de mensagens tipo "Tente novamente em 4 segundos". */
-function segundosEspera429(mensagem: string): number {
+/** Interpreta Retry-After (segundos ou data HTTP). */
+function parseRetryAfterHeader(raw: string | undefined): number | undefined {
+  if (!raw) return undefined
+  const comoNumero = Number(raw.trim())
+  if (Number.isFinite(comoNumero) && comoNumero > 0) {
+    return Math.min(Math.ceil(comoNumero), 120)
+  }
+  const comoData = Date.parse(raw)
+  if (Number.isFinite(comoData)) {
+    const sec = Math.ceil((comoData - Date.now()) / 1000)
+    if (sec > 0) return Math.min(sec, 120)
+  }
+  return undefined
+}
+
+/**
+ * Segundos de espera após 429.
+ * Prioridade: Retry-After → texto "N segundos" → default 15.
+ */
+function segundosEspera429(mensagem: string, retryAfterSec?: number): number {
+  if (retryAfterSec != null && retryAfterSec > 0) {
+    return Math.min(retryAfterSec, 120)
+  }
   const m = mensagem.match(/(\d+)\s*segundo/i)
   if (m) {
     const n = Number(m[1])
-    if (Number.isFinite(n) && n > 0) return Math.min(n, 60)
+    if (Number.isFinite(n) && n > 0) return Math.min(n, 120)
   }
-  return 5
+  return 15
 }
 
 async function chamarUmaVez<T>(
@@ -128,95 +188,97 @@ async function chamarUmaVez<T>(
   homologacao: boolean,
   opcoes?: { corpo?: unknown; query?: Record<string, string | number | undefined>; accept?: string }
 ): Promise<RespostaFocus<T>> {
-  await aguardarRateLimit()
-
-  const urlBase = baseUrl(homologacao)
-  const params = new URLSearchParams()
-  if (opcoes?.query) {
-    for (const [k, v] of Object.entries(opcoes.query)) {
-      if (v !== undefined && v !== '') params.set(k, String(v))
-    }
-  }
-  const qs = params.toString()
-  const url = `${urlBase}${caminho}${qs ? `?${qs}` : ''}`
-
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
-  const inicio = Date.now()
-
-  try {
-    const init: RequestInit = {
-      method: metodo,
-      headers: {
-        Authorization: montarAuth(apiToken),
-        Accept: opcoes?.accept ?? 'application/json',
-      },
-      signal: controller.signal,
-    }
-
-    if (opcoes?.corpo !== undefined) {
-      ;(init.headers as Record<string, string>)['Content-Type'] = 'application/json'
-      init.body = JSON.stringify(opcoes.corpo)
-    }
-
-    const resposta = await fetch(url, init)
-    clearTimeout(timer)
-    const ms = Date.now() - inicio
-
-    const headers: Record<string, string> = {}
-    resposta.headers.forEach((valor, chave) => {
-      headers[chave.toLowerCase()] = valor
-    })
-
-    const contentType = headers['content-type'] ?? ''
-    let dados: unknown = null
-    const texto = await resposta.text()
-
-    if (opcoes?.accept === 'application/xml' || contentType.includes('xml')) {
-      dados = texto
-    } else if (texto) {
-      try {
-        dados = JSON.parse(texto)
-      } catch {
-        dados = texto
+  return comFilaSerial(async () => {
+    const urlBase = baseUrl(homologacao)
+    const params = new URLSearchParams()
+    if (opcoes?.query) {
+      for (const [k, v] of Object.entries(opcoes.query)) {
+        if (v !== undefined && v !== '') params.set(k, String(v))
       }
     }
+    const qs = params.toString()
+    const url = `${urlBase}${caminho}${qs ? `?${qs}` : ''}`
 
-    if (!resposta.ok) {
-      const corpo = dados as { codigo?: string; mensagem?: string; message?: string } | null
-      const mensagem =
-        corpo?.mensagem || corpo?.message || `Erro HTTP ${resposta.status}`
-      logFocus('error', 'api_erro', {
-        metodo,
-        path: caminho,
-        http: resposta.status,
-        codigo: corpo?.codigo ?? '',
-        mensagem,
-        ms,
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+    const inicio = Date.now()
+
+    try {
+      const init: RequestInit = {
+        method: metodo,
+        headers: {
+          Authorization: montarAuth(apiToken),
+          Accept: opcoes?.accept ?? 'application/json',
+        },
+        signal: controller.signal,
+      }
+
+      if (opcoes?.corpo !== undefined) {
+        ;(init.headers as Record<string, string>)['Content-Type'] = 'application/json'
+        init.body = JSON.stringify(opcoes.corpo)
+      }
+
+      const resposta = await fetch(url, init)
+      clearTimeout(timer)
+      const ms = Date.now() - inicio
+
+      const headers: Record<string, string> = {}
+      resposta.headers.forEach((valor, chave) => {
+        headers[chave.toLowerCase()] = valor
       })
-      return {
-        sucesso: false,
-        mensagem,
-        codigoHttp: resposta.status,
-        codigo: corpo?.codigo,
-      }
-    }
 
-    logFocusVerbose('api_ok', { metodo, path: caminho, http: resposta.status, ms })
-    return { sucesso: true, dados: dados as T, headers, codigoHttp: resposta.status }
-  } catch (erro) {
-    clearTimeout(timer)
-    const err = erro as Error
-    const mensagem =
-      err.name === 'AbortError'
-        ? `Focus NFe não respondeu em ${TIMEOUT_MS / 1000}s`
-        : `Falha na conexão com Focus NFe: ${err.message}`
-    logFocus('error', 'api_erro', { metodo, path: caminho, mensagem })
-    return { sucesso: false, mensagem }
-  }
+      const contentType = headers['content-type'] ?? ''
+      let dados: unknown = null
+      const texto = await resposta.text()
+
+      if (opcoes?.accept === 'application/xml' || contentType.includes('xml')) {
+        dados = texto
+      } else if (texto) {
+        try {
+          dados = JSON.parse(texto)
+        } catch {
+          dados = texto
+        }
+      }
+
+      if (!resposta.ok) {
+        const corpo = dados as { codigo?: string; mensagem?: string; message?: string } | null
+        const mensagem =
+          corpo?.mensagem || corpo?.message || `Erro HTTP ${resposta.status}`
+        const retryAfterSec = parseRetryAfterHeader(headers['retry-after'])
+        logFocus('error', 'api_erro', {
+          metodo,
+          path: caminho,
+          http: resposta.status,
+          codigo: corpo?.codigo ?? '',
+          mensagem,
+          ms,
+        })
+        return {
+          sucesso: false,
+          mensagem,
+          codigoHttp: resposta.status,
+          codigo: corpo?.codigo,
+          ...(retryAfterSec != null ? { retryAfterSec } : {}),
+        }
+      }
+
+      logFocusVerbose('api_ok', { metodo, path: caminho, http: resposta.status, ms })
+      return { sucesso: true, dados: dados as T, headers, codigoHttp: resposta.status }
+    } catch (erro) {
+      clearTimeout(timer)
+      const err = erro as Error
+      const mensagem =
+        err.name === 'AbortError'
+          ? `Focus NFe não respondeu em ${TIMEOUT_MS / 1000}s`
+          : `Falha na conexão com Focus NFe: ${err.message}`
+      logFocus('error', 'api_erro', { metodo, path: caminho, mensagem })
+      return { sucesso: false, mensagem }
+    }
+  })
 }
 
-async function chamar<T>(
+async function chamarComRetry<T>(
   metodo: 'GET' | 'POST' | 'DELETE',
   caminho: string,
   apiToken: string,
@@ -230,7 +292,10 @@ async function chamar<T>(
 
     if (tentativa >= MAX_TENTATIVAS_429) break
 
-    const esperaSec = segundosEspera429(ultima.mensagem)
+    const esperaSec = segundosEspera429(
+      ultima.mensagem,
+      ultima.sucesso === false ? ultima.retryAfterSec : undefined
+    )
     logFocus('warn', 'rate_limit_retry', {
       path: caminho,
       tentativa,
@@ -242,103 +307,138 @@ async function chamar<T>(
   return ultima!
 }
 
+async function chamar<T>(
+  metodo: 'GET' | 'POST' | 'DELETE',
+  caminho: string,
+  apiToken: string,
+  homologacao: boolean,
+  opcoes?: { corpo?: unknown; query?: Record<string, string | number | undefined>; accept?: string }
+): Promise<RespostaFocus<T>> {
+  const chave = chaveGetEmVoo(metodo, caminho, homologacao, opcoes?.query, opcoes?.accept)
+  if (chave) {
+    const existente = getEmVoo.get(chave)
+    if (existente) {
+      logFocusVerbose('get_em_voo_reuse', { path: caminho })
+      return existente as Promise<RespostaFocus<T>>
+    }
+  }
+
+  const promessa = chamarComRetry<T>(metodo, caminho, apiToken, homologacao, opcoes)
+  if (chave) {
+    getEmVoo.set(chave, promessa as Promise<RespostaFocus<unknown>>)
+    void promessa.finally(() => {
+      if (getEmVoo.get(chave) === (promessa as Promise<RespostaFocus<unknown>>)) {
+        getEmVoo.delete(chave)
+      }
+    })
+  }
+  return promessa
+}
+
 async function baixarPdfUmaVez(
   apiToken: string,
   homologacao: boolean,
   caminho: string,
   query?: Record<string, string | undefined>
 ): Promise<RespostaFocus<Buffer>> {
-  await aguardarRateLimit()
-
-  const params = new URLSearchParams()
-  if (query) {
-    for (const [k, v] of Object.entries(query)) {
-      if (v !== undefined && v !== '') params.set(k, v)
+  return comFilaSerial(async () => {
+    const params = new URLSearchParams()
+    if (query) {
+      for (const [k, v] of Object.entries(query)) {
+        if (v !== undefined && v !== '') params.set(k, v)
+      }
     }
-  }
-  const qs = params.toString()
-  const url = `${baseUrl(homologacao)}${caminho}${qs ? `?${qs}` : ''}`
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
-  const inicio = Date.now()
+    const qs = params.toString()
+    const url = `${baseUrl(homologacao)}${caminho}${qs ? `?${qs}` : ''}`
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+    const inicio = Date.now()
 
-  try {
-    const resposta = await fetch(url, {
-      method: 'GET',
-      headers: {
-        Authorization: montarAuth(apiToken),
-        Accept: 'application/pdf',
-      },
-      redirect: 'follow',
-      signal: controller.signal,
-    })
-    clearTimeout(timer)
-    const ms = Date.now() - inicio
-    const headers: Record<string, string> = {}
-    resposta.headers.forEach((valor, chave) => {
-      headers[chave.toLowerCase()] = valor
-    })
+    try {
+      const resposta = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: montarAuth(apiToken),
+          Accept: 'application/pdf',
+        },
+        redirect: 'follow',
+        signal: controller.signal,
+      })
+      clearTimeout(timer)
+      const ms = Date.now() - inicio
+      const headers: Record<string, string> = {}
+      resposta.headers.forEach((valor, chave) => {
+        headers[chave.toLowerCase()] = valor
+      })
 
-    if (!resposta.ok) {
-      let mensagem = `Erro HTTP ${resposta.status}`
-      let codigo: string | undefined
-      try {
-        const corpo = (await resposta.json()) as {
-          codigo?: string
-          mensagem?: string
-          message?: string
+      if (!resposta.ok) {
+        let mensagem = `Erro HTTP ${resposta.status}`
+        let codigo: string | undefined
+        try {
+          const corpo = (await resposta.json()) as {
+            codigo?: string
+            mensagem?: string
+            message?: string
+          }
+          mensagem = corpo.mensagem || corpo.message || mensagem
+          codigo = corpo.codigo
+        } catch {
+          /* corpo não JSON */
         }
-        mensagem = corpo.mensagem || corpo.message || mensagem
-        codigo = corpo.codigo
-      } catch {
-        /* corpo não JSON */
+        const retryAfterSec = parseRetryAfterHeader(headers['retry-after'])
+        logFocus('error', 'api_erro', {
+          metodo: 'GET',
+          path: caminho,
+          http: resposta.status,
+          codigo: codigo ?? '',
+          mensagem,
+          ms,
+        })
+        return {
+          sucesso: false,
+          mensagem,
+          codigoHttp: resposta.status,
+          codigo,
+          ...(retryAfterSec != null ? { retryAfterSec } : {}),
+        }
       }
-      logFocus('error', 'api_erro', {
+
+      const ab = await resposta.arrayBuffer()
+      const buffer = Buffer.from(ab)
+      if (buffer.length < 5 || buffer.subarray(0, 4).toString('utf8') !== '%PDF') {
+        logFocus('error', 'api_erro', {
+          metodo: 'GET',
+          path: caminho,
+          http: resposta.status,
+          mensagem: 'Resposta não é PDF válido',
+          ms,
+        })
+        return {
+          sucesso: false,
+          mensagem: 'Focus não devolveu um PDF válido.',
+          codigoHttp: 502,
+        }
+      }
+
+      logFocusVerbose('api_ok', {
         metodo: 'GET',
         path: caminho,
         http: resposta.status,
-        codigo: codigo ?? '',
-        mensagem,
         ms,
+        bytes: buffer.length,
       })
-      return { sucesso: false, mensagem, codigoHttp: resposta.status, codigo }
+      return { sucesso: true, dados: buffer, headers, codigoHttp: resposta.status }
+    } catch (erro) {
+      clearTimeout(timer)
+      const err = erro as Error
+      const mensagem =
+        err.name === 'AbortError'
+          ? `Focus NFe não respondeu em ${TIMEOUT_MS / 1000}s`
+          : `Falha na conexão com Focus NFe: ${err.message}`
+      logFocus('error', 'api_erro', { metodo: 'GET', path: caminho, mensagem })
+      return { sucesso: false, mensagem }
     }
-
-    const ab = await resposta.arrayBuffer()
-    const buffer = Buffer.from(ab)
-    if (buffer.length < 5 || buffer.subarray(0, 4).toString('utf8') !== '%PDF') {
-      logFocus('error', 'api_erro', {
-        metodo: 'GET',
-        path: caminho,
-        http: resposta.status,
-        mensagem: 'Resposta não é PDF válido',
-        ms,
-      })
-      return {
-        sucesso: false,
-        mensagem: 'Focus não devolveu um PDF válido.',
-        codigoHttp: 502,
-      }
-    }
-
-    logFocusVerbose('api_ok', {
-      metodo: 'GET',
-      path: caminho,
-      http: resposta.status,
-      ms,
-      bytes: buffer.length,
-    })
-    return { sucesso: true, dados: buffer, headers, codigoHttp: resposta.status }
-  } catch (erro) {
-    clearTimeout(timer)
-    const err = erro as Error
-    const mensagem =
-      err.name === 'AbortError'
-        ? `Focus NFe não respondeu em ${TIMEOUT_MS / 1000}s`
-        : `Falha na conexão com Focus NFe: ${err.message}`
-    logFocus('error', 'api_erro', { metodo: 'GET', path: caminho, mensagem })
-    return { sucesso: false, mensagem }
-  }
+  })
 }
 
 async function baixarPdfBinario(
@@ -350,21 +450,45 @@ async function baixarPdfBinario(
   const cnpj = cnpjEmpresa?.replace(/\D/g, '')
   const query =
     cnpj && cnpj.length === 14 ? { cnpj } : undefined
-  let ultima: RespostaFocus<Buffer> | null = null
-  for (let tentativa = 1; tentativa <= MAX_TENTATIVAS_429; tentativa += 1) {
-    ultima = await baixarPdfUmaVez(apiToken, homologacao, caminho, query)
-    if (ultima.sucesso || ultima.codigoHttp !== 429) return ultima
-    if (tentativa >= MAX_TENTATIVAS_429) break
-    const esperaSec = segundosEspera429(ultima.mensagem)
-    logFocus('warn', 'rate_limit_retry', {
-      path: caminho,
-      tentativa,
-      esperaSec,
-      mensagem: ultima.mensagem,
-    })
-    await new Promise((r) => setTimeout(r, esperaSec * 1000))
+  const chave = chaveGetEmVoo('GET', caminho, homologacao, query, 'application/pdf')
+  if (chave) {
+    const existente = getEmVoo.get(chave)
+    if (existente) {
+      logFocusVerbose('get_em_voo_reuse', { path: caminho })
+      return existente as Promise<RespostaFocus<Buffer>>
+    }
   }
-  return ultima!
+
+  const promessa = (async (): Promise<RespostaFocus<Buffer>> => {
+    let ultima: RespostaFocus<Buffer> | null = null
+    for (let tentativa = 1; tentativa <= MAX_TENTATIVAS_429; tentativa += 1) {
+      ultima = await baixarPdfUmaVez(apiToken, homologacao, caminho, query)
+      if (ultima.sucesso || ultima.codigoHttp !== 429) return ultima
+      if (tentativa >= MAX_TENTATIVAS_429) break
+      const esperaSec = segundosEspera429(
+        ultima.mensagem,
+        ultima.sucesso === false ? ultima.retryAfterSec : undefined
+      )
+      logFocus('warn', 'rate_limit_retry', {
+        path: caminho,
+        tentativa,
+        esperaSec,
+        mensagem: ultima.mensagem,
+      })
+      await new Promise((r) => setTimeout(r, esperaSec * 1000))
+    }
+    return ultima!
+  })()
+
+  if (chave) {
+    getEmVoo.set(chave, promessa as Promise<RespostaFocus<unknown>>)
+    void promessa.finally(() => {
+      if (getEmVoo.get(chave) === (promessa as Promise<RespostaFocus<unknown>>)) {
+        getEmVoo.delete(chave)
+      }
+    })
+  }
+  return promessa
 }
 
 export const clienteFocusNfe = {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
@@ -220,6 +220,8 @@ type DetalheNota = {
     }>
   }>
   itens: ItemNota[]
+  /** Preenchido quando o reparo automático de XML via Focus falhou (ex.: 429). */
+  avisoReparoXml?: string | null
 }
 
 type ProdutoBusca = {
@@ -731,26 +733,46 @@ function ConteudoDetalheEntrada() {
     {}
   )
 
+  const abaQuery = searchParams.get('aba')
+  const carregarEmVoo = useRef<{ id: string; promise: Promise<void> } | null>(null)
+
   const carregar = useCallback(async () => {
-    setCarregando(true)
-    setErro(null)
-    try {
-      const { data } = await clienteHttp.get<{
-        nota: DetalheNota
-        pedidosDisponiveis: Array<{ id: string; numero: number; status: string }>
-      }>(`/entrada-notas/${id}`)
-      setNota(data.nota)
-      setPedidos(data.pedidosDisponiveis ?? [])
-      setObsContato(data.nota.observacaoContato ?? '')
-      setPrazo(data.nota.prazoPagamentoTexto ?? '')
-      setAbaAtiva(resolverAbaInicial(data.nota, searchParams.get('aba')))
-    } catch (err) {
-      setErro(extrairMensagemApi(err, 'Falha ao carregar nota.'))
-      setNota(null)
-    } finally {
-      setCarregando(false)
+    if (carregarEmVoo.current?.id === id) {
+      await carregarEmVoo.current.promise
+      return
     }
-  }, [id, searchParams])
+
+    const run = (async () => {
+      setCarregando(true)
+      setErro(null)
+      try {
+        const { data } = await clienteHttp.get<{
+          nota: DetalheNota
+          pedidosDisponiveis: Array<{ id: string; numero: number; status: string }>
+        }>(`/entrada-notas/${id}`)
+        setNota(data.nota)
+        setPedidos(data.pedidosDisponiveis ?? [])
+        setObsContato(data.nota.observacaoContato ?? '')
+        setPrazo(data.nota.prazoPagamentoTexto ?? '')
+        setAbaAtiva(resolverAbaInicial(data.nota, abaQuery))
+        if (data.nota.avisoReparoXml) {
+          setErro(data.nota.avisoReparoXml)
+        }
+      } catch (err) {
+        setErro(extrairMensagemApi(err, 'Falha ao carregar nota.'))
+        setNota(null)
+      } finally {
+        setCarregando(false)
+      }
+    })()
+
+    carregarEmVoo.current = { id, promise: run }
+    try {
+      await run
+    } finally {
+      if (carregarEmVoo.current?.promise === run) carregarEmVoo.current = null
+    }
+  }, [id, abaQuery])
 
   useEffect(() => {
     void carregar()
