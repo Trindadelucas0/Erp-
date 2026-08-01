@@ -22,6 +22,8 @@ export type ItemVinculoCadastro = {
   itensPorEmbalagem?: number
   /** quantidade (NF) × itensPorEmbalagem — prévia da quantidade em unidade de venda */
   qtdTotalUn?: number | null
+  /** Frete rateado no item (prévia após etapa Frete com destinatário) */
+  custoFreteRateado?: number | null
   produto: {
     id: string
     nomeVenda: string
@@ -205,6 +207,14 @@ export function ItemVinculoCadastroGrid({
     unidadeNf.toLowerCase() === unidadeSistema.toLowerCase()
 
   const qtdUnitTexto = formatarQtdUnit(item.quantidade, item.valorUnitario)
+  const freteRateado =
+    item.custoFreteRateado != null && Number.isFinite(item.custoFreteRateado)
+      ? item.custoFreteRateado
+      : null
+  const freteTexto =
+    freteRateado != null
+      ? freteRateado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+      : null
   const qtdEntradaValorSistema = temMultiploCompra ? (
     <>
       <span>{item.qtdTotalUn ?? '—'}</span>
@@ -228,6 +238,9 @@ export function ItemVinculoCadastroGrid({
       <LinhaEspelho rotulo="Código de barras" valor={gtinNf} />
       <LinhaEspelho rotulo="Código original" valor={codOrigNf} />
       <LinhaEspelho rotulo="Qtd × unit." valor={qtdUnitTexto} valorClassName="font-sans" />
+      {freteTexto != null && (
+        <LinhaEspelho rotulo="Frete" valor={freteTexto} valorClassName="font-sans" />
+      )}
     </dl>
   )
 

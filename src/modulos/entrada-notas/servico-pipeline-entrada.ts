@@ -1,5 +1,5 @@
 /**
- * Orquestra o pipeline cadastro → fiscal → negociação → lançamento automático.
+ * Orquestra o pipeline frete → cadastro → fiscal → negociação → lançamento automático (NFe 55).
  */
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
@@ -233,12 +233,9 @@ function exigeCtePorModFrete(modFrete: string | null | undefined): boolean {
   return (modFrete ?? '').trim() === '1'
 }
 
-/** Precisa ratear quando frete é destinatário ou já há CT-e vinculado. */
-function exigeRateioFrete(
-  modFrete: string | null | undefined,
-  qtdCtes: number
-): boolean {
-  return exigeCtePorModFrete(modFrete) || qtdCtes > 0
+/** Rateio nos produtos só quando frete é por conta do destinatário (modFrete=1). */
+function exigeRateioFrete(modFrete: string | null | undefined): boolean {
+  return exigeCtePorModFrete(modFrete)
 }
 
 function regraRateioFreteCadastro(
@@ -309,7 +306,7 @@ async function lancarContagem(notaId: string, origem: 'automatica' | 'humana') {
   })
 }
 
-const ORDEM_ETAPAS: EtapaPipeline[] = ['cadastro', 'fiscal', 'negociacao', 'frete']
+const ORDEM_ETAPAS: EtapaPipeline[] = ['frete', 'cadastro', 'fiscal', 'negociacao']
 
 /** Etapas de retorno válidas por tipo de documento (NFS-e/CTe só têm cadastro). */
 function etapasVoltarValidas(tipoDocumento: string | null | undefined): EtapaPipeline[] {
@@ -392,10 +389,12 @@ async function voltarEtapa(
 
   const analise: AnaliseJson = {
     ...analiseAtual,
+    frete: indiceDestino <= ORDEM_ETAPAS.indexOf('frete') ? etapaVazia() : analiseAtual.frete,
+    cadastro:
+      indiceDestino <= ORDEM_ETAPAS.indexOf('cadastro') ? etapaVazia() : analiseAtual.cadastro,
     fiscal: indiceDestino <= ORDEM_ETAPAS.indexOf('fiscal') ? etapaVazia() : analiseAtual.fiscal,
     negociacao:
       indiceDestino <= ORDEM_ETAPAS.indexOf('negociacao') ? etapaVazia() : analiseAtual.negociacao,
-    frete: indiceDestino <= ORDEM_ETAPAS.indexOf('frete') ? etapaVazia() : analiseAtual.frete,
     autoLancado: false,
     motivoParada: null,
   }
@@ -647,6 +646,114 @@ async function analisarNota(
 
   await repositorioEntradaNotas.atualizarNota(notaId, { statusEntrada: 'em_analise' })
 
+  const analise: AnaliseJson = {
+    versao: 1,
+    atualizadoEm: new Date().toISOString(),
+    cadastro: etapaVazia(),
+    fiscal: etapaVazia(),
+    negociacao: etapaVazia(),
+    frete: etapaVazia(),
+    autoLancado: false,
+    motivoParada: null,
+  }
+
+  // --- Gate frete (1ª etapa): destinatário exige CT-e + regra; remetente pula ---
+  let modFrete = nota.modFrete
+  if (!modFrete && nota.xmlConteudo) {
+    const camposXml = extrairCamposResumoDoXml(nota.xmlConteudo)
+    modFrete = camposXml.modFrete ?? null
+    if (modFrete) {
+      await repositorioEntradaNotas.atualizarNota(notaId, { modFrete })
+    }
+  }
+
+  if (!nota.fornecedorPessoaId && nota.documentoEmitente) {
+    const fornecedor = await repositorioEntradaNotas.buscarFornecedorPorCnpj(
+      companyId,
+      nota.documentoEmitente
+    )
+    if (fornecedor) {
+      await repositorioEntradaNotas.atualizarNota(notaId, { fornecedorPessoaId: fornecedor.id })
+    }
+  }
+
+  nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  modFrete = nota.modFrete ?? modFrete
+
+  const qtdCtes = (nota.vinculosComoNfe ?? []).length
+  const freteDestinatario = exigeCtePorModFrete(modFrete)
+
+  if (freteDestinatario && qtdCtes === 0) {
+    analise.frete = {
+      status: 'bloqueante',
+      avisos: [],
+      bloqueios: [
+        'Frete por conta do destinatário (modFrete=1): é obrigatório vincular um CT-e. Se não veio no sync, use a aba Frete/CT-e e informe a chave do CT-e (44 dígitos) manualmente.',
+      ],
+    }
+    analise.motivoParada = 'frete'
+    await repositorioEntradaNotas.atualizarNota(notaId, {
+      analiseJson: asJson(analise),
+      etapaAtual: 'frete',
+      statusEntrada: 'em_analise',
+    })
+    return await obterDetalhe(companyId, notaId)
+  }
+
+  const regraRateio = regraRateioFreteCadastro(
+    nota.fornecedorPessoa?.papeis?.[0]?.dadosFornecedor?.regraRateioFrete
+  )
+  if (freteDestinatario && !regraRateio) {
+    analise.frete = {
+      status: 'bloqueante',
+      avisos: [],
+      bloqueios: [
+        'Cadastre a Regra de rateio do frete (CT-e) no fornecedor antes de continuar. Sem essa regra não é possível ratear o custo do frete nos itens.',
+      ],
+    }
+    analise.motivoParada = 'frete'
+    await repositorioEntradaNotas.atualizarNota(notaId, {
+      analiseJson: asJson(analise),
+      etapaAtual: 'frete',
+      statusEntrada: 'em_analise',
+    })
+    return await obterDetalhe(companyId, notaId)
+  }
+
+  if (freteDestinatario) {
+    analise.frete = {
+      status: 'ok',
+      avisos: [`${qtdCtes} CT-e(s) vinculado(s) — frete destinatário ok.`],
+      bloqueios: [],
+    }
+    await persistirRateioFreteItens(companyId, notaId)
+  } else {
+    analise.frete = {
+      status: 'ok',
+      avisos: [
+        modFrete
+          ? `modFrete=${modFrete} — frete do remetente; etapa não aplicável.`
+          : 'modFrete ausente no XML — frete não exigido; etapa não aplicável.',
+      ],
+      bloqueios: [],
+    }
+    await limparCustoFreteItens(nota.itens.map((i) => i.id))
+  }
+
+  await repositorioEntradaNotas.atualizarNota(notaId, { etapaAtual: 'frete' })
+
+  if (opcoes?.pararEm === 'frete') {
+    analise.motivoParada = null
+    await repositorioEntradaNotas.atualizarNota(notaId, {
+      analiseJson: asJson(analise),
+      etapaAtual: 'frete',
+      statusEntrada: 'em_analise',
+    })
+    return await obterDetalhe(companyId, notaId)
+  }
+
+  // --- Cadastro ---
   const flagsFornecedor = await obterFlagsFornecedorEntrada(companyId, nota)
   const modoDocumental = resolverModoDocumentalEntrada(flagsFornecedor)
 
@@ -677,15 +784,7 @@ async function analisarNota(
     etapaAtual: 'cadastro',
   })
 
-  const analise: AnaliseJson = {
-    versao: 1,
-    atualizadoEm: new Date().toISOString(),
-    cadastro: cadastro.resultado,
-    fiscal: etapaVazia(),
-    negociacao: etapaVazia(),
-    autoLancado: false,
-    motivoParada: null,
-  }
+  analise.cadastro = cadastro.resultado
 
   const cadastroBloqueado = !podeAvancarCadastro(cadastro.resultado)
   if (cadastroBloqueado || opcoes?.pararEm === 'cadastro') {
@@ -796,85 +895,6 @@ async function analisarNota(
     return await obterDetalhe(companyId, notaId)
   }
 
-  // Gate frete / CT-e (modFrete = 1 destinatário)
-  nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
-  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
-
-  let modFrete = nota.modFrete
-  if (!modFrete && nota.xmlConteudo) {
-    const camposXml = extrairCamposResumoDoXml(nota.xmlConteudo)
-    modFrete = camposXml.modFrete ?? null
-    if (modFrete) {
-      await repositorioEntradaNotas.atualizarNota(notaId, { modFrete })
-    }
-  }
-
-  const qtdCtes = (nota.vinculosComoNfe ?? []).length
-  if (exigeCtePorModFrete(modFrete) && qtdCtes === 0) {
-    analise.frete = {
-      status: 'bloqueante',
-      avisos: [],
-      bloqueios: [
-        'Frete por conta do destinatário (modFrete=1): é obrigatório vincular um CT-e. Se não veio no sync, use a aba Frete/CT-e e informe a chave do CT-e (44 dígitos) manualmente.',
-      ],
-    }
-    analise.motivoParada = 'frete'
-    await repositorioEntradaNotas.atualizarNota(notaId, {
-      analiseJson: asJson(analise),
-      etapaAtual: 'frete',
-      statusEntrada: 'em_analise',
-    })
-    return await obterDetalhe(companyId, notaId)
-  }
-
-  const regraRateio = regraRateioFreteCadastro(
-    nota.fornecedorPessoa?.papeis?.[0]?.dadosFornecedor?.regraRateioFrete
-  )
-  if (exigeRateioFrete(modFrete, qtdCtes) && !regraRateio) {
-    analise.frete = {
-      status: 'bloqueante',
-      avisos: [],
-      bloqueios: [
-        'Cadastre a Regra de rateio do frete (CT-e) no fornecedor antes de continuar. Sem essa regra não é possível ratear o custo do frete nos itens.',
-      ],
-    }
-    analise.motivoParada = 'frete'
-    await repositorioEntradaNotas.atualizarNota(notaId, {
-      analiseJson: asJson(analise),
-      etapaAtual: 'frete',
-      statusEntrada: 'em_analise',
-    })
-    return await obterDetalhe(companyId, notaId)
-  }
-
-  if (exigeCtePorModFrete(modFrete)) {
-    analise.frete = {
-      status: 'ok',
-      avisos: [`${qtdCtes} CT-e(s) vinculado(s) — frete destinatário ok.`],
-      bloqueios: [],
-    }
-  } else {
-    analise.frete = {
-      status: 'ok',
-      avisos: modFrete
-        ? [`modFrete=${modFrete} — CT-e não obrigatório.`]
-        : ['modFrete ausente no XML — CT-e não exigido.'],
-      bloqueios: [],
-    }
-  }
-
-  await repositorioEntradaNotas.atualizarNota(notaId, { etapaAtual: 'frete' })
-
-  if (opcoes?.pararEm === 'frete') {
-    analise.motivoParada = null
-    await repositorioEntradaNotas.atualizarNota(notaId, {
-      analiseJson: asJson(analise),
-      etapaAtual: 'frete',
-      statusEntrada: 'em_analise',
-    })
-    return await obterDetalhe(companyId, notaId)
-  }
-
   // Auto-lançamento — nunca sem itens parseados
   if (nota.itens.length === 0) {
     analise.autoLancado = false
@@ -907,17 +927,77 @@ async function analisarNota(
 }
 
 /**
- * Rateia custo dos CT-es vinculados nos itens e registra despesa mínima por CT-e.
+ * Zera o frete rateado nos itens (frete remetente / sem rateio).
+ */
+async function limparCustoFreteItens(itemIds: string[]) {
+  for (const id of itemIds) {
+    await repositorioEntradaNotas.atualizarItem(id, { custoFreteRateado: null })
+  }
+}
+
+/**
+ * Rateia o custo do frete nos itens da NF (prévia para a aba Cadastro).
+ * Não cria DespesaEntradaDocumento — isso fica no lançamento.
+ */
+async function persistirRateioFreteItens(companyId: string, notaId: string) {
+  const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota || nota.tipoDocumento === 'nfse' || nota.tipoDocumento === 'cte') return
+
+  if (!exigeRateioFrete(nota.modFrete)) {
+    await limparCustoFreteItens(nota.itens.map((i) => i.id))
+    return
+  }
+
+  const vinculos = nota.vinculosComoNfe ?? []
+  if (vinculos.length === 0) {
+    await limparCustoFreteItens(nota.itens.map((i) => i.id))
+    return
+  }
+
+  const valorTotalFrete = vinculos.reduce((acc, v) => {
+    const n = decimalNum(v.valorFrete) ?? decimalNum(v.cteRecebida?.valorTotal) ?? 0
+    return acc + n
+  }, 0)
+
+  const regra = regraRateioFreteCadastro(
+    nota.fornecedorPessoa?.papeis?.[0]?.dadosFornecedor?.regraRateioFrete
+  )
+  if (!regra) return
+
+  const rateio = ratearCustoFrete({
+    regra,
+    valorTotalFrete,
+    itens: nota.itens.map((i) => ({
+      id: i.id,
+      valorTotal: decimalNum(i.valorTotal),
+      quantidade: decimalNum(i.quantidade),
+      pesoKg: decimalNum(i.pesoKg),
+      pesoProdutoKg: decimalNum(i.produto?.pesoKg ?? null),
+    })),
+  })
+
+  for (const item of rateio.itens) {
+    await repositorioEntradaNotas.atualizarItem(item.id, {
+      custoFreteRateado: item.custoFreteRateado,
+    })
+  }
+}
+
+/**
+ * Rateia custo dos CT-es nos itens (só destinatário) e registra despesa mínima por CT-e.
  */
 async function aplicarRateioEDespesasFrete(companyId: string, notaId: string) {
   const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
   if (!nota || nota.tipoDocumento === 'nfse' || nota.tipoDocumento === 'cte') return
 
+  if (!exigeRateioFrete(nota.modFrete)) {
+    await limparCustoFreteItens(nota.itens.map((i) => i.id))
+    return
+  }
+
   const vinculos = nota.vinculosComoNfe ?? []
   if (vinculos.length === 0) {
-    for (const item of nota.itens) {
-      await repositorioEntradaNotas.atualizarItem(item.id, { custoFreteRateado: null })
-    }
+    await limparCustoFreteItens(nota.itens.map((i) => i.id))
     return
   }
 

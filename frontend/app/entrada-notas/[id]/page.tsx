@@ -236,13 +236,13 @@ type AbaId = 'cadastro' | 'fiscal' | 'negociacao' | 'frete' | 'lancamento'
 
 type EtapaPipeline = 'cadastro' | 'fiscal' | 'negociacao' | 'frete'
 
-const ORDEM_ETAPAS: EtapaPipeline[] = ['cadastro', 'fiscal', 'negociacao', 'frete']
+const ORDEM_ETAPAS: EtapaPipeline[] = ['frete', 'cadastro', 'fiscal', 'negociacao']
 
 const ROTULOS_ETAPA: Record<EtapaPipeline, string> = {
+  frete: 'Frete / CT-e',
   cadastro: 'Cadastro',
   fiscal: 'Fiscal',
   negociacao: 'Negociação',
-  frete: 'Frete / CT-e',
 }
 
 function statusAbaDeEtapa(etapa?: ResultadoEtapa | null): StatusDaAba {
@@ -255,7 +255,7 @@ function statusAbaDeEtapa(etapa?: ResultadoEtapa | null): StatusDaAba {
 function abasValidasParaNota(nota: DetalheNota): AbaId[] {
   if (nota.tipoDocumento === 'nfse') return ['cadastro', 'lancamento']
   if (nota.tipoDocumento === 'cte') return ['cadastro', 'frete', 'lancamento']
-  return ['cadastro', 'fiscal', 'negociacao', 'frete', 'lancamento']
+  return ['frete', 'cadastro', 'fiscal', 'negociacao', 'lancamento']
 }
 
 function abaInicial(nota: DetalheNota): AbaId {
@@ -306,6 +306,7 @@ function etapasVoltarDisponiveis(nota: DetalheNota, ehDocumental: boolean): Etap
   ) {
     return []
   }
+  // NFS-e/documental: só cadastro. NFe 55: frete → cadastro → …
   const validas: EtapaPipeline[] = ehDocumental ? ['cadastro'] : ORDEM_ETAPAS
   const atual = etapaEfetiva(nota)
   const indiceAtual = atual === 'lancamento' ? ORDEM_ETAPAS.length : ORDEM_ETAPAS.indexOf(atual)
@@ -1185,10 +1186,10 @@ function ConteudoDetalheEntrada() {
       ]
     }
     return [
+      { id: 'frete', rotulo: 'Frete / CT-e', status: statusAbaDeEtapa(nota.analise?.frete) },
       { id: 'cadastro', rotulo: 'Cadastro', status: statusAbaDeEtapa(nota.analise?.cadastro) },
       { id: 'fiscal', rotulo: 'Fiscal', status: statusAbaDeEtapa(nota.analise?.fiscal) },
       { id: 'negociacao', rotulo: 'Negociação', status: statusAbaDeEtapa(nota.analise?.negociacao) },
-      { id: 'frete', rotulo: 'Frete / CT-e', status: statusAbaDeEtapa(nota.analise?.frete) },
       { id: 'lancamento', rotulo: 'Lançamento', status: 'idle' as StatusDaAba },
     ]
   }, [nota, ehNfse, ehCte])
@@ -1216,15 +1217,19 @@ function ConteudoDetalheEntrada() {
       if (idAba === 'lancamento') return cadastroBloqueante || negociacaoBloqueante
       return false
     }
-    if (idAba === 'fiscal') return cadastroBloqueante
+    // NFe 55: Frete primeiro quando destinatário; remetente não bloqueia.
+    const freteTrava = freteBloqueante && Boolean(nota?.exigeCte)
+    if (idAba === 'cadastro') return freteTrava
+    if (idAba === 'fiscal') return freteTrava || cadastroBloqueante
     if (idAba === 'negociacao') {
-      return cadastroBloqueante || (fiscalBloqueante && !nota?.criticasLiberadas)
+      return freteTrava || cadastroBloqueante || (fiscalBloqueante && !nota?.criticasLiberadas)
     }
     if (idAba === 'frete') {
       return false
     }
     if (idAba === 'lancamento') {
       return (
+        freteTrava ||
         cadastroBloqueante ||
         fiscalExigeManifesto ||
         (fiscalBloqueante && !nota?.criticasLiberadas) ||
@@ -1782,8 +1787,6 @@ function ConteudoDetalheEntrada() {
                         v.icms.aliquotaIcms != null ||
                         v.icms.valorIcms != null)
                   )?.icms ?? null
-                const cteComCfop =
-                  ctes.find((v) => v.cfop || v.cfopEntrada || v.cte?.id) ?? ctes[0] ?? null
                 const valorFreteSoma = ctes.reduce((acc, v) => {
                   const n = v.valorFrete ?? v.cte?.valorTotal ?? 0
                   return acc + (Number.isFinite(n) ? n : 0)
@@ -1826,29 +1829,6 @@ function ConteudoDetalheEntrada() {
                       <dt className="text-muted-foreground">Valor ICMS</dt>
                       <dd className="font-medium">{formatMoedaBr(icms?.valorIcms)}</dd>
                     </div>
-                    {cteComCfop?.cte?.id ? (
-                      <CfopEntradaFreteCampos
-                        cfopXml={cteComCfop.cfop}
-                        cfopEntrada={cteComCfop.cfopEntrada}
-                        cfopsEntrada={cfopsEntrada}
-                        finalizada={finalizada}
-                        acao={acao}
-                        onDefinirCfopEntrada={(cfopId) =>
-                          void definirCfopEntradaCte(cteComCfop.cte!.id, cfopId)
-                        }
-                      />
-                    ) : (
-                      <>
-                        <div>
-                          <dt className="text-muted-foreground">CFOP do CT-e</dt>
-                          <dd className="font-medium">—</dd>
-                        </div>
-                        <div>
-                          <dt className="text-muted-foreground">CFOP de entrada</dt>
-                          <dd className="font-medium">—</dd>
-                        </div>
-                      </>
-                    )}
                     <div>
                       <dt className="text-muted-foreground">Forma de rateio</dt>
                       <dd className="font-medium">

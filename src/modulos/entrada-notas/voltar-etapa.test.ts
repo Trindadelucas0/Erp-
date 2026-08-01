@@ -224,6 +224,74 @@ describe('servicoEntradaNotas.voltarEtapa', () => {
     expect(analisarNegociacao).not.toHaveBeenCalled()
   })
 
+  it('permite voltar para frete (1ª etapa) e zera custoFreteRateado', async () => {
+    ligarRepositorioFake(
+      buildNotaFixture({
+        statusEntrada: 'em_analise',
+        etapaAtual: 'cadastro',
+        origemLancamento: null,
+        modFrete: '1',
+        itens: [
+          {
+            id: 'item-1',
+            nItem: 1,
+            descricao: 'Item',
+            gtin: null,
+            codigoProduto: null,
+            ncm: null,
+            cfop: null,
+            cst: null,
+            origem: null,
+            quantidade: 1,
+            valorUnitario: 10,
+            valorTotal: 10,
+            pesoKg: null,
+            custoFreteRateado: 5.5,
+            cfopEntradaId: null,
+            produtoId: 'produto-1',
+            vinculoModo: 'barras',
+            criticaCadastro: false,
+            criticaFiscal: false,
+            criticaNegociacao: false,
+            produto: null,
+          },
+        ],
+        analiseJson: {
+          versao: 1,
+          atualizadoEm: new Date().toISOString(),
+          frete: { status: 'ok', avisos: [], bloqueios: [] },
+          cadastro: { status: 'ok', avisos: [], bloqueios: [] },
+          fiscal: { status: 'pendente', avisos: [], bloqueios: [] },
+          negociacao: { status: 'pendente', avisos: [], bloqueios: [] },
+          autoLancado: false,
+          motivoParada: null,
+        },
+        vinculosComoNfe: [],
+        fornecedorPessoa: {
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor' } }],
+        },
+      })
+    )
+
+    const resultado = await servicoEntradaNotas.voltarEtapa(
+      'empresa-1',
+      'nota-1',
+      'usuario-1',
+      'frete'
+    )
+
+    const nota = resultado.nota as {
+      etapaAtual: string
+      itens: Array<{ custoFreteRateado: number | null }>
+      analise: { motivoParada: string | null; frete: { status: string } }
+    }
+    expect(nota.etapaAtual).toBe('frete')
+    expect(nota.analise.motivoParada).toBe('frete')
+    expect(nota.analise.frete.status).toBe('bloqueante')
+    expect(nota.itens[0]?.custoFreteRateado).toBeNull()
+    expect(analisarCadastro).not.toHaveBeenCalled()
+  })
+
   it('rejeita voltar etapa em nota cancelada', async () => {
     ligarRepositorioFake(buildNotaFixture({ statusEntrada: 'cancelada' }))
 

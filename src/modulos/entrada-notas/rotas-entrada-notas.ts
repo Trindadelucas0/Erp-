@@ -1,5 +1,5 @@
 /**
- * Rotas Entrada de Notas — pipeline cadastro → fiscal → negociação → lançamento.
+ * Rotas Entrada de Notas — pipeline frete → cadastro → fiscal → negociação → lançamento (NFe 55).
  * Prefixo: /entrada-notas
  */
 import { FastifyInstance } from 'fastify'
