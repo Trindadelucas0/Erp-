@@ -81,6 +81,11 @@ function formatarDetalheEmbalagens(qtdEmbalagens: number, undPorEmbalagem: numbe
   return `(${n} ${rotulo} com ${undPorEmbalagem} und cada)`
 }
 
+function formatarUnidade(valor: string | null | undefined): string {
+  const limpo = (valor ?? '').trim()
+  return limpo || '—'
+}
+
 function rotuloProdutoSistema(produto: NonNullable<ItemVinculoCadastro['produto']>) {
   const extras: string[] = []
   const marca = produto.marca?.trim()
@@ -194,6 +199,7 @@ export function ItemVinculoCadastroGrid({
     codOrigNf.toLowerCase() === codOrigSistema.toLowerCase()
 
   const qtdUnitTexto = formatarQtdUnit(item.quantidade, item.valorUnitario)
+  const unidadeNf = formatarUnidade(item.unidade)
 
   const precoUnitarioSistema =
     temMultiploCompra &&
@@ -240,6 +246,7 @@ export function ItemVinculoCadastroGrid({
 
   const dlEspelho = (
     <dl className="grid gap-1 text-xs text-muted-foreground">
+      <LinhaEspelho rotulo="Unidade" valor={unidadeNf} />
       <LinhaEspelho rotulo="Código de barras" valor={gtinNf} />
       <LinhaEspelho rotulo="Código original" valor={codOrigNf} />
       <LinhaEspelho rotulo="Qtd × unit." valor={qtdUnitTexto} valorClassName="font-sans" />
