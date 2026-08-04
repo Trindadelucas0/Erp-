@@ -1,6 +1,7 @@
 'use client'
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Copy, Loader2, Plus } from 'lucide-react'
 import {
   ComboboxProduto,
@@ -300,6 +301,9 @@ function sanitizarPayload<T>(valor: T): T {
 }
 
 function ConteudoDaPagina() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const deepLinkProcessado = useRef(false)
   const { estaAutenticado, carregando: carregandoSessao } = useSessaoDoUsuario()
   const podeCriar = usePermissao('produtos:create')
   const podeEditar = usePermissao('produtos:edit')
@@ -738,6 +742,30 @@ function ConteudoDaPagina() {
       setErro('Erro ao carregar produto.')
     }
   }
+
+  useEffect(() => {
+    if (deepLinkProcessado.current) return
+    if (carregandoSessao || !estaAutenticado) return
+    if (modalAberto) return
+
+    const produtoId = searchParams.get('id')?.trim()
+    if (!produtoId) return
+
+    deepLinkProcessado.current = true
+    void (async () => {
+      try {
+        await carregarProdutoNoForm(produtoId)
+        setModoEdicao(false)
+        setModoVisualizacao(true)
+        setModalAberto(true)
+      } catch {
+        setErro('Produto não encontrado.')
+      } finally {
+        router.replace('/produtos')
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deep-link one-shot
+  }, [carregandoSessao, estaAutenticado, searchParams, modalAberto, router])
 
   function alternarParaEdicao() {
     if (!podeEditar) return
@@ -1694,7 +1722,9 @@ function ConteudoDaPagina() {
 export default function PaginaProdutos() {
   return (
     <ProtegerRota chaveDaPagina="produtos">
-      <ConteudoDaPagina />
+      <Suspense fallback={<p className="text-sm text-muted-foreground">Carregando…</p>}>
+        <ConteudoDaPagina />
+      </Suspense>
     </ProtegerRota>
   )
 }

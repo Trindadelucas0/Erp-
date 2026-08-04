@@ -44,6 +44,8 @@ model Company {
   movimentosCreditoFornecedor CreditoFornecedorMovimento[]
   unidadesMedida              UnidadeMedida[]
   marcas                      Marca[]
+  estoqueSaldos               EstoqueSaldo[]
+  estoqueMovimentos           EstoqueMovimento[]
   createdAt                   DateTime                     @default(now())
 }
 
@@ -337,6 +339,7 @@ model Pessoa {
   pendenciasFornecedor        PendenciaFornecedor[]
   nfesRecebidasComoFornecedor NfeRecebida[]
   despesasEntradaDocumento    DespesaEntradaDocumento[]
+  estoqueMovimentosComoParceiro EstoqueMovimento[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -610,6 +613,7 @@ model User {
   paginasPermitidas UserPageAccess[]
   logsDeAuditoria   LogDeAuditoria[]
   tratativasNfe     NfeRecebidaTratativa[]
+  estoqueMovimentos EstoqueMovimento[]
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 }
@@ -778,6 +782,8 @@ model Produto {
   itensPedidoCompra PedidoCompraItem[]
   pendencias        PendenciaFornecedor[]
   itensNfeRecebida  NfeRecebidaItem[]
+  estoqueSaldo      EstoqueSaldo?
+  estoqueMovimentos EstoqueMovimento[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -785,6 +791,57 @@ model Produto {
   @@unique([sku, companyId])
   @@index([companyId, ativo])
   @@index([companyId, nomeVenda])
+}
+
+// ─── Estoque — saldos + kardex (ledger append-only) ───────────────────────────
+
+model EstoqueSaldo {
+  id           String   @id @default(uuid())
+  companyId    String
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  produtoId    String   @unique
+  produto      Produto  @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  qtdFisica    Decimal  @default(0) @db.Decimal(18, 4)
+  qtdReservada Decimal  @default(0) @db.Decimal(18, 4)
+  qtdBloqueada Decimal  @default(0) @db.Decimal(18, 4)
+  qtdFiscal    Decimal  @default(0) @db.Decimal(18, 4)
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  @@unique([companyId, produtoId])
+  @@index([companyId])
+}
+
+model EstoqueMovimento {
+  id                String   @id @default(uuid())
+  companyId         String
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  produtoId         String
+  produto           Produto  @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  /// fisico | fiscal | reserva | bloqueio
+  dimensao          String
+  /// inventario | entrada_nf | saida_nf | conferencia_ok | venda_reserva | ...
+  tipoMovimento     String
+  quantidade        Decimal  @db.Decimal(18, 4)
+  saldoDepois       Decimal  @db.Decimal(18, 4)
+  /// Snapshot do custo unitário na data do movimento (histórico imutável)
+  precoCusto        Decimal? @db.Decimal(15, 4)
+  /// nfe | conferencia | venda | inventario | manual | ...
+  origem            String
+  origemId          String?
+  chaveIdempotencia String
+  observacao        String?
+  /// Parceiro da linha (fornecedor/cliente) — opcional
+  pessoaId          String?
+  pessoa            Pessoa?  @relation(fields: [pessoaId], references: [id], onDelete: SetNull)
+  usuarioId         String?
+  usuario           User?    @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  createdAt         DateTime @default(now())
+
+  @@unique([companyId, chaveIdempotencia])
+  @@index([companyId, produtoId, createdAt])
+  @@index([origem, origemId])
+  @@index([pessoaId])
 }
 
 model ProdutoFornecedor {
