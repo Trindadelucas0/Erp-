@@ -295,6 +295,20 @@ async function existeMovimentoPorOrigem(
   return Boolean(row)
 }
 
+async function listarMovimentosPorOrigem(
+  companyId: string,
+  origem: string,
+  origemId: string
+) {
+  return clientePrisma.estoqueMovimento.findMany({
+    where: { companyId, origem, origemId },
+    include: {
+      produto: { select: { id: true, nomeVenda: true } },
+    },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  })
+}
+
 export const repositorioDeEstoque = {
   mapearSaldos,
   buscarProdutoEstoque,
@@ -309,5 +323,6 @@ export const repositorioDeEstoque = {
   garantirSaldoZero,
   fornecedorVinculadoAoProduto,
   existeMovimentoPorOrigem,
+  listarMovimentosPorOrigem,
   clientePrisma,
 }

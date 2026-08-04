@@ -157,6 +157,14 @@ type TratativaNota = {
   usuario: { id: string; name: string; email: string } | null
 }
 
+type EstoqueResumoLancamento = {
+  movimentou: boolean
+  itensProcessados: number
+  itensIgnorados: number
+  movimentosGravados: number
+  produtos: Array<{ produtoId: string; nomeVenda: string; quantidade: number }>
+}
+
 type DetalheNota = {
   id: string
   chaveNfe: string
@@ -225,14 +233,8 @@ type DetalheNota = {
   avisoReparoXml?: string | null
   /** NFe consolidada com movimentos no kardex (origem nfe). */
   estoqueLancado?: boolean
-}
-
-type EstoqueResumoLancamento = {
-  movimentou: boolean
-  itensProcessados: number
-  itensIgnorados: number
-  movimentosGravados: number
-  produtos: Array<{ produtoId: string; nomeVenda: string; quantidade: number }>
+  /** Resumo persistente dos movimentos (reabre no detalhe consolidado). */
+  estoqueResumo?: EstoqueResumoLancamento | null
 }
 
 type ProdutoBusca = {
@@ -378,7 +380,7 @@ function mensagemAposAnalisar(nota: DetalheNota): string | null {
     nota.statusEntrada === 'entrada_contagem' ||
     nota.statusEntrada === 'entrada_consolidada'
   ) {
-    return `Nota lançada: ${nota.statusEntrada}.`
+    return `Nota lançada: ${rotuloStatusEntrada(nota.statusEntrada)}.`
   }
   if (!motivo) return 'Reanálise concluída — sem bloqueios nesta etapa.'
   return `Reanálise concluída (parada: ${motivo}).`
@@ -395,6 +397,26 @@ function rotuloModFrete(mod: string | null | undefined): string {
     '9': '9 — Sem frete',
   }
   return mapa[m] ?? (m || '—')
+}
+
+function rotuloStatusEntrada(status: string): string {
+  const mapa: Record<string, string> = {
+    pendente: 'Pendente',
+    em_analise: 'Em análise',
+    stand_by: 'Em espera',
+    entrada_contagem: 'Liberada para contagem',
+    entrada_consolidada: 'Entrada consolidada',
+    cancelada: 'Cancelada',
+    com_problema: 'Com problema',
+    problema_resolvido: 'Problema resolvido',
+  }
+  return mapa[status] ?? status
+}
+
+function rotuloOrigemLancamento(origem: string | null | undefined): string {
+  if (origem === 'automatica') return 'automática'
+  if (origem === 'humana') return 'manual'
+  return origem ?? ''
 }
 
 function rotuloRegraRateio(regra: string | null | undefined): string {
@@ -767,6 +789,7 @@ function ConteudoDetalheEntrada() {
         setPedidos(data.pedidosDisponiveis ?? [])
         setObsContato(data.nota.observacaoContato ?? '')
         setPrazo(data.nota.prazoPagamentoTexto ?? '')
+        setEstoqueResumo(data.nota.estoqueResumo ?? null)
         setAbaAtiva(resolverAbaInicial(data.nota, abaQuery))
         if (data.nota.avisoReparoXml) {
           setErro(data.nota.avisoReparoXml)
@@ -955,6 +978,7 @@ function ConteudoDetalheEntrada() {
       if (data.nota) {
         setNota(data.nota)
         setPedidos(data.pedidosDisponiveis ?? [])
+        if (data.nota.estoqueResumo) setEstoqueResumo(data.nota.estoqueResumo)
         if (path !== '/financeiro-frete' && path !== '/definir-cfop-entrada-cte') {
           setAbaAtiva(abaInicial(data.nota))
         }
@@ -964,10 +988,11 @@ function ConteudoDetalheEntrada() {
           setMensagem('Prévia financeira do frete salva (stub — sem contas a pagar).')
         } else if (path === '/lancar' && body?.modo === 'consolidar') {
           setSenha('')
-          if (data.estoqueResumo) setEstoqueResumo(data.estoqueResumo)
-          if (data.estoqueResumo?.movimentou) {
+          const resumo = data.estoqueResumo ?? data.nota.estoqueResumo ?? null
+          if (resumo) setEstoqueResumo(resumo)
+          if (resumo?.movimentou) {
             setMensagem(
-              `Estoque consolidado: ${data.estoqueResumo.itensProcessados} produto(s) no kardex (físico e fiscal).`
+              `Estoque consolidado: ${resumo.itensProcessados} produto(s) no kardex (físico e fiscal).`
             )
           } else if (ehDocumentalEntrada(data.nota.tipoDocumento)) {
             setMensagem('Nota consolidada (documental — sem movimentação de estoque).')
@@ -986,7 +1011,7 @@ function ConteudoDetalheEntrada() {
           data.nota.statusEntrada === 'entrada_contagem' ||
           data.nota.statusEntrada === 'entrada_consolidada'
         ) {
-          setMensagem(`Nota lançada: ${data.nota.statusEntrada}.`)
+          setMensagem(`Nota lançada: ${rotuloStatusEntrada(data.nota.statusEntrada)}.`)
         } else if (path === '/manifestar') {
           setMensagem(
             'Manifestação enviada à Focus. Nota marcada como cancelada — veja o painel Canceladas.'
@@ -1452,7 +1477,8 @@ function ConteudoDetalheEntrada() {
               : '—'}
           </p>
           <p>
-            <span className="text-muted-foreground">Status:</span> {nota.statusEntrada}
+            <span className="text-muted-foreground">Status:</span>{' '}
+            {rotuloStatusEntrada(nota.statusEntrada)}
           </p>
           <p>
             <span className="text-muted-foreground">Etapa:</span> {nota.etapaAtual}
@@ -2271,12 +2297,19 @@ function ConteudoDetalheEntrada() {
               titulo={
                 comProblema || problemaResolvido
                   ? 'Fora do fluxo (com problema)'
-                  : 'Finalizada'
+                  : nota.statusEntrada === 'entrada_consolidada'
+                    ? 'Entrada consolidada'
+                    : nota.statusEntrada === 'entrada_contagem'
+                      ? 'Liberada para contagem'
+                      : 'Finalizada'
               }
             >
               <p className="text-sm">
-                Status <strong>{nota.statusEntrada}</strong>
-                {nota.origemLancamento ? ` · origem ${nota.origemLancamento}` : ''}.
+                Status <strong>{rotuloStatusEntrada(nota.statusEntrada)}</strong>
+                {nota.origemLancamento
+                  ? ` · origem ${rotuloOrigemLancamento(nota.origemLancamento)}`
+                  : ''}
+                .
                 {comProblema
                   ? ' Use o card Nota com problema para tratativas e desfecho.'
                   : problemaResolvido
@@ -2284,13 +2317,23 @@ function ConteudoDetalheEntrada() {
                     : nota.statusEntrada === 'entrada_contagem'
                       ? ' Estoque ainda não lançado — informe a senha de gerente e consolide para gravar no kardex.'
                       : nota.statusEntrada === 'entrada_consolidada' && !ehDocumental
-                        ? nota.estoqueLancado
-                          ? ' Estoque lançado no kardex (físico e fiscal).'
+                        ? nota.estoqueLancado || estoqueResumo?.movimentou
+                          ? ' Estoque lançado no kardex (físico e fiscal). Veja o resumo abaixo.'
                           : ' Consolidada — sem movimentos de estoque (itens sem produto ou sem controle).'
                         : nota.statusEntrada === 'entrada_consolidada' && ehDocumental
                           ? ' Documental — sem movimentação de estoque.'
                           : ''}
               </p>
+              {nota.statusEntrada === 'entrada_consolidada' && (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Consulta as abas anteriores (Frete, Cadastro, Fiscal, Negociação) para auditoria.
+                  O extrato completo fica em{' '}
+                  <Link href="/estoque" className="text-primary underline">
+                    Estoque / Kardex
+                  </Link>
+                  .
+                </p>
+              )}
               {nota.statusEntrada === 'entrada_contagem' && (
                 <div className="mt-4 space-y-3 rounded-md border border-border/80 bg-muted/20 p-3">
                   <p className="text-sm text-muted-foreground">
@@ -2335,7 +2378,7 @@ function ConteudoDetalheEntrada() {
                 <div className="mt-3 text-sm">
                   <p className="font-medium">Despesas de frete (CT-e)</p>
                   <ul className="mt-1 space-y-1">
-                    {nota.despesasFrete!.map((d) => (
+                    {(nota.despesasFrete ?? []).map((d) => (
                       <li key={d.id}>
                         {d.valor?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} —{' '}
                         {d.status}
@@ -2364,7 +2407,7 @@ function ConteudoDetalheEntrada() {
 
           {(estoqueResumo?.movimentou ||
             (nota.statusEntrada === 'entrada_consolidada' &&
-              Boolean(nota.estoqueLancado) &&
+              Boolean(nota.estoqueLancado || estoqueResumo?.movimentou) &&
               !ehDocumental)) && (
             <CardPadrao titulo="Estoque lançado">
               <p className="mb-3 text-sm text-muted-foreground">

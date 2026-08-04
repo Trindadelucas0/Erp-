@@ -1458,12 +1458,14 @@ async function obterDetalhe(
     : new Map<string, string>()
 
   const tipoDoc = nota.tipoDocumento ?? 'nfe55'
-  const estoqueLancado =
+  const podeTerEstoque =
     nota.statusEntrada === 'entrada_consolidada' &&
     tipoDoc !== 'nfse' &&
     tipoDoc !== 'cte'
-      ? await servicoDeEstoque.existeMovimentoOrigemNfe(companyId, notaId)
-      : false
+  const estoqueResumo = podeTerEstoque
+    ? await servicoDeEstoque.obterResumoEntradaNotaFiscal(companyId, notaId)
+    : null
+  const estoqueLancado = Boolean(estoqueResumo?.movimentou)
 
   return {
     nota: {
@@ -1487,6 +1489,7 @@ async function obterDetalhe(
       problemaMarcadoEm: nota.problemaMarcadoEm ?? null,
       problemaResolvidoEm: nota.problemaResolvidoEm ?? null,
       estoqueLancado,
+      estoqueResumo,
       avisoReparoXml,
       tratativas: (nota.tratativas ?? []).map((t) => ({
         id: t.id,

@@ -142,7 +142,7 @@ type XmlVisualizacao = {
 const PAINEIS: Array<{ id: PainelEntrada; rotulo: string }> = [
   { id: 'analise', rotulo: 'Em análise' },
   { id: 'contagem', rotulo: 'Liberadas p/ contagem' },
-  { id: 'consolidada', rotulo: 'Consolidadas' },
+  { id: 'consolidada', rotulo: 'Entradas' },
   { id: 'problemas', rotulo: 'Com problemas' },
   { id: 'cancelada', rotulo: 'Canceladas' },
 ]
@@ -863,7 +863,7 @@ function ConteudoEntradaNotas() {
           painelAnalise
             ? 'Sync automático ~2 min; BUSCAR força agora (Focus + completar + lista)'
             : painel === 'consolidada'
-              ? 'NFe com estoque lançado no kardex (físico + fiscal). NFS-e/CTe documentais não movimentam estoque.'
+              ? 'Notas com entrada consolidada. NFe com estoque lançado no kardex (físico + fiscal). NFS-e/CTe documentais não movimentam estoque.'
               : painel === 'contagem'
                 ? 'Liberadas para contagem — consolide na nota (senha gerente) para lançar estoque no kardex'
                 : 'Lista do banco local — use Filtrar para atualizar'

@@ -702,6 +702,58 @@ async function existeMovimentoOrigemNfe(companyId: string, notaId: string): Prom
   return repositorioDeEstoque.existeMovimentoPorOrigem(companyId, 'nfe', notaId)
 }
 
+/**
+ * Resume movimentos de entrada NF já gravados (para reabrir detalhe consolidado).
+ * Agrega por produto usando a dimensão físico (quantidade de estoque).
+ */
+async function obterResumoEntradaNotaFiscal(
+  companyId: string,
+  notaId: string
+): Promise<ResultadoEntradaNotaFiscal> {
+  const movimentos = await repositorioDeEstoque.listarMovimentosPorOrigem(
+    companyId,
+    'nfe',
+    notaId
+  )
+  if (movimentos.length === 0) {
+    return {
+      movimentou: false,
+      itensProcessados: 0,
+      itensIgnorados: 0,
+      movimentosGravados: 0,
+      produtos: [],
+    }
+  }
+
+  const produtosMap = new Map<string, { produtoId: string; nomeVenda: string; quantidade: number }>()
+  let movimentosFisicos = 0
+
+  for (const mov of movimentos) {
+    if (mov.dimensao !== 'fisico') continue
+    movimentosFisicos += 1
+    const qtd = arredondarQtd(decimalParaNumero(mov.quantidade))
+    const existente = produtosMap.get(mov.produtoId)
+    if (existente) {
+      existente.quantidade = arredondarQtd(existente.quantidade + qtd)
+    } else {
+      produtosMap.set(mov.produtoId, {
+        produtoId: mov.produtoId,
+        nomeVenda: mov.produto?.nomeVenda?.trim() || mov.produtoId,
+        quantidade: qtd,
+      })
+    }
+  }
+
+  const produtos = [...produtosMap.values()]
+  return {
+    movimentou: produtos.length > 0,
+    itensProcessados: produtos.length,
+    itensIgnorados: 0,
+    movimentosGravados: movimentosFisicos,
+    produtos,
+  }
+}
+
 export const servicoDeEstoque = {
   registrarMovimentoEstoque,
   obterSaldosAtuais,
@@ -710,6 +762,7 @@ export const servicoDeEstoque = {
   ajusteInventario,
   aplicarEntradaNotaFiscal,
   existeMovimentoOrigemNfe,
+  obterResumoEntradaNotaFiscal,
 }
 
 export const _testesEstoque = {
