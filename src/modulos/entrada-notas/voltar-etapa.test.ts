@@ -39,6 +39,7 @@ vi.mock('./analise-negociacao/analisar-negociacao.js', () => ({
 vi.mock('../focus-nfe/repositorio-focus-nfe.js', () => ({
   repositorioFocusNfe: {
     buscarConfigPorEmpresa: vi.fn().mockResolvedValue(null),
+    buscarEmpresaCnpj: vi.fn().mockResolvedValue(null),
     upsertNfeRecebida: vi.fn(),
     atualizarDanfe: vi.fn(),
   },
@@ -48,6 +49,7 @@ vi.mock('../focus-nfe/cliente-focus-nfe.js', () => ({
   clienteFocusNfe: {
     manifestar: vi.fn(),
     baixarXml: vi.fn(),
+    consultarNfeRecebida: vi.fn(),
   },
 }))
 
