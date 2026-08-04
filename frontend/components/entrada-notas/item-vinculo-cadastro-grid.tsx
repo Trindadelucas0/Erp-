@@ -207,14 +207,6 @@ export function ItemVinculoCadastroGrid({
     unidadeNf.toLowerCase() === unidadeSistema.toLowerCase()
 
   const qtdUnitTexto = formatarQtdUnit(item.quantidade, item.valorUnitario)
-  const freteRateado =
-    item.custoFreteRateado != null && Number.isFinite(item.custoFreteRateado)
-      ? item.custoFreteRateado
-      : null
-  const freteTexto =
-    freteRateado != null
-      ? freteRateado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-      : null
 
   const precoUnitarioSistema =
     temMultiploCompra &&
@@ -224,6 +216,22 @@ export function ItemVinculoCadastroGrid({
       : item.valorUnitario
   const qtdEntrada =
     temMultiploCompra && item.qtdTotalUn != null ? item.qtdTotalUn : item.quantidade
+  const freteRateado =
+    item.custoFreteRateado != null && Number.isFinite(item.custoFreteRateado)
+      ? item.custoFreteRateado
+      : null
+  const fretePorUnd =
+    freteRateado != null &&
+    qtdEntrada != null &&
+    Number.isFinite(qtdEntrada) &&
+    qtdEntrada > 0
+      ? freteRateado / qtdEntrada
+      : null
+  const fretePorUndTexto =
+    fretePorUnd != null
+      ? fretePorUnd.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+      : null
+  const custoEntradaTexto = formatarValorUnitario(precoUnitarioSistema)
   const qtdEntradaValorSistema = (
     <>
       <span>{formatarQtdUnit(qtdEntrada, precoUnitarioSistema)}</span>
@@ -245,13 +253,13 @@ export function ItemVinculoCadastroGrid({
 
   const dlEspelho = (
     <dl className="grid gap-1 text-xs text-muted-foreground">
-      <LinhaEspelho rotulo="Unidade" valor={unidadeNf} />
       <LinhaEspelho rotulo="Código de barras" valor={gtinNf} />
       <LinhaEspelho rotulo="Código original" valor={codOrigNf} />
       <LinhaEspelho rotulo="Qtd × unit." valor={qtdUnitTexto} valorClassName="font-sans" />
-      {freteTexto != null && (
-        <LinhaEspelho rotulo="Frete" valor={freteTexto} valorClassName="font-sans" />
+      {fretePorUndTexto != null && (
+        <LinhaEspelho rotulo="Frete por und" valor={fretePorUndTexto} valorClassName="font-sans" />
       )}
+      <LinhaEspelho rotulo="Custo da entrada" valor={custoEntradaTexto} valorClassName="font-sans" />
     </dl>
   )
 
