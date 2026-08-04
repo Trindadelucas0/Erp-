@@ -14,6 +14,34 @@ export function normalizarCodigoBarrasGtin(valor: string): string {
   return valor.replace(/\D/g, '')
 }
 
+/**
+ * Variantes para busca de produto na entrada (NF ↔ cadastro).
+ * - 14 dígitos (DUN-14): também tenta os últimos 13 (EAN-13 embutido).
+ * - 13 dígitos: também tenta `0` + 13 (GTIN-14 com indicador 0).
+ */
+export function variantesCodigoBarrasParaBusca(gtin: string): string[] {
+  const limpo = normalizarCodigoBarrasGtin(gtin)
+  if (!limpo) return []
+
+  const variantes: string[] = [limpo]
+  if (limpo.length === 14) {
+    const treze = limpo.slice(-13)
+    if (treze && !variantes.includes(treze)) variantes.push(treze)
+  } else if (limpo.length === 13) {
+    const quatorze = `0${limpo}`
+    if (!variantes.includes(quatorze)) variantes.push(quatorze)
+  }
+  return variantes
+}
+
+/**
+ * Normaliza código original do fornecedor / cProd da NF para comparação
+ * (remove `.` `-` e espaços; maiúsculas).
+ */
+export function normalizarCodigoOriginalComparacao(codigo: string): string {
+  return codigo.trim().replace(/[.\-\s]/g, '').toUpperCase()
+}
+
 function digitoVerificadorGtinValido(digitos: string): boolean {
   const nums = digitos.split('').map(Number)
   const check = nums.pop()

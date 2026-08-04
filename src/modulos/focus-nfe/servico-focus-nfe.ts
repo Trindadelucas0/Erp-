@@ -1017,6 +1017,7 @@ async function completarXmlDaFocus(
     origem: 'focus',
     situacao: item.situacao ?? 'autorizada',
     manifestacaoDestinatario: item.manifestacao_destinatario ?? 'ciencia',
+    modFrete: campos.modFrete ?? null,
   })
   await servicoEntradaNotas.processarAposXml(companyId, registro.id)
   return { ok: xmlCompleto, rateLimit: false }
@@ -1694,14 +1695,51 @@ async function reprocessarXmlsLocais(companyId: string) {
   const lista = await repositorioFocusNfe.listarComXmlPendenteCampos(companyId)
   let ok = 0
   let itensRecuperados = 0
+  let xmlCompletadosFocus = 0
+
+  let credenciais: { apiToken: string; homologacao: boolean } | null = null
+  try {
+    credenciais = await obterCredenciais(companyId)
+  } catch {
+    credenciais = null
+  }
+
   for (const item of lista) {
     if (!item.xmlConteudo) continue
-    const campos = extrairCamposResumoDoXml(item.xmlConteudo)
     const tipo = item.tipoDocumento ?? 'nfe55'
+
+    // NFe 55 sem <det>: tenta completar na Focus (legado com nfeCompleta=true falso incluído).
+    if (
+      tipo === 'nfe55' &&
+      credenciais &&
+      !xmlNfeTemItensParseaveis(item.xmlConteudo)
+    ) {
+      const xmlRes = await completarXmlDaFocus(
+        companyId,
+        credenciais.apiToken,
+        credenciais.homologacao,
+        {
+          chave_nfe: item.chaveNfe,
+          manifestacao_destinatario: item.manifestacaoDestinatario ?? undefined,
+          situacao: item.situacao ?? undefined,
+        },
+        () => undefined
+      )
+      if (xmlRes.ok) xmlCompletadosFocus += 1
+      if (xmlRes.rateLimit) {
+        logFocus('warn', 'reprocessar_xmls_rate_limit', { companyId, chave: item.chaveNfe.slice(-8) })
+        break
+      }
+    }
+
+    const atualizada = await repositorioFocusNfe.buscarPorChave(companyId, item.chaveNfe)
+    const xmlAtual = atualizada?.xmlConteudo ?? item.xmlConteudo
+    if (!xmlAtual) continue
+
+    const campos = extrairCamposResumoDoXml(xmlAtual)
     // CT-e/NFS-e não têm det/prod de NFe — xmlNfeTemItensParseaveis seria false e
     // marcava nfeCompleta=false a cada BUSCAR, forçando re-download infinito no DistDFe.
-    const nfeCompleta =
-      tipo === 'nfe55' ? xmlNfeTemItensParseaveis(item.xmlConteudo) : true
+    const nfeCompleta = tipo === 'nfe55' ? xmlNfeTemItensParseaveis(xmlAtual) : true
     await repositorioFocusNfe.upsertNfeRecebida({
       companyId,
       chaveNfe: item.chaveNfe,
@@ -1711,8 +1749,9 @@ async function reprocessarXmlsLocais(companyId: string) {
       cnpjDestinatario: campos.cnpjDestinatario,
       dataEmissao: campos.dataEmissao,
       valorTotal: campos.valorTotal,
-      xmlConteudo: item.xmlConteudo,
+      xmlConteudo: xmlAtual,
       nfeCompleta,
+      modFrete: tipo === 'nfe55' ? campos.modFrete ?? undefined : undefined,
     })
     ok += 1
     if (tipo === 'nfe55') {
@@ -1723,6 +1762,8 @@ async function reprocessarXmlsLocais(companyId: string) {
       if (itensAdicionados > 0) itensRecuperados += 1
     }
   }
+
+  const vinculosReparados = await servicoEntradaNotas.repararVinculosCteTomadorIndevido(companyId)
   const vinculadas = await servicoEntradaNotas.vincularFornecedoresNasNotasPendentes(companyId)
   const vinculosCte = await servicoEntradaNotas.processarVinculosCtePendentes(companyId, {
     importarFocusSeAusente: true,
@@ -1732,6 +1773,8 @@ async function reprocessarXmlsLocais(companyId: string) {
     companyId,
     ok,
     itensRecuperados,
+    xmlCompletadosFocus,
+    vinculosReparados,
     vinculadas,
     ctesVinculados: vinculosCte.vinculados,
     ctesImportFocus: vinculosCte.importadosFocus,
@@ -1739,12 +1782,14 @@ async function reprocessarXmlsLocais(companyId: string) {
   return {
     processados: ok,
     itensRecuperados,
+    xmlCompletadosFocus,
+    vinculosReparados,
     vinculadas,
     ctesVinculados: vinculosCte.vinculados,
     ctesImportFocus: vinculosCte.importadosFocus,
     mensagem:
-      vinculadas > 0 || vinculosCte.vinculados > 0
-        ? `${ok} nota(s) reprocessada(s); ${vinculadas} fornecedor(es); ${vinculosCte.vinculados} CT-e(s) vinculado(s)${vinculosCte.importadosFocus > 0 ? ` (${vinculosCte.importadosFocus} NF via Focus)` : ''}.`
+      vinculadas > 0 || vinculosCte.vinculados > 0 || xmlCompletadosFocus > 0 || vinculosReparados > 0
+        ? `${ok} nota(s) reprocessada(s); ${xmlCompletadosFocus} XML Focus; ${vinculadas} fornecedor(es); ${vinculosCte.vinculados} CT-e(s) vinculado(s); ${vinculosReparados} vínculo(s) CT-e corrigido(s)${vinculosCte.importadosFocus > 0 ? ` (${vinculosCte.importadosFocus} NF via Focus)` : ''}.`
         : `${ok} nota(s) reprocessada(s) a partir do XML salvo (emitente, data, valor).`,
   }
 }

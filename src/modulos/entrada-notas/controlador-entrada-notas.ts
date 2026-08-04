@@ -311,16 +311,18 @@ async function vincularCtesPendentes(requisicao: FastifyRequest, resposta: Fasti
     importarFocusSeAusente?: boolean
     forcarRetryFocus?: boolean
   }
-  const dados = await servicoEntradaNotas.processarVinculosCtePendentes(
-    companyIdDe(requisicao),
-    {
-      // Default true: Focus só entra se o CT-e tiver chave de NF e ela não estiver no ERP
-      importarFocusSeAusente: body.importarFocusSeAusente !== false,
-      // true = BUSCAR / retry — reprocessa mesmo CT-e que já falhou Focus
-      forcarRetryFocus: body.forcarRetryFocus === true,
-    }
-  )
-  return resposta.send(dados)
+  const companyId = companyIdDe(requisicao)
+  // Abertura da lista / F5: remove auto-vínculos com tomador ≠ empresa (ex. Fortlev↔KNA)
+  // antes de tentar novos vínculos — sem depender do BUSCAR.
+  const vinculosReparados =
+    await servicoEntradaNotas.repararVinculosCteTomadorIndevido(companyId)
+  const dados = await servicoEntradaNotas.processarVinculosCtePendentes(companyId, {
+    // Default true: Focus só entra se o CT-e tiver chave de NF e ela não estiver no ERP
+    importarFocusSeAusente: body.importarFocusSeAusente !== false,
+    // true = BUSCAR / retry — reprocessa mesmo CT-e que já falhou Focus
+    forcarRetryFocus: body.forcarRetryFocus === true,
+  })
+  return resposta.send({ ...dados, vinculosReparados })
 }
 
 async function ctesAguardandoNf(requisicao: FastifyRequest, resposta: FastifyReply) {

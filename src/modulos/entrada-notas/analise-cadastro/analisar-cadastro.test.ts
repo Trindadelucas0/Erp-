@@ -82,7 +82,7 @@ describe('analisarCadastro — auto-match de itens', () => {
       itens: [{ id: 'item-1', gtin: '000', codigoProduto: null, produtoId: null, vinculoModo: null }],
     })
 
-    expect(resultado.resultado.bloqueios[0]).toContain('Item sem vínculo de produto')
+    expect(resultado.resultado.bloqueios[0]).toContain('Item da NF sem produto correspondente')
     expect(resultado.resultado.bloqueios[0]).not.toContain('desvinculado')
   })
 

@@ -2,6 +2,10 @@
  * Persistência do pipeline de Entrada de Notas.
  */
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
+import {
+  normalizarCodigoOriginalComparacao,
+  variantesCodigoBarrasParaBusca,
+} from '../../compartilhado/validacoes/codigo-barras-gtin.js'
 import { normalizarDocumento } from '../../compartilhado/validacoes/documentos.js'
 import type { ItemXmlNfe } from '../focus-nfe/parser-xml-nfe.js'
 import { randomUUID } from 'crypto'
@@ -259,25 +263,35 @@ async function buscarFlagsFornecedorEntrada(pessoaId: string) {
 }
 
 async function buscarProdutoPorGtin(companyId: string, gtin: string) {
-  const limpo = gtin.replace(/\D/g, '')
-  if (!limpo) return null
+  const variantes = variantesCodigoBarrasParaBusca(gtin)
+  if (variantes.length === 0) return null
 
-  const porUnidade = await clientePrisma.produto.findFirst({
-    where: { companyId, codigoBarras: limpo, ativo: true },
-    select: { id: true, nomeVenda: true, ncm: true, codigoOrigem: true },
-  })
-  if (porUnidade) return { ...porUnidade, modo: 'barras' as const }
+  const selectProduto = {
+    id: true,
+    nomeVenda: true,
+    ncm: true,
+    codigoOrigem: true,
+  } as const
 
-  const porMaster = await clientePrisma.produtoEmbalagemMaster.findFirst({
-    where: {
-      codigoBarras: limpo,
-      produto: { companyId, ativo: true },
-    },
-    select: {
-      produto: { select: { id: true, nomeVenda: true, ncm: true, codigoOrigem: true } },
-    },
-  })
-  if (porMaster?.produto) return { ...porMaster.produto, modo: 'barras' as const }
+  for (const codigo of variantes) {
+    const porUnidade = await clientePrisma.produto.findFirst({
+      where: { companyId, codigoBarras: codigo, ativo: true },
+      select: selectProduto,
+    })
+    if (porUnidade) return { ...porUnidade, modo: 'barras' as const }
+
+    const porMaster = await clientePrisma.produtoEmbalagemMaster.findFirst({
+      where: {
+        codigoBarras: codigo,
+        produto: { companyId, ativo: true },
+      },
+      select: {
+        produto: { select: selectProduto },
+      },
+    })
+    if (porMaster?.produto) return { ...porMaster.produto, modo: 'barras' as const }
+  }
+
   return null
 }
 
@@ -288,18 +302,54 @@ async function buscarProdutoPorCodigoOriginal(
 ) {
   const codigoLimpo = codigo.trim()
   if (!codigoLimpo) return null
-  const vinculo = await clientePrisma.produtoFornecedor.findFirst({
+
+  const selectProduto = {
+    id: true,
+    nomeVenda: true,
+    ncm: true,
+    codigoOrigem: true,
+  } as const
+
+  const vinculoExato = await clientePrisma.produtoFornecedor.findFirst({
     where: {
       fornecedorPessoaId,
       codigoFornecedor: { equals: codigoLimpo, mode: 'insensitive' },
       produto: { companyId, ativo: true },
     },
     select: {
-      produto: { select: { id: true, nomeVenda: true, ncm: true, codigoOrigem: true } },
+      produto: { select: selectProduto },
     },
   })
-  if (!vinculo?.produto) return null
-  return { ...vinculo.produto, modo: 'codigo_original' as const }
+  if (vinculoExato?.produto) {
+    return { ...vinculoExato.produto, modo: 'codigo_original' as const }
+  }
+
+  const alvoNorm = normalizarCodigoOriginalComparacao(codigoLimpo)
+  if (!alvoNorm) return null
+
+  // Match tolerante: cProd com pontos vs codigoFornecedor sem pontos (e vice-versa).
+  const candidatos = await clientePrisma.produtoFornecedor.findMany({
+    where: {
+      fornecedorPessoaId,
+      codigoFornecedor: { not: null },
+      produto: { companyId, ativo: true },
+    },
+    select: {
+      codigoFornecedor: true,
+      produto: { select: selectProduto },
+    },
+    take: 2000,
+  })
+
+  for (const c of candidatos) {
+    const cadastro = (c.codigoFornecedor ?? '').trim()
+    if (!cadastro) continue
+    if (normalizarCodigoOriginalComparacao(cadastro) === alvoNorm && c.produto) {
+      return { ...c.produto, modo: 'codigo_original' as const }
+    }
+  }
+
+  return null
 }
 
 async function listarPedidosAbertosFornecedor(companyId: string, fornecedorPessoaId: string) {

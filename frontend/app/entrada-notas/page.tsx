@@ -459,6 +459,9 @@ function ConteudoEntradaNotas() {
           `${loteCte.pendentes} CT-e(s) aguardando NF (Focus sem XML — importe o XML da mercadoria).`
         )
       }
+      if ((loteCte.vinculosReparados ?? 0) > 0) {
+        partes.push(`${loteCte.vinculosReparados} vínculo(s) CT-e corrigido(s) (tomador ≠ empresa).`)
+      }
       setMensagem(partes.length > 0 ? partes.join(' ') : 'Busca concluída.')
     }
     return !falhouReprocessar
@@ -561,28 +564,31 @@ function ConteudoEntradaNotas() {
         importadosFocus: number
         analisados: number
         pendentes: number
+        vinculosReparados?: number
       }>('/entrada-notas/vincular-ctes-pendentes', {
         importarFocusSeAusente: true,
         forcarRetryFocus: opcoes?.forcarRetryFocus === true,
       })
-      if (data.vinculados > 0) {
-        if (!opcoes?.silencioso) {
-          setMensagem(
-            `${data.vinculados} CT-e(s) vinculado(s) à NF de mercadoria` +
-              (data.importadosFocus > 0
-                ? ` (${data.importadosFocus} NF buscada(s) na Focus).`
-                : '.')
-          )
-        }
+      const reparados = data.vinculosReparados ?? 0
+      if (data.vinculados > 0 && !opcoes?.silencioso) {
+        setMensagem(
+          `${data.vinculados} CT-e(s) vinculado(s) à NF de mercadoria` +
+            (data.importadosFocus > 0
+              ? ` (${data.importadosFocus} NF buscada(s) na Focus).`
+              : '.')
+        )
+      }
+      if (data.vinculados > 0 || reparados > 0) {
         await carregar({ silencioso: true })
       }
       return {
         vinculados: data.vinculados,
         pendentes: data.pendentes,
         importadosFocus: data.importadosFocus,
+        vinculosReparados: reparados,
       }
     } catch {
-      return { vinculados: 0, pendentes: 0, importadosFocus: 0 }
+      return { vinculados: 0, pendentes: 0, importadosFocus: 0, vinculosReparados: 0 }
     }
   }
 

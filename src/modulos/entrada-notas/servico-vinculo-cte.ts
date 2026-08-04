@@ -4,10 +4,13 @@
 import { randomUUID } from 'crypto'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
+import { normalizarCnpj } from '../../compartilhado/validacoes/documentos.js'
 import {
   extrairCamposResumoDoXml,
   extrairChavesNfeReferenciadasDoCte,
+  extrairCnpjTomadorCte,
   normalizarXmlNfe,
+  xmlNfeTemItensParseaveis,
 } from '../focus-nfe/parser-xml-nfe.js'
 import {
   logFocus,
@@ -15,6 +18,7 @@ import {
   type LinhaTabelaVinculoCte,
 } from '../focus-nfe/logs-focus-nfe.js'
 import { importarNfePorChave } from '../focus-nfe/importar-nfe-por-chave.js'
+import { repositorioFocusNfe } from '../focus-nfe/repositorio-focus-nfe.js'
 
 export type CteAguardandoNf = {
   cteId: string
@@ -22,6 +26,30 @@ export type CteAguardandoNf = {
   chaveNfe: string | null
   status: string
   motivo: string
+}
+
+/** Compara CNPJ/CPF do tomador do CT-e com o CNPJ da empresa. */
+async function empresaEhTomadorDoCte(
+  companyId: string,
+  xmlCte: string
+): Promise<{ ok: boolean; tomador: string | null; cnpjEmpresa: string | null }> {
+  const empresa = await repositorioFocusNfe.buscarEmpresaCnpj(companyId)
+  const cnpjEmpresa = empresa?.cnpj ? normalizarCnpj(empresa.cnpj) : null
+  const tomadorRaw = extrairCnpjTomadorCte(xmlCte)
+  const tomador = tomadorRaw ? normalizarCnpj(tomadorRaw) : null
+  if (!cnpjEmpresa || !tomador) {
+    return { ok: false, tomador, cnpjEmpresa }
+  }
+  return { ok: tomador === cnpjEmpresa, tomador, cnpjEmpresa }
+}
+
+function nfeProntaParaVinculoAutomatico(nfe: {
+  tipoDocumento: string | null
+  xmlConteudo: string | null
+  nfeCompleta: boolean
+}): boolean {
+  if (nfe.tipoDocumento !== 'nfe55' || !nfe.xmlConteudo) return false
+  return xmlNfeTemItensParseaveis(nfe.xmlConteudo)
 }
 
 function motivoCurtoPendente(
@@ -119,6 +147,8 @@ export type ResultadoVinculoCteAuto = {
   falhaImport?: string
   /** CT-e sem chave de NF no XML — não chama Focus. */
   semChaveNfe?: boolean
+  /** Tomador do CT-e ≠ CNPJ da empresa — sem auto-vínculo. */
+  tomadorNaoEmpresa?: boolean
 }
 
 async function criarVinculo(params: {
@@ -155,6 +185,7 @@ async function criarVinculo(params: {
  * Após XML de CT-e: grava chave referenciada e tenta vincular às NFs.
  * Focus só é chamado se houver chave de NF (nota de frete/mercadoria) e a NF
  * ainda não estiver no ERP — e se `importarFocusSeAusente` for true.
+ * Auto-vínculo exige: NFe com itens parseáveis + tomador do CT-e = CNPJ da empresa.
  * 1 CT-e → 1 NF (primeira chave que conseguir vincular).
  */
 async function tentarVincularCteAutomatico(
@@ -169,6 +200,18 @@ async function tentarVincularCteAutomatico(
   if (!cte?.xmlConteudo) return { vinculado: false }
 
   const xml = normalizarXmlNfe(cte.xmlConteudo)
+  const tomadorCheck = await empresaEhTomadorDoCte(companyId, xml)
+  if (!tomadorCheck.ok) {
+    logFocus('info', 'cte_auto_vinculo_tomador_nao_empresa', {
+      companyId,
+      cteId: cte.id,
+      chaveCte: cte.chaveNfe.slice(-8),
+      tomador: tomadorCheck.tomador,
+      cnpjEmpresa: tomadorCheck.cnpjEmpresa,
+    })
+    return { vinculado: false, tomadorNaoEmpresa: true }
+  }
+
   const chavesXml = extrairChavesNfeReferenciadasDoCte(xml)
   const resumo = extrairCamposResumoDoXml(xml)
   // Chave que o próprio CT-e entrega: persistida (UI) + XML — sem duplicar
@@ -215,11 +258,11 @@ async function tentarVincularCteAutomatico(
       where: { companyId_chaveNfe: { companyId, chaveNfe: chave } },
     })
 
-    if (!nfe || nfe.tipoDocumento !== 'nfe55' || !nfe.xmlConteudo || !nfe.nfeCompleta) {
+    if (!nfe || !nfeProntaParaVinculoAutomatico(nfe)) {
       if (!importarFocusSeAusente) {
         ultimaFalhaImport =
           ultimaFalhaImport ??
-          `NF …${chave.slice(-8)} ainda não está no ERP (vínculo local pendente).`
+          `NF …${chave.slice(-8)} ainda não está completa no ERP (vínculo local pendente).`
         continue
       }
       if (chavesJaTentadasImport.has(chave)) continue
@@ -258,7 +301,12 @@ async function tentarVincularCteAutomatico(
           where: { id: importacao.notaId, companyId },
         })
       }
-      if (!nfe || nfe.tipoDocumento !== 'nfe55') continue
+      if (!nfe || !nfeProntaParaVinculoAutomatico(nfe)) {
+        ultimaFalhaImport =
+          ultimaFalhaImport ??
+          `NF …${chave.slice(-8)} importada sem itens parseáveis — sem auto-vínculo.`
+        continue
+      }
     }
 
     try {
@@ -364,6 +412,16 @@ async function processarVinculosCtePendentes(
       pushLinha(cte, 'local', '—', 'sem chave NF', oQueFazerPendente('Sem chave'))
       continue
     }
+    if (r.tomadorNaoEmpresa) {
+      pushLinha(
+        cte,
+        'local',
+        '—',
+        'tomador ≠ empresa',
+        'Sem auto-vínculo — frete não é da empresa; vínculo manual se necessário'
+      )
+      continue
+    }
     pendentes += 1
   }
 
@@ -407,10 +465,11 @@ async function processarVinculosCtePendentes(
 
       const jaTinhaNfe = await clientePrisma.nfeRecebida.findUnique({
         where: { companyId_chaveNfe: { companyId, chaveNfe: chave } },
-        select: { id: true, nfeCompleta: true, xmlConteudo: true },
+        select: { id: true, nfeCompleta: true, xmlConteudo: true, tipoDocumento: true },
       })
 
-      const precisaFocus = !jaTinhaNfe?.xmlConteudo || !jaTinhaNfe.nfeCompleta
+      const precisaFocus =
+        !jaTinhaNfe || !nfeProntaParaVinculoAutomatico(jaTinhaNfe)
       if (precisaFocus && focusRestantes <= 0) {
         pendentes += 1
         pushLinha(cte, 'Focus', '—', 'cota lote esgotada', 'Use BUSCAR de novo ou importe XML')
@@ -432,6 +491,14 @@ async function processarVinculosCtePendentes(
           precisaFocus ? 200 : '—',
           precisaFocus ? 'importou e vinculou' : 'vinculado',
           'Nada'
+        )
+      } else if (r.tomadorNaoEmpresa) {
+        pushLinha(
+          cte,
+          'local',
+          '—',
+          'tomador ≠ empresa',
+          'Sem auto-vínculo — frete não é da empresa; vínculo manual se necessário'
         )
       } else if (!r.semChaveNfe) {
         pendentes += 1
@@ -518,30 +585,37 @@ async function listarCtesAguardandoNf(companyId: string): Promise<CteAguardandoN
 /**
  * Após XML de NF-e (sync ou Importar XML): vincula **todos** os CT-es que
  * referenciam esta chave e reanalisa cada CT-e + a NF (gate frete).
+ * Só auto-vincula se a NFe tiver itens parseáveis e o tomador do CT-e = empresa.
  */
 async function tentarVincularNfesPendentesAoCte(companyId: string, nfeId: string): Promise<void> {
   const nfe = await clientePrisma.nfeRecebida.findFirst({
     where: { id: nfeId, companyId, tipoDocumento: 'nfe55' },
   })
-  if (!nfe) return
+  if (!nfe || !nfeProntaParaVinculoAutomatico(nfe)) return
 
   const cteIdsVinculados = new Set<string>()
   const linhasTabela: LinhaTabelaVinculoCte[] = []
 
-  const ctes = await clientePrisma.nfeRecebida.findMany({
-    where: {
-      companyId,
-      tipoDocumento: 'cte',
-      chaveNfeReferenciada: nfe.chaveNfe,
-      vinculosComoCte: { none: {} },
-    },
-  })
-
-  for (const cte of ctes) {
+  const tentarCriar = async (
+    cte: { id: string; chaveNfe: string; xmlConteudo: string | null; valorTotal: unknown },
+    etapa: string
+  ) => {
+    if (!cte.xmlConteudo) return
+    const tomadorCheck = await empresaEhTomadorDoCte(companyId, cte.xmlConteudo)
+    if (!tomadorCheck.ok) {
+      linhasTabela.push({
+        etapa,
+        chaveNF: nfe.chaveNfe,
+        http: '—',
+        resultado: `tomador ≠ empresa (CT-e …${cte.chaveNfe.slice(-8)})`,
+        oQueFazer: 'Sem auto-vínculo — vínculo manual se necessário',
+      })
+      return
+    }
     const valor =
       cte.xmlConteudo != null
         ? extrairCamposResumoDoXml(cte.xmlConteudo).valorTotal
-        : decimalNum(cte.valorTotal)
+        : decimalNum(cte.valorTotal as { toNumber?: () => number } | number | null)
     try {
       await criarVinculo({
         companyId,
@@ -553,7 +627,7 @@ async function tentarVincularNfesPendentesAoCte(companyId: string, nfeId: string
       })
       cteIdsVinculados.add(cte.id)
       linhasTabela.push({
-        etapa: 'auto pós-NF',
+        etapa,
         chaveNF: nfe.chaveNfe,
         http: '—',
         resultado: `vinculado (CT-e …${cte.chaveNfe.slice(-8)})`,
@@ -562,6 +636,19 @@ async function tentarVincularNfesPendentesAoCte(companyId: string, nfeId: string
     } catch {
       // já vinculado em corrida
     }
+  }
+
+  const ctes = await clientePrisma.nfeRecebida.findMany({
+    where: {
+      companyId,
+      tipoDocumento: 'cte',
+      chaveNfeReferenciada: nfe.chaveNfe,
+      vinculosComoCte: { none: {} },
+    },
+  })
+
+  for (const cte of ctes) {
+    await tentarCriar(cte, 'auto pós-NF')
   }
 
   // CT-es com XML mas sem chaveNfeReferenciada persistida: reparse
@@ -579,31 +666,11 @@ async function tentarVincularNfesPendentesAoCte(companyId: string, nfeId: string
     if (cteIdsVinculados.has(cte.id) || !cte.xmlConteudo) continue
     const chaves = extrairChavesNfeReferenciadasDoCte(cte.xmlConteudo)
     if (!chaves.includes(nfe.chaveNfe)) continue
-    const resumo = extrairCamposResumoDoXml(cte.xmlConteudo)
     await clientePrisma.nfeRecebida.update({
       where: { id: cte.id },
       data: { chaveNfeReferenciada: chaves[0] ?? nfe.chaveNfe },
     })
-    try {
-      await criarVinculo({
-        companyId,
-        nfeRecebidaId: nfe.id,
-        cteRecebidaId: cte.id,
-        chaveNfeReferenciada: nfe.chaveNfe,
-        origemVinculo: 'automatico',
-        valorFrete: resumo.valorTotal ?? decimalNum(cte.valorTotal),
-      })
-      cteIdsVinculados.add(cte.id)
-      linhasTabela.push({
-        etapa: 'auto pós-NF (reparse)',
-        chaveNF: nfe.chaveNfe,
-        http: '—',
-        resultado: `vinculado (CT-e …${cte.chaveNfe.slice(-8)})`,
-        oQueFazer: 'Nada',
-      })
-    } catch {
-      // ignore
-    }
+    await tentarCriar(cte, 'auto pós-NF (reparse)')
   }
 
   for (const cteId of cteIdsVinculados) {
@@ -621,6 +688,50 @@ async function tentarVincularNfesPendentesAoCte(companyId: string, nfeId: string
       ctesVinculados: cteIdsVinculados.size,
     })
   }
+}
+
+/**
+ * Remove vínculos **automáticos** cujo tomador do CT-e ≠ CNPJ da empresa
+ * (ex.: Fortlev↔KNA quando Fortlev é o tomador). Manuais preservados.
+ * Reanalisa NFs afetadas para limpar gate frete / ✓ da lista.
+ */
+async function repararVinculosCteTomadorIndevido(companyId: string): Promise<number> {
+  const vinculos = await clientePrisma.nfeCteVinculo.findMany({
+    where: { companyId, origemVinculo: 'automatico' },
+    include: {
+      cteRecebida: { select: { id: true, xmlConteudo: true, chaveNfe: true } },
+      nfeRecebida: { select: { id: true } },
+    },
+    take: 500,
+  })
+
+  const nfeIdsParaReanalisar = new Set<string>()
+  let removidos = 0
+
+  for (const v of vinculos) {
+    const xml = v.cteRecebida.xmlConteudo
+    if (!xml) continue
+    const check = await empresaEhTomadorDoCte(companyId, xml)
+    if (check.ok) continue
+
+    await clientePrisma.nfeCteVinculo.delete({ where: { id: v.id } })
+    removidos += 1
+    nfeIdsParaReanalisar.add(v.nfeRecebidaId)
+    logFocus('info', 'cte_vinculo_auto_removido_tomador', {
+      companyId,
+      vinculoId: v.id,
+      cteId: v.cteRecebidaId,
+      nfeId: v.nfeRecebidaId,
+      chaveCte: v.cteRecebida.chaveNfe.slice(-8),
+      tomador: check.tomador,
+    })
+  }
+
+  for (const nfeId of nfeIdsParaReanalisar) {
+    await reanalisarCteAposVinculo(companyId, nfeId)
+  }
+
+  return removidos
 }
 
 async function vincularCteManual(
@@ -735,6 +846,7 @@ export const servicoVinculoCte = {
   processarVinculosCtePendentes,
   listarCtesAguardandoNf,
   tentarVincularNfesPendentesAoCte,
+  repararVinculosCteTomadorIndevido,
   vincularCteManual,
   desvincularCte,
   listarVinculosDaNfe,

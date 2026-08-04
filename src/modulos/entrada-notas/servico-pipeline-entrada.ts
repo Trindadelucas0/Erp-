@@ -2717,6 +2717,11 @@ async function processarVinculosCtePendentes(
   return servicoVinculoCte.processarVinculosCtePendentes(companyId, opcoes)
 }
 
+/** Remove auto-vínculos CT-e cujo tomador ≠ CNPJ da empresa. */
+async function repararVinculosCteTomadorIndevido(companyId: string) {
+  return servicoVinculoCte.repararVinculosCteTomadorIndevido(companyId)
+}
+
 async function listarCtesAguardandoNf(companyId: string) {
   return servicoVinculoCte.listarCtesAguardandoNf(companyId)
 }
@@ -2748,6 +2753,7 @@ export const servicoEntradaNotas = {
   reanalisarNotasPendentesPorDocumento,
   vincularFornecedoresNasNotasPendentes,
   processarVinculosCtePendentes,
+  repararVinculosCteTomadorIndevido,
   listarCtesAguardandoNf,
   vincularCte,
   desvincularCte,

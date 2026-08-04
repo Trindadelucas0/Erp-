@@ -99,8 +99,8 @@ export async function analisarCadastro(params: {
         critica = true
         bloqueios.push(
           desvinculadoManualmente
-            ? `Item desvinculado manualmente (GTIN: ${item.gtin ?? '—'} / cProd: ${item.codigoProduto ?? '—'}). Use busca manual para conciliar.`
-            : `Item sem vínculo de produto (GTIN: ${item.gtin ?? '—'} / cProd: ${item.codigoProduto ?? '—'}). Use busca manual.`
+            ? `Item desvinculado manualmente (GTIN: ${item.gtin ?? '—'} / cProd: ${item.codigoProduto ?? '—'}). Use Conciliar produto.`
+            : `Item da NF sem produto correspondente no cadastro (barras: ${item.gtin ?? '—'} / código original: ${item.codigoProduto ?? '—'}). Use Conciliar produto ou cadastre barras/código no produto×fornecedor.`
         )
       }
     }

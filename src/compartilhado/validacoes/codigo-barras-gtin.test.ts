@@ -3,7 +3,9 @@ import {
   coletarCodigosBarrasProduto,
   codigoBarrasGtinValido,
   normalizarCodigoBarrasGtin,
+  normalizarCodigoOriginalComparacao,
   validarCodigosBarrasInternos,
+  variantesCodigoBarrasParaBusca,
 } from './codigo-barras-gtin.js'
 
 describe('codigoBarrasGtinValido', () => {
@@ -31,6 +33,33 @@ describe('codigoBarrasGtinValido', () => {
 
   it('normaliza removendo não-dígitos', () => {
     expect(normalizarCodigoBarrasGtin('590-1234-12345-7')).toBe('5901234123457')
+  })
+})
+
+describe('variantesCodigoBarrasParaBusca', () => {
+  it('DUN-14 da NF (ex. fardo 3,6L) também busca EAN-13 (últimos 13)', () => {
+    const dun14 = '27894174203803'
+    expect(variantesCodigoBarrasParaBusca(dun14)).toEqual(['27894174203803', '7894174203803'])
+  })
+
+  it('EAN-13 também tenta GTIN-14 com indicador 0', () => {
+    expect(variantesCodigoBarrasParaBusca('7894174200723')).toEqual([
+      '7894174200723',
+      '07894174200723',
+    ])
+  })
+
+  it('ignora vazio / só zeros / não-dígitos', () => {
+    expect(variantesCodigoBarrasParaBusca('')).toEqual([])
+    expect(variantesCodigoBarrasParaBusca('abc')).toEqual([])
+  })
+})
+
+describe('normalizarCodigoOriginalComparacao', () => {
+  it('iguala cProd com pontos ao código sem pontos (caso Quartzolit)', () => {
+    expect(normalizarCodigoOriginalComparacao('0563.00042.0360GL')).toBe('0563000420360GL')
+    expect(normalizarCodigoOriginalComparacao('0563000420360GL')).toBe('0563000420360GL')
+    expect(normalizarCodigoOriginalComparacao('0563-00042 0360gl')).toBe('0563000420360GL')
   })
 })
 

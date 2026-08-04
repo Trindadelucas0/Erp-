@@ -215,14 +215,25 @@ export function ItemVinculoCadastroGrid({
     freteRateado != null
       ? freteRateado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
       : null
-  const qtdEntradaValorSistema = temMultiploCompra ? (
+
+  const precoUnitarioSistema =
+    temMultiploCompra &&
+    item.valorUnitario != null &&
+    Number.isFinite(item.valorUnitario)
+      ? item.valorUnitario / itensPorEmbalagem
+      : item.valorUnitario
+  const qtdEntrada =
+    temMultiploCompra && item.qtdTotalUn != null ? item.qtdTotalUn : item.quantidade
+  const qtdEntradaValorSistema = (
     <>
-      <span>{item.qtdTotalUn ?? '—'}</span>
-      <span className="ml-1.5 font-sans text-[11px] font-normal leading-none text-muted-foreground">
-        {formatarDetalheEmbalagens(item.quantidade ?? 0, itensPorEmbalagem)}
-      </span>
+      <span>{formatarQtdUnit(qtdEntrada, precoUnitarioSistema)}</span>
+      {temMultiploCompra ? (
+        <span className="ml-1.5 font-sans text-[11px] font-normal leading-none text-muted-foreground">
+          {formatarDetalheEmbalagens(item.quantidade ?? 0, itensPorEmbalagem)}
+        </span>
+      ) : null}
     </>
-  ) : null
+  )
   const podeGravarOriginal =
     vinculado &&
     !finalizada &&
@@ -342,13 +353,11 @@ export function ItemVinculoCadastroGrid({
                 ) : undefined
               }
             />
-            {temMultiploCompra ? (
-              <LinhaEspelho
-                rotulo="Qtd entrada"
-                valor={qtdEntradaValorSistema ?? '—'}
-                valorClassName="font-sans text-foreground"
-              />
-            ) : null}
+            <LinhaEspelho
+              rotulo="Qtd entrada"
+              valor={qtdEntradaValorSistema}
+              valorClassName="font-sans text-foreground"
+            />
           </dl>
 
           {vinculado && rotuloVinculo && (

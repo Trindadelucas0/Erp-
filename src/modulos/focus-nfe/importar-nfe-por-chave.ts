@@ -5,7 +5,7 @@
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { clienteFocusNfe } from './cliente-focus-nfe.js'
 import { logFocus } from './logs-focus-nfe.js'
-import { extrairCamposResumoDoXml } from './parser-xml-nfe.js'
+import { extrairCamposResumoDoXml, xmlNfeTemItensParseaveis } from './parser-xml-nfe.js'
 import { repositorioFocusNfe } from './repositorio-focus-nfe.js'
 
 export type ResultadoImportNfePorChave =
@@ -66,7 +66,8 @@ export async function importarNfePorChave(
   }
 
   const existente = await repositorioFocusNfe.buscarPorChave(companyId, chave)
-  if (existente?.xmlConteudo && existente.nfeCompleta) {
+  // Não confiar só no boolean do banco (legado podia marcar completa sem <det>).
+  if (existente?.xmlConteudo && xmlNfeTemItensParseaveis(existente.xmlConteudo)) {
     return { ok: true, notaId: existente.id, jaExistia: true }
   }
 
@@ -165,6 +166,7 @@ export async function importarNfePorChave(
   }
 
   const campos = extrairCamposResumoDoXml(xmlResp.dados)
+  const xmlCompleto = xmlNfeTemItensParseaveis(xmlResp.dados)
 
   const { registro } = await repositorioFocusNfe.upsertNfeRecebida({
     companyId,
@@ -176,13 +178,28 @@ export async function importarNfePorChave(
     dataEmissao: campos.dataEmissao,
     valorTotal: campos.valorTotal,
     xmlConteudo: xmlResp.dados,
-    nfeCompleta: true,
+    nfeCompleta: xmlCompleto,
     origem: 'focus',
     situacao: existente?.situacao ?? 'autorizada',
     manifestacaoDestinatario: existente?.manifestacaoDestinatario ?? 'ciencia',
     modFrete: campos.modFrete ?? null,
     etapaAtual: 'cadastro',
   })
+
+  if (!xmlCompleto) {
+    logFocus('warn', 'import_chave_nfe_ainda_resumo', {
+      companyId,
+      chave: chave.slice(-8),
+      notaId: registro.id,
+      bytes: xmlResp.dados.length,
+    })
+    return {
+      ok: false,
+      mensagem:
+        `Focus ainda devolveu resumo DistDFe (sem itens) para a NF …${chave.slice(-8)}. ` +
+        `Importe o XML completo ou tente Reanalisar / BUSCAR mais tarde.`,
+    }
+  }
 
   // Dynamic import evita ciclo focus ↔ pipeline ↔ vinculo-cte
   const { servicoEntradaNotas } = await import('../entrada-notas/servico-pipeline-entrada.js')

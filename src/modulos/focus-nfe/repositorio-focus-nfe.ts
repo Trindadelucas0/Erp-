@@ -286,7 +286,15 @@ async function listarComXmlPendenteCampos(companyId: string) {
       xmlConteudo: { not: null },
       statusEntrada: { in: ['pendente', 'em_analise', 'stand_by'] },
     },
-    select: { id: true, chaveNfe: true, xmlConteudo: true, tipoDocumento: true },
+    select: {
+      id: true,
+      chaveNfe: true,
+      xmlConteudo: true,
+      tipoDocumento: true,
+      situacao: true,
+      manifestacaoDestinatario: true,
+      nfeCompleta: true,
+    },
   })
 }
 
