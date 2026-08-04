@@ -21,7 +21,7 @@ import { analisarFiscalBasico } from '../entrada-notas/analise-fiscal/analisar-f
 import { decisaoAvancoCursorCteAposXml } from './servico-focus-nfe.js'
 
 describe('sync CT-e — cursor DistDFe', () => {
-  it('avanca cursor quando XML ok ou nao somos tomador (decisao definitiva)', () => {
+  it('avanca cursor quando XML ok ou documento ignorado (decisao definitiva)', () => {
     expect(decisaoAvancoCursorCteAposXml({ ok: true, rateLimit: false })).toBe('avancar')
     expect(
       decisaoAvancoCursorCteAposXml({ ok: false, rateLimit: false, ignorado: true })

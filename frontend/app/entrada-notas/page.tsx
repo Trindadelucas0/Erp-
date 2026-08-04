@@ -231,6 +231,7 @@ function ConteudoEntradaNotas() {
   const [arquivosSelecionados, setArquivosSelecionados] = useState<File[]>([])
   const [dataDe, setDataDe] = useState(primeiroDiaMesAtual)
   const [dataAte, setDataAte] = useState(hojeIso)
+  const [ctesForaDoFiltroData, setCtesForaDoFiltroData] = useState(0)
   const [busca, setBusca] = useState('')
   const [buscaDebounced, setBuscaDebounced] = useState('')
   const [filtrosProntos, setFiltrosProntos] = useState(false)
@@ -341,11 +342,14 @@ function ConteudoEntradaNotas() {
       if (dataDe) params.dataDe = dataDe
       if (dataAte) params.dataAte = dataAte
       if (buscaDebounced) params.busca = buscaDebounced
-      const { data } = await clienteHttp.get<{ notas: NotaPendente[] }>(
-        '/focus-nfe/nfe-recebidas',
-        { params }
-      )
+      const { data } = await clienteHttp.get<{
+        notas: NotaPendente[]
+        ctesForaDoFiltroData?: number
+      }>('/focus-nfe/nfe-recebidas', { params })
       setNotas(data.notas)
+      setCtesForaDoFiltroData(
+        typeof data.ctesForaDoFiltroData === 'number' ? data.ctesForaDoFiltroData : 0
+      )
     } catch (err) {
       setErro(extrairMensagemApi(err, 'Não foi possível listar as notas.'))
     } finally {
@@ -951,6 +955,30 @@ function ConteudoEntradaNotas() {
             </Button>
           )}
         </div>
+
+        {filtrosDataAtivos && ctesForaDoFiltroData > 0 && (
+          <div
+            role="status"
+            className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+          >
+            <span>
+              Há <strong>{ctesForaDoFiltroData}</strong> CT-e(s) neste painel fora do período
+              filtrado (o sync já gravou no banco — filtro de emissão esconde).
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 border-amber-400 bg-white"
+              onClick={() => {
+                setDataDe('')
+                setDataAte('')
+              }}
+            >
+              Ver todas (sem data)
+            </Button>
+          </div>
+        )}
 
         <p className="mb-3 text-sm text-muted-foreground">
           {carregando

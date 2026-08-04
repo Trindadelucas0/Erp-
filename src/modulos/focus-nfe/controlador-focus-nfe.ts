@@ -82,13 +82,17 @@ async function listarPendentes(requisicao: FastifyRequest, resposta: FastifyRepl
     ? (painelRaw as Painel)
     : 'analise'
 
-  const notas = await servicoFocusNfe.listarPendentes(companyIdDe(requisicao), {
+  const resultado = await servicoFocusNfe.listarPendentes(companyIdDe(requisicao), {
     dataDe: q.dataDe,
     dataAte: q.dataAte,
     painel,
     busca: q.busca,
   })
-  return resposta.send({ notas, painel })
+  return resposta.send({
+    notas: resultado.notas,
+    painel,
+    ctesForaDoFiltroData: resultado.ctesForaDoFiltroData,
+  })
 }
 
 async function obterXml(requisicao: FastifyRequest, resposta: FastifyReply) {

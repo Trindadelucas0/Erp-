@@ -13,7 +13,6 @@ import {
 } from './mensagens-focus-nfe.js'
 import {
   extrairCamposResumoDoXml,
-  extrairCnpjTomadorCte,
   normalizarXmlNfe,
   detectarDocumentoFiscalXml,
   montarVisualizacaoDoXml,
@@ -301,23 +300,6 @@ function chaveCteFocus(item: CteRecebidaResumoFocus): string | null {
   const raw = item.chave_cte ?? item.chave ?? item.chave_acesso
   if (!raw) return null
   return String(raw).trim() || null
-}
-
-/** CNPJ/CPF do tomador no resumo Focus (quando a API envia). */
-function tomadorDoResumoCte(item: CteRecebidaResumoFocus): string | null {
-  const raw = item.documento_tomador ?? item.cnpj_tomador ?? null
-  if (!raw) return null
-  const digitos = normalizarCnpj(String(raw))
-  return digitos || null
-}
-
-/** true = somos tomador; false = não somos; null = desconhecido (precisa XML). */
-function compararTomadorComEmpresa(
-  documentoTomador: string | null,
-  cnpjEmpresa: string
-): boolean | null {
-  if (!documentoTomador) return null
-  return normalizarCnpj(documentoTomador) === cnpjEmpresa
 }
 
 async function avancarCursorCte(
@@ -762,53 +744,8 @@ async function executarSync(companyId: string, jobId: string) {
             continue
           }
 
-          const somosTomadorResumo = compararTomadorComEmpresa(tomadorDoResumoCte(item), cnpj)
-          if (somosTomadorResumo === false) {
-            pushLog(`cte ignorado: nao somos tomador ${chave.slice(-8)}`)
-            logFocus('info', 'sync_cte_ignorado_nao_tomador', {
-              companyId,
-              chave: chave.slice(-8),
-              fonte: 'resumo',
-            })
-            maxVersaoCte = await avancarCursorCte(
-              companyId,
-              credenciais,
-              temConfigBanco,
-              maxVersaoCte,
-              versaoItem
-            )
-            continue
-          }
-
           const existentePre = await repositorioFocusNfe.buscarPorChave(companyId, chave)
           if (existentePre?.nfeCompleta && existentePre.xmlConteudo) {
-            const tomadorLocal = extrairCnpjTomadorCte(existentePre.xmlConteudo)
-            const cmpLocal = compararTomadorComEmpresa(tomadorLocal, cnpj)
-            if (cmpLocal === false) {
-              pushLog(`cte ignorado: nao somos tomador ${chave.slice(-8)}`)
-              logFocus('info', 'sync_cte_ignorado_nao_tomador', {
-                companyId,
-                chave: chave.slice(-8),
-                fonte: 'xml_local',
-              })
-              maxVersaoCte = await avancarCursorCte(
-                companyId,
-                credenciais,
-                temConfigBanco,
-                maxVersaoCte,
-                versaoItem
-              )
-              continue
-            }
-            if (cmpLocal === null) {
-              pushLog(`cte tomador ilegivel no xml local ${chave.slice(-8)} — sem avancar cursor`)
-              logFocus('warn', 'sync_cte_tomador_ilegivel_sem_avancar_cursor', {
-                companyId,
-                chave: chave.slice(-8),
-                fonte: 'xml_local',
-              })
-              break
-            }
             maxVersaoCte = await avancarCursorCte(
               companyId,
               credenciais,
@@ -826,7 +763,7 @@ async function executarSync(companyId: string, jobId: string) {
             break
           }
 
-          // Mesmo caminho da NFe: DistDFe traz a chave → baixa XML Focus → grava + pipeline.
+          // DistDFe do CNPJ: todo CT-e listado pela Focus é gravado (não filtra tomador).
           const importCte = await importarCtePorChave(companyId, chave, {
             apiToken: credenciais.apiToken,
             homologacao: credenciais.homologacao,
@@ -840,19 +777,7 @@ async function executarSync(companyId: string, jobId: string) {
               pushLog('cte: lote pausado por rate limit Focus')
               break
             }
-            if (importCte.motivo === 'nao_tomador') {
-              pushLog(`cte ignorado: nao somos tomador ${chave.slice(-8)}`)
-              maxVersaoCte = await avancarCursorCte(
-                companyId,
-                credenciais,
-                temConfigBanco,
-                maxVersaoCte,
-                versaoItem
-              )
-              processados += 1
-              continue
-            }
-            if (importCte.motivo === 'tomador_ilegivel' || importCte.motivo === 'xml_falhou') {
+            if (importCte.motivo === 'xml_falhou') {
               pushLog(`cte ${chave.slice(-8)}: ${importCte.mensagem} — sem avancar cursor`)
               logFocus('warn', 'sync_cte_xml_falhou_sem_avancar_cursor', {
                 companyId,
@@ -1188,16 +1113,26 @@ async function listarPendentes(
   const painel = filtros?.painel ?? 'analise'
   const dataDe = filtros?.dataDe ? new Date(`${filtros.dataDe}T00:00:00`) : undefined
   const dataAte = filtros?.dataAte ? new Date(`${filtros.dataAte}T23:59:59.999`) : undefined
+  const dataDeOk = dataDe && !Number.isNaN(dataDe.getTime()) ? dataDe : undefined
+  const dataAteOk = dataAte && !Number.isNaN(dataAte.getTime()) ? dataAte : undefined
   const empresa = await repositorioFocusNfe.buscarEmpresaCnpj(companyId)
   const cnpjEmpresa = empresa?.cnpj ? normalizarCnpj(empresa.cnpj) : ''
 
-  const notas = await repositorioFocusNfe.listarNfesPorPainel(companyId, {
-    painel,
-    dataDe: dataDe && !Number.isNaN(dataDe.getTime()) ? dataDe : undefined,
-    dataAte: dataAte && !Number.isNaN(dataAte.getTime()) ? dataAte : undefined,
-    busca: filtros?.busca,
-  })
-  return notas.map((n) => {
+  const [notasBrutas, ctesForaDoFiltroData] = await Promise.all([
+    repositorioFocusNfe.listarNfesPorPainel(companyId, {
+      painel,
+      dataDe: dataDeOk,
+      dataAte: dataAteOk,
+      busca: filtros?.busca,
+    }),
+    repositorioFocusNfe.contarCtesForaDoFiltroData(companyId, {
+      painel,
+      dataDe: dataDeOk,
+      dataAte: dataAteOk,
+    }),
+  ])
+
+  const notas = notasBrutas.map((n) => {
     const dest = n.cnpjDestinatario ? normalizarCnpj(n.cnpjDestinatario) : ''
     let destinatarioValidacao: 'ok' | 'divergente' | 'pendente' = 'pendente'
     if (dest && cnpjEmpresa) {
@@ -1234,6 +1169,8 @@ async function listarPendentes(
       chaveNfeReferenciada: n.chaveNfeReferenciada ?? null,
     }
   })
+
+  return { notas, ctesForaDoFiltroData }
 }
 
 /**
@@ -1684,30 +1621,6 @@ async function importarXml(companyId: string, xmlBruto: string) {
           : 'Não foi possível extrair a chave (44 dígitos) do XML. Confirme que o arquivo é o XML da NF-e (não DANFE PDF nem evento).',
       400
     )
-  }
-
-  if (tipoDoc === 'cte') {
-    const empresa = await repositorioFocusNfe.buscarEmpresaCnpj(companyId)
-    if (!empresa?.cnpj) {
-      throw new ErroDaAplicacao(
-        'Empresa sem CNPJ cadastrado — necessário para validar tomador do CTe.',
-        400
-      )
-    }
-    const tomador = extrairCnpjTomadorCte(xml)
-    const comparacaoImport = compararTomadorComEmpresa(tomador, normalizarCnpj(empresa.cnpj))
-    if (comparacaoImport === null) {
-      throw new ErroDaAplicacao(
-        'CTe com tomador ilegível no XML (ide/toma ou toma3/toma4). Confirme o arquivo completo do CT-e.',
-        400
-      )
-    }
-    if (comparacaoImport === false) {
-      throw new ErroDaAplicacao(
-        'CTe ignorado: empresa não é tomadora do frete. Só importe CTe em que o CNPJ da empresa seja o tomador do serviço.',
-        400
-      )
-    }
   }
 
   const existente = await repositorioFocusNfe.buscarPorChave(companyId, chave)

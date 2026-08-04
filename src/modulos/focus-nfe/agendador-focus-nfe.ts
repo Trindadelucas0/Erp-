@@ -1,5 +1,5 @@
 /**
- * Agendador Focus: sync incremental a cada 2 min (NFe + NFS-e + CTe; CTe só se tomador = empresa).
+ * Agendador Focus: sync incremental a cada 2 min (NFe + NFS-e + CTe do DistDFe do CNPJ).
  * Ligado por padrão em `aplicacao.ts`. Desligar: `FOCUS_NFE_AGENDADOR=false`.
  * BUSCAR na Entrada de Notas continua disponível para sync sob demanda.
  */

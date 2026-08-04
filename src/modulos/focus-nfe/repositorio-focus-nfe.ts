@@ -229,6 +229,48 @@ async function listarCompanyIdsComFocusAtivo() {
   return rows.map((r) => r.companyId)
 }
 
+/**
+ * Conta CT-es do painel cuja data de emissão está fora do intervalo filtrado
+ * (ou sem dataEmissao). Usado para aviso "Ver todas" na lista.
+ */
+async function contarCtesForaDoFiltroData(
+  companyId: string,
+  filtros: {
+    painel?: 'analise' | 'contagem' | 'consolidada' | 'problemas' | 'cancelada'
+    dataDe?: Date
+    dataAte?: Date
+  }
+): Promise<number> {
+  if (!filtros.dataDe && !filtros.dataAte) return 0
+
+  const painel = filtros.painel ?? 'analise'
+  const statusPorPainel: Record<string, string[]> = {
+    analise: ['pendente', 'em_analise', 'stand_by'],
+    contagem: ['entrada_contagem'],
+    consolidada: ['entrada_consolidada'],
+    problemas: ['com_problema', 'problema_resolvido'],
+    cancelada: ['cancelada'],
+  }
+  const statuses = statusPorPainel[painel] ?? statusPorPainel.analise
+
+  const foraDoIntervalo: Array<Record<string, unknown>> = [{ dataEmissao: null }]
+  if (filtros.dataDe) {
+    foraDoIntervalo.push({ dataEmissao: { lt: filtros.dataDe } })
+  }
+  if (filtros.dataAte) {
+    foraDoIntervalo.push({ dataEmissao: { gt: filtros.dataAte } })
+  }
+
+  return clientePrisma.nfeRecebida.count({
+    where: {
+      companyId,
+      tipoDocumento: 'cte',
+      statusEntrada: { in: statuses },
+      OR: foraDoIntervalo,
+    },
+  })
+}
+
 /** @deprecated use listarNfesPorPainel — mantido como alias do painel análise */
 async function listarNfesPendentes(
   companyId: string,
@@ -389,6 +431,7 @@ export const repositorioFocusNfe = {
   buscarJob,
   listarNfesPendentes,
   listarNfesPorPainel,
+  contarCtesForaDoFiltroData,
   listarComXmlPendenteCampos,
   buscarPorChave,
   buscarPorId,

@@ -1,22 +1,21 @@
 /**
  * Importa CT-e pela chave via Focus (XML DistDFe), independente do cursor.
- * Uso interno do sync/BUSCAR e fallback do vínculo manual — não é fluxo diário do usuário.
+ * Uso interno do sync/BUSCAR e fallback do vínculo — não é fluxo diário do usuário.
+ *
+ * Regra: todo CT-e que a Focus disponibiliza para o CNPJ da empresa é gravado
+ * (DistDFe / chave). Não filtra por tomador do frete.
  */
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { clienteFocusNfe } from './cliente-focus-nfe.js'
 import { logFocus } from './logs-focus-nfe.js'
-import {
-  extrairCamposResumoDoXml,
-  extrairCnpjTomadorCte,
-} from './parser-xml-nfe.js'
+import { extrairCamposResumoDoXml } from './parser-xml-nfe.js'
 import { repositorioFocusNfe } from './repositorio-focus-nfe.js'
-import { normalizarCnpj } from './mensagens-focus-nfe.js'
 
 export type ResultadoImportCtePorChave =
   | { ok: true; cteId: string; jaExistia: boolean; criado: boolean }
   | {
       ok: false
-      motivo: 'chave_invalida' | 'nao_tomador' | 'tomador_ilegivel' | 'xml_falhou' | 'rate_limit' | 'sem_focus' | 'sem_cnpj'
+      motivo: 'chave_invalida' | 'xml_falhou' | 'rate_limit' | 'sem_focus'
       mensagem: string
     }
 
@@ -52,11 +51,6 @@ async function obterCredenciaisFocus(companyId: string): Promise<{
   )
 }
 
-function compararTomador(documentoTomador: string | null, cnpjEmpresa: string): boolean | null {
-  if (!documentoTomador) return null
-  return normalizarCnpj(documentoTomador) === normalizarCnpj(cnpjEmpresa)
-}
-
 export type OpcoesImportCtePorChave = {
   apiToken?: string
   homologacao?: boolean
@@ -66,9 +60,42 @@ export type OpcoesImportCtePorChave = {
   pularPipeline?: boolean
 }
 
+async function upsertEPipeline(
+  companyId: string,
+  chave: string,
+  xml: string,
+  opcoes?: OpcoesImportCtePorChave,
+  existente?: { situacao: string | null; versaoFocus: number | null } | null
+): Promise<{ criado: boolean; cteId: string }> {
+  const campos = extrairCamposResumoDoXml(xml)
+  const { criado, registro } = await repositorioFocusNfe.upsertNfeRecebida({
+    companyId,
+    chaveNfe: chave,
+    tipoDocumento: 'cte',
+    nomeEmitente: campos.nomeEmitente,
+    documentoEmitente: campos.documentoEmitente,
+    cnpjDestinatario: campos.cnpjDestinatario,
+    dataEmissao: campos.dataEmissao,
+    valorTotal: campos.valorTotal,
+    xmlConteudo: xml,
+    nfeCompleta: true,
+    origem: 'focus',
+    situacao: opcoes?.situacao ?? existente?.situacao ?? 'autorizada',
+    versaoFocus: opcoes?.versaoFocus ?? existente?.versaoFocus ?? 0,
+    etapaAtual: 'servico',
+  })
+
+  if (!opcoes?.pularPipeline) {
+    const { servicoEntradaNotas } = await import('../entrada-notas/servico-pipeline-entrada.js')
+    await servicoEntradaNotas.processarAposXml(companyId, registro.id)
+  }
+
+  return { criado, cteId: registro.id }
+}
+
 /**
  * Garante CT-e local a partir da chave (44 dígitos, modelo 57).
- * Só persiste se a empresa for tomadora do frete.
+ * Persiste todo CT-e disponível na Focus para este token/CNPJ (não exige tomador).
  */
 export async function importarCtePorChave(
   companyId: string,
@@ -84,72 +111,20 @@ export async function importarCtePorChave(
     }
   }
 
-  const empresa = await repositorioFocusNfe.buscarEmpresaCnpj(companyId)
-  if (!empresa?.cnpj) {
-    return {
-      ok: false,
-      motivo: 'sem_cnpj',
-      mensagem: 'Empresa sem CNPJ cadastrado — necessário para validar tomador do CT-e.',
-    }
-  }
-  const cnpjEmpresa = normalizarCnpj(empresa.cnpj)
-
   const existente = await repositorioFocusNfe.buscarPorChave(companyId, chave)
   if (existente?.xmlConteudo && existente.nfeCompleta) {
-    const tomador = extrairCnpjTomadorCte(existente.xmlConteudo)
-    const cmp = compararTomador(tomador, cnpjEmpresa)
-    if (cmp === false) {
-      return {
-        ok: false,
-        motivo: 'nao_tomador',
-        mensagem: `CTe …${chave.slice(-8)}: empresa não é tomadora do frete.`,
-      }
-    }
-    if (cmp === null) {
-      return {
-        ok: false,
-        motivo: 'tomador_ilegivel',
-        mensagem: `CTe …${chave.slice(-8)}: tomador ilegível no XML local.`,
-      }
-    }
     return { ok: true, cteId: existente.id, jaExistia: true, criado: false }
   }
 
-  // XML local incompleto: reaproveita se tomador ok
   if (existente?.xmlConteudo) {
-    const tomador = extrairCnpjTomadorCte(existente.xmlConteudo)
-    const cmp = compararTomador(tomador, cnpjEmpresa)
-    if (cmp === true) {
-      const campos = extrairCamposResumoDoXml(existente.xmlConteudo)
-      const { registro } = await repositorioFocusNfe.upsertNfeRecebida({
-        companyId,
-        chaveNfe: chave,
-        tipoDocumento: 'cte',
-        nomeEmitente: campos.nomeEmitente,
-        documentoEmitente: campos.documentoEmitente,
-        cnpjDestinatario: campos.cnpjDestinatario,
-        dataEmissao: campos.dataEmissao,
-        valorTotal: campos.valorTotal,
-        xmlConteudo: existente.xmlConteudo,
-        nfeCompleta: true,
-        origem: 'focus',
-        situacao: opcoes?.situacao ?? existente.situacao ?? 'autorizada',
-        versaoFocus: opcoes?.versaoFocus ?? existente.versaoFocus,
-        etapaAtual: 'servico',
-      })
-      if (!opcoes?.pularPipeline) {
-        const { servicoEntradaNotas } = await import('../entrada-notas/servico-pipeline-entrada.js')
-        await servicoEntradaNotas.processarAposXml(companyId, registro.id)
-      }
-      return { ok: true, cteId: registro.id, jaExistia: true, criado: false }
-    }
-    if (cmp === false) {
-      return {
-        ok: false,
-        motivo: 'nao_tomador',
-        mensagem: `CTe …${chave.slice(-8)}: empresa não é tomadora do frete.`,
-      }
-    }
+    const { criado, cteId } = await upsertEPipeline(
+      companyId,
+      chave,
+      existente.xmlConteudo,
+      opcoes,
+      existente
+    )
+    return { ok: true, cteId, jaExistia: true, criado }
   }
 
   let apiToken = opcoes?.apiToken
@@ -190,60 +165,20 @@ export async function importarCtePorChave(
     }
   }
 
-  const tomador = extrairCnpjTomadorCte(xmlResp.dados)
-  const cmp = compararTomador(tomador, cnpjEmpresa)
-  if (cmp === null) {
-    logFocus('warn', 'import_chave_cte_tomador_ilegivel', {
-      companyId,
-      chave: chave.slice(-8),
-    })
-    return {
-      ok: false,
-      motivo: 'tomador_ilegivel',
-      mensagem: `CTe …${chave.slice(-8)}: tomador ilegível no XML (ide/toma ou toma3).`,
-    }
-  }
-  if (cmp === false) {
-    logFocus('info', 'import_chave_cte_nao_tomador', {
-      companyId,
-      chave: chave.slice(-8),
-    })
-    return {
-      ok: false,
-      motivo: 'nao_tomador',
-      mensagem: `CTe …${chave.slice(-8)}: empresa não é tomadora do frete.`,
-    }
-  }
-
-  const campos = extrairCamposResumoDoXml(xmlResp.dados)
-  const { criado, registro } = await repositorioFocusNfe.upsertNfeRecebida({
+  const { criado, cteId } = await upsertEPipeline(
     companyId,
-    chaveNfe: chave,
-    tipoDocumento: 'cte',
-    nomeEmitente: campos.nomeEmitente,
-    documentoEmitente: campos.documentoEmitente,
-    cnpjDestinatario: campos.cnpjDestinatario,
-    dataEmissao: campos.dataEmissao,
-    valorTotal: campos.valorTotal,
-    xmlConteudo: xmlResp.dados,
-    nfeCompleta: true,
-    origem: 'focus',
-    situacao: opcoes?.situacao ?? existente?.situacao ?? 'autorizada',
-    versaoFocus: opcoes?.versaoFocus ?? existente?.versaoFocus ?? 0,
-    etapaAtual: 'servico',
-  })
-
-  if (!opcoes?.pularPipeline) {
-    const { servicoEntradaNotas } = await import('../entrada-notas/servico-pipeline-entrada.js')
-    await servicoEntradaNotas.processarAposXml(companyId, registro.id)
-  }
+    chave,
+    xmlResp.dados,
+    opcoes,
+    existente
+  )
 
   logFocus('info', 'import_chave_cte_ok', {
     companyId,
     chave: chave.slice(-8),
-    cteId: registro.id,
+    cteId,
     criado,
   })
 
-  return { ok: true, cteId: registro.id, jaExistia: !criado, criado }
+  return { ok: true, cteId, jaExistia: !criado, criado }
 }
