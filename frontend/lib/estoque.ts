@@ -136,3 +136,7 @@ export const ROTULO_TIPO_ESTOQUE: Record<TipoEstoqueVisao, string> = {
   fisico: 'Físico',
   fiscal: 'Fiscal',
 }
+
+export function tipoEstoqueVisaoValido(valor: string | null | undefined): valor is TipoEstoqueVisao {
+  return valor === 'disponivel' || valor === 'fisico' || valor === 'fiscal'
+}

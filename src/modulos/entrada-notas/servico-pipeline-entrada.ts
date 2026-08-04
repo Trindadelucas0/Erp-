@@ -12,10 +12,12 @@ import {
   extrairCfopDoXmlCte,
   extrairDadosTransporteDoXmlNfe,
   extrairIcmsDoXmlCte,
+  extrairItensDoJsonFocusCompleta,
   extrairItensDoXml,
   extrairSugestaoFinanceiroDoXmlCte,
   normalizarXmlNfe,
   xmlNfeTemItensParseaveis,
+  type ItemXmlNfe,
 } from '../focus-nfe/parser-xml-nfe.js'
 import { logFocus } from '../focus-nfe/logs-focus-nfe.js'
 import { analisarCadastro } from './analise-cadastro/analisar-cadastro.js'
@@ -37,6 +39,11 @@ import {
   resolverModoDocumentalEntrada,
   type FlagsFornecedorEntrada,
 } from './resolver-modo-documental-entrada.js'
+import {
+  servicoDeEstoque,
+  type ResultadoEntradaNotaFiscal,
+} from '../estoque/servico-estoque.js'
+import { arredondarQtd } from '../estoque/tipos-estoque.js'
 import { randomUUID } from 'crypto'
 
 type EtapaPipeline = 'cadastro' | 'fiscal' | 'negociacao' | 'frete'
@@ -118,6 +125,193 @@ async function sincronizarItensPendentesDoXml(
 
   await repositorioEntradaNotas.substituirItensDoXml(notaId, itens)
   return { itensAdicionados: itens.length }
+}
+
+/**
+ * NFe 55 com resNFe / sem `<det>`: completa na Focus (ciência + XML + fallback JSON).
+ * Não chama `analisarNota`/`processarAposXml` (evita recursão). Abrir detalhe
+ * passa `importarFocusSeAusente: false` — só Reanalisar/BUSCAR/sync usam isto.
+ *
+ * Após ciência a Focus busca o XML na SEFAZ de forma assíncrona: o `.xml` pode
+ * ainda voltar `resNFe`. Nesses casos usamos `completa=1` (`requisicao_nota_fiscal.itens`).
+ */
+async function completarXmlNfeNaFocusSePreciso(
+  companyId: string,
+  notaId: string
+): Promise<{ ok: boolean; mensagem?: string; itensViaJson?: number }> {
+  const nota = await repositorioEntradaNotas.buscarNotaPorId(companyId, notaId)
+  if (!nota) return { ok: false, mensagem: 'Nota não encontrada' }
+  if (nota.tipoDocumento === 'nfse' || nota.tipoDocumento === 'cte') {
+    return { ok: true }
+  }
+  if (nota.xmlConteudo && xmlNfeTemItensParseaveis(nota.xmlConteudo)) {
+    return { ok: true }
+  }
+
+  const cfg = await repositorioFocusNfe.buscarConfigPorEmpresa(companyId)
+  const tokenEnv = process.env.FOCUS_NFE_TOKEN?.trim() || null
+  const apiToken =
+    cfg?.ativo && cfg.apiToken?.trim()
+      ? cfg.apiToken.trim()
+      : cfg?.apiToken?.trim() || tokenEnv
+  if (!apiToken) {
+    return {
+      ok: false,
+      mensagem: 'Configure o token Focus NFe para completar o XML desta nota.',
+    }
+  }
+  const homologacao =
+    cfg?.ativo && cfg.apiToken
+      ? cfg.homologacao
+      : (process.env.FOCUS_NFE_HOMOLOGACAO ?? 'true').trim().toLowerCase() !== 'false'
+
+  const empresa = await repositorioFocusNfe.buscarEmpresaCnpj(companyId)
+  const cnpjEmpresa = empresa?.cnpj ?? null
+
+  // Ciência: mesmo se o banco já marcar ciência, força quando XML ainda é resumo
+  // (Focus trata duplicidade 573 como sucesso e dispara a busca do XML completo).
+  const manResp = await clienteFocusNfe.manifestar(
+    apiToken,
+    homologacao,
+    nota.chaveNfe,
+    'ciencia',
+    undefined,
+    cnpjEmpresa
+  )
+  if (!manResp.sucesso && manResp.codigoHttp === 429) {
+    await repositorioFocusNfe.atualizarDanfe(nota.id, {
+      danfeStatus: 'rate_limit',
+      danfeAtualizadoEm: new Date(),
+    })
+    return {
+      ok: false,
+      mensagem: `Limite Focus excedido ao preparar ciência. Aguarde e use Reanalisar. (${manResp.mensagem})`,
+    }
+  }
+
+  async function baixarXmlAtual(): Promise<string | null> {
+    const xmlResp = await clienteFocusNfe.baixarXml(
+      apiToken!,
+      homologacao,
+      nota!.chaveNfe,
+      cnpjEmpresa
+    )
+    if (!xmlResp.sucesso || typeof xmlResp.dados !== 'string') {
+      const msg =
+        xmlResp.sucesso === false ? xmlResp.mensagem : 'Focus devolveu XML vazio.'
+      const eh429 = xmlResp.sucesso === false && xmlResp.codigoHttp === 429
+      if (eh429) {
+        await repositorioFocusNfe.atualizarDanfe(nota!.id, {
+          danfeStatus: 'rate_limit',
+          danfeAtualizadoEm: new Date(),
+        })
+      }
+      logFocus('warn', 'reanalisar_xml_focus_falhou', {
+        companyId,
+        notaId,
+        chave: nota!.chaveNfe,
+        mensagem: msg,
+        codigoHttp: xmlResp.sucesso === false ? xmlResp.codigoHttp : null,
+      })
+      return null
+    }
+    return xmlResp.dados
+  }
+
+  let xml = await baixarXmlAtual()
+  if (xml && !xmlNfeTemItensParseaveis(xml)) {
+    // Focus ainda não materializou o XML após ciência — espera e tenta de novo.
+    await new Promise((r) => setTimeout(r, 2500))
+    const retry = await baixarXmlAtual()
+    if (retry) xml = retry
+  }
+
+  let itensJson: ItemXmlNfe[] = []
+  let modFreteJson: string | null = null
+  if (!xml || !xmlNfeTemItensParseaveis(xml)) {
+    const consulta = await clienteFocusNfe.consultarNfeRecebida(
+      apiToken,
+      homologacao,
+      nota.chaveNfe,
+      { cnpj: cnpjEmpresa, completa: true }
+    )
+    if (consulta.sucesso && consulta.dados && typeof consulta.dados === 'object') {
+      const dados = consulta.dados as Record<string, unknown>
+      itensJson = extrairItensDoJsonFocusCompleta(dados)
+      const req = dados.requisicao_nota_fiscal
+      if (req && typeof req === 'object') {
+        const mf = (req as { modalidade_frete?: unknown }).modalidade_frete
+        if (mf != null && String(mf).trim() !== '') modFreteJson = String(mf).trim()
+      }
+      logFocus('info', 'reanalisar_xml_fallback_json', {
+        companyId,
+        notaId,
+        chave: nota.chaveNfe,
+        itensJson: itensJson.length,
+        nfeCompletaFocus: dados.nfe_completa ?? null,
+      })
+    } else if (!consulta.sucesso) {
+      logFocus('warn', 'reanalisar_consulta_completa_falhou', {
+        companyId,
+        notaId,
+        chave: nota.chaveNfe,
+        mensagem: consulta.mensagem,
+        codigoHttp: consulta.codigoHttp,
+      })
+    }
+  }
+
+  const xmlCompleto = Boolean(xml && xmlNfeTemItensParseaveis(xml))
+  if (!xmlCompleto && itensJson.length === 0) {
+    logFocus('warn', 'reanalisar_xml_ainda_resumo', {
+      companyId,
+      notaId,
+      chave: nota.chaveNfe,
+      bytes: xml?.length ?? 0,
+    })
+  }
+
+  if (xml) {
+    const campos = extrairCamposResumoDoXml(xml)
+    await repositorioFocusNfe.upsertNfeRecebida({
+      companyId,
+      chaveNfe: nota.chaveNfe,
+      tipoDocumento: 'nfe55',
+      nomeEmitente: campos.nomeEmitente ?? nota.nomeEmitente,
+      documentoEmitente: campos.documentoEmitente ?? nota.documentoEmitente,
+      cnpjDestinatario: campos.cnpjDestinatario ?? nota.cnpjDestinatario,
+      dataEmissao: campos.dataEmissao ?? nota.dataEmissao,
+      valorTotal:
+        campos.valorTotal ?? (nota.valorTotal != null ? Number(nota.valorTotal) : null),
+      xmlConteudo: xml,
+      nfeCompleta: xmlCompleto,
+      origem: 'focus',
+      modFrete: campos.modFrete ?? modFreteJson ?? undefined,
+      manifestacaoDestinatario: 'ciencia',
+    })
+  }
+
+  if (xmlCompleto) {
+    await sincronizarItensPendentesDoXml(companyId, notaId)
+    return { ok: true }
+  }
+
+  if (itensJson.length > 0) {
+    const qtd = await repositorioEntradaNotas.contarItens(notaId)
+    if (qtd === 0) {
+      await repositorioEntradaNotas.substituirItensDoXml(notaId, itensJson)
+    }
+    if (modFreteJson && !nota.modFrete) {
+      await repositorioEntradaNotas.atualizarNota(notaId, { modFrete: modFreteJson })
+    }
+    return { ok: true, itensViaJson: itensJson.length }
+  }
+
+  return {
+    ok: false,
+    mensagem:
+      'Focus ainda não liberou o XML completo (só resumo DistDFe). Aguarde 1–2 min e Reanalisar de novo, ou Importe o XML da nota.',
+  }
 }
 
 async function garantirItensDoXml(companyId: string, notaId: string) {
@@ -604,13 +798,49 @@ async function analisarNota(
   opcoes?: {
     forcarReparseItens?: boolean
     pararEm?: EtapaPipeline
-    /** CT-e: default true (Reanalisar). Abertura do detalhe passa false. */
+    /**
+     * Default true (Reanalisar / BUSCAR / sync). Abertura do detalhe passa false.
+     * NFe 55: completa XML incompleto (resNFe) na Focus antes do pipeline.
+     * CT-e: importa NF referenciada ausente na Focus.
+     */
     importarFocusSeAusente?: boolean
   }
 ): Promise<{
   nota: Record<string, unknown>
   pedidosDisponiveis: Array<{ id: string; numero: number; status: string }>
 }> {
+  const importarFocus = opcoes?.importarFocusSeAusente !== false
+  let avisoXmlFocus: string | null = null
+
+  // Reanalisar: completa XML na Focus se a nota ainda só tem resumo DistDFe.
+  if (importarFocus) {
+    const pre = await repositorioEntradaNotas.buscarNotaPorId(companyId, notaId)
+    if (
+      pre &&
+      pre.tipoDocumento !== 'nfse' &&
+      pre.tipoDocumento !== 'cte' &&
+      (!pre.xmlConteudo || !xmlNfeTemItensParseaveis(pre.xmlConteudo))
+    ) {
+      const xmlFocus = await completarXmlNfeNaFocusSePreciso(companyId, notaId)
+      if (!xmlFocus.ok && !pre.xmlConteudo) {
+        throw new ErroDaAplicacao(
+          xmlFocus.mensagem ??
+            'Nota sem XML. Importe o XML ou complete o download na Focus antes de analisar.',
+          400
+        )
+      }
+      if (!xmlFocus.ok && xmlFocus.mensagem) {
+        avisoXmlFocus = xmlFocus.mensagem
+        logFocus('warn', 'reanalisar_xml_incompleto', {
+          companyId,
+          notaId,
+          chave: pre.chaveNfe,
+          mensagem: xmlFocus.mensagem,
+        })
+      }
+    }
+  }
+
   const base = await garantirItensDoXml(companyId, notaId)
   if (
     base.statusEntrada === 'entrada_contagem' ||
@@ -636,9 +866,13 @@ async function analisarNota(
     })
   }
 
-  if (opcoes?.forcarReparseItens && base.xmlConteudo) {
-    const itens = extrairItensDoXml(base.xmlConteudo)
-    await repositorioEntradaNotas.substituirItensDoXml(notaId, itens)
+  if (opcoes?.forcarReparseItens) {
+    // Só reparseia quando o XML tem <det>; senão apagaria itens vindos do JSON Focus.
+    const atual = await repositorioEntradaNotas.buscarNotaPorId(companyId, notaId)
+    if (atual?.xmlConteudo && xmlNfeTemItensParseaveis(atual.xmlConteudo)) {
+      const itens = extrairItensDoXml(atual.xmlConteudo)
+      await repositorioEntradaNotas.substituirItensDoXml(notaId, itens)
+    }
   }
 
   let nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
@@ -785,8 +1019,19 @@ async function analisarNota(
   })
 
   analise.cadastro = cadastro.resultado
+  if (avisoXmlFocus && nota.itens.length === 0) {
+    const bloqueios = [...(analise.cadastro.bloqueios ?? [])]
+    if (!bloqueios.some((b) => b.includes(avisoXmlFocus))) {
+      bloqueios.unshift(avisoXmlFocus)
+    }
+    analise.cadastro = {
+      ...analise.cadastro,
+      status: 'bloqueante',
+      bloqueios,
+    }
+  }
 
-  const cadastroBloqueado = !podeAvancarCadastro(cadastro.resultado)
+  const cadastroBloqueado = !podeAvancarCadastro(analise.cadastro)
   if (cadastroBloqueado || opcoes?.pararEm === 'cadastro') {
     analise.motivoParada = cadastroBloqueado ? 'cadastro' : null
     await repositorioEntradaNotas.atualizarNota(notaId, {
@@ -903,7 +1148,8 @@ async function analisarNota(
       status: 'bloqueante',
       avisos: [],
       bloqueios: [
-        'Nota sem itens parseados do XML. Reimporte o XML ou complete o download na Focus.',
+        avisoXmlFocus ??
+          'Nota sem itens parseados do XML. Reimporte o XML ou complete o download na Focus.',
       ],
     }
     await repositorioEntradaNotas.atualizarNota(notaId, {
@@ -1209,11 +1455,19 @@ async function obterDetalhe(
       )
     : new Map<string, string>()
 
+  const tipoDoc = nota.tipoDocumento ?? 'nfe55'
+  const estoqueLancado =
+    nota.statusEntrada === 'entrada_consolidada' &&
+    tipoDoc !== 'nfse' &&
+    tipoDoc !== 'cte'
+      ? await servicoDeEstoque.existeMovimentoOrigemNfe(companyId, notaId)
+      : false
+
   return {
     nota: {
       id: nota.id,
       chaveNfe: nota.chaveNfe,
-      tipoDocumento: nota.tipoDocumento ?? 'nfe55',
+      tipoDocumento: tipoDoc,
       nomeEmitente: nota.nomeEmitente,
       documentoEmitente: nota.documentoEmitente,
       valorTotal: decimalNum(nota.valorTotal),
@@ -1230,6 +1484,7 @@ async function obterDetalhe(
       problemaDesfecho: nota.problemaDesfecho ?? null,
       problemaMarcadoEm: nota.problemaMarcadoEm ?? null,
       problemaResolvidoEm: nota.problemaResolvidoEm ?? null,
+      estoqueLancado,
       avisoReparoXml,
       tratativas: (nota.tratativas ?? []).map((t) => ({
         id: t.id,
@@ -1418,6 +1673,7 @@ async function obterDetalhe(
                 unidade: i.produto.unidade,
                 ncm: i.produto.ncm,
                 codigoOrigem: i.produto.codigoOrigem,
+                controlaEstoque: i.produto.controlaEstoque,
               }
             : null,
         }
@@ -1881,6 +2137,120 @@ async function descancelar(companyId: string, notaId: string) {
   return analisarNota(companyId, notaId)
 }
 
+/**
+ * Monta linhas de estoque a partir dos itens da NFe (após rateio de frete).
+ * Itens sem produtoId são ignorados; produto com controlaEstoque e qtd inválida gera erro.
+ */
+function montarLinhasEstoqueEntradaNf(
+  nota: NotaCompletaParaEstoque
+): Array<{
+  itemId: string
+  produtoId: string
+  quantidadeEstoque: number
+  precoCusto: number | null
+  nomeVenda: string | null
+}> {
+  const linhas: Array<{
+    itemId: string
+    produtoId: string
+    quantidadeEstoque: number
+    precoCusto: number | null
+    nomeVenda: string | null
+  }> = []
+
+  for (const item of nota.itens) {
+    if (!item.produtoId) continue
+
+    const quantidadeNf = decimalNum(item.quantidade)
+    const itensPorEmbalagem = resolverItensPorEmbalagem(
+      item.produto?.fornecedores,
+      nota.fornecedorPessoaId
+    )
+    const quantidadeEstoque =
+      quantidadeNf != null
+        ? arredondarQtd(quantidadeNf * itensPorEmbalagem)
+        : null
+
+    if (
+      item.produto?.controlaEstoque === true &&
+      (quantidadeEstoque == null || quantidadeEstoque <= 0)
+    ) {
+      throw new ErroDaAplicacao(
+        `Item ${item.nItem}: quantidade inválida para lançar estoque. Verifique o XML e o múltiplo de embalagem.`,
+        400
+      )
+    }
+    if (quantidadeEstoque == null || quantidadeEstoque <= 0) continue
+
+    const valorUnitario = decimalNum(item.valorUnitario) ?? 0
+    const frete = decimalNum(item.custoFreteRateado) ?? 0
+    const qtdNfParaCusto = quantidadeNf != null && quantidadeNf > 0 ? quantidadeNf : null
+    let precoCusto: number | null = null
+    if (qtdNfParaCusto != null && quantidadeEstoque > 0) {
+      const custoLinha = valorUnitario * qtdNfParaCusto + frete
+      precoCusto = Math.round((custoLinha / quantidadeEstoque) * 10000) / 10000
+    }
+
+    linhas.push({
+      itemId: item.id,
+      produtoId: item.produtoId,
+      quantidadeEstoque,
+      precoCusto,
+      nomeVenda: item.produto?.nomeVenda ?? null,
+    })
+  }
+
+  return linhas
+}
+
+type NotaCompletaParaEstoque = {
+  fornecedorPessoaId: string | null
+  itens: Array<{
+    id: string
+    nItem: number
+    produtoId: string | null
+    quantidade: { toNumber?: () => number } | number | null
+    valorUnitario: { toNumber?: () => number } | number | null
+    custoFreteRateado: { toNumber?: () => number } | number | null
+    produto?: {
+      nomeVenda?: string | null
+      controlaEstoque?: boolean
+      fornecedores?: Array<{ fornecedorPessoaId: string; multiplicadorEntrada: unknown }>
+    } | null
+  }>
+}
+
+async function lancarEstoqueAoConsolidar(
+  companyId: string,
+  notaId: string,
+  usuarioId: string
+): Promise<ResultadoEntradaNotaFiscal | null> {
+  const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  if (nota.tipoDocumento === 'nfse' || nota.tipoDocumento === 'cte') {
+    return null
+  }
+
+  const linhas = montarLinhasEstoqueEntradaNf(nota)
+  if (linhas.length === 0) {
+    return {
+      movimentou: false,
+      itensProcessados: 0,
+      itensIgnorados: nota.itens.filter((i) => !i.produtoId).length,
+      movimentosGravados: 0,
+      produtos: [],
+    }
+  }
+
+  return servicoDeEstoque.aplicarEntradaNotaFiscal({
+    companyId,
+    notaId,
+    usuarioId,
+    pessoaId: nota.fornecedorPessoaId,
+    linhas,
+  })
+}
+
 async function lancar(
   companyId: string,
   notaId: string,
@@ -1890,11 +2260,15 @@ async function lancar(
 ) {
   const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
-  if (
-    nota.statusEntrada === 'entrada_contagem' ||
-    nota.statusEntrada === 'entrada_consolidada'
-  ) {
-    throw new ErroDaAplicacao('Nota já lançada.', 409)
+
+  const jaEmContagem = nota.statusEntrada === 'entrada_contagem'
+  const jaConsolidada = nota.statusEntrada === 'entrada_consolidada'
+
+  if (jaConsolidada) {
+    throw new ErroDaAplicacao('Nota já consolidada.', 409)
+  }
+  if (modo === 'contagem' && jaEmContagem) {
+    throw new ErroDaAplicacao('Nota já liberada para contagem.', 409)
   }
   if (nota.statusEntrada === 'cancelada') {
     throw new ErroDaAplicacao('Nota cancelada — não é possível lançar.', 409)
@@ -1915,20 +2289,26 @@ async function lancar(
     )
   }
 
-  const gate = pipelineProntoParaLancar(
-    nota.analiseJson as AnaliseJson | null,
-    nota.criticasLiberadas,
-    nota.fornecedorPessoaId
-  )
-  if (!gate.ok) {
-    throw new ErroDaAplicacao(gate.mensagem, 400)
+  // Liberada para contagem já passou no gate; consolidar a partir dela não revalida.
+  if (!jaEmContagem) {
+    const gate = pipelineProntoParaLancar(
+      nota.analiseJson as AnaliseJson | null,
+      nota.criticasLiberadas,
+      nota.fornecedorPessoaId
+    )
+    if (!gate.ok) {
+      throw new ErroDaAplicacao(gate.mensagem, 400)
+    }
   }
+
+  let estoqueResumo: ResultadoEntradaNotaFiscal | null = null
 
   if (modo === 'consolidar') {
     if (!senha) throw new ErroDaAplicacao('Senha de gerente obrigatória para consolidar estoque.', 400)
     const ok = await servicoDeAutenticacao.verificarSenhaDoUsuario(usuarioId, senha)
     if (!ok) throw new ErroDaAplicacao('Senha inválida.', 403)
     await aplicarRateioEDespesasFrete(companyId, notaId)
+    estoqueResumo = await lancarEstoqueAoConsolidar(companyId, notaId, usuarioId)
     await repositorioEntradaNotas.atualizarNota(notaId, {
       statusEntrada: 'entrada_consolidada',
       etapaAtual: 'lancamento',
@@ -1939,13 +2319,14 @@ async function lancar(
     await lancarContagem(notaId, 'humana')
   }
 
-  return obterDetalhe(companyId, notaId)
+  const detalhe = await obterDetalhe(companyId, notaId)
+  return estoqueResumo != null ? { ...detalhe, estoqueResumo } : detalhe
 }
 
 /**
  * Após import/sync com XML: persiste itens e tenta pipeline automático.
- * `importarFocusSeAusente` (default true): sync/import batem Focus no CT-e.
- * Abertura do detalhe passa false — não bloqueia na fila serial Focus.
+ * `importarFocusSeAusente` (default true): NFe completa XML incompleto na Focus;
+ * CT-e importa NF referenciada. Abertura do detalhe passa false.
  */
 async function processarAposXml(
   companyId: string,
@@ -1976,7 +2357,7 @@ async function processarAposXml(
     }
 
     if (nota.tipoDocumento === 'nfse') {
-      await analisarNota(companyId, notaId)
+      await analisarNota(companyId, notaId, { importarFocusSeAusente: importarFocus })
       return
     }
 
@@ -1989,7 +2370,7 @@ async function processarAposXml(
       modFrete: campos.modFrete ?? null,
     })
     await servicoVinculoCte.tentarVincularNfesPendentesAoCte(companyId, notaId)
-    await analisarNota(companyId, notaId)
+    await analisarNota(companyId, notaId, { importarFocusSeAusente: importarFocus })
   } catch (erro) {
     logFocus('warn', 'pipeline_apos_xml_falhou', {
       companyId,

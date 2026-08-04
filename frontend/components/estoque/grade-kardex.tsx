@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import {
   formatarDataHoraKardex,
   formatarMoedaKardex,
@@ -14,6 +15,26 @@ type Props = {
   totais: { entrada: number; saida: number }
   saldoFinal: number
   unidade: string
+}
+
+function CelulaNumeroOrigem({ linha }: { linha: LinhaKardex }) {
+  const curto = linha.origemId
+    ? linha.origemId.slice(0, 8).toUpperCase()
+    : linha.movimento
+  if (linha.origem === 'nfe' && linha.origemId) {
+    return (
+      <Link
+        href={`/entrada-notas/${linha.origemId}`}
+        className="font-mono text-xs text-primary underline underline-offset-2"
+        title="Abrir nota fiscal de entrada"
+      >
+        NF {curto}
+      </Link>
+    )
+  }
+  return (
+    <span className="font-mono text-xs text-muted-foreground">{curto}</span>
+  )
 }
 
 export function GradeKardex({
@@ -82,8 +103,8 @@ export function GradeKardex({
                     {l.tipo}
                   </span>
                 </td>
-                <td className="whitespace-nowrap px-2.5 py-2 font-mono text-xs text-muted-foreground">
-                  {l.origemId ? l.origemId.slice(0, 8).toUpperCase() : l.movimento}
+                <td className="whitespace-nowrap px-2.5 py-2">
+                  <CelulaNumeroOrigem linha={l} />
                 </td>
                 <td className="px-2.5 py-2 text-xs">{l.ocorrencia}</td>
                 <td className="px-2.5 py-2 text-xs">

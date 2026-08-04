@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Package, RefreshCw } from 'lucide-react'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
@@ -16,6 +17,7 @@ import {
   hojeIso,
   inicioDoMesIso,
   ROTULO_TIPO_ESTOQUE,
+  tipoEstoqueVisaoValido,
   type RespostaKardex,
   type TipoEstoqueVisao,
 } from '@/lib/estoque'
@@ -37,6 +39,7 @@ const TIPOS: { valor: TipoEstoqueVisao; rotulo: string }[] = [
 ]
 
 export function TelaKardexEstoque() {
+  const searchParams = useSearchParams()
   const { perfil } = useSessaoDoUsuario()
   const podeAjustar = usePermissao('estoque:edit')
 
@@ -50,15 +53,65 @@ export function TelaKardexEstoque() {
     )
   }, [perfil])
 
+  const tipoQuery = searchParams.get('tipoEstoque')
+  const produtoIdQuery = searchParams.get('produtoId')
+
   const [de, setDe] = useState(inicioDoMesIso)
   const [ate, setAte] = useState(hojeIso)
-  const [tipoEstoque, setTipoEstoque] = useState<TipoEstoqueVisao>('fisico')
+  const [tipoEstoque, setTipoEstoque] = useState<TipoEstoqueVisao>(() =>
+    tipoEstoqueVisaoValido(tipoQuery) ? tipoQuery : 'fisico'
+  )
   const [produto, setProduto] = useState<ProdutoBuscaEstoque | null>(null)
   const [kardex, setKardex] = useState<RespostaKardex | null>(null)
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState('')
   const [mensagem, setMensagem] = useState('')
   const [modalInventario, setModalInventario] = useState(false)
+  const [hidratandoDeepLink, setHidratandoDeepLink] = useState(Boolean(produtoIdQuery?.trim()))
+
+  useEffect(() => {
+    if (tipoEstoqueVisaoValido(tipoQuery)) {
+      setTipoEstoque(tipoQuery)
+    }
+  }, [tipoQuery])
+
+  useEffect(() => {
+    const id = produtoIdQuery?.trim()
+    if (!id) {
+      setHidratandoDeepLink(false)
+      return
+    }
+    let cancelado = false
+    setHidratandoDeepLink(true)
+    void (async () => {
+      try {
+        const { data } = await clienteHttp.get<{
+          produto: {
+            id: string
+            sku: string | null
+            nomeVenda: string
+            unidade: string
+          }
+        }>(`/estoque/${id}/saldos`)
+        if (cancelado) return
+        setProduto({
+          id: data.produto.id,
+          sku: data.produto.sku,
+          nomeVenda: data.produto.nomeVenda,
+          unidade: data.produto.unidade,
+        })
+      } catch (e) {
+        if (!cancelado) {
+          setErro(extrairMensagemApi(e, 'Não foi possível abrir o produto da URL'))
+        }
+      } finally {
+        if (!cancelado) setHidratandoDeepLink(false)
+      }
+    })()
+    return () => {
+      cancelado = true
+    }
+  }, [produtoIdQuery])
 
   const carregar = useCallback(async () => {
     if (!produto) {
@@ -153,7 +206,11 @@ export function TelaKardexEstoque() {
             onChange={(e) => setAte(e.target.value)}
           />
           <div className="md:col-span-2">
-            <BuscaProdutoEstoque valor={produto} aoSelecionar={setProduto} />
+            <BuscaProdutoEstoque
+              valor={produto}
+              aoSelecionar={setProduto}
+              disabled={hidratandoDeepLink}
+            />
           </div>
         </div>
 
@@ -211,7 +268,11 @@ export function TelaKardexEstoque() {
         titulo={`Movimentos — ${ROTULO_TIPO_ESTOQUE[tipoEstoque]}`}
         compacto
       >
-        {!produto ? (
+        {!produto && hidratandoDeepLink ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            Carregando produto…
+          </p>
+        ) : !produto ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
             Selecione um produto e período para ver o kardex.
           </p>

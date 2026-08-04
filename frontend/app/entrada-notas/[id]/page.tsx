@@ -25,6 +25,7 @@ import {
 } from '@/components/entrada-notas/item-vinculo-fiscal-grid'
 import { CfopEntradaFreteCampos } from '@/components/entrada-notas/cfop-entrada-frete'
 import { CheckCircle2 } from 'lucide-react'
+import { formatarQtdEstoque } from '@/lib/estoque'
 import { distribuirParcelasIguais } from '@/lib/parcelas-pagamento-pedido'
 import {
   ehDocumentalEntrada,
@@ -222,6 +223,16 @@ type DetalheNota = {
   itens: ItemNota[]
   /** Preenchido quando o reparo automático de XML via Focus falhou (ex.: 429). */
   avisoReparoXml?: string | null
+  /** NFe consolidada com movimentos no kardex (origem nfe). */
+  estoqueLancado?: boolean
+}
+
+type EstoqueResumoLancamento = {
+  movimentou: boolean
+  itensProcessados: number
+  itensIgnorados: number
+  movimentosGravados: number
+  produtos: Array<{ produtoId: string; nomeVenda: string; quantidade: number }>
 }
 
 type ProdutoBusca = {
@@ -704,6 +715,7 @@ function ConteudoDetalheEntrada() {
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
   const [mensagem, setMensagem] = useState<string | null>(null)
+  const [estoqueResumo, setEstoqueResumo] = useState<EstoqueResumoLancamento | null>(null)
   const [senha, setSenha] = useState('')
   const [senhaDesconhecer, setSenhaDesconhecer] = useState('')
   const [obsContato, setObsContato] = useState('')
@@ -938,6 +950,7 @@ function ConteudoDetalheEntrada() {
         pedidosDisponiveis?: Array<{ id: string; numero: number; status: string }>
         mensagem?: string
         sucesso?: boolean
+        estoqueResumo?: EstoqueResumoLancamento
       }>(`/entrada-notas/${id}${path}`, body ?? {})
       if (data.nota) {
         setNota(data.nota)
@@ -949,8 +962,26 @@ function ConteudoDetalheEntrada() {
           setMensagem(mensagemAposAnalisar(data.nota))
         } else if (path === '/financeiro-frete') {
           setMensagem('Prévia financeira do frete salva (stub — sem contas a pagar).')
+        } else if (path === '/lancar' && body?.modo === 'consolidar') {
+          setSenha('')
+          if (data.estoqueResumo) setEstoqueResumo(data.estoqueResumo)
+          if (data.estoqueResumo?.movimentou) {
+            setMensagem(
+              `Estoque consolidado: ${data.estoqueResumo.itensProcessados} produto(s) no kardex (físico e fiscal).`
+            )
+          } else if (ehDocumentalEntrada(data.nota.tipoDocumento)) {
+            setMensagem('Nota consolidada (documental — sem movimentação de estoque).')
+          } else {
+            setMensagem(
+              'Nota consolidada. Nenhum item com controle de estoque foi lançado no kardex.'
+            )
+          }
+        } else if (path === '/lancar' && body?.modo === 'contagem') {
+          setMensagem(
+            'Liberada para contagem — estoque ainda não foi movimentado. Use Consolidar estoque para lançar no kardex.'
+          )
         } else if (data.nota.origemLancamento === 'automatica') {
-          setMensagem('Entrada automática concluída (Liberar para contagem).')
+          setMensagem('Entrada automática concluída (Liberar para contagem — sem estoque).')
         } else if (
           data.nota.statusEntrada === 'entrada_contagem' ||
           data.nota.statusEntrada === 'entrada_consolidada'
@@ -2199,8 +2230,8 @@ function ConteudoDetalheEntrada() {
             <CardPadrao titulo="Lançamento">
               <p className="mb-3 text-sm text-muted-foreground">
                 {ehDocumental
-                  ? 'Conferência documental. Liberar para contagem não movimenta estoque.'
-                  : 'Conferência final. Consolidar exige senha (só status; ledger futuro).'}
+                  ? 'Conferência documental. Liberar para contagem e consolidar não movimentam estoque.'
+                  : 'Conferência final. Liberar para contagem não movimenta estoque. Consolidar estoque (senha gerente) grava físico e fiscal no kardex.'}
               </p>
               {abaBloqueada('lancamento') && (
                 <p className="mb-3 text-sm text-amber-700 dark:text-amber-400">
@@ -2250,8 +2281,44 @@ function ConteudoDetalheEntrada() {
                   ? ' Use o card Nota com problema para tratativas e desfecho.'
                   : problemaResolvido
                     ? ' Problema resolvido — nota fora do fluxo de entrada.'
-                    : ''}
+                    : nota.statusEntrada === 'entrada_contagem'
+                      ? ' Estoque ainda não lançado — informe a senha de gerente e consolide para gravar no kardex.'
+                      : nota.statusEntrada === 'entrada_consolidada' && !ehDocumental
+                        ? nota.estoqueLancado
+                          ? ' Estoque lançado no kardex (físico e fiscal).'
+                          : ' Consolidada — sem movimentos de estoque (itens sem produto ou sem controle).'
+                        : nota.statusEntrada === 'entrada_consolidada' && ehDocumental
+                          ? ' Documental — sem movimentação de estoque.'
+                          : ''}
               </p>
+              {nota.statusEntrada === 'entrada_contagem' && (
+                <div className="mt-4 space-y-3 rounded-md border border-border/80 bg-muted/20 p-3">
+                  <p className="text-sm text-muted-foreground">
+                    {ehDocumental
+                      ? 'Consolidar (documental) encerra a entrada sem movimentar estoque.'
+                      : 'Consolidar estoque grava físico e fiscal no kardex (quantidade × embalagem).'}
+                  </p>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div>
+                      <Label htmlFor="senha-consolidar-contagem">Senha gerente</Label>
+                      <input
+                        id="senha-consolidar-contagem"
+                        type="password"
+                        className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
+                        value={senha}
+                        onChange={(e) => setSenha(e.target.value)}
+                      />
+                    </div>
+                    <BotaoPrimario
+                      type="button"
+                      disabled={acao || !senha.trim()}
+                      onClick={() => postAcao('/lancar', { modo: 'consolidar', senha })}
+                    >
+                      {ehDocumental ? 'Consolidar (documental)' : 'Consolidar estoque'}
+                    </BotaoPrimario>
+                  </div>
+                </div>
+              )}
               {nota.statusEntrada === 'cancelada' && nota.manifestacaoDestinatario && (
                 <p className="mt-2 text-sm text-muted-foreground">
                   Manifestação registrada:{' '}
@@ -2292,6 +2359,48 @@ function ConteudoDetalheEntrada() {
                   Voltar à lista
                 </Button>
               </div>
+            </CardPadrao>
+          )}
+
+          {(estoqueResumo?.movimentou ||
+            (nota.statusEntrada === 'entrada_consolidada' &&
+              Boolean(nota.estoqueLancado) &&
+              !ehDocumental)) && (
+            <CardPadrao titulo="Estoque lançado">
+              <p className="mb-3 text-sm text-muted-foreground">
+                Movimentos de entrada por nota fiscal no físico e no fiscal. Abra o kardex do
+                produto para conferir.
+              </p>
+              {estoqueResumo && estoqueResumo.produtos.length > 0 ? (
+                <ul className="space-y-2 text-sm">
+                  {estoqueResumo.produtos.map((p) => (
+                    <li
+                      key={p.produtoId}
+                      className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 py-1.5 last:border-0"
+                    >
+                      <span>
+                        {p.nomeVenda}{' '}
+                        <span className="text-muted-foreground tabular-nums">
+                          (+{formatarQtdEstoque(p.quantidade)})
+                        </span>
+                      </span>
+                      <Link
+                        href={`/estoque?produtoId=${encodeURIComponent(p.produtoId)}&tipoEstoque=fisico`}
+                        className="text-primary text-xs underline"
+                      >
+                        Ver no Kardex
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Estoque consolidado nesta nota.{' '}
+                  <Link href="/estoque" className="text-primary underline">
+                    Abrir Kardex
+                  </Link>
+                </p>
+              )}
             </CardPadrao>
           )}
         </div>

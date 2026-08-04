@@ -590,12 +590,126 @@ async function ajusteInventario(dados: {
   }
 }
 
+export type LinhaEntradaNotaFiscal = {
+  itemId: string
+  produtoId: string
+  quantidadeEstoque: number
+  precoCusto: number | null
+  nomeVenda?: string | null
+}
+
+export type ResultadoEntradaNotaFiscal = {
+  movimentou: boolean
+  itensProcessados: number
+  itensIgnorados: number
+  movimentosGravados: number
+  produtos: Array<{ produtoId: string; nomeVenda: string; quantidade: number }>
+}
+
+/**
+ * Lança estoque físico + fiscal a partir da consolidação de uma NFe.
+ * Idempotente por item/dimensão (chaves nfe:{notaId}:item:{itemId}:{dim}).
+ */
+async function aplicarEntradaNotaFiscal(dados: {
+  companyId: string
+  notaId: string
+  usuarioId: string
+  pessoaId?: string | null
+  linhas: LinhaEntradaNotaFiscal[]
+}): Promise<ResultadoEntradaNotaFiscal> {
+  let itensProcessados = 0
+  let itensIgnorados = 0
+  let movimentosGravados = 0
+  const produtosMap = new Map<string, { produtoId: string; nomeVenda: string; quantidade: number }>()
+
+  for (const linha of dados.linhas) {
+    const produto = await repositorioDeEstoque.buscarProdutoEstoque(
+      dados.companyId,
+      linha.produtoId
+    )
+    if (!produto || !produto.controlaEstoque) {
+      itensIgnorados += 1
+      continue
+    }
+
+    const quantidade = arredondarQtd(Number(linha.quantidadeEstoque))
+    if (!Number.isFinite(quantidade) || quantidade <= 0) {
+      throw new ErroDaAplicacao(
+        `Quantidade inválida para entrada de estoque do item ${linha.itemId}`,
+        400
+      )
+    }
+
+    const precoCusto = linha.precoCusto
+    if (precoCusto != null && (!Number.isFinite(precoCusto) || precoCusto < 0)) {
+      throw new ErroDaAplicacao(
+        `precoCusto inválido para entrada de estoque do item ${linha.itemId}`,
+        400
+      )
+    }
+
+    const base = {
+      companyId: dados.companyId,
+      produtoId: linha.produtoId,
+      tipoMovimento: 'entrada_nf',
+      quantidade,
+      origem: 'nfe',
+      origemId: dados.notaId,
+      observacao: null as string | null,
+      usuarioId: dados.usuarioId,
+      pessoaId: dados.pessoaId ?? null,
+      precoCusto,
+    }
+
+    const fisico = await registrarMovimentoEstoque({
+      ...base,
+      dimensao: 'fisico',
+      chaveIdempotencia: `nfe:${dados.notaId}:item:${linha.itemId}:fisico`,
+    })
+    const fiscal = await registrarMovimentoEstoque({
+      ...base,
+      dimensao: 'fiscal',
+      chaveIdempotencia: `nfe:${dados.notaId}:item:${linha.itemId}:fiscal`,
+    })
+
+    if (!fisico.idempotente) movimentosGravados += 1
+    if (!fiscal.idempotente) movimentosGravados += 1
+    itensProcessados += 1
+
+    const nomeVenda = (linha.nomeVenda ?? produto.nomeVenda ?? '').trim() || produto.nomeVenda
+    const existente = produtosMap.get(linha.produtoId)
+    if (existente) {
+      existente.quantidade = arredondarQtd(existente.quantidade + quantidade)
+    } else {
+      produtosMap.set(linha.produtoId, {
+        produtoId: linha.produtoId,
+        nomeVenda,
+        quantidade,
+      })
+    }
+  }
+
+  return {
+    movimentou: itensProcessados > 0,
+    itensProcessados,
+    itensIgnorados,
+    movimentosGravados,
+    produtos: [...produtosMap.values()],
+  }
+}
+
+async function existeMovimentoOrigemNfe(companyId: string, notaId: string): Promise<boolean> {
+  return repositorioDeEstoque.existeMovimentoPorOrigem(companyId, 'nfe', notaId)
+}
+
 export const servicoDeEstoque = {
   registrarMovimentoEstoque,
   obterSaldosAtuais,
   obterKardex,
   listarResumo,
   ajusteInventario,
+  aplicarEntradaNotaFiscal,
+  existeMovimentoOrigemNfe,
 }
 
 export const _testesEstoque = {

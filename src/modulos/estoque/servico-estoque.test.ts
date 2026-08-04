@@ -20,6 +20,7 @@ vi.mock('./repositorio-estoque.js', () => ({
     listarSaldosComProduto: vi.fn(),
     garantirSaldoZero: vi.fn(),
     fornecedorVinculadoAoProduto: vi.fn(),
+    existeMovimentoPorOrigem: vi.fn(),
     clientePrisma: {
       $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn({})),
     },
@@ -531,5 +532,205 @@ describe('ajusteInventario', () => {
       expect.anything(),
       expect.objectContaining({ quantidade: -2, precoCusto: null })
     )
+  })
+})
+
+describe('aplicarEntradaNotaFiscal', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(repositorioDeEstoque.clientePrisma.$transaction).mockImplementation(
+      async (fn: (tx: unknown) => Promise<unknown>) => fn({})
+    )
+    vi.mocked(repositorioDeEstoque.buscarMovimentoPorChave).mockResolvedValue(null)
+    vi.mocked(repositorioDeEstoque.obterOuCriarSaldo).mockResolvedValue({
+      id: 's1',
+      qtdFisica: 0,
+      qtdReservada: 0,
+      qtdBloqueada: 0,
+      qtdFiscal: 0,
+    } as never)
+    vi.mocked(repositorioDeEstoque.atualizarSaldo).mockImplementation(
+      async (_tx, _id, saldos) =>
+        ({
+          id: 's1',
+          qtdFisica: saldos.qtdFisica,
+          qtdReservada: saldos.qtdReservada,
+          qtdBloqueada: saldos.qtdBloqueada,
+          qtdFiscal: saldos.qtdFiscal,
+        }) as never
+    )
+    vi.mocked(repositorioDeEstoque.criarMovimento).mockImplementation(
+      async (_tx, dados) =>
+        ({
+          id: `m-${dados.chaveIdempotencia}`,
+          dimensao: dados.dimensao,
+          tipoMovimento: dados.tipoMovimento,
+          quantidade: dados.quantidade,
+          saldoDepois: dados.saldoDepois,
+          precoCusto: dados.precoCusto ?? null,
+          origem: dados.origem,
+          origemId: dados.origemId ?? null,
+          chaveIdempotencia: dados.chaveIdempotencia,
+          observacao: dados.observacao ?? null,
+          usuarioId: dados.usuarioId ?? null,
+          pessoaId: dados.pessoaId ?? null,
+          createdAt: new Date('2026-08-04T12:00:00Z'),
+        }) as never
+    )
+  })
+
+  it('grava físico e fiscal com chaves idempotentes', async () => {
+    vi.mocked(repositorioDeEstoque.buscarProdutoEstoque).mockResolvedValue(
+      produtoMock() as never
+    )
+
+    const resultado = await servicoDeEstoque.aplicarEntradaNotaFiscal({
+      companyId: 'c1',
+      notaId: 'nota-1',
+      usuarioId: 'u1',
+      pessoaId: 'forn-1',
+      linhas: [
+        {
+          itemId: 'item-1',
+          produtoId: 'p1',
+          quantidadeEstoque: 10,
+          precoCusto: 5.5,
+          nomeVenda: 'Cimento',
+        },
+      ],
+    })
+
+    expect(resultado.movimentou).toBe(true)
+    expect(resultado.itensProcessados).toBe(1)
+    expect(resultado.itensIgnorados).toBe(0)
+    expect(resultado.movimentosGravados).toBe(2)
+    expect(resultado.produtos).toEqual([
+      { produtoId: 'p1', nomeVenda: 'Cimento', quantidade: 10 },
+    ])
+    expect(repositorioDeEstoque.criarMovimento).toHaveBeenCalledTimes(2)
+    expect(repositorioDeEstoque.criarMovimento).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        dimensao: 'fisico',
+        tipoMovimento: 'entrada_nf',
+        origem: 'nfe',
+        origemId: 'nota-1',
+        chaveIdempotencia: 'nfe:nota-1:item:item-1:fisico',
+        quantidade: 10,
+        precoCusto: 5.5,
+        pessoaId: 'forn-1',
+      })
+    )
+    expect(repositorioDeEstoque.criarMovimento).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        dimensao: 'fiscal',
+        chaveIdempotencia: 'nfe:nota-1:item:item-1:fiscal',
+      })
+    )
+  })
+
+  it('ignora produto que não controla estoque', async () => {
+    vi.mocked(repositorioDeEstoque.buscarProdutoEstoque).mockResolvedValue(
+      produtoMock({ controlaEstoque: false }) as never
+    )
+
+    const resultado = await servicoDeEstoque.aplicarEntradaNotaFiscal({
+      companyId: 'c1',
+      notaId: 'nota-1',
+      usuarioId: 'u1',
+      linhas: [
+        {
+          itemId: 'item-1',
+          produtoId: 'p1',
+          quantidadeEstoque: 10,
+          precoCusto: 1,
+        },
+      ],
+    })
+
+    expect(resultado.movimentou).toBe(false)
+    expect(resultado.itensIgnorados).toBe(1)
+    expect(resultado.itensProcessados).toBe(0)
+    expect(repositorioDeEstoque.criarMovimento).not.toHaveBeenCalled()
+  })
+
+  it('é idempotente na segunda chamada (não conta movimentos novos)', async () => {
+    vi.mocked(repositorioDeEstoque.buscarProdutoEstoque).mockResolvedValue(
+      produtoMock() as never
+    )
+    const existente = {
+      id: 'm-exist',
+      dimensao: 'fisico',
+      tipoMovimento: 'entrada_nf',
+      quantidade: 10,
+      saldoDepois: 10,
+      precoCusto: 5.5,
+      origem: 'nfe',
+      origemId: 'nota-1',
+      chaveIdempotencia: 'nfe:nota-1:item:item-1:fisico',
+      observacao: null,
+      usuarioId: 'u1',
+      pessoaId: null,
+      createdAt: new Date(),
+    }
+    vi.mocked(repositorioDeEstoque.buscarMovimentoPorChave).mockImplementation(
+      async (_c, chave) => {
+        if (chave.includes(':fisico')) return existente as never
+        return {
+          ...existente,
+          id: 'm-fiscal',
+          dimensao: 'fiscal',
+          chaveIdempotencia: 'nfe:nota-1:item:item-1:fiscal',
+        } as never
+      }
+    )
+    vi.mocked(repositorioDeEstoque.buscarSaldo).mockResolvedValue({
+      id: 's1',
+      qtdFisica: 10,
+      qtdReservada: 0,
+      qtdBloqueada: 0,
+      qtdFiscal: 10,
+    } as never)
+
+    const resultado = await servicoDeEstoque.aplicarEntradaNotaFiscal({
+      companyId: 'c1',
+      notaId: 'nota-1',
+      usuarioId: 'u1',
+      linhas: [
+        {
+          itemId: 'item-1',
+          produtoId: 'p1',
+          quantidadeEstoque: 10,
+          precoCusto: 5.5,
+        },
+      ],
+    })
+
+    expect(resultado.itensProcessados).toBe(1)
+    expect(resultado.movimentosGravados).toBe(0)
+    expect(repositorioDeEstoque.criarMovimento).not.toHaveBeenCalled()
+  })
+
+  it('rejeita quantidade inválida quando produto controla estoque', async () => {
+    vi.mocked(repositorioDeEstoque.buscarProdutoEstoque).mockResolvedValue(
+      produtoMock() as never
+    )
+
+    await expect(
+      servicoDeEstoque.aplicarEntradaNotaFiscal({
+        companyId: 'c1',
+        notaId: 'nota-1',
+        usuarioId: 'u1',
+        linhas: [
+          {
+            itemId: 'item-1',
+            produtoId: 'p1',
+            quantidadeEstoque: 0,
+            precoCusto: 1,
+          },
+        ],
+      })
+    ).rejects.toMatchObject({ statusCode: 400 })
   })
 })

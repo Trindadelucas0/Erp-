@@ -194,6 +194,45 @@ export type ItemXmlNfe = {
   pesoKg?: number | null
 }
 
+/**
+ * Itens da consulta Focus `GET /nfes_recebidas/{chave}?completa=1`
+ * (`requisicao_nota_fiscal.itens`) — usado quando o endpoint `.xml` ainda
+ * devolve só o resumo DistDFe (`resNFe`).
+ */
+export function extrairItensDoJsonFocusCompleta(
+  dados: Record<string, unknown> | null | undefined
+): ItemXmlNfe[] {
+  if (!dados || typeof dados !== 'object') return []
+  const req = dados.requisicao_nota_fiscal
+  if (!req || typeof req !== 'object') return []
+  const lista = (req as { itens?: unknown }).itens
+  if (!Array.isArray(lista) || lista.length === 0) return []
+
+  return lista.map((raw, indice) => {
+    const it = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+    const nItem = Number(it.numero_item ?? indice + 1)
+    return {
+      nItem: Number.isFinite(nItem) && nItem > 0 ? nItem : indice + 1,
+      descricao: it.descricao != null ? String(it.descricao) : null,
+      gtin: limparGtin(it.codigo_barras_comercial != null ? String(it.codigo_barras_comercial) : null),
+      codigoProduto: it.codigo_produto != null ? String(it.codigo_produto) : null,
+      ncm: it.codigo_ncm != null ? String(it.codigo_ncm) : null,
+      cfop: it.cfop != null ? String(it.cfop) : null,
+      cst: it.icms_situacao_tributaria != null ? String(it.icms_situacao_tributaria) : null,
+      origem: it.icms_origem != null ? String(it.icms_origem) : null,
+      unidade: it.unidade_comercial != null ? String(it.unidade_comercial) : null,
+      quantidade: parseValor(
+        it.quantidade_comercial != null ? String(it.quantidade_comercial) : null
+      ),
+      valorUnitario: parseValor(
+        it.valor_unitario_comercial != null ? String(it.valor_unitario_comercial) : null
+      ),
+      valorTotal: parseValor(it.valor_bruto != null ? String(it.valor_bruto) : null),
+      pesoKg: null,
+    }
+  })
+}
+
 export function extrairChaveNfseDoXml(xmlBruto: string): string | null {
   const xml = normalizarXmlNfe(xmlBruto)
   const porId = xml.match(/\bId\s*=\s*["'](NFS[A-Za-z0-9]+)["']/i)

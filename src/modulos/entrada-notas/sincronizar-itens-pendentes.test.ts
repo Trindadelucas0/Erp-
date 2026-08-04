@@ -38,11 +38,20 @@ vi.mock('./analise-negociacao/analisar-negociacao.js', () => ({
 }))
 
 vi.mock('../focus-nfe/repositorio-focus-nfe.js', () => ({
-  repositorioFocusNfe: { buscarConfigPorEmpresa: vi.fn().mockResolvedValue(null) },
+  repositorioFocusNfe: {
+    buscarConfigPorEmpresa: vi.fn().mockResolvedValue(null),
+    buscarEmpresaCnpj: vi.fn().mockResolvedValue(null),
+    upsertNfeRecebida: vi.fn(),
+    atualizarDanfe: vi.fn(),
+  },
 }))
 
 vi.mock('../focus-nfe/cliente-focus-nfe.js', () => ({
-  clienteFocusNfe: { manifestar: vi.fn() },
+  clienteFocusNfe: {
+    manifestar: vi.fn(),
+    baixarXml: vi.fn(),
+    consultarNfeRecebida: vi.fn(),
+  },
 }))
 
 vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({
@@ -315,5 +324,98 @@ describe('servicoEntradaNotas.obterDetalhe — reparo automático de itens', () 
     expect(repositorioEntradaNotas.substituirItensDoXml).not.toHaveBeenCalled()
     const nota = resultado.nota as { itens: unknown[] }
     expect(nota.itens).toHaveLength(1)
+  })
+})
+
+const xmlResumoDistDfe = `<?xml version="1.0"?>
+<resNFe versao="1.01">
+  <chNFe>11111111111111111111111111111111111111111111</chNFe>
+  <CNPJ>11222333000181</CNPJ>
+  <xNome>FORNECEDOR SA</xNome>
+  <vNF>55.00</vNF>
+</resNFe>`
+
+describe('servicoEntradaNotas.analisarNota — completa XML incompleto na Focus', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(analisarCadastro).mockImplementation(async ({ itens, fornecedorPessoaId }) => {
+      const itensAtualizados = itens.map((item) => ({
+        id: item.id,
+        produtoId: item.produtoId,
+        vinculoModo: item.vinculoModo,
+        criticaCadastro: !item.produtoId,
+      }))
+      return {
+        resultado: { status: 'ok', avisos: [], bloqueios: [] },
+        fornecedorPessoaId: fornecedorPessoaId ?? null,
+        itensAtualizados,
+      } as never
+    })
+  })
+
+  it('no Reanalisar, baixa XML completo na Focus quando a nota só tem resNFe', async () => {
+    const { repositorioFocusNfe } = await import('../focus-nfe/repositorio-focus-nfe.js')
+    const { clienteFocusNfe } = await import('../focus-nfe/cliente-focus-nfe.js')
+
+    const fixture = buildNotaQuebradaFixture()
+    fixture.xmlConteudo = xmlResumoDistDfe
+    fixture.nfeCompleta = false
+    const fake = ligarRepositorioFake(fixture)
+
+    // Para o pipeline no cadastro (fornecedor ausente) — o que importa é o download Focus.
+    vi.mocked(analisarCadastro).mockResolvedValue({
+      resultado: {
+        status: 'bloqueante',
+        avisos: [],
+        bloqueios: ['Fornecedor não cadastrado.'],
+      },
+      fornecedorPessoaId: null,
+      itensAtualizados: [],
+    } as never)
+
+    vi.mocked(repositorioFocusNfe.buscarConfigPorEmpresa).mockResolvedValue({
+      apiToken: 'token-teste',
+      homologacao: true,
+    } as never)
+    vi.mocked(clienteFocusNfe.manifestar).mockResolvedValue({ sucesso: true } as never)
+    vi.mocked(clienteFocusNfe.baixarXml).mockResolvedValue({
+      sucesso: true,
+      dados: xmlAmostra,
+    } as never)
+    vi.mocked(repositorioFocusNfe.upsertNfeRecebida).mockImplementation(async (dados) => {
+      const estado = fake.getEstado()
+      Object.assign(estado, {
+        xmlConteudo: dados.xmlConteudo,
+        nfeCompleta: dados.nfeCompleta,
+        nomeEmitente: dados.nomeEmitente ?? estado.nomeEmitente,
+        documentoEmitente: dados.documentoEmitente ?? estado.documentoEmitente,
+      })
+      return { registro: estado, criado: false } as never
+    })
+
+    await servicoEntradaNotas.analisarNota('empresa-1', 'nota-1', {
+      forcarReparseItens: true,
+    })
+
+    expect(clienteFocusNfe.baixarXml).toHaveBeenCalled()
+    expect(repositorioFocusNfe.upsertNfeRecebida).toHaveBeenCalled()
+    expect(fake.getEstado().itens).toHaveLength(1)
+  })
+
+  it('abrir detalhe não consulta a Focus quando o XML local é só resumo', async () => {
+    const { clienteFocusNfe } = await import('../focus-nfe/cliente-focus-nfe.js')
+
+    const fixture = buildNotaQuebradaFixture()
+    fixture.xmlConteudo = xmlResumoDistDfe
+    fixture.nfeCompleta = false
+    // Com analiseJson preenchido, obterDetalhe só tenta reparo local (sem Focus).
+    ligarRepositorioFake(fixture)
+
+    const resultado = await servicoEntradaNotas.obterDetalhe('empresa-1', 'nota-1')
+
+    expect(clienteFocusNfe.baixarXml).not.toHaveBeenCalled()
+    expect((resultado.nota as { avisoReparoXml?: string }).avisoReparoXml).toMatch(
+      /não consulta a Focus/i
+    )
   })
 })

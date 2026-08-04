@@ -283,6 +283,18 @@ async function fornecedorVinculadoAoProduto(
   })
 }
 
+async function existeMovimentoPorOrigem(
+  companyId: string,
+  origem: string,
+  origemId: string
+) {
+  const row = await clientePrisma.estoqueMovimento.findFirst({
+    where: { companyId, origem, origemId },
+    select: { id: true },
+  })
+  return Boolean(row)
+}
+
 export const repositorioDeEstoque = {
   mapearSaldos,
   buscarProdutoEstoque,
@@ -296,5 +308,6 @@ export const repositorioDeEstoque = {
   listarSaldosComProduto,
   garantirSaldoZero,
   fornecedorVinculadoAoProduto,
+  existeMovimentoPorOrigem,
   clientePrisma,
 }

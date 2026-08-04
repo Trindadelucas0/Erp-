@@ -18,11 +18,16 @@ vi.mock('../focus-nfe/repositorio-focus-nfe.js', () => ({
       apiToken: 'token',
       homologacao: true,
     }),
+    upsertNfeRecebida: vi.fn(),
+    atualizarDanfe: vi.fn(),
   },
 }))
 
 vi.mock('../focus-nfe/cliente-focus-nfe.js', () => ({
-  clienteFocusNfe: { manifestar: vi.fn().mockResolvedValue(undefined) },
+  clienteFocusNfe: {
+    manifestar: vi.fn().mockResolvedValue(undefined),
+    baixarXml: vi.fn(),
+  },
 }))
 
 vi.mock('../autenticacao/servico-autenticacao.js', () => ({

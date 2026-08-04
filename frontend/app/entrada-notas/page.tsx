@@ -856,7 +856,11 @@ function ConteudoEntradaNotas() {
         descricao={
           painelAnalise
             ? 'Sync automático ~2 min; BUSCAR força agora (Focus + completar + lista)'
-            : 'Lista do banco local — use Filtrar para atualizar'
+            : painel === 'consolidada'
+              ? 'NFe com estoque lançado no kardex (físico + fiscal). NFS-e/CTe documentais não movimentam estoque.'
+              : painel === 'contagem'
+                ? 'Liberadas para contagem — consolide na nota (senha gerente) para lançar estoque no kardex'
+                : 'Lista do banco local — use Filtrar para atualizar'
         }
       >
         {painelAnalise && (
