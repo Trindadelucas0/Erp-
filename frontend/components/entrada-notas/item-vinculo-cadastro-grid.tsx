@@ -81,11 +81,6 @@ function formatarDetalheEmbalagens(qtdEmbalagens: number, undPorEmbalagem: numbe
   return `(${n} ${rotulo} com ${undPorEmbalagem} und cada)`
 }
 
-function formatarUnidade(valor: string | null | undefined): string {
-  const limpo = (valor ?? '').trim()
-  return limpo || '—'
-}
-
 function rotuloProdutoSistema(produto: NonNullable<ItemVinculoCadastro['produto']>) {
   const extras: string[] = []
   const marca = produto.marca?.trim()
@@ -198,14 +193,6 @@ export function ItemVinculoCadastroGrid({
     codOrigSistema !== '—' &&
     codOrigNf.toLowerCase() === codOrigSistema.toLowerCase()
 
-  const unidadeNf = formatarUnidade(item.unidade)
-  const unidadeSistema = vinculado ? formatarUnidade(item.produto?.unidade) : '—'
-  const unidadeBate =
-    vinculado &&
-    unidadeNf !== '—' &&
-    unidadeSistema !== '—' &&
-    unidadeNf.toLowerCase() === unidadeSistema.toLowerCase()
-
   const qtdUnitTexto = formatarQtdUnit(item.quantidade, item.valorUnitario)
 
   const precoUnitarioSistema =
@@ -256,10 +243,6 @@ export function ItemVinculoCadastroGrid({
       <LinhaEspelho rotulo="Código de barras" valor={gtinNf} />
       <LinhaEspelho rotulo="Código original" valor={codOrigNf} />
       <LinhaEspelho rotulo="Qtd × unit." valor={qtdUnitTexto} valorClassName="font-sans" />
-      {fretePorUndTexto != null && (
-        <LinhaEspelho rotulo="Frete por und" valor={fretePorUndTexto} valorClassName="font-sans" />
-      )}
-      <LinhaEspelho rotulo="Custo da entrada" valor={custoEntradaTexto} valorClassName="font-sans" />
     </dl>
   )
 
@@ -313,12 +296,17 @@ export function ItemVinculoCadastroGrid({
           )}
 
           <dl className="flex-1 grid gap-1 text-xs text-muted-foreground">
+            {fretePorUndTexto != null && (
+              <LinhaEspelho
+                rotulo="Frete por und"
+                valor={fretePorUndTexto}
+                valorClassName="font-sans text-foreground"
+              />
+            )}
             <LinhaEspelho
-              rotulo="Unidade"
-              valor={unidadeSistema}
-              valorClassName={cn(
-                unidadeBate && 'font-semibold text-emerald-700 dark:text-emerald-300'
-              )}
+              rotulo="Custo da entrada"
+              valor={custoEntradaTexto}
+              valorClassName="font-sans text-foreground"
             />
             <LinhaEspelho
               rotulo="Código de barras"
