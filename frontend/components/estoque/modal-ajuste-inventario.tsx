@@ -279,9 +279,6 @@ export function ModalAjusteInventario({
           onChange={(e) => setPrecoCusto(e.target.value)}
           placeholder="Ex.: 5,04"
         />
-        <p className="-mt-2 text-xs text-muted-foreground">
-          Snapshot gravado no kardex. Deixe vazio para linha sem custo.
-        </p>
 
         <div className="space-y-2">
           <Label htmlFor="fornecedor-inventario">Fornecedor (opcional)</Label>
