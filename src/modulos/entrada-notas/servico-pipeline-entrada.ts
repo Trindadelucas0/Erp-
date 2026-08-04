@@ -178,7 +178,7 @@ async function completarXmlNfeNaFocusSePreciso(
     undefined,
     cnpjEmpresa
   )
-  if (!manResp.sucesso && manResp.codigoHttp === 429) {
+  if (manResp && !manResp.sucesso && manResp.codigoHttp === 429) {
     await repositorioFocusNfe.atualizarDanfe(nota.id, {
       danfeStatus: 'rate_limit',
       danfeAtualizadoEm: new Date(),
@@ -196,10 +196,12 @@ async function completarXmlNfeNaFocusSePreciso(
       nota!.chaveNfe,
       cnpjEmpresa
     )
-    if (!xmlResp.sucesso || typeof xmlResp.dados !== 'string') {
+    if (!xmlResp || !xmlResp.sucesso || typeof xmlResp.dados !== 'string') {
       const msg =
-        xmlResp.sucesso === false ? xmlResp.mensagem : 'Focus devolveu XML vazio.'
-      const eh429 = xmlResp.sucesso === false && xmlResp.codigoHttp === 429
+        xmlResp && xmlResp.sucesso === false
+          ? xmlResp.mensagem
+          : 'Focus devolveu XML vazio.'
+      const eh429 = Boolean(xmlResp && xmlResp.sucesso === false && xmlResp.codigoHttp === 429)
       if (eh429) {
         await repositorioFocusNfe.atualizarDanfe(nota!.id, {
           danfeStatus: 'rate_limit',
@@ -211,7 +213,7 @@ async function completarXmlNfeNaFocusSePreciso(
         notaId,
         chave: nota!.chaveNfe,
         mensagem: msg,
-        codigoHttp: xmlResp.sucesso === false ? xmlResp.codigoHttp : null,
+        codigoHttp: xmlResp && xmlResp.sucesso === false ? xmlResp.codigoHttp : null,
       })
       return null
     }
@@ -235,7 +237,7 @@ async function completarXmlNfeNaFocusSePreciso(
       nota.chaveNfe,
       { cnpj: cnpjEmpresa, completa: true }
     )
-    if (consulta.sucesso && consulta.dados && typeof consulta.dados === 'object') {
+    if (consulta?.sucesso && consulta.dados && typeof consulta.dados === 'object') {
       const dados = consulta.dados as Record<string, unknown>
       itensJson = extrairItensDoJsonFocusCompleta(dados)
       const req = dados.requisicao_nota_fiscal
@@ -250,7 +252,7 @@ async function completarXmlNfeNaFocusSePreciso(
         itensJson: itensJson.length,
         nfeCompletaFocus: dados.nfe_completa ?? null,
       })
-    } else if (!consulta.sucesso) {
+    } else if (consulta && !consulta.sucesso) {
       logFocus('warn', 'reanalisar_consulta_completa_falhou', {
         companyId,
         notaId,
