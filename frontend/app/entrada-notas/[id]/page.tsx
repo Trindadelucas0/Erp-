@@ -231,7 +231,7 @@ type DetalheNota = {
   itens: ItemNota[]
   /** Preenchido quando o reparo automático de XML via Focus falhou (ex.: 429). */
   avisoReparoXml?: string | null
-  /** NFe consolidada com movimentos no kardex (origem nfe). */
+  /** NFe consolidada com movimentos de estoque (origem nfe). */
   estoqueLancado?: boolean
   /** Resumo persistente dos movimentos (reabre no detalhe consolidado). */
   estoqueResumo?: EstoqueResumoLancamento | null
@@ -992,18 +992,18 @@ function ConteudoDetalheEntrada() {
           if (resumo) setEstoqueResumo(resumo)
           if (resumo?.movimentou) {
             setMensagem(
-              `Estoque consolidado: ${resumo.itensProcessados} produto(s) no kardex (físico e fiscal).`
+              `Estoque consolidado: ${resumo.itensProcessados} produto(s) no estoque (físico e fiscal).`
             )
           } else if (ehDocumentalEntrada(data.nota.tipoDocumento)) {
             setMensagem('Nota consolidada (documental — sem movimentação de estoque).')
           } else {
             setMensagem(
-              'Nota consolidada. Nenhum item com controle de estoque foi lançado no kardex.'
+              'Nota consolidada. Nenhum item com controle de estoque foi lançado.'
             )
           }
         } else if (path === '/lancar' && body?.modo === 'contagem') {
           setMensagem(
-            'Liberada para contagem — estoque ainda não foi movimentado. Use Consolidar estoque para lançar no kardex.'
+            'Liberada para contagem — estoque ainda não foi movimentado. Use Consolidar estoque para lançar no estoque.'
           )
         } else if (data.nota.origemLancamento === 'automatica') {
           setMensagem('Entrada automática concluída (Liberar para contagem — sem estoque).')
@@ -2257,7 +2257,7 @@ function ConteudoDetalheEntrada() {
               <p className="mb-3 text-sm text-muted-foreground">
                 {ehDocumental
                   ? 'Conferência documental. Liberar para contagem e consolidar não movimentam estoque.'
-                  : 'Conferência final. Liberar para contagem não movimenta estoque. Consolidar estoque (senha gerente) grava físico e fiscal no kardex.'}
+                  : 'Conferência final. Liberar para contagem não movimenta estoque. Consolidar estoque (senha gerente) grava físico e fiscal no estoque.'}
               </p>
               {abaBloqueada('lancamento') && (
                 <p className="mb-3 text-sm text-amber-700 dark:text-amber-400">
@@ -2315,10 +2315,10 @@ function ConteudoDetalheEntrada() {
                   : problemaResolvido
                     ? ' Problema resolvido — nota fora do fluxo de entrada.'
                     : nota.statusEntrada === 'entrada_contagem'
-                      ? ' Estoque ainda não lançado — informe a senha de gerente e consolide para gravar no kardex.'
+                      ? ' Estoque ainda não lançado — informe a senha de gerente e consolide para gravar no estoque.'
                       : nota.statusEntrada === 'entrada_consolidada' && !ehDocumental
                         ? nota.estoqueLancado || estoqueResumo?.movimentou
-                          ? ' Estoque lançado no kardex (físico e fiscal). Veja o resumo abaixo.'
+                          ? ' Estoque lançado (físico e fiscal). Veja o resumo abaixo.'
                           : ' Consolidada — sem movimentos de estoque (itens sem produto ou sem controle).'
                         : nota.statusEntrada === 'entrada_consolidada' && ehDocumental
                           ? ' Documental — sem movimentação de estoque.'
@@ -2329,7 +2329,7 @@ function ConteudoDetalheEntrada() {
                   Consulta as abas anteriores (Frete, Cadastro, Fiscal, Negociação) para auditoria.
                   O extrato completo fica em{' '}
                   <Link href="/estoque" className="text-primary underline">
-                    Estoque / Kardex
+                    Estoque
                   </Link>
                   .
                 </p>
@@ -2339,7 +2339,7 @@ function ConteudoDetalheEntrada() {
                   <p className="text-sm text-muted-foreground">
                     {ehDocumental
                       ? 'Consolidar (documental) encerra a entrada sem movimentar estoque.'
-                      : 'Consolidar estoque grava físico e fiscal no kardex (quantidade × embalagem).'}
+                      : 'Consolidar estoque grava físico e fiscal (quantidade × embalagem).'}
                   </p>
                   <div className="flex flex-wrap items-end gap-3">
                     <div>
@@ -2411,7 +2411,7 @@ function ConteudoDetalheEntrada() {
               !ehDocumental)) && (
             <CardPadrao titulo="Estoque lançado">
               <p className="mb-3 text-sm text-muted-foreground">
-                Movimentos de entrada por nota fiscal no físico e no fiscal. Abra o kardex do
+                Movimentos de entrada por nota fiscal no físico e no fiscal. Abra o estoque do
                 produto para conferir.
               </p>
               {estoqueResumo && estoqueResumo.produtos.length > 0 ? (
@@ -2431,7 +2431,7 @@ function ConteudoDetalheEntrada() {
                         href={`/estoque?produtoId=${encodeURIComponent(p.produtoId)}&tipoEstoque=fisico`}
                         className="text-primary text-xs underline"
                       >
-                        Ver no Kardex
+                        Ver no estoque
                       </Link>
                     </li>
                   ))}
@@ -2440,7 +2440,7 @@ function ConteudoDetalheEntrada() {
                 <p className="text-sm text-muted-foreground">
                   Estoque consolidado nesta nota.{' '}
                   <Link href="/estoque" className="text-primary underline">
-                    Abrir Kardex
+                    Abrir estoque
                   </Link>
                 </p>
               )}
