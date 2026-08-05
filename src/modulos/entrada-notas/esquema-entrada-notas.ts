@@ -20,6 +20,12 @@ export const esquemaVoltarEtapa = z.object({
   etapaDestino: z.enum(['cadastro', 'fiscal', 'negociacao', 'frete']),
 })
 
+/** Body opcional de POST /analisar — `pararEm` para avançar uma etapa sem completar o pipeline. */
+export const esquemaAnalisar = z.object({
+  forcarReparseItens: z.boolean().optional(),
+  pararEm: z.enum(['frete', 'cadastro', 'fiscal', 'negociacao']).optional(),
+})
+
 export const esquemaImportarFiscal = z.object({
   itemId: z.string().uuid(),
   ncm: z.boolean().optional(),

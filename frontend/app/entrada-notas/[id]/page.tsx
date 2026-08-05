@@ -437,6 +437,18 @@ function bloqueioRegraRateioAusente(etapa?: ResultadoEtapa | null): boolean {
   )
 }
 
+function bloqueioValorFreteAusente(etapa?: ResultadoEtapa | null): boolean {
+  return (etapa?.bloqueios ?? []).some((b) =>
+    b.toLowerCase().includes('valor do frete')
+  )
+}
+
+function bloqueioCfopEntradaFrete(etapa?: ResultadoEtapa | null): boolean {
+  return (etapa?.bloqueios ?? []).some((b) =>
+    b.toLowerCase().includes('cfop de entrada')
+  )
+}
+
 function formatNumBr(n: number | null | undefined, casas = 2): string {
   if (n == null || !Number.isFinite(n)) return '—'
   return n.toLocaleString('pt-BR', {
@@ -979,13 +991,19 @@ function ConteudoDetalheEntrada() {
         setNota(data.nota)
         setPedidos(data.pedidosDisponiveis ?? [])
         if (data.nota.estoqueResumo) setEstoqueResumo(data.nota.estoqueResumo)
-        if (path !== '/financeiro-frete' && path !== '/definir-cfop-entrada-cte') {
+        if (
+          path !== '/financeiro-frete' &&
+          path !== '/definir-cfop-entrada' &&
+          path !== '/definir-cfop-entrada-cte'
+        ) {
           setAbaAtiva(abaInicial(data.nota))
         }
         if (path === '/analisar' || path.startsWith('/analisar')) {
           setMensagem(mensagemAposAnalisar(data.nota))
         } else if (path === '/financeiro-frete') {
           setMensagem('Prévia financeira do frete salva (stub — sem contas a pagar).')
+        } else if (path === '/definir-cfop-entrada' || path === '/definir-cfop-entrada-cte') {
+          setMensagem('CFOP de entrada atualizado.')
         } else if (path === '/lancar' && body?.modo === 'consolidar') {
           setSenha('')
           const resumo = data.estoqueResumo ?? data.nota.estoqueResumo ?? null
@@ -1027,8 +1045,13 @@ function ConteudoDetalheEntrada() {
         } else if (path.includes('vincular-cte') || path.includes('definir-prazo')) {
           setMensagem(mensagemAposAnalisar(data.nota))
         } else if (path === '/voltar-etapa') {
-          const rotulo = ROTULOS_ETAPA[(body?.etapaDestino as EtapaPipeline) ?? 'cadastro']
-          setMensagem(`Nota reaberta em ${rotulo}. Corrija o necessário e clique em Reanalisar.`)
+          const destino = (body?.etapaDestino as EtapaPipeline) ?? 'cadastro'
+          const rotulo = ROTULOS_ETAPA[destino]
+          setMensagem(
+            destino === 'frete'
+              ? `Nota reaberta em ${rotulo}. Confira e use Avançar para Cadastro (etapa a etapa — Reanalisar completa o fluxo inteiro).`
+              : `Nota reaberta em ${rotulo}. Corrija o necessário e avance etapa a etapa (ou Reanalisar para o fluxo completo).`
+          )
         } else if (path === '/desvincular-item') {
           setMensagem('Produto desvinculado. Concilie o produto correto e clique em Reanalisar.')
         } else if (path === '/vincular-item') {
@@ -1206,7 +1229,10 @@ function ConteudoDetalheEntrada() {
   const ehNfse = nota?.tipoDocumento === 'nfse'
   const ehCte = nota?.tipoDocumento === 'cte'
   const ehNfe55 = !ehDocumental
-
+  /** Frete remetente: aba só leitura (sem exigir/preencher CT-e, CFOP, financeiro). */
+  const freteConsultivo = ehNfe55 && Boolean(nota) && !nota!.exigeCte
+  const freteEditavel = !finalizada && !pipelineBloqueado && !freteConsultivo
+  const cfopFreteSomenteLeitura = finalizada || freteConsultivo
   const fiscalExigeManifesto =
     nota?.analise?.fiscal?.exigeManifesto === true ||
     (nota?.analise?.fiscal?.bloqueiosNaoLiberaveis?.length ?? 0) > 0 ||
@@ -1540,6 +1566,21 @@ function ConteudoDetalheEntrada() {
                 </Button>
               </div>
             ) : null}
+            {ehNfe55 &&
+              !finalizada &&
+              !pipelineBloqueado &&
+              nota.analise?.cadastro?.status === 'ok' && (
+                <div className="mt-3">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={acao || abaBloqueada('fiscal')}
+                    onClick={() => postAcao('/analisar', { pararEm: 'fiscal' })}
+                  >
+                    Avançar para Fiscal
+                  </Button>
+                </div>
+              )}
           </CardPadrao>
 
           <CardPadrao
@@ -1630,6 +1671,21 @@ function ConteudoDetalheEntrada() {
               Divergência de NCM/origem: importe da NF ou liberar críticas. CST/CFOP: desconhecimento ou
               devolução.
             </p>
+            {!finalizada &&
+              !pipelineBloqueado &&
+              (nota.analise?.fiscal?.status === 'ok' ||
+                (nota.criticasLiberadas && !fiscalExigeManifesto && !fiscalBloqueante)) && (
+                <div className="mt-3">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={acao || abaBloqueada('negociacao')}
+                    onClick={() => postAcao('/analisar', { pararEm: 'negociacao' })}
+                  >
+                    Avançar para Negociação
+                  </Button>
+                </div>
+              )}
           </CardPadrao>
           <CardPadrao titulo="Itens — NCM / origem / CST / CFOP de entrada">
             <div className="space-y-4">
@@ -1711,6 +1767,21 @@ function ConteudoDetalheEntrada() {
         <div className="space-y-4">
           <CardPadrao titulo="Análise de negociação">
             <EtapaResumo etapa={nota.analise?.negociacao} />
+            {!finalizada &&
+              !pipelineBloqueado &&
+              (nota.analise?.negociacao?.status === 'ok' ||
+                (nota.criticasLiberadas && !negociacaoBloqueante)) && (
+                <div className="mt-3">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={acao || abaBloqueada('lancamento')}
+                    onClick={() => postAcao('/analisar')}
+                  >
+                    Avançar para Lançamento
+                  </Button>
+                </div>
+              )}
           </CardPadrao>
           <CardPadrao titulo="Pedido e prazo">
             <div className="flex flex-wrap items-end gap-3 text-sm">
@@ -1811,6 +1882,12 @@ function ConteudoDetalheEntrada() {
           {ehNfe55 && (
             <CardPadrao titulo="Frete da mercadoria">
               <EtapaResumo etapa={nota.analise?.frete} />
+              {freteConsultivo && (
+                <p className="mt-3 text-sm text-muted-foreground">
+                  Frete do remetente — etapa consultiva. Não é necessário vincular CT-e nem
+                  preencher CFOP/financeiro; o fluxo segue para Cadastro automaticamente.
+                </p>
+              )}
               {bloqueioRegraRateioAusente(nota.analise?.frete) && (
                 <div className="mt-3 space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
                   <p className="text-destructive">
@@ -1824,6 +1901,32 @@ function ConteudoDetalheEntrada() {
                   )}
                 </div>
               )}
+              {bloqueioValorFreteAusente(nota.analise?.frete) && (
+                <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                  Valor do Frete ausente ou zerado. Vincule um CT-e com valor ou confira o frete
+                  no XML e depois Reanalisar.
+                </div>
+              )}
+              {bloqueioCfopEntradaFrete(nota.analise?.frete) && (
+                <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                  Escolha o CFOP de entrada do CT-e (Trocar na lista abaixo) e depois Reanalisar.
+                </div>
+              )}
+              {!finalizada &&
+                !pipelineBloqueado &&
+                nota.analise?.frete?.status === 'ok' &&
+                etapaEfetiva(nota) === 'frete' && (
+                  <div className="mt-3">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={acao}
+                      onClick={() => postAcao('/analisar', { pararEm: 'cadastro' })}
+                    >
+                      Avançar para Cadastro
+                    </Button>
+                  </div>
+                )}
               <p className="mt-2 text-sm">
                 <span className="text-muted-foreground">modFrete:</span> {rotuloModFrete(nota.modFrete)}
               </p>
@@ -1960,7 +2063,11 @@ function ConteudoDetalheEntrada() {
           {ehNfe55 && (
             <CardPadrao titulo="CT-es vinculados">
               {(nota.ctesVinculados ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nenhum CT-e vinculado.</p>
+                <p className="text-sm text-muted-foreground">
+                  {freteConsultivo
+                    ? 'Nenhum CT-e vinculado (não exigido no frete do remetente).'
+                    : 'Nenhum CT-e vinculado.'}
+                </p>
               ) : (
                 <ul className="space-y-2 text-sm">
                   {nota.ctesVinculados!.map((v) => (
@@ -1982,7 +2089,7 @@ function ConteudoDetalheEntrada() {
                             cfopXml={v.cfop}
                             cfopEntrada={v.cfopEntrada}
                             cfopsEntrada={cfopsEntrada}
-                            finalizada={finalizada}
+                            finalizada={cfopFreteSomenteLeitura}
                             acao={acao}
                             onDefinirCfopEntrada={(cfopId) =>
                               void definirCfopEntradaCte(v.cte!.id, cfopId)
@@ -1996,7 +2103,7 @@ function ConteudoDetalheEntrada() {
                             <Link href={`/entrada-notas/${v.cte.id}`}>Abrir CT-e</Link>
                           </Button>
                         )}
-                        {!finalizada && (
+                        {freteEditavel && (
                           <Button
                             type="button"
                             size="sm"
@@ -2012,7 +2119,7 @@ function ConteudoDetalheEntrada() {
                   ))}
                 </ul>
               )}
-              {!finalizada && (
+              {freteEditavel && (
                 <div
                   className={
                     nota.exigeCte && (nota.ctesVinculados ?? []).length === 0
@@ -2075,10 +2182,15 @@ function ConteudoDetalheEntrada() {
                 (duplicatas: número, vencimento e valor) sem título no financeiro. Ao adicionar
                 parcela o valor é dividido por igual; você pode ajustar depois. A soma deve bater
                 com o Valor Frete (total do transporte).
+                {freteConsultivo
+                  ? ' Frete do remetente: edição desabilitada (somente consulta).'
+                  : ''}
               </p>
               {ehNfe55 && (nota.ctesVinculados ?? []).length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  Vincule um CT-e para preencher o financeiro do frete.
+                  {freteConsultivo
+                    ? 'Sem CT-e — financeiro do frete não se aplica nesta etapa consultiva.'
+                    : 'Vincule um CT-e para preencher o financeiro do frete.'}
                 </p>
               ) : (
                 (() => {
@@ -2094,7 +2206,9 @@ function ConteudoDetalheEntrada() {
                   const vencOk =
                     finParcelas.length === 1 ||
                     finParcelas.every((p) => Boolean(p.vencimento?.trim()))
-                  const podeSalvar = !acao && valoresOk && vencOk && somaBate
+                  const podeSalvar =
+                    freteEditavel && !acao && valoresOk && vencOk && somaBate
+                  const camposDesabilitados = !freteEditavel
                   return (
                     <div className="space-y-3">
                       <div className="flex flex-wrap gap-4 text-sm">
@@ -2141,7 +2255,7 @@ function ConteudoDetalheEntrada() {
                                     )
                                   )
                                 }}
-                                disabled={finalizada || pipelineBloqueado}
+                                disabled={camposDesabilitados}
                                 autoComplete="off"
                               />
                             </div>
@@ -2160,7 +2274,7 @@ function ConteudoDetalheEntrada() {
                                     )
                                   )
                                 }}
-                                disabled={finalizada || pipelineBloqueado}
+                                disabled={camposDesabilitados}
                               />
                             </div>
                             <div className="min-w-[120px]">
@@ -2178,10 +2292,10 @@ function ConteudoDetalheEntrada() {
                                     prev.map((p, i) => (i === index ? { ...p, valor: v } : p))
                                   )
                                 }}
-                                disabled={finalizada || pipelineBloqueado}
+                                disabled={camposDesabilitados}
                               />
                             </div>
-                            {!finalizada && !pipelineBloqueado && finParcelas.length > 1 && (
+                            {freteEditavel && finParcelas.length > 1 && (
                               <Button
                                 type="button"
                                 size="sm"
@@ -2202,7 +2316,7 @@ function ConteudoDetalheEntrada() {
                           </div>
                         ))}
                       </div>
-                      {!finalizada && !pipelineBloqueado && (
+                      {freteEditavel && (
                         <div className="flex flex-wrap items-center gap-2">
                           <Button
                             type="button"

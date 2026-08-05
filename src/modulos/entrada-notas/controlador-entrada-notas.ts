@@ -23,6 +23,7 @@ import {
   esquemaVincularCte,
   esquemaVincularItem,
   esquemaVoltarEtapa,
+  esquemaAnalisar,
 } from './esquema-entrada-notas.js'
 
 function companyIdDe(requisicao: FastifyRequest): string {
@@ -48,11 +49,15 @@ async function detalhe(requisicao: FastifyRequest, resposta: FastifyReply) {
 }
 
 async function analisar(requisicao: FastifyRequest, resposta: FastifyReply) {
-  const body = (requisicao.body ?? {}) as { forcarReparseItens?: boolean }
+  const parsed = esquemaAnalisar.safeParse(requisicao.body ?? {})
+  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
   const dados = await servicoEntradaNotas.analisarNota(
     companyIdDe(requisicao),
     notaIdDe(requisicao),
-    { forcarReparseItens: body.forcarReparseItens === true }
+    {
+      forcarReparseItens: parsed.data.forcarReparseItens === true,
+      pararEm: parsed.data.pararEm,
+    }
   )
   return resposta.send(dados)
 }

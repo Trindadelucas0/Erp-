@@ -81,11 +81,6 @@ function formatarDetalheEmbalagens(qtdEmbalagens: number, undPorEmbalagem: numbe
   return `(${n} ${rotulo} com ${undPorEmbalagem} und cada)`
 }
 
-function formatarUnidade(valor: string | null | undefined): string {
-  const limpo = (valor ?? '').trim()
-  return limpo || '—'
-}
-
 function rotuloProdutoSistema(produto: NonNullable<ItemVinculoCadastro['produto']>) {
   const extras: string[] = []
   const marca = produto.marca?.trim()
@@ -199,7 +194,6 @@ export function ItemVinculoCadastroGrid({
     codOrigNf.toLowerCase() === codOrigSistema.toLowerCase()
 
   const qtdUnitTexto = formatarQtdUnit(item.quantidade, item.valorUnitario)
-  const unidadeNf = formatarUnidade(item.unidade)
 
   const precoUnitarioSistema =
     temMultiploCompra &&
@@ -224,7 +218,6 @@ export function ItemVinculoCadastroGrid({
     fretePorUnd != null
       ? fretePorUnd.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
       : null
-  const custoEntradaTexto = formatarValorUnitario(precoUnitarioSistema)
   const qtdEntradaValorSistema = (
     <>
       <span>{formatarQtdUnit(qtdEntrada, precoUnitarioSistema)}</span>
@@ -243,10 +236,10 @@ export function ItemVinculoCadastroGrid({
     Boolean(onGravarCodigoOriginal)
 
   const rotuloVinculo = rotuloVinculoModo(item.vinculoModo)
+  const unidadeNfTitulo = item.unidade?.trim() || null
 
   const dlEspelho = (
     <dl className="grid gap-1 text-xs text-muted-foreground">
-      <LinhaEspelho rotulo="Unidade" valor={unidadeNf} />
       <LinhaEspelho rotulo="Código de barras" valor={gtinNf} />
       <LinhaEspelho rotulo="Código original" valor={codOrigNf} />
       <LinhaEspelho rotulo="Qtd × unit." valor={qtdUnitTexto} valorClassName="font-sans" />
@@ -263,6 +256,11 @@ export function ItemVinculoCadastroGrid({
           <p className="text-xs font-bold uppercase tracking-wider text-foreground">NF</p>
           <p className="font-medium">
             #{item.nItem} {item.descricao ?? '—'}
+            {unidadeNfTitulo ? (
+              <span className="ml-1 text-xs font-normal text-muted-foreground">
+                · {unidadeNfTitulo}
+              </span>
+            ) : null}
           </p>
           {dlEspelho}
         </section>
@@ -310,11 +308,6 @@ export function ItemVinculoCadastroGrid({
                 valorClassName="font-sans text-foreground"
               />
             )}
-            <LinhaEspelho
-              rotulo="Custo da entrada"
-              valor={custoEntradaTexto}
-              valorClassName="font-sans text-foreground"
-            />
             <LinhaEspelho
               rotulo="Código de barras"
               valor={gtinSistema}

@@ -6,6 +6,7 @@ vi.mock('./repositorio-entrada-notas.js', () => ({
     buscarNotaPorId: vi.fn(),
     contarItens: vi.fn(),
     substituirItensDoXml: vi.fn(),
+    backfillUnidadeItensDoXml: vi.fn(),
     atualizarNota: vi.fn(),
     atualizarItem: vi.fn(),
     buscarFornecedorPorCnpj: vi.fn(),
@@ -188,6 +189,7 @@ function ligarRepositorioFake(estadoInicial: ReturnType<typeof buildNotaFixture>
     return notaEstado.itens.find((item) => item.id === id) as never
   })
   vi.mocked(repositorioEntradaNotas.contarItens).mockResolvedValue(1)
+  vi.mocked(repositorioEntradaNotas.backfillUnidadeItensDoXml).mockResolvedValue(0 as never)
   vi.mocked(repositorioEntradaNotas.listarPedidosAbertosFornecedor).mockResolvedValue([])
   vi.mocked(repositorioEntradaNotas.mapaCodigoOriginalPorProduto).mockResolvedValue(new Map())
   vi.mocked(repositorioEntradaNotas.buscarFlagsFornecedorEntrada).mockResolvedValue(null)
@@ -299,6 +301,109 @@ describe('servicoEntradaNotas.voltarEtapa', () => {
     expect(nota.analise.frete.status).toBe('bloqueante')
     expect(nota.itens[0]?.custoFreteRateado).toBeNull()
     expect(analisarCadastro).not.toHaveBeenCalled()
+  })
+
+  it('voltar para frete com CT-e + regra deixa frete ok e para; analisar com pararEm cadastro para no cadastro', async () => {
+    ligarRepositorioFake(
+      buildNotaFixture({
+        statusEntrada: 'em_analise',
+        etapaAtual: 'cadastro',
+        origemLancamento: null,
+        modFrete: '1',
+        itens: [
+          {
+            id: 'item-1',
+            nItem: 1,
+            descricao: 'Item',
+            gtin: null,
+            codigoProduto: null,
+            ncm: null,
+            cfop: null,
+            cst: null,
+            origem: null,
+            quantidade: 1,
+            valorUnitario: 10,
+            valorTotal: 10,
+            pesoKg: null,
+            custoFreteRateado: 5.5,
+            cfopEntradaId: null,
+            produtoId: 'produto-1',
+            vinculoModo: 'barras',
+            criticaCadastro: false,
+            criticaFiscal: false,
+            criticaNegociacao: false,
+            produto: null,
+          },
+        ],
+        analiseJson: {
+          versao: 1,
+          atualizadoEm: new Date().toISOString(),
+          frete: { status: 'ok', avisos: [], bloqueios: [] },
+          cadastro: { status: 'ok', avisos: [], bloqueios: [] },
+          fiscal: { status: 'pendente', avisos: [], bloqueios: [] },
+          negociacao: { status: 'pendente', avisos: [], bloqueios: [] },
+          autoLancado: false,
+          motivoParada: null,
+        },
+        vinculosComoNfe: [
+          {
+            id: 'vinculo-1',
+            valorFrete: 12,
+            cteRecebida: {
+              id: 'cte-1',
+              valorTotal: 12,
+              xmlConteudo: null,
+              cfopEntradaId: 'cfop-entrada-1',
+              chaveNfe: '2'.repeat(44),
+              nomeEmitente: 'Transportadora',
+            },
+          },
+        ],
+        fornecedorPessoa: {
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor' } }],
+        },
+      })
+    )
+
+    const aposVoltar = await servicoEntradaNotas.voltarEtapa(
+      'empresa-1',
+      'nota-1',
+      'usuario-1',
+      'frete'
+    )
+
+    const notaParada = aposVoltar.nota as {
+      etapaAtual: string
+      analise: { motivoParada: string | null; frete: { status: string }; cadastro: { status: string } }
+    }
+    expect(notaParada.etapaAtual).toBe('frete')
+    expect(notaParada.analise.frete.status).toBe('ok')
+    expect(notaParada.analise.motivoParada).toBeNull()
+    expect(notaParada.analise.cadastro.status).toBe('pendente')
+    expect(analisarCadastro).not.toHaveBeenCalled()
+
+    vi.mocked(analisarCadastro).mockResolvedValue({
+      resultado: { status: 'ok', avisos: [], bloqueios: [] },
+      fornecedorPessoaId: 'fornecedor-1',
+      itensAtualizados: [
+        { id: 'item-1', produtoId: 'produto-1', vinculoModo: 'barras', criticaCadastro: false },
+      ],
+    } as never)
+
+    const aposAvancar = await servicoEntradaNotas.analisarNota('empresa-1', 'nota-1', {
+      pararEm: 'cadastro',
+    })
+    expect(analisarCadastro).toHaveBeenCalled()
+    expect(analisarFiscalItens).not.toHaveBeenCalled()
+    expect(analisarNegociacao).not.toHaveBeenCalled()
+    const notaAvancada = aposAvancar.nota as {
+      etapaAtual: string
+      analise: { frete: { status: string }; cadastro: { status: string }; motivoParada: string | null }
+    }
+    expect(notaAvancada.analise.frete.status).toBe('ok')
+    expect(notaAvancada.etapaAtual).toBe('cadastro')
+    expect(notaAvancada.analise.cadastro.status).toBe('ok')
+    expect(notaAvancada.analise.motivoParada).toBeNull()
   })
 
   it('rejeita voltar etapa em nota cancelada', async () => {
@@ -576,5 +681,208 @@ describe('servicoEntradaNotas.vincularItem', () => {
       servicoEntradaNotas.vincularItem('empresa-1', 'nota-1', 'item-1', 'produto-inexistente')
     ).rejects.toBeInstanceOf(ErroDaAplicacao)
     expect(repositorioEntradaNotas.atualizarItem).not.toHaveBeenCalled()
+  })
+})
+
+describe('servicoEntradaNotas.analisarNota — frete remetente', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(analisarCadastro).mockResolvedValue({
+      resultado: { status: 'bloqueante', avisos: [], bloqueios: ['Fornecedor sem vínculo.'] },
+      fornecedorPessoaId: null,
+      itensAtualizados: [
+        { id: 'item-1', produtoId: null, vinculoModo: null, criticaCadastro: true },
+      ],
+    } as never)
+    vi.mocked(repositorioEntradaNotas.buscarFornecedorPorCnpj).mockResolvedValue(null)
+  })
+
+  it('com modFrete=0 avança automaticamente ao cadastro (frete consultivo)', async () => {
+    ligarRepositorioFake(
+      buildNotaFixture({
+        statusEntrada: 'em_analise',
+        etapaAtual: 'cadastro',
+        origemLancamento: null,
+        modFrete: '0',
+        analiseJson: null,
+        fornecedorPessoaId: null,
+        fornecedorPessoa: null,
+      })
+    )
+
+    const resultado = await servicoEntradaNotas.analisarNota('empresa-1', 'nota-1')
+    const nota = resultado.nota as {
+      etapaAtual: string
+      analise: {
+        motivoParada: string | null
+        frete: { status: string; avisos: string[] }
+        cadastro: { status: string }
+      }
+      itens: Array<{ custoFreteRateado: number | null }>
+    }
+
+    expect(analisarCadastro).toHaveBeenCalled()
+    expect(nota.analise.frete.status).toBe('ok')
+    expect(nota.analise.frete.avisos.some((a) => /consultiv|remetente/i.test(a))).toBe(true)
+    expect(nota.etapaAtual).toBe('cadastro')
+    expect(nota.analise.motivoParada).toBe('cadastro')
+    expect(nota.analise.cadastro.status).toBe('bloqueante')
+    expect(nota.itens[0]?.custoFreteRateado).toBeNull()
+  })
+
+  it('destinatário sem CT-e continua bloqueante em frete', async () => {
+    ligarRepositorioFake(
+      buildNotaFixture({
+        statusEntrada: 'em_analise',
+        etapaAtual: 'cadastro',
+        origemLancamento: null,
+        modFrete: '1',
+        analiseJson: null,
+        vinculosComoNfe: [],
+        fornecedorPessoa: {
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor' } }],
+        },
+      })
+    )
+
+    const resultado = await servicoEntradaNotas.analisarNota('empresa-1', 'nota-1')
+    const nota = resultado.nota as {
+      etapaAtual: string
+      analise: { motivoParada: string | null; frete: { status: string } }
+    }
+
+    expect(nota.etapaAtual).toBe('frete')
+    expect(nota.analise.motivoParada).toBe('frete')
+    expect(nota.analise.frete.status).toBe('bloqueante')
+    expect(analisarCadastro).not.toHaveBeenCalled()
+  })
+
+  it('destinatário com CT-e sem valor de frete para em frete', async () => {
+    ligarRepositorioFake(
+      buildNotaFixture({
+        statusEntrada: 'em_analise',
+        etapaAtual: 'cadastro',
+        origemLancamento: null,
+        modFrete: '1',
+        analiseJson: null,
+        xmlConteudo: '<NFe><infNFe></infNFe></NFe>',
+        vinculosComoNfe: [
+          {
+            id: 'vinculo-1',
+            valorFrete: 0,
+            cteRecebida: {
+              id: 'cte-1',
+              valorTotal: 0,
+              xmlConteudo: null,
+              cfopEntradaId: 'cfop-1',
+              chaveNfe: '2'.repeat(44),
+              nomeEmitente: 'Transportadora',
+            },
+          },
+        ],
+        fornecedorPessoa: {
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor' } }],
+        },
+      })
+    )
+
+    const resultado = await servicoEntradaNotas.analisarNota('empresa-1', 'nota-1')
+    const nota = resultado.nota as {
+      etapaAtual: string
+      analise: { motivoParada: string | null; frete: { status: string; bloqueios: string[] } }
+    }
+
+    expect(nota.etapaAtual).toBe('frete')
+    expect(nota.analise.motivoParada).toBe('frete')
+    expect(nota.analise.frete.status).toBe('bloqueante')
+    expect(nota.analise.frete.bloqueios.some((b) => /valor do frete/i.test(b))).toBe(true)
+    expect(analisarCadastro).not.toHaveBeenCalled()
+  })
+
+  it('destinatário com CT-e sem CFOP de entrada para em frete', async () => {
+    ligarRepositorioFake(
+      buildNotaFixture({
+        statusEntrada: 'em_analise',
+        etapaAtual: 'cadastro',
+        origemLancamento: null,
+        modFrete: '1',
+        analiseJson: null,
+        vinculosComoNfe: [
+          {
+            id: 'vinculo-1',
+            valorFrete: 20,
+            cteRecebida: {
+              id: 'cte-1',
+              valorTotal: 20,
+              xmlConteudo: null,
+              cfopEntradaId: null,
+              chaveNfe: '2'.repeat(44),
+              nomeEmitente: 'Transportadora',
+            },
+          },
+        ],
+        fornecedorPessoa: {
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor' } }],
+        },
+      })
+    )
+    vi.mocked(repositorioEntradaNotas.mapaSugestaoCfopEntradaPorCodigo).mockResolvedValue(
+      new Map()
+    )
+
+    const resultado = await servicoEntradaNotas.analisarNota('empresa-1', 'nota-1')
+    const nota = resultado.nota as {
+      etapaAtual: string
+      analise: { motivoParada: string | null; frete: { status: string; bloqueios: string[] } }
+    }
+
+    expect(nota.etapaAtual).toBe('frete')
+    expect(nota.analise.motivoParada).toBe('frete')
+    expect(nota.analise.frete.status).toBe('bloqueante')
+    expect(nota.analise.frete.bloqueios.some((b) => /cfop de entrada/i.test(b))).toBe(true)
+    expect(analisarCadastro).not.toHaveBeenCalled()
+  })
+
+  it('destinatário com CT-e + valor + CFOP + rateio grava custoFreteRateado e avança', async () => {
+    const fake = ligarRepositorioFake(
+      buildNotaFixture({
+        statusEntrada: 'em_analise',
+        etapaAtual: 'cadastro',
+        origemLancamento: null,
+        modFrete: '1',
+        analiseJson: null,
+        vinculosComoNfe: [
+          {
+            id: 'vinculo-1',
+            valorFrete: 20,
+            cteRecebida: {
+              id: 'cte-1',
+              valorTotal: 20,
+              xmlConteudo: null,
+              cfopEntradaId: 'cfop-entrada-1',
+              chaveNfe: '2'.repeat(44),
+              nomeEmitente: 'Transportadora',
+            },
+          },
+        ],
+        fornecedorPessoa: {
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor' } }],
+        },
+      })
+    )
+
+    const resultado = await servicoEntradaNotas.analisarNota('empresa-1', 'nota-1')
+    const nota = resultado.nota as {
+      etapaAtual: string
+      analise: { motivoParada: string | null; frete: { status: string } }
+      itens: Array<{ custoFreteRateado: number | null }>
+    }
+
+    expect(nota.analise.frete.status).toBe('ok')
+    expect(analisarCadastro).toHaveBeenCalled()
+    expect(nota.etapaAtual).toBe('cadastro')
+    expect(nota.analise.motivoParada).toBe('cadastro')
+    expect(fake.getEstado().itens[0]?.custoFreteRateado).toBe(20)
+    expect(nota.itens[0]?.custoFreteRateado).toBe(20)
   })
 })
