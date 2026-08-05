@@ -6,11 +6,36 @@ import type { ResultadoEtapa } from '../tipos-analise.js'
 const TOLERANCIA_PRECO = 0.01
 const TOLERANCIA_QTD = 0.0001
 
+export type CategoriaAchadoNegociacao =
+  | 'fora_pedido'
+  | 'quantidade'
+  | 'preco'
+  | 'prazo'
+  | 'pedido'
+
+export type AchadoNegociacao = {
+  categoria: CategoriaAchadoNegociacao
+  severidade: 'bloqueio' | 'aviso'
+  mensagem: string
+  /** Nome do produto (quando o achado é por item). */
+  produto?: string
+  /** Valor na NF (quantidade ou preço unitário). */
+  valorNf?: number
+  /** Valor no pedido (quantidade ou preço unitário). */
+  valorPedido?: number
+  /** Número do pedido de compra vinculado. */
+  numeroPedido?: number
+}
+
 type ItemNf = {
   id: string
   produtoId: string | null
   quantidade: number | null
   valorUnitario: number | null
+  /** Nome de venda do produto no sistema (preferencial). */
+  nomeSistema?: string | null
+  /** xProd da NF — fallback se não houver nomeSistema. */
+  descricaoNf?: string | null
 }
 
 type ItemPo = {
@@ -21,6 +46,22 @@ type ItemPo = {
 }
 
 export type ClassificacaoNegociacao = 'ok' | 'positiva' | 'negativa' | 'sem_pedido'
+
+function rotuloProduto(...candidatos: Array<string | null | undefined>): string {
+  for (const c of candidatos) {
+    const t = (c ?? '').trim()
+    if (t) return t
+  }
+  return 'Produto'
+}
+
+function formatarNumero(n: number, casas = 4): string {
+  if (!Number.isFinite(n)) return String(n)
+  return n.toLocaleString('pt-BR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: casas,
+  })
+}
 
 export function analisarNegociacao(params: {
   itensNf: ItemNf[]
@@ -42,31 +83,54 @@ export function analisarNegociacao(params: {
 } {
   const avisos: string[] = []
   const bloqueios: string[] = []
+  const achados: AchadoNegociacao[] = []
   const itensCritica: Array<{ id: string; criticaNegociacao: boolean }> = []
   const modoDocumental = params.modoDocumental === true
 
+  function pushAchado(achado: AchadoNegociacao) {
+    achados.push(achado)
+    if (achado.severidade === 'bloqueio') bloqueios.push(achado.mensagem)
+    else avisos.push(achado.mensagem)
+  }
+
   if (!params.pedido) {
     if (modoDocumental) {
-      avisos.push(
-        'Entrada documental (uso/consumo): pedido de compra não exigido — liberação sem casamento com PO.'
-      )
+      pushAchado({
+        categoria: 'pedido',
+        severidade: 'aviso',
+        mensagem:
+          'Entrada documental (uso/consumo): pedido de compra não exigido — liberação sem casamento com PO.',
+      })
       for (const item of params.itensNf) {
         itensCritica.push({ id: item.id, criticaNegociacao: false })
       }
       return {
-        resultado: { status: avisos.length > 0 ? 'aviso' : 'ok', avisos, bloqueios },
+        resultado: {
+          status: avisos.length > 0 ? 'aviso' : 'ok',
+          avisos,
+          bloqueios,
+          detalhes: { achados, classificacao: 'sem_pedido' },
+        },
         classificacao: 'sem_pedido',
         itensCritica,
       }
     }
-    bloqueios.push(
-      'Nenhum pedido de compra aberto vinculado ao fornecedor. Selecione um pedido, libere críticas ou use Contato / Desconhecimento.'
-    )
+    pushAchado({
+      categoria: 'pedido',
+      severidade: 'bloqueio',
+      mensagem:
+        'Nenhum pedido de compra aberto vinculado ao fornecedor. Selecione um pedido, libere críticas ou use Contato / Desconhecimento.',
+    })
     for (const item of params.itensNf) {
       itensCritica.push({ id: item.id, criticaNegociacao: true })
     }
     return {
-      resultado: { status: 'bloqueante', avisos, bloqueios },
+      resultado: {
+        status: 'bloqueante',
+        avisos,
+        bloqueios,
+        detalhes: { achados, classificacao: 'sem_pedido' },
+      },
       classificacao: 'sem_pedido',
       itensCritica,
     }
@@ -87,8 +151,16 @@ export function analisarNegociacao(params: {
       (p) => p.produtoId === item.produtoId && !usadosPo.has(`${p.produtoId}:${p.quantidade}:${p.precoUnitario}`)
     )
 
+    const nomeItem = rotuloProduto(item.nomeSistema, item.descricaoNf)
+
     if (!candidato) {
-      bloqueios.push(`Item da NF não está no pedido #${params.pedido.numero}.`)
+      pushAchado({
+        categoria: 'fora_pedido',
+        severidade: 'bloqueio',
+        mensagem: `${nomeItem} não está no pedido #${params.pedido.numero}.`,
+        produto: nomeItem,
+        numeroPedido: params.pedido.numero,
+      })
       critica = true
       temNegativa = true
       itensCritica.push({ id: item.id, criticaNegociacao: critica })
@@ -99,34 +171,58 @@ export function analisarNegociacao(params: {
 
     const qtdNf = item.quantidade ?? 0
     const precoNf = item.valorUnitario ?? 0
-    const nome = candidato.nome ?? candidato.produtoId
+    const nome = rotuloProduto(item.nomeSistema, candidato.nome, item.descricaoNf)
 
     if (Math.abs(qtdNf - candidato.quantidade) > TOLERANCIA_QTD) {
       if (qtdNf > candidato.quantidade) {
-        bloqueios.push(
-          `Quantidade maior que o pedido para ${nome} (NF ${qtdNf} × PO ${candidato.quantidade}).`
-        )
+        pushAchado({
+          categoria: 'quantidade',
+          severidade: 'bloqueio',
+          mensagem: `Quantidade acima do pedido — ${nome} (NF ${formatarNumero(qtdNf)} × pedido ${formatarNumero(candidato.quantidade)}).`,
+          produto: nome,
+          valorNf: qtdNf,
+          valorPedido: candidato.quantidade,
+          numeroPedido: params.pedido.numero,
+        })
         critica = true
         temNegativa = true
       } else {
-        avisos.push(
-          `Quantidade menor que o pedido para ${nome} (NF ${qtdNf} × PO ${candidato.quantidade}) — divergência positiva.`
-        )
+        pushAchado({
+          categoria: 'quantidade',
+          severidade: 'aviso',
+          mensagem: `Quantidade abaixo do pedido — ${nome} (NF ${formatarNumero(qtdNf)} × pedido ${formatarNumero(candidato.quantidade)}).`,
+          produto: nome,
+          valorNf: qtdNf,
+          valorPedido: candidato.quantidade,
+          numeroPedido: params.pedido.numero,
+        })
         temPositiva = true
       }
     }
 
     if (Math.abs(precoNf - candidato.precoUnitario) > TOLERANCIA_PRECO) {
       if (precoNf > candidato.precoUnitario) {
-        bloqueios.push(
-          `Preço maior que o pedido para ${nome} (NF ${precoNf} × PO ${candidato.precoUnitario}).`
-        )
+        pushAchado({
+          categoria: 'preco',
+          severidade: 'bloqueio',
+          mensagem: `Preço acima do pedido — ${nome} (NF ${formatarNumero(precoNf)} × pedido ${formatarNumero(candidato.precoUnitario)}).`,
+          produto: nome,
+          valorNf: precoNf,
+          valorPedido: candidato.precoUnitario,
+          numeroPedido: params.pedido.numero,
+        })
         critica = true
         temNegativa = true
       } else {
-        avisos.push(
-          `Preço menor que o pedido para ${nome} (NF ${precoNf} × PO ${candidato.precoUnitario}) — divergência positiva.`
-        )
+        pushAchado({
+          categoria: 'preco',
+          severidade: 'aviso',
+          mensagem: `Preço abaixo do pedido — ${nome} (NF ${formatarNumero(precoNf)} × pedido ${formatarNumero(candidato.precoUnitario)}).`,
+          produto: nome,
+          valorNf: precoNf,
+          valorPedido: candidato.precoUnitario,
+          numeroPedido: params.pedido.numero,
+        })
         temPositiva = true
       }
     }
@@ -136,18 +232,22 @@ export function analisarNegociacao(params: {
 
   const prazoEfetivo = (params.prazoNf ?? params.prazoInformadoUsuario ?? '').trim()
   if (!prazoEfetivo) {
-    bloqueios.push(
-      'Prazo de pagamento não informado na NF. Preencha o prazo na tela ou libere críticas.'
-    )
+    pushAchado({
+      categoria: 'prazo',
+      severidade: 'bloqueio',
+      mensagem:
+        'Prazo de pagamento não informado na NF. Preencha o prazo na tela ou libere críticas.',
+    })
     temNegativa = true
   } else if (params.pedido.condicaoPagamento) {
     const poPrazo = params.pedido.condicaoPagamento.trim().toLowerCase()
     const nfPrazo = prazoEfetivo.toLowerCase()
     if (poPrazo && nfPrazo && poPrazo !== nfPrazo) {
-      // prazo mais longo = positivo (heurística: se texto diferente, tratar como aviso se usuário liberou)
-      avisos.push(
-        `Prazo/condição diverge do pedido (NF: ${prazoEfetivo} × PO: ${params.pedido.condicaoPagamento}).`
-      )
+      pushAchado({
+        categoria: 'prazo',
+        severidade: 'aviso',
+        mensagem: `Prazo de pagamento diverge do pedido (NF: ${prazoEfetivo} × pedido: ${params.pedido.condicaoPagamento}).`,
+      })
       temPositiva = true
     }
   }
@@ -169,7 +269,12 @@ export function analisarNegociacao(params: {
       status,
       avisos,
       bloqueios,
-      detalhes: { pedidoCompraId: params.pedido.id, numero: params.pedido.numero, classificacao },
+      detalhes: {
+        pedidoCompraId: params.pedido.id,
+        numero: params.pedido.numero,
+        classificacao,
+        achados,
+      },
     },
     classificacao,
     itensCritica,

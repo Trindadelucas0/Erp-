@@ -11,7 +11,7 @@ import {
   useInstanciaDropdownCatalogo,
   useOuvirFechamentoDropdownCatalogo,
 } from '@/lib/dropdown-catalogo'
-import { normalizarTermoBusca, textoContemTermo } from '@/lib/normalizar-busca'
+import { textoContemTodosTermos } from '@/lib/normalizar-busca'
 import { cn } from '@/lib/utils'
 
 export type PessoaOpcao = { id: string; nome: string }
@@ -44,8 +44,8 @@ const LIMITE = 80
 const ALTURA_MAXIMA_LISTA = 240
 
 function filtrarPessoas(pessoas: PessoaOpcao[], termo: string) {
-  if (!normalizarTermoBusca(termo)) return pessoas.slice(0, LIMITE)
-  return pessoas.filter((p) => textoContemTermo(p.nome, termo)).slice(0, LIMITE)
+  if (!termo.trim()) return pessoas.slice(0, LIMITE)
+  return pessoas.filter((p) => textoContemTodosTermos(p.nome, termo)).slice(0, LIMITE)
 }
 
 export function ComboboxPessoa({

@@ -78,10 +78,48 @@ export function somenteDigitos(valor: string): string {
   return valor.replace(/\D/g, '')
 }
 
+/** Palavras separadas por espaço (já normalizadas, sem vazios). */
+export function tokensBusca(termo: string): string[] {
+  return termo
+    .trim()
+    .split(/\s+/)
+    .map((parte) => normalizarTermoBusca(parte))
+    .filter(Boolean)
+}
+
+/** Um trecho/palavra: substring parcial, ignorando acento e caixa. */
 export function textoContemTermo(texto: string, termo: string): boolean {
   const termoNormalizado = normalizarTermoBusca(termo)
   if (!termoNormalizado) return true
   return normalizarTermoBusca(texto).includes(termoNormalizado)
+}
+
+/**
+ * Regra §7.11 — todas as palavras do termo devem aparecer no texto
+ * (AND; ordem irrelevante; trecho parcial).
+ */
+export function textoContemTodosTermos(texto: string, termo: string): boolean {
+  const tokens = tokensBusca(termo)
+  if (!tokens.length) return true
+  const textoNormalizado = normalizarTermoBusca(texto)
+  return tokens.every((token) => textoNormalizado.includes(token))
+}
+
+/**
+ * Todas as palavras devem bater em pelo menos um dos textos
+ * (AND de tokens × OR de campos) — alinhado ao filtro Prisma de catálogo.
+ */
+export function textosContemTodosTermos(
+  textos: Array<string | null | undefined>,
+  termo: string
+): boolean {
+  const tokens = tokensBusca(termo)
+  if (!tokens.length) return true
+  const normalizados = textos
+    .filter((t): t is string => Boolean(t?.trim()))
+    .map((t) => normalizarTermoBusca(t))
+  if (!normalizados.length) return false
+  return tokens.every((token) => normalizados.some((texto) => texto.includes(token)))
 }
 
 export type CadastroPessoaFiltravel = {
@@ -97,19 +135,18 @@ export function filtrarCadastroPessoa<T extends CadastroPessoaFiltravel>(
   itens: T[],
   busca: string
 ): T[] {
-  const termo = normalizarTermoBusca(busca)
-  if (!termo) return itens
+  const tokens = tokensBusca(busca)
+  if (!tokens.length) return itens
 
   const digitosBusca = somenteDigitos(busca)
   return itens.filter((item) => {
-    if (textoContemTermo(item.nome, busca)) return true
-    if (item.nomeFantasia && textoContemTermo(item.nomeFantasia, busca)) return true
-    if (item.email && textoContemTermo(item.email, busca)) return true
-    if (item.estado && textoContemTermo(item.estado, busca)) return true
-    if (digitosBusca) {
+    const camposTexto = [item.nome, item.nomeFantasia, item.email, item.estado]
+    if (textosContemTodosTermos(camposTexto, busca)) return true
+    if (digitosBusca.length >= 3) {
       if (item.cpf && item.cpf.includes(digitosBusca)) return true
       if (item.cnpj && item.cnpj.includes(digitosBusca)) return true
     }
     return false
   })
 }
+

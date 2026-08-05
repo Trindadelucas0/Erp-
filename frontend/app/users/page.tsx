@@ -36,7 +36,7 @@ import { CardPadrao } from '@/components/ui/card-padrao'
 import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
 import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
 import { ordenarLista } from '@/lib/ordenacao-lista'
-import { normalizarTermoBusca, textoContemTermo } from '@/lib/normalizar-busca'
+import { textosContemTodosTermos } from '@/lib/normalizar-busca'
 import { Checkbox } from '@/components/ui/checkbox'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Select, classesOption } from '@/components/ui/select'
@@ -309,12 +309,10 @@ function ConteudoDaPaginaDeUsuarios() {
   // ─── Filtro client-side ────────────────────────────────────────────────────
 
   const listaFiltrada = useMemo(() => {
-    const termo = normalizarTermoBusca(termoBusca)
     return listaDeUsuarios.filter((u) => {
       const matchBusca =
-        !termo ||
-        textoContemTermo(u.name, termoBusca) ||
-        textoContemTermo(u.email, termoBusca)
+        !termoBusca.trim() ||
+        textosContemTodosTermos([u.name, u.email], termoBusca)
       const matchStatus =
         filtroStatus === 'todos' ||
         (filtroStatus === 'ativo' && u.active) ||

@@ -8,6 +8,7 @@ import {
   type DimensaoEstoque,
   type SaldosEstoque,
 } from './tipos-estoque.js'
+import { montarFiltroBuscaCamposEscalares } from '../../compartilhado/utilitarios/filtro-busca-textual.js'
 
 type Tx = Prisma.TransactionClient
 
@@ -221,22 +222,18 @@ async function listarSaldosComProduto(dados: {
   limite?: number
 }) {
   const limite = Math.min(Math.max(dados.limite ?? 50, 1), 200)
-  const busca = dados.q?.trim()
+  const filtroBusca = montarFiltroBuscaCamposEscalares(dados.q, [
+    'nomeVenda',
+    'sku',
+    'codigoBarras',
+    'marca',
+  ])
 
   return clientePrisma.produto.findMany({
     where: {
       companyId: dados.companyId,
       controlaEstoque: true,
-      ...(busca
-        ? {
-            OR: [
-              { nomeVenda: { contains: busca, mode: 'insensitive' } },
-              { sku: { contains: busca, mode: 'insensitive' } },
-              { codigoBarras: { contains: busca, mode: 'insensitive' } },
-              { marca: { contains: busca, mode: 'insensitive' } },
-            ],
-          }
-        : {}),
+      ...(filtroBusca ?? {}),
     },
     select: {
       id: true,

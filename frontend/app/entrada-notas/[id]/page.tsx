@@ -24,8 +24,15 @@ import {
   type CfopOpcaoEntrada,
 } from '@/components/entrada-notas/item-vinculo-fiscal-grid'
 import { CfopEntradaFreteCampos } from '@/components/entrada-notas/cfop-entrada-frete'
+import {
+  NegociacaoResumo,
+  type AchadoNegociacao,
+} from '@/components/entrada-notas/negociacao-resumo'
+import { CadastroResumo } from '@/components/entrada-notas/cadastro-resumo'
+import { EtapaResumo } from '@/components/entrada-notas/etapa-resumo'
 import { CheckCircle2 } from 'lucide-react'
 import { formatarQtdEstoque } from '@/lib/estoque'
+import { SUBTIPO_CFOP_CONHECIMENTO_FRETE } from '@/lib/cfop'
 import { distribuirParcelasIguais } from '@/lib/parcelas-pagamento-pedido'
 import {
   ehDocumentalEntrada,
@@ -41,6 +48,13 @@ type ResultadoEtapa = {
   bloqueios: string[]
   bloqueiosNaoLiberaveis?: string[]
   exigeManifesto?: boolean
+  detalhes?: {
+    achados?: AchadoNegociacao[]
+    pedidoCompraId?: string
+    numero?: number
+    classificacao?: string
+    [key: string]: unknown
+  }
 }
 
 type Analise = {
@@ -714,30 +728,6 @@ function CardProblemaNota({
   )
 }
 
-function EtapaResumo({ etapa }: { etapa?: ResultadoEtapa | null }) {
-  if (!etapa) return <p className="text-sm text-muted-foreground">Pendente</p>
-  return (
-    <div className="space-y-2 text-sm">
-      <p className="font-medium uppercase tracking-wide">{etapa.status}</p>
-      {etapa.bloqueios?.map((b) => (
-        <p key={b} className="text-destructive">
-          {b}
-        </p>
-      ))}
-      {etapa.bloqueiosNaoLiberaveis?.map((b) => (
-        <p key={b} className="text-destructive">
-          {b}
-        </p>
-      ))}
-      {etapa.avisos?.map((a) => (
-        <p key={a} className="text-muted-foreground">
-          {a}
-        </p>
-      ))}
-    </div>
-  )
-}
-
 function ConteudoDetalheEntrada() {
   const params = useParams()
   const router = useRouter()
@@ -746,6 +736,7 @@ function ConteudoDetalheEntrada() {
   const [nota, setNota] = useState<DetalheNota | null>(null)
   const [pedidos, setPedidos] = useState<Array<{ id: string; numero: number; status: string }>>([])
   const [cfopsEntrada, setCfopsEntrada] = useState<CfopOpcaoEntrada[]>([])
+  const [cfopsEntradaFrete, setCfopsEntradaFrete] = useState<CfopOpcaoEntrada[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
   const [mensagem, setMensagem] = useState<string | null>(null)
@@ -758,7 +749,9 @@ function ConteudoDetalheEntrada() {
   const [prazo, setPrazo] = useState('')
   const [buscaProduto, setBuscaProduto] = useState('')
   const [produtos, setProdutos] = useState<ProdutoBusca[]>([])
+  const [carregandoBuscaProduto, setCarregandoBuscaProduto] = useState(false)
   const [itemVinculando, setItemVinculando] = useState<string | null>(null)
+  const buscaProdutoSeq = useRef(0)
   const [acao, setAcao] = useState(false)
   const [xmlBusy, setXmlBusy] = useState(false)
   const [downloadRotulo, setDownloadRotulo] = useState('')
@@ -905,6 +898,21 @@ function ConteudoDetalheEntrada() {
       .get<{ cfops: CfopOpcaoEntrada[] }>('/cfops', { params: { tipo: 'entrada' } })
       .then(({ data }) => {
         if (ativo) setCfopsEntrada(data.cfops ?? [])
+      })
+      .catch(() => {})
+    return () => {
+      ativo = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let ativo = true
+    clienteHttp
+      .get<{ cfops: CfopOpcaoEntrada[] }>('/cfops', {
+        params: { tipo: 'entrada', subtipo: SUBTIPO_CFOP_CONHECIMENTO_FRETE },
+      })
+      .then(({ data }) => {
+        if (ativo) setCfopsEntradaFrete(data.cfops ?? [])
       })
       .catch(() => {})
     return () => {
@@ -1189,17 +1197,33 @@ function ConteudoDetalheEntrada() {
     const q = (termo ?? buscaProduto).trim()
     if (q.length < 2) {
       setProdutos([])
+      setCarregandoBuscaProduto(false)
       return
     }
+    const seq = ++buscaProdutoSeq.current
+    setCarregandoBuscaProduto(true)
     try {
       const { data } = await clienteHttp.get<{ produtos?: ProdutoBusca[] }>('/produtos', {
         params: { q, pagina: 1, limite: 20, resumo: 'true' },
       })
+      if (seq !== buscaProdutoSeq.current) return
       setProdutos(data.produtos ?? [])
     } catch {
+      if (seq !== buscaProdutoSeq.current) return
       setProdutos([])
+    } finally {
+      if (seq === buscaProdutoSeq.current) setCarregandoBuscaProduto(false)
     }
   }
+
+  useEffect(() => {
+    if (!itemVinculando) return
+    const timer = setTimeout(() => {
+      void buscarProdutos(buscaProduto)
+    }, 250)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounce ao digitar
+  }, [buscaProduto, itemVinculando])
 
   function abrirBuscaProduto(item: ItemNota) {
     if (item.produtoId) return
@@ -1207,7 +1231,7 @@ function ConteudoDetalheEntrada() {
     setItemVinculando(item.id)
     setBuscaProduto(termo)
     setProdutos([])
-    void buscarProdutos(termo)
+    setCarregandoBuscaProduto(termo.trim().length >= 2)
   }
 
   const finalizada =
@@ -1237,21 +1261,31 @@ function ConteudoDetalheEntrada() {
     nota?.analise?.fiscal?.exigeManifesto === true ||
     (nota?.analise?.fiscal?.bloqueiosNaoLiberaveis?.length ?? 0) > 0 ||
     (nota?.analise?.fiscal?.bloqueios ?? []).some((m) =>
-      /sem CFOP|sem CST|desconhecimento da opera/i.test(m)
+      /sem CFOP(?! de entrada)|sem CST|desconhecimento da opera/i.test(m)
     )
+  const fiscalExigeCfopEntrada = (nota?.analise?.fiscal?.bloqueios ?? []).some((m) =>
+    /CFOP de entrada/i.test(m)
+  )
   const cadastroBloqueante = nota?.analise?.cadastro?.status === 'bloqueante'
   const fiscalBloqueante = nota?.analise?.fiscal?.status === 'bloqueante'
   const negociacaoBloqueante = nota?.analise?.negociacao?.status === 'bloqueante'
   const freteBloqueante = nota?.analise?.frete?.status === 'bloqueante'
-  const podeLiberarCriticas = !cadastroBloqueante && !fiscalExigeManifesto
+  const podeLiberarCriticas =
+    !cadastroBloqueante && !fiscalExigeManifesto && !fiscalExigeCfopEntrada
   const motivoBloqueioLiberacao = cadastroBloqueante
     ? nota?.fornecedor
       ? 'Cadastro bloqueante não libera por senha — concilie os produtos sem vínculo e reanalise.'
       : 'Cadastro bloqueante não libera por senha — cadastre o fornecedor e vincule produtos, depois reanalise.'
     : fiscalExigeManifesto
       ? 'CST/CFOP impeditivo não libera por senha — use desconhecimento da operação ou devolução.'
-      : null
+      : fiscalExigeCfopEntrada
+        ? 'CFOP de entrada obrigatório — use Trocar em cada item sem sugestão; não libera por senha.'
+        : null
 
+  const fiscalTravaAvanco =
+    fiscalExigeManifesto ||
+    fiscalExigeCfopEntrada ||
+    (fiscalBloqueante && !nota?.criticasLiberadas)
   const abas = useMemo(() => {
     if (!nota) return []
     if (ehNfse) {
@@ -1304,7 +1338,7 @@ function ConteudoDetalheEntrada() {
     if (idAba === 'cadastro') return freteTrava
     if (idAba === 'fiscal') return freteTrava || cadastroBloqueante
     if (idAba === 'negociacao') {
-      return freteTrava || cadastroBloqueante || (fiscalBloqueante && !nota?.criticasLiberadas)
+      return freteTrava || cadastroBloqueante || fiscalTravaAvanco
     }
     if (idAba === 'frete') {
       return false
@@ -1313,8 +1347,7 @@ function ConteudoDetalheEntrada() {
       return (
         freteTrava ||
         cadastroBloqueante ||
-        fiscalExigeManifesto ||
-        (fiscalBloqueante && !nota?.criticasLiberadas) ||
+        fiscalTravaAvanco ||
         (negociacaoBloqueante && !nota?.criticasLiberadas) ||
         freteBloqueante
       )
@@ -1547,7 +1580,7 @@ function ConteudoDetalheEntrada() {
       {abaAtiva === 'cadastro' && (
         <div className="space-y-4">
           <CardPadrao titulo="Análise de cadastro">
-            <EtapaResumo etapa={nota.analise?.cadastro} />
+            <CadastroResumo etapa={nota.analise?.cadastro} itens={nota.itens} />
             {cadastroBloqueante && !nota.fornecedor && nota.documentoEmitente ? (
               <div className="mt-3">
                 <Button
@@ -1609,6 +1642,7 @@ function ConteudoDetalheEntrada() {
                     finalizada={pipelineBloqueado}
                     acao={acao}
                     buscando={itemVinculando === item.id}
+                    carregandoBusca={itemVinculando === item.id && carregandoBuscaProduto}
                     buscaProduto={buscaProduto}
                     produtos={produtos}
                     permitirAcoesVinculo={
@@ -1621,6 +1655,7 @@ function ConteudoDetalheEntrada() {
                       setItemVinculando(null)
                       setProdutos([])
                       setBuscaProduto('')
+                      setCarregandoBuscaProduto(false)
                     }}
                     onBuscaChange={setBuscaProduto}
                     onBuscar={() => void buscarProdutos()}
@@ -1632,6 +1667,7 @@ function ConteudoDetalheEntrada() {
                       setItemVinculando(null)
                       setProdutos([])
                       setBuscaProduto('')
+                      setCarregandoBuscaProduto(false)
                     }}
                     codigoOriginalGravado={
                       Boolean(item.codigoOriginalGravado) ||
@@ -1666,16 +1702,35 @@ function ConteudoDetalheEntrada() {
       {abaAtiva === 'fiscal' && ehNfe55 && (
         <div className="space-y-4">
           <CardPadrao titulo="Análise fiscal">
-            <EtapaResumo etapa={nota.analise?.fiscal} />
+            <EtapaResumo
+              etapa={nota.analise?.fiscal}
+              dica="Resolva NCM/origem (importar ou liberar críticas) e preencha CFOP de entrada em cada item."
+            />
             <p className="mt-2 text-sm text-muted-foreground">
-              Divergência de NCM/origem: importe da NF ou liberar críticas. CST/CFOP: desconhecimento ou
-              devolução.
+              Divergência de NCM/origem: importe da NF ou liberar críticas. CST/CFOP da NF: desconhecimento
+              ou devolução. CFOP de entrada: obrigatório (sugestão ou Trocar) — não libera por senha.
             </p>
-            {!finalizada &&
-              !pipelineBloqueado &&
-              (nota.analise?.fiscal?.status === 'ok' ||
-                (nota.criticasLiberadas && !fiscalExigeManifesto && !fiscalBloqueante)) && (
-                <div className="mt-3">
+            <p className="mt-2 text-sm text-muted-foreground">
+              Cadastrou a sugestão de CFOP de entrada em Configurações → Fiscal → CFOP? Clique em{' '}
+              <span className="font-medium text-foreground">Reanalisar</span> abaixo para puxar o vínculo
+              automático (não sobrescreve CFOP já escolhido com Trocar).
+            </p>
+            {!finalizada && !pipelineBloqueado && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={acao}
+                  onClick={() => postAcao('/analisar', { pararEm: 'fiscal' })}
+                >
+                  Reanalisar
+                </Button>
+                {(nota.analise?.fiscal?.status === 'ok' ||
+                  (nota.criticasLiberadas &&
+                    !fiscalExigeManifesto &&
+                    !fiscalExigeCfopEntrada &&
+                    !fiscalBloqueante)) && (
                   <Button
                     type="button"
                     size="sm"
@@ -1684,8 +1739,9 @@ function ConteudoDetalheEntrada() {
                   >
                     Avançar para Negociação
                   </Button>
-                </div>
-              )}
+                )}
+              </div>
+            )}
           </CardPadrao>
           <CardPadrao titulo="Itens — NCM / origem / CST / CFOP de entrada">
             <div className="space-y-4">
@@ -1766,7 +1822,7 @@ function ConteudoDetalheEntrada() {
       {abaAtiva === 'negociacao' && ehNfe55 && (
         <div className="space-y-4">
           <CardPadrao titulo="Análise de negociação">
-            <EtapaResumo etapa={nota.analise?.negociacao} />
+            <NegociacaoResumo etapa={nota.analise?.negociacao} />
             {!finalizada &&
               !pipelineBloqueado &&
               (nota.analise?.negociacao?.status === 'ok' ||
@@ -2014,7 +2070,7 @@ function ConteudoDetalheEntrada() {
                 <CfopEntradaFreteCampos
                   cfopXml={nota.cfopXml}
                   cfopEntrada={nota.cfopEntrada}
-                  cfopsEntrada={cfopsEntrada}
+                  cfopsEntrada={cfopsEntradaFrete}
                   finalizada={finalizada}
                   acao={acao}
                   onDefinirCfopEntrada={(cfopId) => void definirCfopEntradaCte(nota.id, cfopId)}
@@ -2025,7 +2081,7 @@ function ConteudoDetalheEntrada() {
 
           {ehCte && (
             <CardPadrao titulo="NF-e referenciada">
-              <EtapaResumo etapa={nota.analise?.negociacao} />
+              <NegociacaoResumo etapa={nota.analise?.negociacao} />
               <p className="mt-2 text-sm break-all">
                 Chave no XML: {nota.chaveNfeReferenciada ?? 'não encontrada'}
               </p>
@@ -2088,7 +2144,7 @@ function ConteudoDetalheEntrada() {
                             compacto
                             cfopXml={v.cfop}
                             cfopEntrada={v.cfopEntrada}
-                            cfopsEntrada={cfopsEntrada}
+                            cfopsEntrada={cfopsEntradaFrete}
                             finalizada={cfopFreteSomenteLeitura}
                             acao={acao}
                             onDefinirCfopEntrada={(cfopId) =>
@@ -2203,9 +2259,7 @@ function ConteudoDetalheEntrada() {
                     const n = Number(p.valor)
                     return p.valor !== '' && Number.isFinite(n) && n > 0
                   })
-                  const vencOk =
-                    finParcelas.length === 1 ||
-                    finParcelas.every((p) => Boolean(p.vencimento?.trim()))
+                  const vencOk = finParcelas.every((p) => Boolean(p.vencimento?.trim()))
                   const podeSalvar =
                     freteEditavel && !acao && valoresOk && vencOk && somaBate
                   const camposDesabilitados = !freteEditavel
@@ -2233,6 +2287,11 @@ function ConteudoDetalheEntrada() {
                         <p className="text-xs text-amber-700 dark:text-amber-400">
                           A soma das duplicatas deve ser igual ao Valor Frete (
                           {formatMoedaBr(totalTransporte)}).
+                        </p>
+                      )}
+                      {valoresOk && somaBate && !vencOk && (
+                        <p className="text-xs text-amber-700 dark:text-amber-400">
+                          Informe a data de vencimento de cada parcela antes de salvar a prévia.
                         </p>
                       )}
                       <div className="space-y-2">

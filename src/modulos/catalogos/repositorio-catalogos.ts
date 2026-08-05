@@ -1,7 +1,8 @@
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
+import { montarFiltroBuscaCamposEscalares } from '../../compartilhado/utilitarios/filtro-busca-textual.js'
 
 async function listarCfops(companyId: string, tipo = 'entrada', q?: string) {
-  const termo = q?.trim()
+  const filtroBusca = montarFiltroBuscaCamposEscalares(q, ['codigo', 'nome', 'descricao'])
   const cfops = await clientePrisma.cfop.findMany({
     where: {
       companyId,
@@ -9,15 +10,7 @@ async function listarCfops(companyId: string, tipo = 'entrada', q?: string) {
       ...(tipo === 'entrada'
         ? { natureza: { in: ['entrada', 'importacao'] } }
         : { tipo }),
-      ...(termo
-        ? {
-            OR: [
-              { codigo: { contains: termo, mode: 'insensitive' } },
-              { nome: { contains: termo, mode: 'insensitive' } },
-              { descricao: { contains: termo, mode: 'insensitive' } },
-            ],
-          }
-        : {}),
+      ...(filtroBusca ?? {}),
     },
     orderBy: { codigo: 'asc' },
     take: 50,

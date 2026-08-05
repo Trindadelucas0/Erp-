@@ -4,6 +4,9 @@ import {
   normalizarTermoBusca,
   segmentarTextoPorTermo,
   textoContemTermo,
+  textoContemTodosTermos,
+  textosContemTodosTermos,
+  tokensBusca,
 } from './normalizar-busca'
 
 const cadastros = [
@@ -39,6 +42,26 @@ describe('normalizar-busca', () => {
     expect(textoContemTermo('Qualquer texto', '')).toBe(true)
     expect(textoContemTermo('Qualquer texto', '   ')).toBe(true)
   })
+
+  it('tokensBusca separa por espaço', () => {
+    expect(tokensBusca('esgoto 75')).toEqual(['esgoto', '75'])
+    expect(tokensBusca('  ESG  ')).toEqual(['esg'])
+  })
+
+  it('textoContemTodosTermos exige todas as palavras (ordem irrelevante)', () => {
+    expect(textoContemTodosTermos('TUBO ESGOTO PVC 75MM', 'esgoto 75')).toBe(true)
+    expect(textoContemTodosTermos('TUBO ESGOTO PVC 75MM', '75 esgoto')).toBe(true)
+    expect(textoContemTodosTermos('TUBO ESGOTO PVC 75MM', 'esgoto 110')).toBe(false)
+  })
+
+  it('textoContemTodosTermos aceita trecho parcial', () => {
+    expect(textoContemTodosTermos('TUBO ESGOTO PVC 75MM', 'esg')).toBe(true)
+  })
+
+  it('textosContemTodosTermos permite tokens em campos diferentes', () => {
+    expect(textosContemTodosTermos(['TUBO ESGOTO', 'SKU75'], 'esgoto 75')).toBe(true)
+    expect(textosContemTodosTermos(['TUBO ESGOTO', 'SKU01'], 'esgoto 75')).toBe(false)
+  })
 })
 
 describe('filtrarCadastroPessoa', () => {
@@ -49,6 +72,10 @@ describe('filtrarCadastroPessoa', () => {
 
   it('filtra por nome com acento', () => {
     expect(filtrarCadastroPessoa(cadastros, 'sao paulo')).toHaveLength(1)
+  })
+
+  it('filtra por palavras em campos diferentes', () => {
+    expect(filtrarCadastroPessoa(cadastros, 'saint sp')).toHaveLength(1)
   })
 
   it('filtra por CNPJ parcial', () => {

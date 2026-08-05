@@ -19,6 +19,7 @@ import {
   obterFornecedoresRelacionados,
   sincronizarVinculosDiretosFornecedor,
 } from './vinculos-fornecedor.js'
+import { montarFiltroBuscaTextual } from '../../compartilhado/utilitarios/filtro-busca-textual.js'
 
 export { obterRedeFornecedor } from './vinculos-fornecedor.js'
 
@@ -362,20 +363,20 @@ async function listarPorEmpresa(companyId: string, q?: string) {
   const termo = q?.trim()
   const alfa = termo?.toUpperCase().replace(/[^0-9A-Z]/g, '') ?? ''
   const nums = termo?.replace(/\D/g, '') ?? ''
+  const filtroNome = montarFiltroBuscaTextual(termo, (token) => ({
+    nome: { contains: token, mode: 'insensitive' as const },
+  }))
+
+  const orBusca: Prisma.PessoaWhereInput[] = []
+  if (filtroNome) orBusca.push(filtroNome)
+  if (nums.length >= 3) orBusca.push({ cpf: { contains: nums } })
+  if (alfa.length >= 3) orBusca.push({ cnpj: { contains: alfa } })
 
   const pessoas = await clientePrisma.pessoa.findMany({
     where: {
       companyId,
       papeis: { some: { papel: 'fornecedor' } },
-      ...(termo
-        ? {
-            OR: [
-              { nome: { contains: termo, mode: 'insensitive' } },
-              ...(nums.length >= 3 ? [{ cpf: { contains: nums } }] : []),
-              ...(alfa.length >= 3 ? [{ cnpj: { contains: alfa } }] : []),
-            ],
-          }
-        : {}),
+      ...(termo && orBusca.length ? { OR: orBusca } : {}),
     },
     include: INCLUDE_COMPLETO,
     orderBy: { nome: 'asc' },

@@ -31,7 +31,12 @@ export const esquemaDeEdicaoDeCfop = z.object({
 export type DadosParaCriarCfop = z.infer<typeof esquemaDeCriacaoDeCfop>
 export type DadosParaEditarCfop = z.infer<typeof esquemaDeEdicaoDeCfop>
 
-export { ROTULOS_SUBTIPO_CFOP, SUBTIPOS_CFOP } from './classificacao-cfop.js'
+export {
+  ROTULOS_SUBTIPO_CFOP,
+  SUBTIPOS_CFOP,
+  SUBTIPO_CFOP_CONHECIMENTO_FRETE,
+  cfopEhConhecimentoFrete,
+} from './classificacao-cfop.js'
 
 export function subtipoCfopValido(valor: string | null | undefined): boolean {
   if (!valor) return true

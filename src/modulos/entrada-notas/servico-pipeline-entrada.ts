@@ -27,6 +27,7 @@ import { repositorioEntradaNotas } from './repositorio-entrada-notas.js'
 import type { AnaliseJson, ResultadoEtapa } from './tipos-analise.js'
 import { etapaVazia } from './tipos-analise.js'
 import type { RegrasFiscaisJson } from './analise-fiscal/analisar-fiscal-basico.js'
+import { cfopEhConhecimentoFrete } from '../cfops/classificacao-cfop.js'
 import {
   sanitizarRegrasFiscais,
   type DadosRegrasFiscais,
@@ -57,6 +58,20 @@ function decimalNum(v: { toNumber?: () => number } | number | null | undefined):
   if (typeof v === 'number') return v
   if (typeof v.toNumber === 'function') return v.toNumber()
   return Number(v)
+}
+
+/** Formata Date ou string ISO para `yyyy-mm-dd` (resposta detalhe / stub financeiro). */
+function dataIsoDia(valor: Date | string | null | undefined): string | null {
+  if (valor == null) return null
+  if (typeof valor === 'string') {
+    const s = valor.trim()
+    if (!s) return null
+    return s.length >= 10 ? s.slice(0, 10) : s
+  }
+  if (valor instanceof Date && !Number.isNaN(valor.getTime())) {
+    return valor.toISOString().slice(0, 10)
+  }
+  return null
 }
 
 /** Flags de tipo do fornecedor (Consumo/Prestador/exigir itens) para o pipeline. */
@@ -363,8 +378,8 @@ async function sugerirCfopEntradaItensSemEscolha(
 
 /**
  * Preenche o CFOP de entrada sugerido no documento CT-e (NfeRecebida.cfopEntradaId)
- * a partir do CFOP do XML (`ide/CFOP`). Nunca sobrescreve escolha manual.
- * Retorna true se gravou sugestão.
+ * a partir do CFOP do XML (`ide/CFOP`). Só aceita sugestão com Conhecimento de frete.
+ * Nunca sobrescreve escolha manual. Retorna true se gravou sugestão.
  */
 async function sugerirCfopEntradaCteSemEscolha(
   companyId: string,
@@ -376,14 +391,23 @@ async function sugerirCfopEntradaCteSemEscolha(
   const cfopXml = extrairCfopDoXmlCte(cte.xmlConteudo)
   if (!cfopXml) return false
 
-  const sugestoes = await repositorioEntradaNotas.mapaSugestaoCfopEntradaPorCodigo(companyId, [
-    cfopXml,
-  ])
+  const sugestoes = await repositorioEntradaNotas.mapaSugestaoCfopEntradaPorCodigo(
+    companyId,
+    [cfopXml],
+    { somenteConhecimentoFrete: true }
+  )
   const sugestao = sugestoes.get(cfopXml)
   if (!sugestao) return false
 
   await repositorioEntradaNotas.atualizarNota(cte.id, { cfopEntradaId: sugestao.id })
   return true
+}
+
+function cteTemCfopEntradaConhecimentoFrete(cte: {
+  cfopEntradaId?: string | null
+  cfopEntrada?: { subtipoCfop?: string | null } | null
+}): boolean {
+  return Boolean(cte.cfopEntradaId) && cfopEhConhecimentoFrete(cte.cfopEntrada?.subtipoCfop)
 }
 
 async function carregarRegras(companyId: string): Promise<RegrasFiscaisJson | null> {
@@ -397,14 +421,20 @@ function podeAvancarCadastro(etapa: ResultadoEtapa): boolean {
   return etapa.status !== 'bloqueante'
 }
 
+/** Mensagem canônica — bloqueio de CFOP de entrada do item (aba Fiscal); não libera por senha. */
+const MSG_CFOP_ENTRADA_ITEM =
+  'Informe o CFOP de entrada do(s) item(ns) (sugestão automática indisponível). Use Trocar na aba Fiscal.'
+
 /**
- * Fiscal: CST/CFOP (exigeManifesto) nunca libera; NCM/origem libera com senha.
+ * Fiscal: CST/CFOP (exigeManifesto) e CFOP de entrada do item nunca liberam;
+ * NCM/origem libera com senha.
  */
 function podeAvancarFiscal(etapa: ResultadoEtapa, criticasLiberadas: boolean): boolean {
   if (etapa.status !== 'bloqueante') return true
   if (etapa.exigeManifesto || (etapa.bloqueiosNaoLiberaveis?.length ?? 0) > 0) {
     return false
   }
+  if (fiscalExigeCfopEntrada(etapa)) return false
   return criticasLiberadas
 }
 
@@ -419,10 +449,17 @@ function fiscalExigeManifesto(etapa: ResultadoEtapa | null | undefined): boolean
   if (etapa.exigeManifesto === true || (etapa.bloqueiosNaoLiberaveis?.length ?? 0) > 0) {
     return true
   }
-  // Análises gravadas antes de exigeManifesto: detectar pelo texto do bloqueio
+  // Análises gravadas antes de exigeManifesto: detectar pelo texto do bloqueio.
+  // Não confundir com "CFOP de entrada" (classificação na aba Fiscal).
   return (etapa.bloqueios ?? []).some(
-    (m) => /sem CFOP|sem CST|desconhecimento da opera/i.test(m)
+    (m) => /sem CFOP(?! de entrada)|sem CST|desconhecimento da opera/i.test(m)
   )
+}
+
+/** CFOP de entrada do item vazio — só Trocar; nunca senha / manifesto. */
+function fiscalExigeCfopEntrada(etapa: ResultadoEtapa | null | undefined): boolean {
+  if (!etapa) return false
+  return (etapa.bloqueios ?? []).some((m) => /CFOP de entrada/i.test(m))
 }
 
 function exigeCtePorModFrete(modFrete: string | null | undefined): boolean {
@@ -467,6 +504,12 @@ function pipelineProntoParaLancar(
       ok: false,
       mensagem:
         'Fiscal com CST/CFOP impeditivo: use desconhecimento da operação ou devolução — não é possível lançar.',
+    }
+  }
+  if (fiscalExigeCfopEntrada(analise.fiscal)) {
+    return {
+      ok: false,
+      mensagem: MSG_CFOP_ENTRADA_ITEM,
     }
   }
   if (!podeAvancarFiscal(analise.fiscal, criticasLiberadas)) {
@@ -964,11 +1007,11 @@ async function analisarNota(
     if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
 
     const cteSemCfopEntrada = (nota.vinculosComoNfe ?? []).find(
-      (v) => v.cteRecebida && !v.cteRecebida.cfopEntradaId
+      (v) => v.cteRecebida && !cteTemCfopEntradaConhecimentoFrete(v.cteRecebida)
     )
     if (cteSemCfopEntrada) {
       return await pararEmFreteBloqueante(
-        'Informe o CFOP de entrada do CT-e (sugestão automática indisponível). Use Trocar na aba Frete/CT-e.'
+        'Informe o CFOP de entrada do CT-e com característica Conhecimento de frete (sugestão automática indisponível). Use Trocar na aba Frete/CT-e.'
       )
     }
 
@@ -978,6 +1021,18 @@ async function analisarNota(
     if (!regraRateio) {
       return await pararEmFreteBloqueante(
         'Cadastre a Regra de rateio do frete (CT-e) no fornecedor antes de continuar. Sem essa regra não é possível ratear o custo do frete nos itens.'
+      )
+    }
+
+    const cteSemFinanceiro = (nota.vinculosComoNfe ?? []).find((v) => {
+      const cte = v.cteRecebida
+      if (!cte) return false
+      const stub = cte.despesasEntrada?.[0] ?? null
+      return !financeiroFreteStubCompleto(stub)
+    })
+    if (cteSemFinanceiro) {
+      return await pararEmFreteBloqueante(
+        'Preencha e salve o Financeiro (prévia) do frete com a Data de vencimento de cada parcela antes de continuar.'
       )
     }
 
@@ -1023,6 +1078,8 @@ async function analisarNota(
     modoDocumental,
     itens: nota.itens.map((i) => ({
       id: i.id,
+      nItem: i.nItem,
+      descricao: i.descricao,
       gtin: i.gtin,
       codigoProduto: i.codigoProduto,
       produtoId: i.produtoId,
@@ -1092,7 +1149,22 @@ async function analisarNota(
 
   await sugerirCfopEntradaItensSemEscolha(companyId, nota.itens)
 
-  const fiscalBloqueado = !podeAvancarFiscal(fiscal.resultado, nota.criticasLiberadas)
+  nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+
+  const itensSemCfopEntrada = nota.itens.filter((i) => !i.cfopEntradaId)
+  if (itensSemCfopEntrada.length > 0) {
+    const jaTemMsg = (analise.fiscal.bloqueios ?? []).some((m) => /CFOP de entrada/i.test(m))
+    analise.fiscal = {
+      ...analise.fiscal,
+      status: 'bloqueante',
+      bloqueios: jaTemMsg
+        ? analise.fiscal.bloqueios
+        : [...(analise.fiscal.bloqueios ?? []), MSG_CFOP_ENTRADA_ITEM],
+    }
+  }
+
+  const fiscalBloqueado = !podeAvancarFiscal(analise.fiscal, nota.criticasLiberadas)
   if (fiscalBloqueado || opcoes?.pararEm === 'fiscal') {
     analise.motivoParada = fiscalBloqueado ? 'fiscal' : null
     await repositorioEntradaNotas.atualizarNota(notaId, {
@@ -1126,6 +1198,8 @@ async function analisarNota(
       produtoId: i.produtoId,
       quantidade: decimalNum(i.quantidade),
       valorUnitario: decimalNum(i.valorUnitario),
+      nomeSistema: i.produto?.nomeVenda,
+      descricaoNf: i.descricao,
     })),
     pedido: pedido
       ? {
@@ -1598,9 +1672,7 @@ async function obterDetalhe(
             ? {
                 id: despesaStub.id,
                 numeroDocumento: despesaStub.numeroDocumento ?? null,
-                vencimento: despesaStub.vencimento
-                  ? despesaStub.vencimento.toISOString().slice(0, 10)
-                  : null,
+                vencimento: dataIsoDia(despesaStub.vencimento),
                 valor: decimalNum(despesaStub.valor),
                 status: despesaStub.status,
                 parcelas: parcelasJsonParaResposta(despesaStub.parcelas, {
@@ -1643,7 +1715,7 @@ async function obterDetalhe(
         origem: d.origem,
         pessoaId: d.pessoaId,
         numeroDocumento: d.numeroDocumento ?? null,
-        vencimento: d.vencimento ? d.vencimento.toISOString().slice(0, 10) : null,
+        vencimento: dataIsoDia(d.vencimento),
         parcelas: parcelasJsonParaResposta(d.parcelas, {
           numeroDocumento: d.numeroDocumento ?? null,
           vencimento: d.vencimento,
@@ -1753,6 +1825,8 @@ async function recalcularSomenteCadastro(companyId: string, notaId: string) {
     modoDocumental,
     itens: nota.itens.map((i) => ({
       id: i.id,
+      nItem: i.nItem,
+      descricao: i.descricao,
       gtin: i.gtin,
       codigoProduto: i.codigoProduto,
       produtoId: i.produtoId,
@@ -1923,9 +1997,12 @@ async function definirCfopEntradaCte(companyId: string, cteId: string, cfopId: s
     throw new ErroDaAplicacao('CFOP de entrada do frete só se aplica a documentos CT-e.', 400)
   }
 
-  const cfop = await repositorioEntradaNotas.buscarCfopEntradaAtivo(companyId, cfopId)
+  const cfop = await repositorioEntradaNotas.buscarCfopEntradaCteAtivo(companyId, cfopId)
   if (!cfop) {
-    throw new ErroDaAplicacao('CFOP de entrada não encontrado, inativo ou de saída.', 400)
+    throw new ErroDaAplicacao(
+      'CFOP de entrada do CT-e deve ser ativo, de entrada/importação e ter a característica Conhecimento de frete.',
+      400
+    )
   }
 
   await repositorioEntradaNotas.atualizarNota(cteId, { cfopEntradaId: cfop.id })
@@ -1956,6 +2033,9 @@ async function liberarCriticas(companyId: string, notaId: string, usuarioId: str
       'CST/CFOP impeditivo não pode ser liberado por senha. Use desconhecimento da operação ou devolução.',
       400
     )
+  }
+  if (fiscalExigeCfopEntrada(analise?.fiscal)) {
+    throw new ErroDaAplicacao(MSG_CFOP_ENTRADA_ITEM, 400)
   }
 
   const ok = await servicoDeAutenticacao.verificarSenhaDoUsuario(usuarioId, senha)
@@ -2486,25 +2566,37 @@ function normalizarParcelasFinanceiroFrete(
     })
   }
 
-  if (normalizadas.length > 1) {
-    for (const p of normalizadas) {
-      if (!p.vencimento) {
-        throw new ErroDaAplicacao(
-          'Informe a data de vencimento de cada parcela quando houver mais de uma',
-          400
-        )
-      }
+  for (const p of normalizadas) {
+    if (!p.vencimento) {
+      throw new ErroDaAplicacao('Informe a data de vencimento de cada parcela', 400)
     }
   }
 
   return normalizadas
 }
 
+/** Stub Financeiro (prévia) completo: vencimento em todas as duplicatas (regra §7.4). */
+function financeiroFreteStubCompleto(
+  despesa:
+    | {
+        vencimento: Date | string | null
+        parcelas: unknown
+      }
+    | null
+    | undefined
+): boolean {
+  if (!despesa) return false
+  if (Array.isArray(despesa.parcelas) && despesa.parcelas.length > 0) {
+    return despesa.parcelas.every((p) => dataIsoDia((p as { vencimento?: string | Date | null }).vencimento) != null)
+  }
+  return dataIsoDia(despesa.vencimento) != null
+}
+
 function parcelasJsonParaResposta(
   parcelas: unknown,
   fallback: {
     numeroDocumento: string | null
-    vencimento: Date | null
+    vencimento: Date | string | null
     valor: number | null
   }
 ): Array<{
@@ -2519,14 +2611,9 @@ function parcelasJsonParaResposta(
         vencimento?: string | Date | null
         valor?: number | null
       }
-      let venc: string | null = null
-      if (row.vencimento != null && String(row.vencimento).trim()) {
-        const raw = String(row.vencimento)
-        venc = raw.length >= 10 ? raw.slice(0, 10) : raw
-      }
       return {
         numeroDocumento: row.numeroDocumento ?? null,
-        vencimento: venc,
+        vencimento: dataIsoDia(row.vencimento ?? null),
         valor: row.valor != null ? Number(row.valor) : null,
       }
     })
@@ -2534,9 +2621,7 @@ function parcelasJsonParaResposta(
   return [
     {
       numeroDocumento: fallback.numeroDocumento,
-      vencimento: fallback.vencimento
-        ? fallback.vencimento.toISOString().slice(0, 10)
-        : null,
+      vencimento: dataIsoDia(fallback.vencimento),
       valor: fallback.valor,
     },
   ]
@@ -2668,7 +2753,8 @@ async function salvarFinanceiroFrete(
     },
   })
 
-  return obterDetalhe(companyId, notaId)
+  // Atualiza gate frete (prévia com vencimento) sem exigir Reanalisar manual
+  return analisarNota(companyId, notaId)
 }
 
 /**
@@ -2748,6 +2834,11 @@ async function repararVinculosCteTomadorIndevido(companyId: string) {
   return servicoVinculoCte.repararVinculosCteTomadorIndevido(companyId)
 }
 
+/** Cancela CT-e Focus legados cujo tomador ≠ CNPJ da empresa. */
+async function repararCtesTomadorIndevido(companyId: string) {
+  return servicoVinculoCte.repararCtesTomadorIndevido(companyId)
+}
+
 async function listarCtesAguardandoNf(companyId: string) {
   return servicoVinculoCte.listarCtesAguardandoNf(companyId)
 }
@@ -2780,6 +2871,7 @@ export const servicoEntradaNotas = {
   vincularFornecedoresNasNotasPendentes,
   processarVinculosCtePendentes,
   repararVinculosCteTomadorIndevido,
+  repararCtesTomadorIndevido,
   listarCtesAguardandoNf,
   vincularCte,
   desvincularCte,

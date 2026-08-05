@@ -20,6 +20,7 @@ vi.mock('./repositorio-entrada-notas.js', () => ({
     atualizarFiscalProduto: vi.fn(),
     mapaSugestaoCfopEntradaPorCodigo: vi.fn(),
     buscarCfopEntradaAtivo: vi.fn(),
+    buscarCfopEntradaCteAtivo: vi.fn(),
     listarNotasPendentesPorDocumento: vi.fn(),
     listarNotasPendentesSemFornecedor: vi.fn(),
   },

@@ -14,6 +14,13 @@ export const ROTULOS_SUBTIPO_CFOP: Record<SubtipoCfop, string> = {
   '06': 'Doação',
 }
 
+/** Subtipo obrigatório para CFOP de entrada de CT-e / frete (regra permanente §7). */
+export const SUBTIPO_CFOP_CONHECIMENTO_FRETE: SubtipoCfop = '03'
+
+export function cfopEhConhecimentoFrete(subtipoCfop?: string | null): boolean {
+  return subtipoCfop === SUBTIPO_CFOP_CONHECIMENTO_FRETE
+}
+
 export type ClassificacaoCfop = {
   natureza: NaturezaCfop
   abrangencia: AbrangenciaCfop | null

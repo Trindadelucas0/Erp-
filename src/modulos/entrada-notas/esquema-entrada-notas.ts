@@ -104,7 +104,7 @@ export const esquemaVincularCte = z
 /** Uma duplicata/parcela da prévia financeira do frete. */
 export const esquemaParcelaFinanceiroFrete = z.object({
   numeroDocumento: z.string().max(60).nullable().optional(),
-  vencimento: z.string().nullable().optional(),
+  vencimento: z.string().min(1, 'Data de vencimento obrigatória'),
   valor: z.number().finite().nonnegative(),
 })
 
@@ -116,7 +116,7 @@ export const esquemaFinanceiroFrete = z
     parcelas: z.array(esquemaParcelaFinanceiroFrete).min(1).optional(),
     /** Formato antigo (1 parcela) — fallback. */
     numeroDocumento: z.string().max(60).nullable().optional(),
-    vencimento: z.string().nullable().optional(),
+    vencimento: z.string().min(1, 'Data de vencimento obrigatória').nullable().optional(),
     valor: z.number().finite().nonnegative().optional(),
   })
   .refine(
@@ -124,4 +124,11 @@ export const esquemaFinanceiroFrete = z
       (d.parcelas != null && d.parcelas.length > 0) ||
       (d.valor != null && Number.isFinite(d.valor)),
     { message: 'Informe ao menos uma parcela ou o valor' }
+  )
+  .refine(
+    (d) => {
+      if (d.parcelas != null && d.parcelas.length > 0) return true
+      return Boolean(d.vencimento?.trim())
+    },
+    { message: 'Informe a data de vencimento de cada parcela', path: ['vencimento'] }
   )

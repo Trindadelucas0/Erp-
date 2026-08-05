@@ -48,6 +48,7 @@ import {
   prazosValoresIguais,
   sincronizarValoresParcelasComTotal,
   validarSomaParcelasManual,
+  validarVencimentoParcelas,
 } from '@/lib/parcelas-pagamento-pedido'
 import { calcularVencimentoPorDias, formatarDataBr } from '@/lib/prazos-pagamento'
 import {
@@ -973,6 +974,12 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
       if (erroLancamento) {
         setErro(erroLancamento)
         setAbaAtiva('dados-gerais')
+        return
+      }
+      const erroVencimento = validarVencimentoParcelas(form.prazos)
+      if (erroVencimento) {
+        setErro(erroVencimento)
+        setAbaAtiva('pagamento')
         return
       }
     }

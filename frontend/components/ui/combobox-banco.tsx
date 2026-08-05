@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Label } from '@/components/ui/label'
 import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
 import { useFecharAoSairComMouse } from '@/lib/dropdown-catalogo'
-import { normalizarTermoBusca, textoContemTermo } from '@/lib/normalizar-busca'
+import { textoContemTodosTermos } from '@/lib/normalizar-busca'
 import { cn } from '@/lib/utils'
 import { BANCOS_BRASILEIROS } from '@/lib/bancos-brasileiros'
 
@@ -30,12 +30,11 @@ export function ComboboxBanco({ valor, aoMudar, disabled, mensagemDeErro }: Prop
 
   const zonaHover = useFecharAoSairComMouse(fechar, [containerRef])
 
-  const termoBusca = normalizarTermoBusca(busca)
-  const filtrados = termoBusca
+  const filtrados = busca.trim()
     ? BANCOS_BRASILEIROS.filter(
         (b) =>
-          b.codigo.startsWith(termoBusca) ||
-          textoContemTermo(b.nome, busca)
+          b.codigo.startsWith(busca.trim().toLowerCase()) ||
+          textoContemTodosTermos(b.nome, busca)
       ).slice(0, LIMITE_DROPDOWN)
     : BANCOS_BRASILEIROS.slice(0, LIMITE_DROPDOWN)
 

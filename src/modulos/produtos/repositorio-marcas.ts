@@ -1,15 +1,14 @@
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import type { DadosParaCriarMarca } from './esquema-marcas.js'
+import { montarFiltroBuscaCamposEscalares } from '../../compartilhado/utilitarios/filtro-busca-textual.js'
 
 async function listarPorEmpresa(companyId: string, busca?: string) {
-  const termo = busca?.trim()
+  const filtroBusca = montarFiltroBuscaCamposEscalares(busca, ['nome'])
   return clientePrisma.marca.findMany({
     where: {
       companyId,
       ativo: true,
-      ...(termo
-        ? { nome: { contains: termo, mode: 'insensitive' } }
-        : {}),
+      ...(filtroBusca ?? {}),
     },
     orderBy: [{ nome: 'asc' }],
     select: { id: true, nome: true },

@@ -10,10 +10,15 @@ import { normalizarDocumento } from '../../compartilhado/validacoes/documentos.j
 import type { ItemXmlNfe } from '../focus-nfe/parser-xml-nfe.js'
 import { randomUUID } from 'crypto'
 import type { Prisma } from '@prisma/client'
+import {
+  SUBTIPO_CFOP_CONHECIMENTO_FRETE,
+  cfopEhConhecimentoFrete,
+  variantesCodigoCfopParaBusca,
+} from '../cfops/classificacao-cfop.js'
 
 const includeNotaCompleta = {
   cfopEntrada: {
-    select: { id: true, codigo: true, nome: true },
+    select: { id: true, codigo: true, nome: true, subtipoCfop: true },
   },
   itens: {
     orderBy: { nItem: 'asc' as const },
@@ -79,7 +84,7 @@ const includeNotaCompleta = {
           xmlConteudo: true,
           cfopEntradaId: true,
           cfopEntrada: {
-            select: { id: true, codigo: true, nome: true },
+            select: { id: true, codigo: true, nome: true, subtipoCfop: true },
           },
           despesasEntrada: {
             where: { origem: 'cte' },
@@ -428,26 +433,47 @@ async function mapaCodigoOriginalPorProduto(
 /**
  * Para cada código de CFOP da NF, busca o CFOP cadastrado da empresa com esse código
  * e devolve o CFOP de entrada que ele sugere (`Cfop.cfopSugestaoEntradaId`).
- * Chave do mapa = código do CFOP na NF (ex.: "5201").
+ * Aceita código da NF sem ponto (`6102`) e do cadastro com ponto (`6.102`).
+ * Chaves do mapa = todas as variantes, para `Map.get(item.cfop)` funcionar nos dois formatos.
  */
 async function mapaSugestaoCfopEntradaPorCodigo(
   companyId: string,
-  codigos: string[]
+  codigos: string[],
+  opcoes?: { somenteConhecimentoFrete?: boolean }
 ): Promise<Map<string, { id: string; codigo: string; nome: string }>> {
   const unicos = [...new Set(codigos.filter(Boolean))]
   if (unicos.length === 0) return new Map()
 
+  const variantesBusca = [...new Set(unicos.flatMap((c) => variantesCodigoCfopParaBusca(c)))]
+
   const cfops = await clientePrisma.cfop.findMany({
-    where: { companyId, codigo: { in: unicos } },
+    where: { companyId, codigo: { in: variantesBusca } },
     select: {
       codigo: true,
-      cfopSugestaoEntrada: { select: { id: true, codigo: true, nome: true } },
+      cfopSugestaoEntrada: {
+        select: { id: true, codigo: true, nome: true, subtipoCfop: true },
+      },
     },
   })
 
   const mapa = new Map<string, { id: string; codigo: string; nome: string }>()
   for (const c of cfops) {
-    if (c.cfopSugestaoEntrada) mapa.set(c.codigo, c.cfopSugestaoEntrada)
+    const sugestao = c.cfopSugestaoEntrada
+    if (!sugestao) continue
+    if (
+      opcoes?.somenteConhecimentoFrete &&
+      !cfopEhConhecimentoFrete(sugestao.subtipoCfop)
+    ) {
+      continue
+    }
+    const valor = {
+      id: sugestao.id,
+      codigo: sugestao.codigo,
+      nome: sugestao.nome,
+    }
+    for (const chave of variantesCodigoCfopParaBusca(c.codigo)) {
+      mapa.set(chave, valor)
+    }
   }
   return mapa
 }
@@ -461,7 +487,21 @@ async function buscarCfopEntradaAtivo(companyId: string, cfopId: string) {
       ativo: true,
       natureza: { in: ['entrada', 'importacao'] },
     },
-    select: { id: true, codigo: true, nome: true },
+    select: { id: true, codigo: true, nome: true, subtipoCfop: true },
+  })
+}
+
+/** CFOP de entrada válido para CT-e: ativo, entrada/importação e Conhecimento de frete. */
+async function buscarCfopEntradaCteAtivo(companyId: string, cfopId: string) {
+  return clientePrisma.cfop.findFirst({
+    where: {
+      id: cfopId,
+      companyId,
+      ativo: true,
+      natureza: { in: ['entrada', 'importacao'] },
+      subtipoCfop: SUBTIPO_CFOP_CONHECIMENTO_FRETE,
+    },
+    select: { id: true, codigo: true, nome: true, subtipoCfop: true },
   })
 }
 
@@ -557,6 +597,7 @@ export const repositorioEntradaNotas = {
   atualizarFiscalProduto,
   mapaSugestaoCfopEntradaPorCodigo,
   buscarCfopEntradaAtivo,
+  buscarCfopEntradaCteAtivo,
   contarItens,
   listarNotasPendentesPorDocumento,
   listarNotasPendentesSemFornecedor,

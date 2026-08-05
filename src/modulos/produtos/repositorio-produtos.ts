@@ -15,6 +15,7 @@ import {
   type CampoOrdenacaoProdutos,
   type DirecaoOrdenacaoProdutos,
 } from './paginacao-produtos.js'
+import { montarFiltroBuscaTextual } from '../../compartilhado/utilitarios/filtro-busca-textual.js'
 
 export type FiltrosListagemProdutos = {
   busca?: string
@@ -308,34 +309,36 @@ function mapearProdutoLista(produto: ProdutoListaDb, companyId: string) {
   }
 }
 
+function orProdutoPorToken(token: string): Prisma.ProdutoWhereInput {
+  return {
+    OR: [
+      { nomeVenda: { contains: token, mode: 'insensitive' } },
+      { sku: { contains: token, mode: 'insensitive' } },
+      { codigoBarras: { contains: token, mode: 'insensitive' } },
+      { marca: { contains: token, mode: 'insensitive' } },
+      {
+        embalagensMaster: {
+          some: {
+            codigoBarras: { contains: token, mode: 'insensitive' },
+          },
+        },
+      },
+    ],
+  }
+}
+
 function montarWhereListagem(
   companyId: string,
   filtros: FiltrosListagemProdutos
 ): Prisma.ProdutoWhereInput {
   const ids = parseIdsProdutos(filtros.ids)
-  const busca = filtros.busca?.trim()
+  const filtroBusca = montarFiltroBuscaTextual(filtros.busca, orProdutoPorToken)
 
   return {
     companyId,
     ...(ids.length ? { id: { in: ids } } : {}),
     ...(filtros.incluirInativos ? {} : { ativo: true }),
-    ...(busca
-      ? {
-          OR: [
-            { nomeVenda: { contains: busca, mode: 'insensitive' } },
-            { sku: { contains: busca, mode: 'insensitive' } },
-            { codigoBarras: { contains: busca, mode: 'insensitive' } },
-            { marca: { contains: busca, mode: 'insensitive' } },
-            {
-              embalagensMaster: {
-                some: {
-                  codigoBarras: { contains: busca, mode: 'insensitive' },
-                },
-              },
-            },
-          ],
-        }
-      : {}),
+    ...(filtroBusca ?? {}),
   }
 }
 

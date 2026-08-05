@@ -78,12 +78,42 @@ const camposComuns = {
   fornecedoresVinculadosIds: z.array(z.string().uuid()).optional(),
   modalidadeTransportePadrao: z.preprocess(
     nulParaUndefined,
-    z.enum(MODALIDADES_TRANSPORTE_FORNECEDOR).optional()
+    z.enum(MODALIDADES_TRANSPORTE_FORNECEDOR, {
+      required_error: 'Tipo de frete obrigatório',
+      invalid_type_error: 'Tipo de frete inválido',
+    })
   ),
   regraRateioFrete: z.preprocess(
     nulParaUndefined,
     z.enum(['valor', 'peso', 'quantidade', 'igual']).optional()
   ),
+}
+
+function exigeDadosTransporteFornecedor(modalidade: string | undefined): boolean {
+  return modalidade === 'FOB_NOTA' || modalidade === 'FOB_CONHECIMENTO'
+}
+
+function validarRegraRateioFrete(
+  data: {
+    modalidadeTransportePadrao?: string
+    regraRateioFrete?: string
+  },
+  ctx: z.RefinementCtx
+) {
+  if (!exigeDadosTransporteFornecedor(data.modalidadeTransportePadrao)) return
+  if (data.regraRateioFrete) return
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    message: 'Regra de rateio do frete obrigatória',
+    path: ['regraRateioFrete'],
+  })
+}
+
+function limparRegraRateioSeCif<
+  T extends { modalidadeTransportePadrao?: string; regraRateioFrete?: string },
+>(data: T): T {
+  if (exigeDadosTransporteFornecedor(data.modalidadeTransportePadrao)) return data
+  return { ...data, regraRateioFrete: undefined }
 }
 
 export const esquemaDeContatoItem = z
@@ -189,15 +219,16 @@ export const esquemaDeCriacaoDeFornecedorPJ = z.object({
   ...camposArrays,
 })
 
-export const esquemaDeCriacaoDeFornecedor = z.discriminatedUnion('tipo', [
-  esquemaDeCriacaoDeFornecedorPF,
-  esquemaDeCriacaoDeFornecedorPJ,
-])
+const esquemaDeFornecedorComRegrasFrete = z
+  .discriminatedUnion('tipo', [
+    esquemaDeCriacaoDeFornecedorPF,
+    esquemaDeCriacaoDeFornecedorPJ,
+  ])
+  .superRefine(validarRegraRateioFrete)
+  .transform(limparRegraRateioSeCif)
 
-export const esquemaDeEdicaoDeFornecedor = z.discriminatedUnion('tipo', [
-  esquemaDeCriacaoDeFornecedorPF,
-  esquemaDeCriacaoDeFornecedorPJ,
-])
+export const esquemaDeCriacaoDeFornecedor = esquemaDeFornecedorComRegrasFrete
+export const esquemaDeEdicaoDeFornecedor = esquemaDeFornecedorComRegrasFrete
 
 export const esquemaDeAtivarFornecedor = z.object({
   ativo: z.boolean(),

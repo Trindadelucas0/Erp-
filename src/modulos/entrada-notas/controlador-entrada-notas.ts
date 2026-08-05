@@ -317,8 +317,10 @@ async function vincularCtesPendentes(requisicao: FastifyRequest, resposta: Fasti
     forcarRetryFocus?: boolean
   }
   const companyId = companyIdDe(requisicao)
-  // Abertura da lista / F5: remove auto-vínculos com tomador ≠ empresa (ex. Fortlev↔KNA)
-  // antes de tentar novos vínculos — sem depender do BUSCAR.
+  // Abertura da lista / F5: cancela CT-e Focus com tomador ≠ empresa e remove
+  // auto-vínculos indevidos antes de tentar novos vínculos — sem depender do BUSCAR.
+  const ctesCanceladosTomador =
+    await servicoEntradaNotas.repararCtesTomadorIndevido(companyId)
   const vinculosReparados =
     await servicoEntradaNotas.repararVinculosCteTomadorIndevido(companyId)
   const dados = await servicoEntradaNotas.processarVinculosCtePendentes(companyId, {
@@ -327,7 +329,7 @@ async function vincularCtesPendentes(requisicao: FastifyRequest, resposta: Fasti
     // true = BUSCAR / retry — reprocessa mesmo CT-e que já falhou Focus
     forcarRetryFocus: body.forcarRetryFocus === true,
   })
-  return resposta.send({ ...dados, vinculosReparados })
+  return resposta.send({ ...dados, vinculosReparados, ctesCanceladosTomador })
 }
 
 async function ctesAguardandoNf(requisicao: FastifyRequest, resposta: FastifyReply) {

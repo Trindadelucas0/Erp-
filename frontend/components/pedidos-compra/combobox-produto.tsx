@@ -11,7 +11,7 @@ import {
   useInstanciaDropdownCatalogo,
   useOuvirFechamentoDropdownCatalogo,
 } from '@/lib/dropdown-catalogo'
-import { normalizarTermoBusca, textoContemTermo } from '@/lib/normalizar-busca'
+import { textoContemTermo, tokensBusca } from '@/lib/normalizar-busca'
 import { resolverUrlUpload } from '@/lib/resolver-url-upload'
 import { normalizarCodigoBarrasGtin } from '@/lib/validar-codigo-barras-gtin'
 import { cn } from '@/lib/utils'
@@ -67,16 +67,19 @@ function codigoBarrasCorresponde(codigo: string | null | undefined, termo: strin
 }
 
 export function filtrarProdutos(produtos: ProdutoOpcao[], termo: string) {
-  if (!normalizarTermoBusca(termo)) return produtos
-  return produtos.filter((p) => {
-    if (textoContemTermo(p.nomeVenda, termo)) return true
-    if (p.sku && textoContemTermo(p.sku, termo)) return true
-    if (codigoBarrasCorresponde(p.codigoBarras, termo)) return true
-    if (p.codigosBarrasEmbalagem?.some((codigo) => codigoBarrasCorresponde(codigo, termo))) {
-      return true
-    }
-    return false
-  })
+  const tokens = tokensBusca(termo)
+  if (!tokens.length) return produtos
+  return produtos.filter((p) =>
+    tokens.every(
+      (token) =>
+        textoContemTermo(p.nomeVenda, token) ||
+        (p.sku ? textoContemTermo(p.sku, token) : false) ||
+        codigoBarrasCorresponde(p.codigoBarras, token) ||
+        Boolean(
+          p.codigosBarrasEmbalagem?.some((codigo) => codigoBarrasCorresponde(codigo, token))
+        )
+    )
+  )
 }
 
 export function ComboboxProduto({

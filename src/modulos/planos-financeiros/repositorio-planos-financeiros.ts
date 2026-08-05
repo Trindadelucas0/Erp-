@@ -4,6 +4,7 @@ import type {
   DadosParaEditarPlanoFinanceiro,
 } from './esquema-planos-financeiros.js'
 import type { TipoPlanoFinanceiro } from './codigo-plano-financeiro.js'
+import { montarFiltroBuscaCamposEscalares } from '../../compartilhado/utilitarios/filtro-busca-textual.js'
 
 export type PlanoFinanceiroRegistro = {
   id: string
@@ -54,20 +55,13 @@ async function listarPorEmpresa(
   companyId: string,
   opcoes?: { tipo?: TipoPlanoFinanceiro; incluirInativos?: boolean; q?: string }
 ) {
-  const termo = opcoes?.q?.trim()
+  const filtroBusca = montarFiltroBuscaCamposEscalares(opcoes?.q, ['codigo', 'nome'])
   return clientePrisma.planoFinanceiro.findMany({
     where: {
       companyId,
       ...(opcoes?.tipo ? { tipo: opcoes.tipo } : {}),
       ...(!opcoes?.incluirInativos ? { ativo: true } : {}),
-      ...(termo
-        ? {
-            OR: [
-              { codigo: { contains: termo, mode: 'insensitive' } },
-              { nome: { contains: termo, mode: 'insensitive' } },
-            ],
-          }
-        : {}),
+      ...(filtroBusca ?? {}),
     },
     orderBy: { codigo: 'asc' },
     ...(opcoes?.q && !opcoes?.incluirInativos ? { take: 50 } : {}),
@@ -80,21 +74,14 @@ async function listarFolhasAtivas(
   tipo?: TipoPlanoFinanceiro,
   somenteSubgrupo?: boolean
 ) {
-  const termo = q?.trim()
+  const filtroBusca = montarFiltroBuscaCamposEscalares(q, ['codigo', 'nome'])
   const planos = await clientePrisma.planoFinanceiro.findMany({
     where: {
       companyId,
       ativo: true,
       ...(tipo ? { tipo } : {}),
       ...(somenteSubgrupo ? { parentId: { not: null } } : {}),
-      ...(termo
-        ? {
-            OR: [
-              { codigo: { contains: termo, mode: 'insensitive' } },
-              { nome: { contains: termo, mode: 'insensitive' } },
-            ],
-          }
-        : {}),
+      ...(filtroBusca ?? {}),
     },
     include: { _count: { select: { children: true } } },
     orderBy: { codigo: 'asc' },

@@ -43,17 +43,28 @@ async function validarSugestaoEntrada(
   return id
 }
 
-async function listarParaGestao(companyId: string, q?: string, tipo?: string) {
+async function listarParaGestao(
+  companyId: string,
+  q?: string,
+  tipo?: string,
+  subtipo?: string
+) {
   const cfops = await repositorioDeCfops.listarPorEmpresa(companyId, {
     incluirInativos: true,
     q,
     tipo,
+    subtipo,
   })
   return cfops.map((c) => paraRespostaApi(repositorioDeCfops.mapear(c)))
 }
 
-async function listarParaCatalogo(companyId: string, q?: string, tipo = 'entrada') {
-  const cfops = await repositorioDeCfops.listarPorEmpresa(companyId, { q, tipo })
+async function listarParaCatalogo(
+  companyId: string,
+  q?: string,
+  tipo = 'entrada',
+  subtipo?: string
+) {
+  const cfops = await repositorioDeCfops.listarPorEmpresa(companyId, { q, tipo, subtipo })
   return cfops.map((c) => ({
     id: c.id,
     codigo: c.codigo,

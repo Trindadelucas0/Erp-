@@ -18,6 +18,14 @@ const produtos: ProdutoOpcao[] = [
     codigoBarras: null,
     codigosBarrasEmbalagem: [],
   },
+  {
+    id: '3',
+    nomeVenda: 'TUBO ESGOTO PVC 75MM',
+    sku: 'ESG75',
+    unidade: 'UN',
+    codigoBarras: null,
+    codigosBarrasEmbalagem: [],
+  },
 ]
 
 function gerarProdutos(quantidade: number): ProdutoOpcao[] {
@@ -65,5 +73,20 @@ describe('filtrarProdutos', () => {
   it('com termo amplo retorna todos os matches sem truncar em 80', () => {
     const lista = gerarProdutos(100)
     expect(filtrarProdutos(lista, 'PRODUTO TESTE')).toHaveLength(100)
+  })
+
+  it('exige todas as palavras-chave (AND) mesmo separadas no nome', () => {
+    expect(filtrarProdutos(produtos, 'esgoto 75')).toHaveLength(1)
+    expect(filtrarProdutos(produtos, 'esgoto 75')[0]?.id).toBe('3')
+  })
+
+  it('aceita trecho parcial da palavra', () => {
+    expect(filtrarProdutos(produtos, 'esg')).toHaveLength(1)
+    expect(filtrarProdutos(produtos, 'esg')[0]?.id).toBe('3')
+  })
+
+  it('permite tokens em campos diferentes (nome + sku)', () => {
+    expect(filtrarProdutos(produtos, 'tubo esg75')).toHaveLength(1)
+    expect(filtrarProdutos(produtos, 'tubo esg75')[0]?.id).toBe('3')
   })
 })

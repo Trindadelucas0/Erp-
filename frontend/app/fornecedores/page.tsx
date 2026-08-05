@@ -86,7 +86,11 @@ import {
   type CreditoFornecedorComMovimentos,
 } from '@/components/fornecedores/lista-creditos-fornecedor'
 import { SelectPadrao } from '@/components/ui/select-padrao'
-import { MODALIDADES, normalizarModalidadeTransporte } from '@/lib/pedido-compra-shared'
+import {
+  MODALIDADES,
+  exigeDadosTransporte,
+  normalizarModalidadeTransporte,
+} from '@/lib/pedido-compra-shared'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -351,6 +355,8 @@ const PREFIXO_ERRO_POR_CAMPO: Record<string, string> = {
   enderecos: 'Endereço',
   dadosBancarios: 'Dados Bancários',
   planosFinanceiros: 'Outros',
+  modalidadeTransportePadrao: 'Outros',
+  regraRateioFrete: 'Outros',
 }
 
 function contaBancariaTemAlgumCampo(db: DadosBancarioForm): boolean {
@@ -493,6 +499,11 @@ function validarFormFornecedor(form: FormFornecedor): ErrosDoForm {
 
   if (!form.tipoRevenda && !form.tipoConsumo && !form.tipoPrestadorServico)
     erros.tipoFornecedor = 'selecione ao menos um tipo de fornecedor'
+
+  if (!form.modalidadeTransportePadrao)
+    erros.modalidadeTransportePadrao = 'Tipo de frete obrigatório'
+  else if (exigeDadosTransporte(form.modalidadeTransportePadrao) && !form.regraRateioFrete)
+    erros.regraRateioFrete = 'Regra de rateio do frete obrigatória'
 
   const erroDadosBancarios = validarDadosBancarios(form.dadosBancarios)
   if (erroDadosBancarios) erros.dadosBancarios = erroDadosBancarios
@@ -728,7 +739,13 @@ function ConteudoDaPaginaDeFornecedores() {
       },
       {
         id: 'outros',
-        validar: () => true,
+        validar: () => {
+          const f = formRef.current
+          if (!f.tipoRevenda && !f.tipoConsumo && !f.tipoPrestadorServico) return false
+          if (!f.modalidadeTransportePadrao) return false
+          if (exigeDadosTransporte(f.modalidadeTransportePadrao) && !f.regraRateioFrete) return false
+          return !validarPlanosFinanceirosFornecedor(f)
+        },
       },
     ],
     []
@@ -1225,7 +1242,9 @@ function ConteudoDaPaginaDeFornecedores() {
       permitirVinculoManual: form.permitirVinculoManual,
       exigirItensEntrada: form.exigirItensEntrada,
       modalidadeTransportePadrao: form.modalidadeTransportePadrao || undefined,
-      regraRateioFrete: form.regraRateioFrete || null,
+      regraRateioFrete: exigeDadosTransporte(form.modalidadeTransportePadrao)
+        ? form.regraRateioFrete || null
+        : null,
       prazosPagamento,
       planosFinanceirosIds: form.planosFinanceiros.map((p) => p.id),
       cfopsEntradaIds: form.cfopsEntrada.map((c) => c.id),
@@ -1834,37 +1853,42 @@ function ConteudoDaPaginaDeFornecedores() {
                   <SelectPadrao
                     rotulo="Tipo de frete"
                     valor={form.modalidadeTransportePadrao}
-                    aoMudar={(v) => set('modalidadeTransportePadrao', v)}
+                    aoMudar={(v) => {
+                      set('modalidadeTransportePadrao', v)
+                      if (!exigeDadosTransporte(v)) set('regraRateioFrete', '')
+                    }}
                     opcoes={MODALIDADES}
                     placeholder="Selecione"
+                    obrigatorio
+                    mensagemDeErro={erroVisivel('modalidadeTransportePadrao')}
                     disabled={somenteLeitura}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Usado no Pedido de compra como sugestão. Na Entrada de Notas vale o frete da
-                    nota fiscal (modFrete).
-                  </p>
                 </div>
 
-                <div className="space-y-1">
-                  <SelectPadrao
-                    rotulo="Regra de rateio do frete (CT-e)"
-                    valor={form.regraRateioFrete}
-                    aoMudar={(v) => set('regraRateioFrete', v)}
-                    opcoes={[
-                      { value: 'valor', label: 'Proporcional ao valor dos itens' },
-                      { value: 'peso', label: 'Proporcional ao peso' },
-                      { value: 'quantidade', label: 'Proporcional à quantidade' },
-                      { value: 'igual', label: 'Igual entre os itens' },
-                    ]}
-                    placeholder="Selecione"
-                    disabled={somenteLeitura}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Usada na Entrada de Notas para ratear o custo do CT-e nos itens. Se ficar
-                    vazia e houver frete a ratear, a aba Frete trava até o cadastro ser
-                    ajustado.
-                  </p>
-                </div>
+                {exigeDadosTransporte(form.modalidadeTransportePadrao) && (
+                  <div className="space-y-1">
+                    <SelectPadrao
+                      rotulo="Regra de rateio do frete (CT-e)"
+                      valor={form.regraRateioFrete}
+                      aoMudar={(v) => set('regraRateioFrete', v)}
+                      opcoes={[
+                        { value: 'valor', label: 'Proporcional ao valor dos itens' },
+                        { value: 'peso', label: 'Proporcional ao peso' },
+                        { value: 'quantidade', label: 'Proporcional à quantidade' },
+                        { value: 'igual', label: 'Igual entre os itens' },
+                      ]}
+                      placeholder="Selecione"
+                      obrigatorio
+                      mensagemDeErro={erroVisivel('regraRateioFrete')}
+                      disabled={somenteLeitura}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Usada na Entrada de Notas para ratear o custo do CT-e nos itens. Se ficar
+                      vazia e houver frete a ratear, a aba Frete trava até o cadastro ser
+                      ajustado.
+                    </p>
+                  </div>
+                )}
 
                 {(form.tipoConsumo || form.tipoPrestadorServico) && (
                   <div className="space-y-2">

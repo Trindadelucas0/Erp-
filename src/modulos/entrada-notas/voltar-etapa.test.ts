@@ -20,6 +20,7 @@ vi.mock('./repositorio-entrada-notas.js', () => ({
     atualizarFiscalProduto: vi.fn(),
     mapaSugestaoCfopEntradaPorCodigo: vi.fn(),
     buscarCfopEntradaAtivo: vi.fn(),
+    buscarCfopEntradaCteAtivo: vi.fn(),
     listarNotasPendentesPorDocumento: vi.fn(),
     listarNotasPendentesSemFornecedor: vi.fn(),
   },
@@ -61,7 +62,14 @@ vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({
   },
 }))
 
+vi.mock('../autenticacao/servico-autenticacao.js', () => ({
+  servicoDeAutenticacao: {
+    verificarSenhaDoUsuario: vi.fn(),
+  },
+}))
+
 import { repositorioEntradaNotas } from './repositorio-entrada-notas.js'
+import { servicoDeAutenticacao } from '../autenticacao/servico-autenticacao.js'
 import { analisarCadastro } from './analise-cadastro/analisar-cadastro.js'
 import { analisarFiscalItens } from './analise-fiscal/analisar-fiscal-itens.js'
 import { analisarNegociacao } from './analise-negociacao/analisar-negociacao.js'
@@ -354,8 +362,21 @@ describe('servicoEntradaNotas.voltarEtapa', () => {
               valorTotal: 12,
               xmlConteudo: null,
               cfopEntradaId: 'cfop-entrada-1',
+              cfopEntrada: { id: 'cfop-entrada-1', codigo: '1.353', nome: 'Frete', subtipoCfop: '03' },
               chaveNfe: '2'.repeat(44),
               nomeEmitente: 'Transportadora',
+              despesasEntrada: [
+                {
+                  id: 'desp-1',
+                  origem: 'cte',
+                  vencimento: new Date('2026-09-01T12:00:00'),
+                  numeroDocumento: '1',
+                  valor: 12,
+                  parcelas: [
+                    { numeroDocumento: '1', vencimento: '2026-09-01', valor: 12 },
+                  ],
+                },
+              ],
             },
           },
         ],
@@ -843,7 +864,52 @@ describe('servicoEntradaNotas.analisarNota — frete remetente', () => {
     expect(analisarCadastro).not.toHaveBeenCalled()
   })
 
-  it('destinatário com CT-e + valor + CFOP + rateio grava custoFreteRateado e avança', async () => {
+  it('destinatário com CT-e + valor + CFOP + rateio sem financeiro para em frete', async () => {
+    ligarRepositorioFake(
+      buildNotaFixture({
+        statusEntrada: 'em_analise',
+        etapaAtual: 'cadastro',
+        origemLancamento: null,
+        modFrete: '1',
+        analiseJson: null,
+        vinculosComoNfe: [
+          {
+            id: 'vinculo-1',
+            valorFrete: 20,
+            cteRecebida: {
+              id: 'cte-1',
+              valorTotal: 20,
+              xmlConteudo: null,
+              cfopEntradaId: 'cfop-entrada-1',
+              cfopEntrada: { id: 'cfop-entrada-1', codigo: '1.353', nome: 'Frete', subtipoCfop: '03' },
+              chaveNfe: '2'.repeat(44),
+              nomeEmitente: 'Transportadora',
+              despesasEntrada: [],
+            },
+          },
+        ],
+        fornecedorPessoa: {
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor' } }],
+        },
+      })
+    )
+
+    const resultado = await servicoEntradaNotas.analisarNota('empresa-1', 'nota-1')
+    const nota = resultado.nota as {
+      etapaAtual: string
+      analise: { motivoParada: string | null; frete: { status: string; bloqueios: string[] } }
+    }
+
+    expect(nota.etapaAtual).toBe('frete')
+    expect(nota.analise.motivoParada).toBe('frete')
+    expect(nota.analise.frete.status).toBe('bloqueante')
+    expect(nota.analise.frete.bloqueios.some((b) => /Financeiro \(prévia\)|vencimento/i.test(b))).toBe(
+      true
+    )
+    expect(analisarCadastro).not.toHaveBeenCalled()
+  })
+
+  it('destinatário com CT-e + valor + CFOP + rateio + prévia grava custoFreteRateado e avança', async () => {
     const fake = ligarRepositorioFake(
       buildNotaFixture({
         statusEntrada: 'em_analise',
@@ -860,8 +926,21 @@ describe('servicoEntradaNotas.analisarNota — frete remetente', () => {
               valorTotal: 20,
               xmlConteudo: null,
               cfopEntradaId: 'cfop-entrada-1',
+              cfopEntrada: { id: 'cfop-entrada-1', codigo: '1.353', nome: 'Frete', subtipoCfop: '03' },
               chaveNfe: '2'.repeat(44),
               nomeEmitente: 'Transportadora',
+              despesasEntrada: [
+                {
+                  id: 'desp-1',
+                  origem: 'cte',
+                  vencimento: new Date('2026-09-01T12:00:00'),
+                  numeroDocumento: '5406',
+                  valor: 20,
+                  parcelas: [
+                    { numeroDocumento: '5406', vencimento: '2026-09-01', valor: 20 },
+                  ],
+                },
+              ],
             },
           },
         ],
@@ -884,5 +963,179 @@ describe('servicoEntradaNotas.analisarNota — frete remetente', () => {
     expect(nota.analise.motivoParada).toBe('cadastro')
     expect(fake.getEstado().itens[0]?.custoFreteRateado).toBe(20)
     expect(nota.itens[0]?.custoFreteRateado).toBe(20)
+  })
+})
+
+describe('gate fiscal — CFOP de entrada obrigatório', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(analisarCadastro).mockResolvedValue({
+      resultado: { status: 'ok', avisos: [], bloqueios: [] },
+      fornecedorPessoaId: 'fornecedor-1',
+      itensAtualizados: [
+        { id: 'item-1', produtoId: 'produto-1', vinculoModo: 'barras', criticaCadastro: false },
+      ],
+    } as never)
+    vi.mocked(analisarFiscalItens).mockReturnValue({
+      resultado: { status: 'ok', avisos: [], bloqueios: [] },
+      itensCritica: [{ id: 'item-1', criticaFiscal: false }],
+    } as never)
+    vi.mocked(analisarNegociacao).mockReturnValue({
+      resultado: { status: 'bloqueante', avisos: [], bloqueios: ['Sem pedido'] },
+      classificacao: 'sem_pedido',
+      itensCritica: [{ id: 'item-1', criticaNegociacao: true }],
+    } as never)
+    vi.mocked(repositorioEntradaNotas.mapaSugestaoCfopEntradaPorCodigo).mockResolvedValue(
+      new Map()
+    )
+  })
+
+  function itemFiscal(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'item-1',
+      nItem: 1,
+      descricao: 'Produto',
+      gtin: null,
+      codigoProduto: 'X',
+      ncm: '39174090',
+      cfop: '6102',
+      cst: '00',
+      origem: '0',
+      quantidade: 1,
+      valorUnitario: 10,
+      valorTotal: 10,
+      pesoKg: null,
+      custoFreteRateado: null,
+      cfopEntradaId: null,
+      produtoId: 'produto-1',
+      vinculoModo: 'barras',
+      criticaCadastro: false,
+      criticaFiscal: false,
+      criticaNegociacao: false,
+      produto: { ncm: '39174090', codigoOrigem: '0' },
+      ...overrides,
+    }
+  }
+
+  it('para em fiscal quando item sem cfopEntradaId (sem sugestão)', async () => {
+    ligarRepositorioFake(
+      buildNotaFixture({
+        statusEntrada: 'em_analise',
+        etapaAtual: 'cadastro',
+        origemLancamento: null,
+        criticasLiberadas: false,
+        modFrete: '0',
+        analiseJson: null,
+        itens: [itemFiscal()],
+      })
+    )
+
+    const resultado = await servicoEntradaNotas.analisarNota('empresa-1', 'nota-1')
+    const nota = resultado.nota as {
+      etapaAtual: string
+      analise: {
+        motivoParada: string | null
+        fiscal: { status: string; bloqueios: string[] }
+      }
+    }
+
+    expect(analisarFiscalItens).toHaveBeenCalled()
+    expect(nota.etapaAtual).toBe('fiscal')
+    expect(nota.analise.motivoParada).toBe('fiscal')
+    expect(nota.analise.fiscal.status).toBe('bloqueante')
+    expect(nota.analise.fiscal.bloqueios.some((b) => /CFOP de entrada/i.test(b))).toBe(true)
+    expect(analisarNegociacao).not.toHaveBeenCalled()
+  })
+
+  it('com cfopEntradaId preenchido avança além do fiscal', async () => {
+    ligarRepositorioFake(
+      buildNotaFixture({
+        statusEntrada: 'em_analise',
+        etapaAtual: 'cadastro',
+        origemLancamento: null,
+        criticasLiberadas: false,
+        modFrete: '0',
+        analiseJson: null,
+        itens: [itemFiscal({ cfopEntradaId: 'cfop-entrada-1' })],
+      })
+    )
+
+    const resultado = await servicoEntradaNotas.analisarNota('empresa-1', 'nota-1')
+    const nota = resultado.nota as {
+      etapaAtual: string
+      analise: {
+        motivoParada: string | null
+        fiscal: { status: string; bloqueios: string[] }
+      }
+    }
+
+    expect(nota.analise.fiscal.status).toBe('ok')
+    expect(nota.analise.fiscal.bloqueios.some((b) => /CFOP de entrada/i.test(b))).toBe(false)
+    expect(nota.etapaAtual).toBe('negociacao')
+    expect(nota.analise.motivoParada).toBe('negociacao')
+    expect(analisarNegociacao).toHaveBeenCalled()
+  })
+
+  it('criticasLiberadas não libera bloqueio de CFOP de entrada', async () => {
+    ligarRepositorioFake(
+      buildNotaFixture({
+        statusEntrada: 'em_analise',
+        etapaAtual: 'cadastro',
+        origemLancamento: null,
+        criticasLiberadas: true,
+        modFrete: '0',
+        analiseJson: null,
+        itens: [itemFiscal()],
+      })
+    )
+
+    const resultado = await servicoEntradaNotas.analisarNota('empresa-1', 'nota-1')
+    const nota = resultado.nota as {
+      etapaAtual: string
+      analise: { motivoParada: string | null; fiscal: { status: string } }
+    }
+
+    expect(nota.etapaAtual).toBe('fiscal')
+    expect(nota.analise.motivoParada).toBe('fiscal')
+    expect(nota.analise.fiscal.status).toBe('bloqueante')
+    expect(analisarNegociacao).not.toHaveBeenCalled()
+  })
+
+  it('liberarCriticas recusa quando fiscal exige CFOP de entrada', async () => {
+    ligarRepositorioFake(
+      buildNotaFixture({
+        statusEntrada: 'em_analise',
+        etapaAtual: 'fiscal',
+        origemLancamento: null,
+        criticasLiberadas: false,
+        modFrete: '0',
+        itens: [itemFiscal()],
+        analiseJson: {
+          versao: 1,
+          atualizadoEm: new Date().toISOString(),
+          frete: { status: 'ok', avisos: [], bloqueios: [] },
+          cadastro: { status: 'ok', avisos: [], bloqueios: [] },
+          fiscal: {
+            status: 'bloqueante',
+            avisos: [],
+            bloqueios: [
+              'Informe o CFOP de entrada do(s) item(ns) (sugestão automática indisponível). Use Trocar na aba Fiscal.',
+            ],
+          },
+          negociacao: { status: 'pendente', avisos: [], bloqueios: [] },
+          autoLancado: false,
+          motivoParada: 'fiscal',
+        },
+      })
+    )
+    vi.mocked(servicoDeAutenticacao.verificarSenhaDoUsuario).mockResolvedValue(true)
+
+    await expect(
+      servicoEntradaNotas.liberarCriticas('empresa-1', 'nota-1', 'usuario-1', 'senha')
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      message: expect.stringMatching(/CFOP de entrada/i),
+    })
+    expect(servicoDeAutenticacao.verificarSenhaDoUsuario).not.toHaveBeenCalled()
   })
 })

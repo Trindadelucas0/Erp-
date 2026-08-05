@@ -142,7 +142,7 @@ type XmlVisualizacao = {
 const PAINEIS: Array<{ id: PainelEntrada; rotulo: string }> = [
   { id: 'analise', rotulo: 'Em análise' },
   { id: 'contagem', rotulo: 'Liberadas p/ contagem' },
-  { id: 'consolidada', rotulo: 'Entradas' },
+  { id: 'consolidada', rotulo: 'Entradas consolidadas' },
   { id: 'problemas', rotulo: 'Com problemas' },
   { id: 'cancelada', rotulo: 'Canceladas' },
 ]
@@ -462,6 +462,11 @@ function ConteudoEntradaNotas() {
       if ((loteCte.vinculosReparados ?? 0) > 0) {
         partes.push(`${loteCte.vinculosReparados} vínculo(s) CT-e corrigido(s) (tomador ≠ empresa).`)
       }
+      if ((loteCte.ctesCanceladosTomador ?? 0) > 0) {
+        partes.push(
+          `${loteCte.ctesCanceladosTomador} CT-e(s) cancelado(s) (tomador ≠ empresa).`
+        )
+      }
       setMensagem(partes.length > 0 ? partes.join(' ') : 'Busca concluída.')
     }
     return !falhouReprocessar
@@ -565,11 +570,13 @@ function ConteudoEntradaNotas() {
         analisados: number
         pendentes: number
         vinculosReparados?: number
+        ctesCanceladosTomador?: number
       }>('/entrada-notas/vincular-ctes-pendentes', {
         importarFocusSeAusente: true,
         forcarRetryFocus: opcoes?.forcarRetryFocus === true,
       })
       const reparados = data.vinculosReparados ?? 0
+      const canceladosTomador = data.ctesCanceladosTomador ?? 0
       if (data.vinculados > 0 && !opcoes?.silencioso) {
         setMensagem(
           `${data.vinculados} CT-e(s) vinculado(s) à NF de mercadoria` +
@@ -578,7 +585,7 @@ function ConteudoEntradaNotas() {
               : '.')
         )
       }
-      if (data.vinculados > 0 || reparados > 0) {
+      if (data.vinculados > 0 || reparados > 0 || canceladosTomador > 0) {
         await carregar({ silencioso: true })
       }
       return {
@@ -586,9 +593,16 @@ function ConteudoEntradaNotas() {
         pendentes: data.pendentes,
         importadosFocus: data.importadosFocus,
         vinculosReparados: reparados,
+        ctesCanceladosTomador: canceladosTomador,
       }
     } catch {
-      return { vinculados: 0, pendentes: 0, importadosFocus: 0, vinculosReparados: 0 }
+      return {
+        vinculados: 0,
+        pendentes: 0,
+        importadosFocus: 0,
+        vinculosReparados: 0,
+        ctesCanceladosTomador: 0,
+      }
     }
   }
 

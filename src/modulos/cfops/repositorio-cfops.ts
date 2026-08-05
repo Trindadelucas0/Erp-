@@ -6,6 +6,7 @@ import {
   naturezaEhEntradaFornecedor,
   tipoCfopFinal,
 } from './classificacao-cfop.js'
+import { montarFiltroBuscaCamposEscalares } from '../../compartilhado/utilitarios/filtro-busca-textual.js'
 
 export type CfopSugestaoEntradaCatalogo = {
   id: string
@@ -90,9 +91,14 @@ function dadosClassificados(codigo: string, subtipoCfop?: string | null) {
 
 async function listarPorEmpresa(
   companyId: string,
-  opcoes?: { incluirInativos?: boolean; q?: string; tipo?: string }
+  opcoes?: { incluirInativos?: boolean; q?: string; tipo?: string; subtipo?: string }
 ) {
-  const termo = opcoes?.q?.trim()
+  const filtroBusca = montarFiltroBuscaCamposEscalares(opcoes?.q, [
+    'codigo',
+    'nome',
+    'descricao',
+  ])
+  const subtipo = opcoes?.subtipo?.trim()
   return clientePrisma.cfop.findMany({
     where: {
       companyId,
@@ -104,15 +110,8 @@ async function listarPorEmpresa(
             }
           : { tipo: opcoes.tipo }
         : {}),
-      ...(termo
-        ? {
-            OR: [
-              { codigo: { contains: termo, mode: 'insensitive' } },
-              { nome: { contains: termo, mode: 'insensitive' } },
-              { descricao: { contains: termo, mode: 'insensitive' } },
-            ],
-          }
-        : {}),
+      ...(subtipo ? { subtipoCfop: subtipo } : {}),
+      ...(filtroBusca ?? {}),
     },
     orderBy: { codigo: 'asc' },
     ...(!opcoes?.incluirInativos ? { take: 50 } : {}),

@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  cfopEhConhecimentoFrete,
   inferirCfopDoCodigo,
   rotuloExibicaoCfop,
+  SUBTIPO_CFOP_CONHECIMENTO_FRETE,
   tipoCfopFinal,
+  variantesCodigoCfopParaBusca,
 } from './classificacao-cfop.js'
 
 describe('inferirCfopDoCodigo', () => {
@@ -44,5 +47,29 @@ describe('rotuloExibicaoCfop', () => {
     expect(rotuloExibicaoCfop('entrada', 'estadual', '06')).toBe(
       'Entrada — Estadual · Doação'
     )
+  })
+})
+
+describe('cfopEhConhecimentoFrete', () => {
+  it('reconhece subtipo 03 como Conhecimento de frete', () => {
+    expect(SUBTIPO_CFOP_CONHECIMENTO_FRETE).toBe('03')
+    expect(cfopEhConhecimentoFrete('03')).toBe(true)
+    expect(cfopEhConhecimentoFrete('04')).toBe(false)
+    expect(cfopEhConhecimentoFrete(null)).toBe(false)
+  })
+})
+
+describe('variantesCodigoCfopParaBusca', () => {
+  it('gera 6102 e 6.102 a partir do XML sem ponto', () => {
+    expect(variantesCodigoCfopParaBusca('6102').sort()).toEqual(['6.102', '6102'].sort())
+  })
+
+  it('gera as mesmas variantes a partir do cadastro com ponto', () => {
+    expect(variantesCodigoCfopParaBusca('6.102').sort()).toEqual(['6.102', '6102'].sort())
+  })
+
+  it('ignora vazio', () => {
+    expect(variantesCodigoCfopParaBusca('')).toEqual([])
+    expect(variantesCodigoCfopParaBusca('   ')).toEqual([])
   })
 })

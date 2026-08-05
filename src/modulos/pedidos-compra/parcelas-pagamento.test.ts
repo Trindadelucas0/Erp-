@@ -78,19 +78,21 @@ describe('normalizarPrazosPagamento', () => {
     expect(() => normalizarPrazosPagamento(manual, 'manual', 150)).toThrow(ErroDaAplicacao)
   })
 
-  it('ignora prazos sem vencimento', () => {
+  it('rejeita prazos sem vencimento (regra permanente §7.4)', () => {
     const misto = [
       { numero: 1, vencimento: '2026-08-01', valor: null },
       { numero: 2, vencimento: '', valor: null },
     ]
-    const result = normalizarPrazosPagamento(misto, 'igual', 100)
-    expect(result).toEqual([{ numero: 1, vencimento: '2026-08-01', valor: 100 }])
+    expect(() => normalizarPrazosPagamento(misto, 'igual', 100)).toThrow(ErroDaAplicacao)
+    expect(() => normalizarPrazosPagamento(misto, 'igual', 100)).toThrow(
+      /data de vencimento de cada parcela/
+    )
   })
 })
 
 describe('validarSomaParcelasManual', () => {
-  it('retorna null quando não há prazos com vencimento', () => {
-    expect(validarSomaParcelasManual([{ vencimento: '' }], 100)).toBeNull()
+  it('retorna erro quando falta vencimento', () => {
+    expect(validarSomaParcelasManual([{ vencimento: '' }], 100)).toMatch(/data de vencimento/)
   })
 
   it('retorna erro quando soma diverge', () => {

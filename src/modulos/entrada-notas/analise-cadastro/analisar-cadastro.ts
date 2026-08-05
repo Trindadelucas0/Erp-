@@ -4,8 +4,28 @@
 import { repositorioEntradaNotas } from '../repositorio-entrada-notas.js'
 import type { ResultadoEtapa } from '../tipos-analise.js'
 
+export type CategoriaAchadoCadastro =
+  | 'fornecedor'
+  | 'item_sem_produto'
+  | 'item_desvinculado'
+  | 'sem_itens'
+  | 'documental'
+
+export type AchadoCadastro = {
+  categoria: CategoriaAchadoCadastro
+  severidade: 'bloqueio' | 'aviso'
+  mensagem: string
+  itemId?: string
+  nItem?: number | null
+  descricao?: string | null
+  gtin?: string | null
+  codigoProduto?: string | null
+}
+
 type ItemCadastro = {
   id: string
+  nItem?: number | null
+  descricao?: string | null
   gtin: string | null
   codigoProduto: string | null
   produtoId: string | null
@@ -36,8 +56,15 @@ export async function analisarCadastro(params: {
 }> {
   const avisos: string[] = []
   const bloqueios: string[] = []
+  const achados: AchadoCadastro[] = []
   const exigirItens = params.exigirItens !== false
   const modoDocumental = params.modoDocumental === true
+
+  function pushAchado(achado: AchadoCadastro) {
+    achados.push(achado)
+    if (achado.severidade === 'bloqueio') bloqueios.push(achado.mensagem)
+    else avisos.push(achado.mensagem)
+  }
 
   let fornecedorPessoaId = params.fornecedorPessoaId
   if (!fornecedorPessoaId && params.documentoEmitente) {
@@ -48,12 +75,18 @@ export async function analisarCadastro(params: {
     if (fornecedor) {
       fornecedorPessoaId = fornecedor.id
     } else {
-      bloqueios.push(
-        `Fornecedor com documento ${params.documentoEmitente} não cadastrado. Cadastre o fornecedor e rode a análise de novo.`
-      )
+      pushAchado({
+        categoria: 'fornecedor',
+        severidade: 'bloqueio',
+        mensagem: `Fornecedor com documento ${params.documentoEmitente} não cadastrado. Cadastre o fornecedor e rode a análise de novo.`,
+      })
     }
   } else if (!params.documentoEmitente) {
-    bloqueios.push('XML sem CNPJ/CPF do emitente — não é possível vincular fornecedor.')
+    pushAchado({
+      categoria: 'fornecedor',
+      severidade: 'bloqueio',
+      mensagem: 'XML sem CNPJ/CPF do emitente — não é possível vincular fornecedor.',
+    })
   }
 
   const itensAtualizados: Array<{
@@ -97,11 +130,29 @@ export async function analisarCadastro(params: {
         critica = false
       } else {
         critica = true
-        bloqueios.push(
-          desvinculadoManualmente
-            ? `Item desvinculado manualmente (GTIN: ${item.gtin ?? '—'} / cProd: ${item.codigoProduto ?? '—'}). Use Conciliar produto.`
-            : `Item da NF sem produto correspondente no cadastro (barras: ${item.gtin ?? '—'} / código original: ${item.codigoProduto ?? '—'}). Use Conciliar produto ou cadastre barras/código no produto×fornecedor.`
-        )
+        if (desvinculadoManualmente) {
+          pushAchado({
+            categoria: 'item_desvinculado',
+            severidade: 'bloqueio',
+            mensagem: `Item desvinculado manualmente (GTIN: ${item.gtin ?? '—'} / cProd: ${item.codigoProduto ?? '—'}). Use Conciliar produto.`,
+            itemId: item.id,
+            nItem: item.nItem,
+            descricao: item.descricao,
+            gtin: item.gtin,
+            codigoProduto: item.codigoProduto,
+          })
+        } else {
+          pushAchado({
+            categoria: 'item_sem_produto',
+            severidade: 'bloqueio',
+            mensagem: `Item da NF sem produto correspondente no cadastro (barras: ${item.gtin ?? '—'} / código original: ${item.codigoProduto ?? '—'}). Use Conciliar produto ou cadastre barras/código no produto×fornecedor.`,
+            itemId: item.id,
+            nItem: item.nItem,
+            descricao: item.descricao,
+            gtin: item.gtin,
+            codigoProduto: item.codigoProduto,
+          })
+        }
       }
     }
 
@@ -109,22 +160,33 @@ export async function analisarCadastro(params: {
   }
 
   if (modoDocumental && itensAtualizados.some((i) => !i.produtoId)) {
-    avisos.push(
-      'Entrada documental (uso/consumo): vínculo de produto não exigido. Itens seguem só para conferência da NF.'
-    )
+    pushAchado({
+      categoria: 'documental',
+      severidade: 'aviso',
+      mensagem:
+        'Entrada documental (uso/consumo): vínculo de produto não exigido. Itens seguem só para conferência da NF.',
+    })
   }
 
   if (exigirItens && params.itens.length === 0) {
-    bloqueios.push(
-      'Nota sem itens parseados do XML. Reimporte o XML ou complete o download na Focus.'
-    )
+    pushAchado({
+      categoria: 'sem_itens',
+      severidade: 'bloqueio',
+      mensagem:
+        'Nota sem itens parseados do XML. Reimporte o XML ou complete o download na Focus.',
+    })
   }
 
   const status =
     bloqueios.length > 0 ? 'bloqueante' : avisos.length > 0 ? 'aviso' : 'ok'
 
   return {
-    resultado: { status, avisos, bloqueios },
+    resultado: {
+      status,
+      avisos,
+      bloqueios,
+      detalhes: { achados },
+    },
     fornecedorPessoaId,
     itensAtualizados,
   }

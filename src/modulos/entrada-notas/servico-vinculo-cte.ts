@@ -734,6 +734,64 @@ async function repararVinculosCteTomadorIndevido(companyId: string): Promise<num
   return removidos
 }
 
+/**
+ * Cancela CT-e automáticos (origem Focus) cujo tomador ≠ CNPJ da empresa,
+ * ainda sem entrada consolidada/contagem. Remove vínculos e reanalisa as NFs.
+ * Import XML manual (origem=xml) é preservado.
+ */
+async function repararCtesTomadorIndevido(companyId: string): Promise<number> {
+  const ctes = await clientePrisma.nfeRecebida.findMany({
+    where: {
+      companyId,
+      tipoDocumento: 'cte',
+      origem: 'focus',
+      xmlConteudo: { not: null },
+      statusEntrada: {
+        notIn: ['entrada_contagem', 'entrada_consolidada', 'cancelada'],
+      },
+    },
+    select: { id: true, xmlConteudo: true, chaveNfe: true },
+    take: 500,
+  })
+
+  const nfeIdsParaReanalisar = new Set<string>()
+  let cancelados = 0
+
+  for (const cte of ctes) {
+    if (!cte.xmlConteudo) continue
+    const check = await empresaEhTomadorDoCte(companyId, cte.xmlConteudo)
+    if (check.ok) continue
+
+    const vinculos = await clientePrisma.nfeCteVinculo.findMany({
+      where: { companyId, cteRecebidaId: cte.id },
+      select: { id: true, nfeRecebidaId: true },
+    })
+    for (const v of vinculos) {
+      await clientePrisma.nfeCteVinculo.delete({ where: { id: v.id } })
+      nfeIdsParaReanalisar.add(v.nfeRecebidaId)
+    }
+
+    await clientePrisma.nfeRecebida.update({
+      where: { id: cte.id },
+      data: { statusEntrada: 'cancelada' },
+    })
+    cancelados += 1
+    logFocus('info', 'cte_cancelado_tomador_indevido', {
+      companyId,
+      cteId: cte.id,
+      chaveCte: cte.chaveNfe.slice(-8),
+      tomador: check.tomador,
+      cnpjEmpresa: check.cnpjEmpresa,
+    })
+  }
+
+  for (const nfeId of nfeIdsParaReanalisar) {
+    await reanalisarCteAposVinculo(companyId, nfeId)
+  }
+
+  return cancelados
+}
+
 async function vincularCteManual(
   companyId: string,
   nfeId: string,
@@ -847,6 +905,7 @@ export const servicoVinculoCte = {
   listarCtesAguardandoNf,
   tentarVincularNfesPendentesAoCte,
   repararVinculosCteTomadorIndevido,
+  repararCtesTomadorIndevido,
   vincularCteManual,
   desvincularCte,
   listarVinculosDaNfe,

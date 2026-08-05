@@ -2,20 +2,26 @@
  * Importa CT-e pela chave via Focus (XML DistDFe), independente do cursor.
  * Uso interno do sync/BUSCAR e fallback do vínculo — não é fluxo diário do usuário.
  *
- * Regra: todo CT-e que a Focus disponibiliza para o CNPJ da empresa é gravado
- * (DistDFe / chave). Não filtra por tomador do frete.
+ * Regra permanente: só grava CT-e se o tomador do frete = CNPJ da empresa.
+ * Fail-closed (tomador ilegível → não grava). Import XML manual não passa por aqui.
  */
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
+import { normalizarCnpj } from '../../compartilhado/validacoes/documentos.js'
 import { clienteFocusNfe } from './cliente-focus-nfe.js'
 import { logFocus } from './logs-focus-nfe.js'
-import { extrairCamposResumoDoXml } from './parser-xml-nfe.js'
+import { extrairCamposResumoDoXml, extrairCnpjTomadorCte } from './parser-xml-nfe.js'
 import { repositorioFocusNfe } from './repositorio-focus-nfe.js'
 
 export type ResultadoImportCtePorChave =
   | { ok: true; cteId: string; jaExistia: boolean; criado: boolean }
   | {
       ok: false
-      motivo: 'chave_invalida' | 'xml_falhou' | 'rate_limit' | 'sem_focus'
+      motivo:
+        | 'chave_invalida'
+        | 'xml_falhou'
+        | 'rate_limit'
+        | 'sem_focus'
+        | 'tomador_nao_empresa'
       mensagem: string
     }
 
@@ -60,6 +66,42 @@ export type OpcoesImportCtePorChave = {
   pularPipeline?: boolean
 }
 
+/** Fail-closed: só ok se tomador normalizado = CNPJ da empresa. */
+async function empresaEhTomadorDoXml(
+  companyId: string,
+  xml: string
+): Promise<{ ok: boolean; tomador: string | null; cnpjEmpresa: string | null }> {
+  const empresa = await repositorioFocusNfe.buscarEmpresaCnpj(companyId)
+  const cnpjEmpresa = empresa?.cnpj ? normalizarCnpj(empresa.cnpj) : null
+  const tomadorRaw = extrairCnpjTomadorCte(xml)
+  const tomador = tomadorRaw ? normalizarCnpj(tomadorRaw) : null
+  if (!cnpjEmpresa || !tomador) {
+    return { ok: false, tomador, cnpjEmpresa }
+  }
+  return { ok: tomador === cnpjEmpresa, tomador, cnpjEmpresa }
+}
+
+async function rejeitarSeTomadorNaoEmpresa(
+  companyId: string,
+  chave: string,
+  xml: string
+): Promise<Extract<ResultadoImportCtePorChave, { ok: false }> | null> {
+  const check = await empresaEhTomadorDoXml(companyId, xml)
+  if (check.ok) return null
+
+  logFocus('info', 'import_chave_cte_tomador_nao_empresa', {
+    companyId,
+    chave: chave.slice(-8),
+    tomador: check.tomador,
+    cnpjEmpresa: check.cnpjEmpresa,
+  })
+  return {
+    ok: false,
+    motivo: 'tomador_nao_empresa',
+    mensagem: `CT-e …${chave.slice(-8)} ignorado: tomador do frete não é o CNPJ da empresa.`,
+  }
+}
+
 async function upsertEPipeline(
   companyId: string,
   chave: string,
@@ -95,7 +137,7 @@ async function upsertEPipeline(
 
 /**
  * Garante CT-e local a partir da chave (44 dígitos, modelo 57).
- * Persiste todo CT-e disponível na Focus para este token/CNPJ (não exige tomador).
+ * Só persiste se tomador do frete = CNPJ da empresa (regra permanente).
  */
 export async function importarCtePorChave(
   companyId: string,
@@ -117,6 +159,9 @@ export async function importarCtePorChave(
   }
 
   if (existente?.xmlConteudo) {
+    const rejeitado = await rejeitarSeTomadorNaoEmpresa(companyId, chave, existente.xmlConteudo)
+    if (rejeitado) return rejeitado
+
     const { criado, cteId } = await upsertEPipeline(
       companyId,
       chave,
@@ -164,6 +209,9 @@ export async function importarCtePorChave(
       mensagem: `Falha ao baixar XML do CT-e …${chave.slice(-8)}: ${detalhe}`,
     }
   }
+
+  const rejeitado = await rejeitarSeTomadorNaoEmpresa(companyId, chave, xmlResp.dados)
+  if (rejeitado) return rejeitado
 
   const { criado, cteId } = await upsertEPipeline(
     companyId,

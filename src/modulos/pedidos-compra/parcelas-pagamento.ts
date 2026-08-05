@@ -67,14 +67,17 @@ export function normalizarPrazosPagamento(
 ): PrazoPagamentoNormalizado[] | null {
   if (!prazos?.length) return null
 
-  const comVencimento = prazos.filter((p) => p.vencimento?.trim())
-  if (!comVencimento.length) return null
+  for (const p of prazos) {
+    if (!p.vencimento?.trim()) {
+      throw new ErroDaAplicacao('Informe a data de vencimento de cada parcela', 400)
+    }
+  }
 
   const rateio = rateioParcelas ?? 'igual'
 
   if (rateio === 'igual') {
-    const valores = distribuirParcelasIguais(comVencimento.length, totalLiquido)
-    return comVencimento.map((p, i) => ({
+    const valores = distribuirParcelasIguais(prazos.length, totalLiquido)
+    return prazos.map((p, i) => ({
       numero: p.numero,
       vencimento: p.vencimento,
       valor: valores[i] ?? 0,
@@ -82,7 +85,7 @@ export function normalizarPrazosPagamento(
   }
 
   const normalizados: PrazoPagamentoNormalizado[] = []
-  for (const p of comVencimento) {
+  for (const p of prazos) {
     const valor = parseValorParcela(p.valor)
     if (valor == null || valor <= 0) {
       throw new ErroDaAplicacao('Informe o valor (R$) de cada parcela no rateio manual', 400)
@@ -105,17 +108,22 @@ export function validarSomaParcelasManual(
   prazos: { vencimento: string; valor?: number | string | null }[],
   totalLiquido: number
 ): string | null {
-  const comVencimento = prazos.filter((p) => p.vencimento?.trim())
-  if (!comVencimento.length) return null
+  if (!prazos.length) return null
 
-  for (const p of comVencimento) {
-    const valor = parseValorParcela(p.valor)
-    if (valor == null || valor <= 0) {
-      return 'Informe o valor (R$) de cada parcela com vencimento no rateio manual.'
+  for (const p of prazos) {
+    if (!p.vencimento?.trim()) {
+      return 'Informe a data de vencimento de cada parcela.'
     }
   }
 
-  const soma = comVencimento.reduce((s, p) => s + (parseValorParcela(p.valor) ?? 0), 0)
+  for (const p of prazos) {
+    const valor = parseValorParcela(p.valor)
+    if (valor == null || valor <= 0) {
+      return 'Informe o valor (R$) de cada parcela no rateio manual.'
+    }
+  }
+
+  const soma = prazos.reduce((s, p) => s + (parseValorParcela(p.valor) ?? 0), 0)
   if (Math.abs(soma - totalLiquido) > TOLERANCIA_PARCELAS) {
     return `Soma das parcelas (${soma.toFixed(2)}) difere do total líquido (${totalLiquido.toFixed(2)}).`
   }

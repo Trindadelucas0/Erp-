@@ -14,7 +14,7 @@ import {
   useInstanciaDropdownCatalogo,
   useOuvirFechamentoDropdownCatalogo,
 } from '@/lib/dropdown-catalogo'
-import { normalizarTermoBusca, textoContemTermo } from '@/lib/normalizar-busca'
+import { textoContemTodosTermos } from '@/lib/normalizar-busca'
 import { cn } from '@/lib/utils'
 
 type Props = {
@@ -97,10 +97,9 @@ export function ComboboxMarca({
     }
   }, [busca, aberto, carregarMarcas])
 
-  const termoBusca = normalizarTermoBusca(busca)
   let filtradas = marcas
-  if (termoBusca) {
-    filtradas = marcas.filter((m) => textoContemTermo(m, busca))
+  if (busca.trim()) {
+    filtradas = marcas.filter((m) => textoContemTodosTermos(m, busca))
   }
   filtradas = filtradas.slice(0, LIMITE)
 

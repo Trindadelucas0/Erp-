@@ -215,4 +215,45 @@ describe('servicoVinculoCte — caso Fortlev/KNA', () => {
     expect(removidos).toBe(1)
     expect(vinculoDelete).toHaveBeenCalledWith({ where: { id: 'v-1' } })
   })
+
+  it('repararCtesTomadorIndevido cancela CT-e Focus com tomador ≠ empresa', async () => {
+    findMany.mockResolvedValueOnce([
+      {
+        id: 'cte-1',
+        xmlConteudo: xmlCteTomadorRemetente(),
+        chaveNfe: CHAVE_CTE,
+      },
+    ])
+    vinculoFindMany.mockResolvedValueOnce([
+      { id: 'v-1', nfeRecebidaId: 'nfe-1' },
+    ])
+    vinculoDelete.mockResolvedValue({})
+    update.mockResolvedValue({})
+    findFirst.mockResolvedValue(null)
+
+    const cancelados = await servicoVinculoCte.repararCtesTomadorIndevido('emp-1')
+
+    expect(cancelados).toBe(1)
+    expect(vinculoDelete).toHaveBeenCalledWith({ where: { id: 'v-1' } })
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'cte-1' },
+      data: { statusEntrada: 'cancelada' },
+    })
+  })
+
+  it('repararCtesTomadorIndevido preserva CT-e com tomador = empresa', async () => {
+    findMany.mockResolvedValueOnce([
+      {
+        id: 'cte-ok',
+        xmlConteudo: xmlCteTomadorDestinatario(),
+        chaveNfe: CHAVE_CTE,
+      },
+    ])
+
+    const cancelados = await servicoVinculoCte.repararCtesTomadorIndevido('emp-1')
+
+    expect(cancelados).toBe(0)
+    expect(update).not.toHaveBeenCalled()
+    expect(vinculoDelete).not.toHaveBeenCalled()
+  })
 })

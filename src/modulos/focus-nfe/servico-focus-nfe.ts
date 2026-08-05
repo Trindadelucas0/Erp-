@@ -763,7 +763,7 @@ async function executarSync(companyId: string, jobId: string) {
             break
           }
 
-          // DistDFe do CNPJ: todo CT-e listado pela Focus é gravado (não filtra tomador).
+          // Regra permanente: só grava CT-e se tomador = CNPJ da empresa.
           const importCte = await importarCtePorChave(companyId, chave, {
             apiToken: credenciais.apiToken,
             homologacao: credenciais.homologacao,
@@ -776,6 +776,22 @@ async function executarSync(companyId: string, jobId: string) {
               rateLimit = true
               pushLog('cte: lote pausado por rate limit Focus')
               break
+            }
+            if (importCte.motivo === 'tomador_nao_empresa') {
+              pushLog(`cte ${chave.slice(-8)}: tomador ≠ empresa — skip + avanca cursor`)
+              logFocus('info', 'sync_cte_tomador_nao_empresa_skip', {
+                companyId,
+                chave: chave.slice(-8),
+              })
+              maxVersaoCte = await avancarCursorCte(
+                companyId,
+                credenciais,
+                temConfigBanco,
+                maxVersaoCte,
+                versaoItem
+              )
+              processados += 1
+              continue
             }
             if (importCte.motivo === 'xml_falhou') {
               pushLog(`cte ${chave.slice(-8)}: ${importCte.mensagem} — sem avancar cursor`)
@@ -1763,6 +1779,7 @@ async function reprocessarXmlsLocais(companyId: string) {
     }
   }
 
+  const ctesCanceladosTomador = await servicoEntradaNotas.repararCtesTomadorIndevido(companyId)
   const vinculosReparados = await servicoEntradaNotas.repararVinculosCteTomadorIndevido(companyId)
   const vinculadas = await servicoEntradaNotas.vincularFornecedoresNasNotasPendentes(companyId)
   const vinculosCte = await servicoEntradaNotas.processarVinculosCtePendentes(companyId, {
@@ -1774,6 +1791,7 @@ async function reprocessarXmlsLocais(companyId: string) {
     ok,
     itensRecuperados,
     xmlCompletadosFocus,
+    ctesCanceladosTomador,
     vinculosReparados,
     vinculadas,
     ctesVinculados: vinculosCte.vinculados,
@@ -1783,13 +1801,18 @@ async function reprocessarXmlsLocais(companyId: string) {
     processados: ok,
     itensRecuperados,
     xmlCompletadosFocus,
+    ctesCanceladosTomador,
     vinculosReparados,
     vinculadas,
     ctesVinculados: vinculosCte.vinculados,
     ctesImportFocus: vinculosCte.importadosFocus,
     mensagem:
-      vinculadas > 0 || vinculosCte.vinculados > 0 || xmlCompletadosFocus > 0 || vinculosReparados > 0
-        ? `${ok} nota(s) reprocessada(s); ${xmlCompletadosFocus} XML Focus; ${vinculadas} fornecedor(es); ${vinculosCte.vinculados} CT-e(s) vinculado(s); ${vinculosReparados} vínculo(s) CT-e corrigido(s)${vinculosCte.importadosFocus > 0 ? ` (${vinculosCte.importadosFocus} NF via Focus)` : ''}.`
+      vinculadas > 0 ||
+      vinculosCte.vinculados > 0 ||
+      xmlCompletadosFocus > 0 ||
+      vinculosReparados > 0 ||
+      ctesCanceladosTomador > 0
+        ? `${ok} nota(s) reprocessada(s); ${xmlCompletadosFocus} XML Focus; ${vinculadas} fornecedor(es); ${vinculosCte.vinculados} CT-e(s) vinculado(s); ${ctesCanceladosTomador} CT-e(s) cancelado(s) (tomador); ${vinculosReparados} vínculo(s) CT-e corrigido(s)${vinculosCte.importadosFocus > 0 ? ` (${vinculosCte.importadosFocus} NF via Focus)` : ''}.`
         : `${ok} nota(s) reprocessada(s) a partir do XML salvo (emitente, data, valor).`,
   }
 }

@@ -8,13 +8,19 @@ function companyId(requisicao: FastifyRequest) {
 }
 
 async function listarCfops(requisicao: FastifyRequest, resposta: FastifyReply) {
-  const query = requisicao.query as { q?: string; tipo?: string; incluirInativos?: string }
+  const query = requisicao.query as {
+    q?: string
+    tipo?: string
+    subtipo?: string
+    incluirInativos?: string
+  }
 
   if (query.incluirInativos === 'true') {
     const cfops = await servicoDeCfops.listarParaGestao(
       companyId(requisicao),
       query.q,
-      query.tipo
+      query.tipo,
+      query.subtipo
     )
     return resposta.send({ cfops })
   }
@@ -22,7 +28,8 @@ async function listarCfops(requisicao: FastifyRequest, resposta: FastifyReply) {
   const cfops = await servicoDeCfops.listarParaCatalogo(
     companyId(requisicao),
     query.q,
-    query.tipo || 'entrada'
+    query.tipo || 'entrada',
+    query.subtipo
   )
   return resposta.send({ cfops })
 }

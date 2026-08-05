@@ -135,6 +135,7 @@ type Props = {
   finalizada: boolean
   acao: boolean
   buscando: boolean
+  carregandoBusca?: boolean
   buscaProduto: string
   produtos: ProdutoBuscaVinculo[]
   onAbrirBusca: () => void
@@ -159,6 +160,7 @@ export function ItemVinculoCadastroGrid({
   finalizada,
   acao,
   buscando,
+  carregandoBusca = false,
   buscaProduto,
   produtos,
   onAbrirBusca,
@@ -382,20 +384,29 @@ export function ItemVinculoCadastroGrid({
 
           {buscando && permitirAcoesVinculo && !item.produtoId && (
             <div className="mt-1 space-y-2 rounded-md border border-dashed p-3">
+              <p className="text-[11px] text-muted-foreground">
+                Digite palavras-chave — a lista atualiza sozinha enquanto você digita.
+              </p>
               <div className="flex gap-2">
                 <input
+                  autoFocus
                   className="min-w-0 flex-1 rounded-md border bg-background px-3 py-2 text-sm"
-                  placeholder="Buscar produto…"
+                  placeholder="Ex.: esgoto 75 ou ESG…"
                   aria-label="Buscar produto para conciliar"
+                  aria-busy={carregandoBusca}
                   value={buscaProduto}
+                  onFocus={(e) => e.currentTarget.select()}
                   onChange={(e) => onBuscaChange(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') onBuscar()
                   }}
                 />
-                <Button type="button" size="sm" onClick={onBuscar}>
-                  Buscar
-                </Button>
+                {carregandoBusca ? (
+                  <span className="inline-flex items-center px-2 text-muted-foreground" aria-live="polite">
+                    <Loader2 className="size-4 animate-spin" aria-hidden />
+                    <span className="sr-only">Buscando…</span>
+                  </span>
+                ) : null}
                 <Button type="button" size="sm" variant="ghost" onClick={onFecharBusca}>
                   Fechar
                 </Button>
@@ -417,10 +428,15 @@ export function ItemVinculoCadastroGrid({
                     </Button>
                   </li>
                 ))}
-                {produtos.length === 0 && (
+                {!carregandoBusca && produtos.length === 0 && (
                   <li className="px-2 py-1 text-xs text-muted-foreground">
-                    Nenhum produto encontrado. Ajuste o termo e busque de novo.
+                    {buscaProduto.trim().length < 2
+                      ? 'Digite pelo menos 2 caracteres para buscar.'
+                      : 'Nenhum produto ainda — continue digitando ou refine as palavras-chave.'}
                   </li>
+                )}
+                {carregandoBusca && produtos.length === 0 && (
+                  <li className="px-2 py-1 text-xs text-muted-foreground">Buscando…</li>
                 )}
               </ul>
             </div>

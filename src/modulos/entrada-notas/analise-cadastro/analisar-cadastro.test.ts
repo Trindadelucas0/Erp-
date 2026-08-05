@@ -84,6 +84,17 @@ describe('analisarCadastro — auto-match de itens', () => {
 
     expect(resultado.resultado.bloqueios[0]).toContain('Item da NF sem produto correspondente')
     expect(resultado.resultado.bloqueios[0]).not.toContain('desvinculado')
+    const achados = resultado.resultado.detalhes?.achados as
+      | Array<{ categoria: string; gtin?: string | null }>
+      | undefined
+    expect(achados).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          categoria: 'item_sem_produto',
+          gtin: '000',
+        }),
+      ])
+    )
   })
 
   it('vincular um item não afeta outro item que já tem produtoId', async () => {

@@ -11,6 +11,13 @@ export const ROTULOS_SUBTIPO_CFOP: Record<SubtipoCfop, string> = {
   '06': 'Doação',
 }
 
+/** Subtipo obrigatório para CFOP de entrada de CT-e / frete (regra permanente §7). */
+export const SUBTIPO_CFOP_CONHECIMENTO_FRETE: SubtipoCfop = '03'
+
+export function cfopEhConhecimentoFrete(subtipoCfop?: string | null): boolean {
+  return subtipoCfop === SUBTIPO_CFOP_CONHECIMENTO_FRETE
+}
+
 export type ClassificacaoCfop = {
   natureza: NaturezaCfop
   abrangencia: AbrangenciaCfop | null
@@ -22,6 +29,22 @@ export type ClassificacaoCfop = {
 export function prefixoDeCodigoCfop(codigo: string): string | null {
   const match = codigo.trim().match(/^([123567])/)
   return match ? match[1] : null
+}
+
+/**
+ * Variantes de um código CFOP para casar XML/NF (`6102`) com cadastro (`6.102`).
+ * Usado na sugestão de CFOP de entrada na Entrada de Notas.
+ */
+export function variantesCodigoCfopParaBusca(codigo: string): string[] {
+  const raw = (codigo ?? '').trim()
+  if (!raw) return []
+  const digitos = raw.replace(/\D/g, '')
+  const out = new Set<string>([raw])
+  if (digitos) out.add(digitos)
+  if (digitos.length === 4) {
+    out.add(`${digitos[0]}.${digitos.slice(1)}`)
+  }
+  return [...out]
 }
 
 export function inferirCfopDoCodigo(codigo: string): ClassificacaoCfop {
