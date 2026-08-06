@@ -55,6 +55,10 @@ vi.mock('../focus-nfe/cliente-focus-nfe.js', () => ({
   },
 }))
 
+vi.mock('../fornecedores/vinculos-fornecedor.js', () => ({
+  obterPessoaIdsRedePorPessoaId: vi.fn(async (pessoaId: string) => [pessoaId]),
+}))
+
 vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({
   clientePrisma: {
     produto: { findFirst: vi.fn() },

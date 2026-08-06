@@ -179,6 +179,14 @@ type EstoqueResumoLancamento = {
   produtos: Array<{ produtoId: string; nomeVenda: string; quantidade: number }>
 }
 
+type PedidoDisponivelNegociacao = {
+  id: string
+  numero: number
+  status: string
+  fornecedorPessoaId?: string
+  fornecedorNome?: string | null
+}
+
 type DetalheNota = {
   id: string
   chaveNfe: string
@@ -734,7 +742,7 @@ function ConteudoDetalheEntrada() {
   const searchParams = useSearchParams()
   const id = String(params.id)
   const [nota, setNota] = useState<DetalheNota | null>(null)
-  const [pedidos, setPedidos] = useState<Array<{ id: string; numero: number; status: string }>>([])
+  const [pedidos, setPedidos] = useState<PedidoDisponivelNegociacao[]>([])
   const [cfopsEntrada, setCfopsEntrada] = useState<CfopOpcaoEntrada[]>([])
   const [cfopsEntradaFrete, setCfopsEntradaFrete] = useState<CfopOpcaoEntrada[]>([])
   const [carregando, setCarregando] = useState(true)
@@ -788,7 +796,7 @@ function ConteudoDetalheEntrada() {
       try {
         const { data } = await clienteHttp.get<{
           nota: DetalheNota
-          pedidosDisponiveis: Array<{ id: string; numero: number; status: string }>
+          pedidosDisponiveis: PedidoDisponivelNegociacao[]
         }>(`/entrada-notas/${id}`, { timeout: 30_000 })
         setNota(data.nota)
         setPedidos(data.pedidosDisponiveis ?? [])
@@ -990,7 +998,7 @@ function ConteudoDetalheEntrada() {
     try {
       const { data } = await clienteHttp.post<{
         nota?: DetalheNota
-        pedidosDisponiveis?: Array<{ id: string; numero: number; status: string }>
+        pedidosDisponiveis?: PedidoDisponivelNegociacao[]
         mensagem?: string
         sucesso?: boolean
         estoqueResumo?: EstoqueResumoLancamento
@@ -1097,8 +1105,8 @@ function ConteudoDetalheEntrada() {
       await clienteHttp.post(`/entrada-notas/${cteId}/definir-cfop-entrada-cte`, { cfopId })
       const { data } = await clienteHttp.get<{
         nota: DetalheNota
-        pedidosDisponiveis: Array<{ id: string; numero: number; status: string }>
-      }>(`/entrada-notas/${id}`)
+          pedidosDisponiveis: PedidoDisponivelNegociacao[]
+        }>(`/entrada-notas/${id}`)
       setNota(data.nota)
       setPedidos(data.pedidosDisponiveis ?? [])
       setMensagem('CFOP de entrada do CT-e atualizado.')
@@ -1167,7 +1175,7 @@ function ConteudoDetalheEntrada() {
     try {
       const { data } = await clienteHttp.delete<{
         nota?: DetalheNota
-        pedidosDisponiveis?: Array<{ id: string; numero: number; status: string }>
+        pedidosDisponiveis?: PedidoDisponivelNegociacao[]
       }>(`/entrada-notas/${id}/vinculos-cte/${vinculoId}`)
       if (data.nota) {
         setNota(data.nota)
@@ -1856,6 +1864,7 @@ function ConteudoDetalheEntrada() {
                   {pedidos.map((p) => (
                     <option key={p.id} value={p.id}>
                       #{p.numero} ({p.status})
+                      {p.fornecedorNome ? ` — ${p.fornecedorNome}` : ''}
                     </option>
                   ))}
                 </select>

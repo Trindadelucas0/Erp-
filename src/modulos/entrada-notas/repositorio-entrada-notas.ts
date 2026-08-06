@@ -357,14 +357,23 @@ async function buscarProdutoPorCodigoOriginal(
   return null
 }
 
-async function listarPedidosAbertosFornecedor(companyId: string, fornecedorPessoaId: string) {
+async function listarPedidosAbertosFornecedor(
+  companyId: string,
+  fornecedorPessoaIds: string | string[]
+) {
+  const ids = Array.isArray(fornecedorPessoaIds)
+    ? [...new Set(fornecedorPessoaIds.filter(Boolean))]
+    : [fornecedorPessoaIds]
+  if (ids.length === 0) return []
+
   return clientePrisma.pedidoCompra.findMany({
     where: {
       companyId,
-      fornecedorPessoaId,
+      fornecedorPessoaId: { in: ids },
       status: { in: ['enviado', 'aprovado', 'parcial'] },
     },
     include: {
+      fornecedor: { select: { id: true, nome: true } },
       itens: {
         include: { produto: { select: { id: true, nomeVenda: true } } },
       },
@@ -377,6 +386,7 @@ async function buscarPedidoComItens(companyId: string, pedidoId: string) {
   return clientePrisma.pedidoCompra.findFirst({
     where: { id: pedidoId, companyId },
     include: {
+      fornecedor: { select: { id: true, nome: true } },
       itens: {
         include: { produto: { select: { id: true, nomeVenda: true } } },
       },

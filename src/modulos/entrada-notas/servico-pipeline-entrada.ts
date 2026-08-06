@@ -45,6 +45,7 @@ import {
   type ResultadoEntradaNotaFiscal,
 } from '../estoque/servico-estoque.js'
 import { arredondarQtd } from '../estoque/tipos-estoque.js'
+import { obterPessoaIdsRedePorPessoaId } from '../fornecedores/vinculos-fornecedor.js'
 import { randomUUID } from 'crypto'
 
 type EtapaPipeline = 'cadastro' | 'fiscal' | 'negociacao' | 'frete'
@@ -112,6 +113,18 @@ function resolverItensPorEmbalagem(
   const vinculo = fornecedores.find((f) => f.fornecedorPessoaId === fornecedorPessoaId)
   const valor = decimalNum(vinculo?.multiplicadorEntrada as never)
   return valor != null && Number.isFinite(valor) && valor > 0 ? valor : 1
+}
+
+/**
+ * Pedidos abertos elegíveis na Negociação: sempre pela rede do grupo econômico
+ * (emitente + Fornecedores relacionados transitivos). Sem vínculos → só o emitente.
+ */
+async function listarPedidosAbertosGrupoEconomico(
+  companyId: string,
+  fornecedorPessoaId: string
+) {
+  const pessoaIds = await obterPessoaIdsRedePorPessoaId(fornecedorPessoaId, companyId)
+  return repositorioEntradaNotas.listarPedidosAbertosFornecedor(companyId, pessoaIds)
 }
 
 /**
@@ -1179,10 +1192,7 @@ async function analisarNota(
   if (nota.pedidoCompraId) {
     pedido = await repositorioEntradaNotas.buscarPedidoComItens(companyId, nota.pedidoCompraId)
   } else if (nota.fornecedorPessoaId && !modoDocumental) {
-    const abertos = await repositorioEntradaNotas.listarPedidosAbertosFornecedor(
-      companyId,
-      nota.fornecedorPessoaId
-    )
+    const abertos = await listarPedidosAbertosGrupoEconomico(companyId, nota.fornecedorPessoaId)
     if (abertos.length === 1) {
       pedido = abertos[0]
       await repositorioEntradaNotas.atualizarNota(notaId, { pedidoCompraId: pedido.id })
@@ -1534,16 +1544,21 @@ async function obterDetalhe(
     if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
   }
 
-  let pedidosDisponiveis: Array<{ id: string; numero: number; status: string }> = []
+  let pedidosDisponiveis: Array<{
+    id: string
+    numero: number
+    status: string
+    fornecedorPessoaId: string
+    fornecedorNome: string | null
+  }> = []
   if (nota.fornecedorPessoaId) {
-    const abertos = await repositorioEntradaNotas.listarPedidosAbertosFornecedor(
-      companyId,
-      nota.fornecedorPessoaId
-    )
+    const abertos = await listarPedidosAbertosGrupoEconomico(companyId, nota.fornecedorPessoaId)
     pedidosDisponiveis = abertos.map((p) => ({
       id: p.id,
       numero: p.numero,
       status: p.status,
+      fornecedorPessoaId: p.fornecedorPessoaId,
+      fornecedorNome: p.fornecedor?.nome ?? null,
     }))
   }
 
@@ -2059,8 +2074,27 @@ async function contatoFornecedor(companyId: string, notaId: string, observacao: 
 }
 
 async function definirPedido(companyId: string, notaId: string, pedidoCompraId: string) {
+  const nota = await repositorioEntradaNotas.buscarNotaPorId(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+
   const pedido = await repositorioEntradaNotas.buscarPedidoComItens(companyId, pedidoCompraId)
   if (!pedido) throw new ErroDaAplicacao('Pedido não encontrado', 404)
+
+  if (!nota.fornecedorPessoaId) {
+    throw new ErroDaAplicacao(
+      'Nota sem fornecedor vinculado — vincule o emitente antes de selecionar o pedido.',
+      400
+    )
+  }
+
+  const pessoaIdsRede = await obterPessoaIdsRedePorPessoaId(nota.fornecedorPessoaId, companyId)
+  if (!pessoaIdsRede.includes(pedido.fornecedorPessoaId)) {
+    throw new ErroDaAplicacao(
+      'Pedido não pertence ao grupo econômico do fornecedor da nota.',
+      400
+    )
+  }
+
   await repositorioEntradaNotas.atualizarNota(notaId, { pedidoCompraId })
   return analisarNota(companyId, notaId)
 }

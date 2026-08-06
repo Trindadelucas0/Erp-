@@ -38,6 +38,10 @@ vi.mock('../autenticacao/servico-autenticacao.js', () => ({
   },
 }))
 
+vi.mock('../fornecedores/vinculos-fornecedor.js', () => ({
+  obterPessoaIdsRedePorPessoaId: vi.fn(async (pessoaId: string) => [pessoaId]),
+}))
+
 vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({
   clientePrisma: {},
 }))

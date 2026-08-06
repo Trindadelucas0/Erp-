@@ -2,8 +2,9 @@
  * Vínculos entre fornecedores (mesmo grupo econômico, sem nome).
  * Grafo não direcionado: arestas armazenadas com par ordenado (A < B).
  *
- * `obterRedeFornecedor` retorna todos os dadosFornecedorId do componente conexo
- * (transitivo). Uso futuro: cruzar pedido de compra e entrada de nota com CNPJs diferentes.
+ * `obterRedeFornecedor` / `obterPessoaIdsRedePorPessoaId` retornam a rede transitiva.
+ * Uso atual: Entrada de Notas → Negociação cruza NF e pedido de compra entre CNPJs
+ * do mesmo grupo econômico.
  */
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
@@ -104,6 +105,37 @@ export async function obterRedeFornecedor(
   const rede = componenteConexo(dadosFornecedorId, adj)
   rede.add(dadosFornecedorId)
   return Array.from(rede)
+}
+
+/**
+ * PessoaIds da rede do grupo econômico a partir do emitente (pessoa).
+ * Sempre inclui a própria pessoa; sem DadosFornecedor / sem vínculos → `[pessoaId]`.
+ */
+export async function obterPessoaIdsRedePorPessoaId(
+  pessoaId: string,
+  companyId: string,
+  tx: TxCliente = clientePrisma
+): Promise<string[]> {
+  const dados = await tx.dadosFornecedor.findFirst({
+    where: {
+      papel: {
+        pessoaId,
+        papel: 'fornecedor',
+        pessoa: { companyId },
+      },
+    },
+    select: { id: true },
+  })
+
+  if (!dados) return [pessoaId]
+
+  const redeDadosIds = await obterRedeFornecedor(dados.id, companyId, tx)
+  const registros = await carregarDadosFornecedoresPorIds(redeDadosIds, tx)
+  const pessoaIds = new Set<string>([pessoaId])
+  for (const df of registros) {
+    pessoaIds.add(df.papel.pessoa.id)
+  }
+  return Array.from(pessoaIds)
 }
 
 async function carregarDadosFornecedoresPorIds(ids: string[], tx: TxCliente) {

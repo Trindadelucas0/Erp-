@@ -62,6 +62,10 @@ vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({
   },
 }))
 
+vi.mock('../fornecedores/vinculos-fornecedor.js', () => ({
+  obterPessoaIdsRedePorPessoaId: vi.fn(async (pessoaId: string) => [pessoaId]),
+}))
+
 import { repositorioEntradaNotas } from './repositorio-entrada-notas.js'
 import { analisarCadastro } from './analise-cadastro/analisar-cadastro.js'
 import { servicoEntradaNotas } from './servico-pipeline-entrada.js'
