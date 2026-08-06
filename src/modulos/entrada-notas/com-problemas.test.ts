@@ -50,7 +50,6 @@ import { repositorioEntradaNotas } from './repositorio-entrada-notas.js'
 import { clienteFocusNfe } from '../focus-nfe/cliente-focus-nfe.js'
 import { servicoDeAutenticacao } from '../autenticacao/servico-autenticacao.js'
 import { servicoEntradaNotas } from './servico-pipeline-entrada.js'
-import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 
 function notaBase(overrides: Record<string, unknown> = {}) {
   return {
@@ -147,11 +146,10 @@ describe('entrada-notas com problemas', () => {
     expect(r.nota.statusEntrada).toBe('problema_resolvido')
   })
 
-  it('desconhecer exige senha válida e vai para cancelada', async () => {
+  it('desconhecer vai para cancelada sem exigir senha', async () => {
     vi.mocked(repositorioEntradaNotas.buscarNotaPorId).mockResolvedValue(
       notaBase({ statusEntrada: 'com_problema' }) as never
     )
-    vi.mocked(servicoDeAutenticacao.verificarSenhaDoUsuario).mockResolvedValue(true)
     vi.mocked(repositorioEntradaNotas.atualizarNota).mockResolvedValue({} as never)
     vi.mocked(repositorioEntradaNotas.buscarNotaCompleta).mockResolvedValue(
       detalheMock({
@@ -161,19 +159,9 @@ describe('entrada-notas com problemas', () => {
       }) as never
     )
 
-    await expect(
-      servicoEntradaNotas.manifestar('c1', 'nota-1', 'desconhecimento', undefined, 'u1', '')
-    ).rejects.toBeInstanceOf(ErroDaAplicacao)
+    await servicoEntradaNotas.manifestar('c1', 'nota-1', 'desconhecimento')
 
-    await servicoEntradaNotas.manifestar(
-      'c1',
-      'nota-1',
-      'desconhecimento',
-      undefined,
-      'u1',
-      'senha-ok'
-    )
-
+    expect(servicoDeAutenticacao.verificarSenhaDoUsuario).not.toHaveBeenCalled()
     expect(clienteFocusNfe.manifestar).toHaveBeenCalledWith(
       'token',
       true,

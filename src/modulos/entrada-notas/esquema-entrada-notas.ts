@@ -54,21 +54,10 @@ export const esquemaDefinirPrazo = z.object({
   prazo: z.string().min(1, 'Informe o prazo'),
 })
 
-export const esquemaManifestar = z
-  .object({
-    tipo: z.enum(['desconhecimento', 'nao_realizada']),
-    justificativa: z.string().optional(),
-    senha: z.string().optional(),
-  })
-  .superRefine((dados, ctx) => {
-    if (dados.tipo === 'desconhecimento' && !dados.senha?.trim()) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Senha obrigatória para desconhecer a operação',
-        path: ['senha'],
-      })
-    }
-  })
+export const esquemaManifestar = z.object({
+  tipo: z.enum(['desconhecimento', 'nao_realizada']),
+  justificativa: z.string().optional(),
+})
 
 export const esquemaMarcarProblema = z.object({
   motivo: z.string().optional(),

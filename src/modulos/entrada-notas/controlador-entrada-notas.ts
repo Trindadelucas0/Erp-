@@ -203,9 +203,7 @@ async function manifestar(requisicao: FastifyRequest, resposta: FastifyReply) {
     companyIdDe(requisicao),
     notaIdDe(requisicao),
     parsed.data.tipo,
-    parsed.data.justificativa,
-    usuarioIdDe(requisicao),
-    parsed.data.senha
+    parsed.data.justificativa
   )
   return resposta.send(dados)
 }

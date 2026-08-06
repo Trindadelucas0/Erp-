@@ -2108,9 +2108,7 @@ async function manifestar(
   companyId: string,
   notaId: string,
   tipo: 'desconhecimento' | 'nao_realizada',
-  justificativa?: string,
-  usuarioId?: string,
-  senha?: string
+  justificativa?: string
 ) {
   const nota = await repositorioEntradaNotas.buscarNotaPorId(companyId, notaId)
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
@@ -2123,15 +2121,6 @@ async function manifestar(
     nota.statusEntrada === 'cancelada'
   ) {
     throw new ErroDaAplicacao('Nota já finalizada ou cancelada.', 409)
-  }
-
-  if (tipo === 'desconhecimento') {
-    if (!senha?.trim()) {
-      throw new ErroDaAplicacao('Senha obrigatória para desconhecer a operação.', 400)
-    }
-    if (!usuarioId) throw new ErroDaAplicacao('Usuário não autenticado', 401)
-    const ok = await servicoDeAutenticacao.verificarSenhaDoUsuario(usuarioId, senha)
-    if (!ok) throw new ErroDaAplicacao('Senha inválida.', 403)
   }
 
   const cfg = await repositorioFocusNfe.buscarConfigPorEmpresa(companyId)

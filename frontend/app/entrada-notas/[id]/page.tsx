@@ -564,15 +564,11 @@ function CardManifestoDestinatario({
   acao,
   justificativa,
   onJustificativaChange,
-  senha,
-  onSenhaChange,
   onManifestar,
 }: {
   acao: boolean
   justificativa: string
   onJustificativaChange: (valor: string) => void
-  senha: string
-  onSenhaChange: (valor: string) => void
   onManifestar: (tipo: 'desconhecimento' | 'nao_realizada') => void
 }) {
   return (
@@ -580,7 +576,7 @@ function CardManifestoDestinatario({
       <p className="mb-3 text-sm text-muted-foreground">
         Use quando a nota não pode seguir no fluxo normal (ex.: CST/CFOP impeditivo ou operação que
         a empresa não reconhece). A nota vai para o painel <strong>Canceladas</strong> e não pode
-        mais ser lançada. <strong>Desconhecer operação</strong> exige senha.
+        mais ser lançada.
       </p>
       <textarea
         className="mb-3 min-h-[70px] w-full rounded-md border bg-background px-3 py-2 text-sm"
@@ -588,24 +584,12 @@ function CardManifestoDestinatario({
         onChange={(e) => onJustificativaChange(e.target.value)}
         placeholder="Justificativa (obrigatória para operação não realizada)"
       />
-      <div className="mb-3 max-w-xs">
-        <Label htmlFor="senha-desconhecer">Senha (desconhecer operação)</Label>
-        <input
-          id="senha-desconhecer"
-          type="password"
-          className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm"
-          value={senha}
-          onChange={(e) => onSenhaChange(e.target.value)}
-          placeholder="Senha do usuário"
-          autoComplete="current-password"
-        />
-      </div>
       <div className="flex flex-wrap gap-2">
         <Button
           type="button"
           size="sm"
           variant="destructive"
-          disabled={acao || !senha.trim()}
+          disabled={acao}
           onClick={() => onManifestar('desconhecimento')}
         >
           Desconhecer operação
@@ -631,8 +615,6 @@ function CardProblemaNota({
   tratativas,
   textoTratativa,
   onTextoTratativaChange,
-  senha,
-  onSenhaChange,
   onEnviarTratativa,
   onResolver,
   onDesconhecer,
@@ -643,8 +625,6 @@ function CardProblemaNota({
   tratativas: TratativaNota[]
   textoTratativa: string
   onTextoTratativaChange: (valor: string) => void
-  senha: string
-  onSenhaChange: (valor: string) => void
   onEnviarTratativa: () => void
   onResolver: () => void
   onDesconhecer: () => void
@@ -704,18 +684,6 @@ function CardProblemaNota({
       {aberta && (
         <div className="space-y-3 border-t pt-3">
           <p className="text-sm font-medium">Desfecho</p>
-          <div className="max-w-xs">
-            <Label htmlFor="senha-problema-desconhecer">Senha (desconhecer operação)</Label>
-            <input
-              id="senha-problema-desconhecer"
-              type="password"
-              className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm"
-              value={senha}
-              onChange={(e) => onSenhaChange(e.target.value)}
-              placeholder="Senha do usuário"
-              autoComplete="current-password"
-            />
-          </div>
           <div className="flex flex-wrap gap-2">
             <Button type="button" size="sm" disabled={acao} onClick={onResolver}>
               Registrar solução
@@ -724,7 +692,7 @@ function CardProblemaNota({
               type="button"
               size="sm"
               variant="destructive"
-              disabled={acao || !senha.trim()}
+              disabled={acao}
               onClick={onDesconhecer}
             >
               Desconhecer operação
@@ -750,7 +718,6 @@ function ConteudoDetalheEntrada() {
   const [mensagem, setMensagem] = useState<string | null>(null)
   const [estoqueResumo, setEstoqueResumo] = useState<EstoqueResumoLancamento | null>(null)
   const [senha, setSenha] = useState('')
-  const [senhaDesconhecer, setSenhaDesconhecer] = useState('')
   const [obsContato, setObsContato] = useState('')
   const [justificativaManifesto, setJustificativaManifesto] = useState('')
   const [textoTratativa, setTextoTratativa] = useState('')
@@ -1125,19 +1092,13 @@ function ConteudoDetalheEntrada() {
       `${rotulo}: a nota vai para o painel Canceladas e não poderá mais ser lançada. Confirma?`
     )
     if (!confirmado) return
-    if (tipo === 'desconhecimento' && !senhaDesconhecer.trim()) {
-      setErro('Senha obrigatória para desconhecer a operação.')
-      return
-    }
     const justificativa = justificativaManifesto.trim()
     const ok = await postAcao('/manifestar', {
       tipo,
       ...(justificativa ? { justificativa } : {}),
-      ...(tipo === 'desconhecimento' ? { senha: senhaDesconhecer } : {}),
     })
     if (ok) {
       setJustificativaManifesto('')
-      setSenhaDesconhecer('')
     }
   }
 
@@ -1478,8 +1439,6 @@ function ConteudoDetalheEntrada() {
           tratativas={nota.tratativas ?? []}
           textoTratativa={textoTratativa}
           onTextoTratativaChange={setTextoTratativa}
-          senha={senhaDesconhecer}
-          onSenhaChange={setSenhaDesconhecer}
           onEnviarTratativa={() => void enviarTratativa()}
           onResolver={() => void resolverProblemaSolucao()}
           onDesconhecer={() => void manifestar('desconhecimento')}
@@ -1819,8 +1778,6 @@ function ConteudoDetalheEntrada() {
               acao={acao}
               justificativa={justificativaManifesto}
               onJustificativaChange={setJustificativaManifesto}
-              senha={senhaDesconhecer}
-              onSenhaChange={setSenhaDesconhecer}
               onManifestar={(tipo) => void manifestar(tipo)}
             />
           )}
@@ -1934,8 +1891,6 @@ function ConteudoDetalheEntrada() {
               acao={acao}
               justificativa={justificativaManifesto}
               onJustificativaChange={setJustificativaManifesto}
-              senha={senhaDesconhecer}
-              onSenhaChange={setSenhaDesconhecer}
               onManifestar={(tipo) => void manifestar(tipo)}
             />
           )}
