@@ -26,9 +26,11 @@ const TITULOS_POR_ROTA: Record<string, string> = {
 
 const PREFIXOS_TITULO: { prefixo: string; titulo: string }[] = [
   { prefixo: '/pedidos-compra/', titulo: 'Pedido de compra' },
+  { prefixo: '/entrada-notas/', titulo: 'Entrada de Notas' },
 ]
 
-function resolverTituloRota(caminho: string): string {
+function resolverTituloRota(caminho: string | null): string {
+  if (!caminho) return 'Sistema de Gestão'
   if (TITULOS_POR_ROTA[caminho]) {
     return TITULOS_POR_ROTA[caminho]
   }

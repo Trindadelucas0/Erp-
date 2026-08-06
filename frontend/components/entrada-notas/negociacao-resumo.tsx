@@ -238,7 +238,7 @@ function ConteudoCategoria({
     const numeroPedido =
       itens.find((a) => a.numeroPedido != null)?.numeroPedido ??
       (() => {
-        const m = itens[0]?.mensagem.match(/pedido\s*#(\d+)/i)
+        const m = itens[0]?.mensagem?.match(/pedido\s*#(\d+)/i)
         return m ? Number(m[1]) : null
       })()
 
@@ -356,7 +356,8 @@ type Props = {
 export function NegociacaoResumo({ etapa }: Props) {
   if (!etapa) return <p className="text-sm text-muted-foreground">Pendente</p>
 
-  const achados = etapa.detalhes?.achados
+  const achadosBrutos = etapa.detalhes?.achados
+  const achados = Array.isArray(achadosBrutos) ? achadosBrutos : null
   if (!achados || achados.length === 0) {
     return <EtapaResumoFlat etapa={etapa} />
   }
@@ -409,6 +410,7 @@ export function NegociacaoResumo({ etapa }: Props) {
       <div className="space-y-3">
         {porCategoria.map(({ categoria, itens }) => {
           const meta = META_CATEGORIA[categoria]
+          if (!meta) return null
           const Icon = meta.Icon
           const temBloqueio = itens.some((a) => a.severidade === 'bloqueio')
           return (

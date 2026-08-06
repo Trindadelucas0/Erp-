@@ -57,8 +57,10 @@ export function EtapaResumo({ etapa, dica }: Props) {
   const bloqueios = [
     ...(etapa.bloqueiosNaoLiberaveis ?? []),
     ...(etapa.bloqueios ?? []),
-  ]
-  const avisos = etapa.avisos ?? []
+  ].filter((b): b is string => typeof b === 'string' && b.length > 0)
+  const avisos = (etapa.avisos ?? []).filter(
+    (a): a is string => typeof a === 'string' && a.length > 0
+  )
   const temProblema = bloqueios.length > 0 || avisos.length > 0
 
   return (

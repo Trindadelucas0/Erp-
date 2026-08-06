@@ -50,7 +50,9 @@ function valorOuTraco(v: string | null | undefined): string {
 /** Fallback para análise antiga sem `detalhes.achados`. */
 function achadosDeBloqueios(etapa: ResultadoEtapaUi): AchadoCadastro[] {
   const achados: AchadoCadastro[] = []
-  for (const b of etapa.bloqueios ?? []) {
+  for (const raw of etapa.bloqueios ?? []) {
+    const b = typeof raw === 'string' ? raw : ''
+    if (!b) continue
     const sem = b.match(
       /Item da NF sem produto correspondente no cadastro \(barras:\s*([^/]*?)\s*\/\s*código original:\s*([^)]*)\)/i
     )
@@ -87,7 +89,9 @@ function achadosDeBloqueios(etapa: ResultadoEtapaUi): AchadoCadastro[] {
     }
     achados.push({ categoria: 'item_sem_produto', severidade: 'bloqueio', mensagem: b })
   }
-  for (const a of etapa.avisos ?? []) {
+  for (const raw of etapa.avisos ?? []) {
+    const a = typeof raw === 'string' ? raw : ''
+    if (!a) continue
     achados.push({
       categoria: /documental/i.test(a) ? 'documental' : 'documental',
       severidade: 'aviso',
@@ -153,9 +157,10 @@ export function CadastroResumo({ etapa, itens }: Props) {
 
   if (!etapa) return <p className="text-sm text-muted-foreground">Pendente</p>
 
+  const crusBrutos = etapa.detalhes?.achados
   const crus =
-    (etapa.detalhes?.achados as AchadoCadastro[] | undefined)?.length
-      ? (etapa.detalhes!.achados as AchadoCadastro[])
+    Array.isArray(crusBrutos) && crusBrutos.length > 0
+      ? (crusBrutos as AchadoCadastro[])
       : achadosDeBloqueios(etapa)
 
   const achados = enriquecerComItens(crus, itens)

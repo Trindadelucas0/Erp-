@@ -13,8 +13,9 @@ type Props = {
 export function LayoutCondicional({ children }: Props) {
   const caminho = usePathname()
   const semLayout =
-    ROTAS_SEM_LAYOUT.includes(caminho) ||
-    PREFIXOS_SEM_LAYOUT.some((prefixo) => caminho.startsWith(prefixo))
+    Boolean(caminho) &&
+    (ROTAS_SEM_LAYOUT.includes(caminho) ||
+      PREFIXOS_SEM_LAYOUT.some((prefixo) => caminho.startsWith(prefixo)))
 
   if (semLayout) {
     return <>{children}</>

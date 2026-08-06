@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
@@ -453,21 +453,25 @@ function rotuloRegraRateio(regra: string | null | undefined): string {
   return mapa[r] ?? r
 }
 
+function textoBloqueioEtapa(b: unknown): string {
+  return typeof b === 'string' ? b : ''
+}
+
 function bloqueioRegraRateioAusente(etapa?: ResultadoEtapa | null): boolean {
   return (etapa?.bloqueios ?? []).some((b) =>
-    b.toLowerCase().includes('regra de rateio')
+    textoBloqueioEtapa(b).toLowerCase().includes('regra de rateio')
   )
 }
 
 function bloqueioValorFreteAusente(etapa?: ResultadoEtapa | null): boolean {
   return (etapa?.bloqueios ?? []).some((b) =>
-    b.toLowerCase().includes('valor do frete')
+    textoBloqueioEtapa(b).toLowerCase().includes('valor do frete')
   )
 }
 
 function bloqueioCfopEntradaFrete(etapa?: ResultadoEtapa | null): boolean {
   return (etapa?.bloqueios ?? []).some((b) =>
-    b.toLowerCase().includes('cfop de entrada')
+    textoBloqueioEtapa(b).toLowerCase().includes('cfop de entrada')
   )
 }
 
@@ -506,8 +510,9 @@ function stubParaParcelasUi(
     | undefined,
   defaults: { numeroDocumento?: string; valor?: number | null }
 ): ParcelaFinanceiroFrete[] {
-  if (stub?.parcelas && stub.parcelas.length > 0) {
-    return stub.parcelas.map((p) => ({
+  const parcelas = Array.isArray(stub?.parcelas) ? stub!.parcelas! : []
+  if (parcelas.length > 0) {
+    return parcelas.map((p) => ({
       numeroDocumento: p.numeroDocumento ?? '',
       vencimento: p.vencimento ?? '',
       valor: p.valor != null && Number.isFinite(p.valor) ? String(p.valor) : '',
@@ -522,6 +527,33 @@ function stubParaParcelasUi(
       valor: valor != null && Number.isFinite(valor) ? String(valor) : '',
     },
   ]
+}
+
+function assinaturaParcelas(
+  parcelas: Array<{ numeroDocumento?: string | null; vencimento?: string | null; valor?: number | null }> | null | undefined
+): string {
+  if (!Array.isArray(parcelas) || parcelas.length === 0) return ''
+  return parcelas
+    .map((p) => `${p.numeroDocumento ?? ''}:${p.vencimento ?? ''}:${p.valor ?? ''}`)
+    .join(',')
+}
+
+function assinaturaDespesasFrete(nota: DetalheNota | null | undefined): string {
+  return (nota?.despesasFrete ?? [])
+    .map(
+      (d) =>
+        `${d.id}:${d.numeroDocumento ?? ''}:${d.vencimento ?? ''}:${d.valor ?? ''}:${assinaturaParcelas(d.parcelas)}`
+    )
+    .join('|')
+}
+
+function assinaturaCtesFinanceiro(nota: DetalheNota | null | undefined): string {
+  return (nota?.ctesVinculados ?? [])
+    .map(
+      (v) =>
+        `${v.id}:${v.financeiro?.id ?? ''}:${v.financeiro?.valor ?? ''}:${v.sugestaoFinanceiroFrete?.numeroDocumento ?? ''}:${v.sugestaoFinanceiroFrete?.valor ?? ''}:${assinaturaParcelas(v.financeiro?.parcelas)}`
+    )
+    .join('|')
 }
 
 function somaParcelasFinanceiro(parcelas: ParcelaFinanceiroFrete[]): number {
@@ -830,22 +862,8 @@ function ConteudoDetalheEntrada() {
     nota?.tipoDocumento,
     nota?.sugestaoFinanceiroFrete?.numeroDocumento,
     nota?.sugestaoFinanceiroFrete?.valor,
-    (nota?.despesasFrete ?? [])
-      .map(
-        (d) =>
-          `${d.id}:${d.numeroDocumento ?? ''}:${d.vencimento ?? ''}:${d.valor ?? ''}:${(d.parcelas ?? [])
-            .map((p) => `${p.numeroDocumento ?? ''}:${p.vencimento ?? ''}:${p.valor ?? ''}`)
-            .join(',')}`
-      )
-      .join('|'),
-    (nota?.ctesVinculados ?? [])
-      .map(
-        (v) =>
-          `${v.id}:${v.financeiro?.id ?? ''}:${v.financeiro?.valor ?? ''}:${v.sugestaoFinanceiroFrete?.numeroDocumento ?? ''}:${v.sugestaoFinanceiroFrete?.valor ?? ''}:${(v.financeiro?.parcelas ?? [])
-            .map((p) => `${p.numeroDocumento ?? ''}:${p.vencimento ?? ''}:${p.valor ?? ''}`)
-            .join(',')}`
-      )
-      .join('|'),
+    assinaturaDespesasFrete(nota),
+    assinaturaCtesFinanceiro(nota),
   ])
 
   useEffect(() => {
@@ -1230,10 +1248,10 @@ function ConteudoDetalheEntrada() {
     nota?.analise?.fiscal?.exigeManifesto === true ||
     (nota?.analise?.fiscal?.bloqueiosNaoLiberaveis?.length ?? 0) > 0 ||
     (nota?.analise?.fiscal?.bloqueios ?? []).some((m) =>
-      /sem CFOP(?! de entrada)|sem CST|desconhecimento da opera/i.test(m)
+      /sem CFOP(?! de entrada)|sem CST|desconhecimento da opera/i.test(textoBloqueioEtapa(m))
     )
   const fiscalExigeCfopEntrada = (nota?.analise?.fiscal?.bloqueios ?? []).some((m) =>
-    /CFOP de entrada/i.test(m)
+    /CFOP de entrada/i.test(textoBloqueioEtapa(m))
   )
   const cadastroBloqueante = nota?.analise?.cadastro?.status === 'bloqueante'
   const fiscalBloqueante = nota?.analise?.fiscal?.status === 'bloqueante'
@@ -1498,9 +1516,7 @@ function ConteudoDetalheEntrada() {
           </p>
           <p>
             <span className="text-muted-foreground">Valor:</span>{' '}
-            {nota.valorTotal != null
-              ? nota.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-              : '—'}
+            {formatMoedaBr(nota.valorTotal)}
           </p>
           <p>
             <span className="text-muted-foreground">Status:</span>{' '}
@@ -1547,7 +1563,7 @@ function ConteudoDetalheEntrada() {
       {abaAtiva === 'cadastro' && (
         <div className="space-y-4">
           <CardPadrao titulo="Análise de cadastro">
-            <CadastroResumo etapa={nota.analise?.cadastro} itens={nota.itens} />
+            <CadastroResumo etapa={nota.analise?.cadastro} itens={nota.itens ?? []} />
             {cadastroBloqueante && !nota.fornecedor && nota.documentoEmitente ? (
               <div className="mt-3">
                 <Button
@@ -1602,7 +1618,7 @@ function ConteudoDetalheEntrada() {
                       : '.'}
                   </p>
                 ) : null}
-                {nota.itens.map((item) => (
+                {(nota.itens ?? []).map((item) => (
                   <ItemVinculoCadastroGrid
                     key={item.id}
                     item={item}
@@ -1657,7 +1673,7 @@ function ConteudoDetalheEntrada() {
                     }
                   />
                 ))}
-                {nota.itens.length === 0 && (
+                {(nota.itens ?? []).length === 0 && (
                   <p className="text-sm text-muted-foreground">Sem itens. Reanalisar ou reimporte o XML.</p>
                 )}
               </div>
@@ -1712,7 +1728,7 @@ function ConteudoDetalheEntrada() {
           </CardPadrao>
           <CardPadrao titulo="Itens — NCM / origem / CST / CFOP de entrada">
             <div className="space-y-4">
-              {nota.itens.map((item) => (
+              {(nota.itens ?? []).map((item) => (
                 <ItemVinculoFiscalGrid
                   key={item.id}
                   item={item}
@@ -1731,7 +1747,7 @@ function ConteudoDetalheEntrada() {
                   }}
                 />
               ))}
-              {nota.itens.length === 0 && (
+              {(nota.itens ?? []).length === 0 && (
                 <p className="text-sm text-muted-foreground">Sem itens. Reanalisar ou reimporte o XML.</p>
               )}
             </div>
@@ -2098,10 +2114,7 @@ function ConteudoDetalheEntrada() {
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {v.origemVinculo} ·{' '}
-                          {(v.valorFrete ?? v.cte?.valorTotal)?.toLocaleString('pt-BR', {
-                            style: 'currency',
-                            currency: 'BRL',
-                          }) ?? '—'}
+                          {formatMoedaBr(v.valorFrete ?? v.cte?.valorTotal ?? null)}
                         </p>
                         {v.cte?.id && (
                           <CfopEntradaFreteCampos
@@ -2517,7 +2530,7 @@ function ConteudoDetalheEntrada() {
                   <ul className="mt-1 space-y-1">
                     {(nota.despesasFrete ?? []).map((d) => (
                       <li key={d.id}>
-                        {d.valor?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} —{' '}
+                        {formatMoedaBr(d.valor)} —{' '}
                         {d.status}
                       </li>
                     ))}
@@ -2592,7 +2605,9 @@ function ConteudoDetalheEntrada() {
 export default function PaginaDetalheEntradaNota() {
   return (
     <ProtegerRota chaveDaPagina="entrada-notas">
-      <ConteudoDetalheEntrada />
+      <Suspense fallback={<p className="text-sm text-muted-foreground">Carregando nota…</p>}>
+        <ConteudoDetalheEntrada />
+      </Suspense>
     </ProtegerRota>
   )
 }
