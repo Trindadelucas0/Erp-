@@ -36,6 +36,12 @@ import type { Prisma } from '@prisma/client'
 import { ratearCustoFrete } from './ratear-custo-frete.js'
 import { servicoVinculoCte } from './servico-vinculo-cte.js'
 import {
+  mensagemBloqueioConsolidar,
+  notaJaLiberadaOuConsolidada,
+  podeConsolidarEstoque,
+  STATUS_PAINEL_CONTAGEM,
+} from './status-entrada-contagem.js'
+import {
   extrairFlagsFornecedorDaNota,
   resolverModoDocumentalEntrada,
   type FlagsFornecedorEntrada,
@@ -571,7 +577,7 @@ function etapaEfetivaAtual(nota: {
   etapaAtual: string
   analiseJson: unknown
 }): EtapaPipeline | 'lancamento' {
-  if (nota.statusEntrada === 'entrada_contagem' || nota.statusEntrada === 'entrada_consolidada') {
+  if (notaJaLiberadaOuConsolidada(nota.statusEntrada)) {
     return 'lancamento'
   }
   const motivo = (nota.analiseJson as AnaliseJson | null)?.motivoParada
@@ -651,8 +657,7 @@ async function voltarEtapa(
     motivoParada: null,
   }
 
-  const finalizada =
-    nota.statusEntrada === 'entrada_contagem' || nota.statusEntrada === 'entrada_consolidada'
+  const finalizada = notaJaLiberadaOuConsolidada(nota.statusEntrada)
 
   await repositorioEntradaNotas.atualizarNota(notaId, {
     statusEntrada: 'em_analise',
@@ -901,8 +906,7 @@ async function analisarNota(
 
   const base = await garantirItensDoXml(companyId, notaId)
   if (
-    base.statusEntrada === 'entrada_contagem' ||
-    base.statusEntrada === 'entrada_consolidada' ||
+    notaJaLiberadaOuConsolidada(base.statusEntrada) ||
     base.statusEntrada === 'cancelada' ||
     base.statusEntrada === 'com_problema' ||
     base.statusEntrada === 'problema_resolvido'
@@ -1473,9 +1477,7 @@ async function obterDetalhe(
       })
     }
     if (itensAdicionados > 0) {
-      const finalizada =
-        nota.statusEntrada === 'entrada_contagem' ||
-        nota.statusEntrada === 'entrada_consolidada'
+      const finalizada = notaJaLiberadaOuConsolidada(nota.statusEntrada)
       if (finalizada) {
         await repositorioEntradaNotas.atualizarNota(notaId, {
           statusEntrada: 'em_analise',
@@ -2116,8 +2118,7 @@ async function manifestar(
     throw new ErroDaAplicacao('Nota com problema já resolvida — não é possível manifestar.', 409)
   }
   if (
-    nota.statusEntrada === 'entrada_contagem' ||
-    nota.statusEntrada === 'entrada_consolidada' ||
+    notaJaLiberadaOuConsolidada(nota.statusEntrada) ||
     nota.statusEntrada === 'cancelada'
   ) {
     throw new ErroDaAplicacao('Nota já finalizada ou cancelada.', 409)
@@ -2153,7 +2154,7 @@ async function manifestar(
 }
 
 const STATUS_BLOQUEADOS_MARCAR_PROBLEMA = [
-  'entrada_contagem',
+  ...STATUS_PAINEL_CONTAGEM,
   'entrada_consolidada',
   'cancelada',
   'problema_resolvido',
@@ -2392,13 +2393,16 @@ async function lancar(
   const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
 
-  const jaEmContagem = nota.statusEntrada === 'entrada_contagem'
+  const noPainelContagem = STATUS_PAINEL_CONTAGEM.includes(nota.statusEntrada)
   const jaConsolidada = nota.statusEntrada === 'entrada_consolidada'
+  const exigeContagemFisica =
+    (nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento) &&
+    nota.itens.some((i) => i.produtoId)
 
   if (jaConsolidada) {
     throw new ErroDaAplicacao('Nota já consolidada.', 409)
   }
-  if (modo === 'contagem' && jaEmContagem) {
+  if (modo === 'contagem' && noPainelContagem) {
     throw new ErroDaAplicacao('Nota já liberada para contagem.', 409)
   }
   if (nota.statusEntrada === 'cancelada') {
@@ -2421,7 +2425,7 @@ async function lancar(
   }
 
   // Liberada para contagem já passou no gate; consolidar a partir dela não revalida.
-  if (!jaEmContagem) {
+  if (!noPainelContagem) {
     const gate = pipelineProntoParaLancar(
       nota.analiseJson as AnaliseJson | null,
       nota.criticasLiberadas,
@@ -2435,6 +2439,9 @@ async function lancar(
   let estoqueResumo: ResultadoEntradaNotaFiscal | null = null
 
   if (modo === 'consolidar') {
+    if (!podeConsolidarEstoque(nota.statusEntrada, { exigeContagemFisica })) {
+      throw new ErroDaAplicacao(mensagemBloqueioConsolidar(nota.statusEntrada), 409)
+    }
     if (!senha) throw new ErroDaAplicacao('Senha de gerente obrigatória para consolidar estoque.', 400)
     const ok = await servicoDeAutenticacao.verificarSenhaDoUsuario(usuarioId, senha)
     if (!ok) throw new ErroDaAplicacao('Senha inválida.', 403)
@@ -2468,8 +2475,7 @@ async function processarAposXml(
     const nota = await repositorioEntradaNotas.buscarNotaPorId(companyId, notaId)
     if (!nota?.xmlConteudo) return
     if (
-      nota.statusEntrada === 'entrada_contagem' ||
-      nota.statusEntrada === 'entrada_consolidada' ||
+      notaJaLiberadaOuConsolidada(nota.statusEntrada) ||
       nota.statusEntrada === 'cancelada' ||
       nota.statusEntrada === 'com_problema' ||
       nota.statusEntrada === 'problema_resolvido'

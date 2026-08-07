@@ -747,7 +747,13 @@ async function repararCtesTomadorIndevido(companyId: string): Promise<number> {
       origem: 'focus',
       xmlConteudo: { not: null },
       statusEntrada: {
-        notIn: ['entrada_contagem', 'entrada_consolidada', 'cancelada'],
+        notIn: [
+          'entrada_contagem',
+          'entrada_contagem_ok',
+          'entrada_contagem_divergente',
+          'entrada_consolidada',
+          'cancelada',
+        ],
       },
     },
     select: { id: true, xmlConteudo: true, chaveNfe: true },

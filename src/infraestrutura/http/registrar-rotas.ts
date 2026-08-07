@@ -19,6 +19,7 @@ import { rotasDeCfops } from '../../modulos/cfops/rotas-cfops.js'
 import { rotasDeAssinaturaZapsign } from '../../modulos/assinatura-zapsign/rotas-assinatura-zapsign.js'
 import { rotasFocusNfe } from '../../modulos/focus-nfe/rotas-focus-nfe.js'
 import { rotasEntradaNotas } from '../../modulos/entrada-notas/rotas-entrada-notas.js'
+import { rotasContagens } from '../../modulos/contagens/rotas-contagens.js'
 import { rotasDeIntegracoes } from '../../modulos/integracoes/rotas-integracoes.js'
 import { rotasDeProdutos } from '../../modulos/produtos/rotas-produtos.js'
 import { rotasDePedidosCompra } from '../../modulos/pedidos-compra/rotas-pedidos-compra.js'
@@ -50,6 +51,7 @@ export async function registrarRotas(aplicacao: FastifyInstance): Promise<void> 
   await aplicacao.register(rotasDeAssinaturaZapsign, { prefix: '/zapsign' })
   await aplicacao.register(rotasFocusNfe, { prefix: '/focus-nfe' })
   await aplicacao.register(rotasEntradaNotas, { prefix: '/entrada-notas' })
+  await aplicacao.register(rotasContagens, { prefix: '/contagens' })
   await aplicacao.register(rotasDeIntegracoes, { prefix: '/integracoes' })
   await aplicacao.register(rotasDeUploads, { prefix: '/uploads' })
   await aplicacao.register(rotasDoPortalFornecedor, { prefix: '/portal-fornecedor' })

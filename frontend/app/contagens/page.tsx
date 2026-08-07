@@ -1,0 +1,228 @@
+'use client'
+
+import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
+import { clienteHttp } from '@/services/api'
+import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
+import { CardPadrao } from '@/components/ui/card-padrao'
+import { Button } from '@/components/ui/button'
+import { LinhasSkeletonTabela } from '@/components/ui/linhas-skeleton-tabela'
+
+type NotaDisponivel = {
+  id: string
+  chaveNfe: string
+  nomeEmitente: string | null
+  documentoEmitente: string | null
+  dataEmissao: string | null
+  serie: string | null
+  numero: string | null
+}
+
+type NotaIgnorada = NotaDisponivel & { motivo: string }
+
+function formatarData(iso: string | null): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('pt-BR')
+}
+
+function ConteudoListaContagens() {
+  const router = useRouter()
+  const [notas, setNotas] = useState<NotaDisponivel[]>([])
+  const [ignoradas, setIgnoradas] = useState<NotaIgnorada[]>([])
+  const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set())
+  const [carregando, setCarregando] = useState(true)
+  const [iniciando, setIniciando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  const carregar = useCallback(async () => {
+    setCarregando(true)
+    setErro(null)
+    try {
+      const { data } = await clienteHttp.get<{
+        notas: NotaDisponivel[]
+        ignoradas?: NotaIgnorada[]
+      }>('/contagens/disponiveis')
+      setNotas(data.notas ?? [])
+      setIgnoradas(data.ignoradas ?? [])
+      setSelecionadas(new Set())
+    } catch (e) {
+      setErro(extrairMensagemApi(e, 'Falha ao listar entradas liberadas.'))
+    } finally {
+      setCarregando(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void carregar()
+  }, [carregar])
+
+  function alternar(id: string) {
+    setSelecionadas((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function iniciar() {
+    if (selecionadas.size === 0) {
+      setErro('Selecione ao menos uma entrada.')
+      return
+    }
+    setIniciando(true)
+    setErro(null)
+    try {
+      const { data } = await clienteHttp.post<{ id: string }>('/contagens', {
+        nfeRecebidaIds: [...selecionadas],
+      })
+      router.push(`/contagens/${data.id}`)
+    } catch (e) {
+      setErro(extrairMensagemApi(e, 'Não foi possível iniciar a contagem.'))
+      setIniciando(false)
+    }
+  }
+
+  const nfeSemVinculo = ignoradas.filter((n) =>
+    /vinculado a produto/i.test(n.motivo)
+  )
+
+  return (
+    <div className="space-y-4">
+      <CardPadrao
+        titulo="Entradas liberadas para contagem"
+        acoes={
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={() => void carregar()} disabled={carregando}>
+              Atualizar
+            </Button>
+            <Button
+              type="button"
+              disabled={iniciando || selecionadas.size === 0}
+              onClick={() => void iniciar()}
+            >
+              {iniciando ? 'Iniciando…' : `Iniciar contagem (${selecionadas.size})`}
+            </Button>
+          </div>
+        }
+      >
+        <p className="mb-3 text-sm text-muted-foreground">
+          Só entram NFe 55 com pelo menos um item <strong>vinculado a produto</strong>. Contagem
+          cega: sem quantidade da nota, sem valor e sem DANFE. NFS-e/CT-e não aparecem aqui.
+        </p>
+        {erro && (
+          <p className="mb-3 text-sm text-destructive" role="alert">
+            {erro}
+          </p>
+        )}
+        <div className="overflow-x-auto rounded-md border">
+          <table className="w-full min-w-[640px] text-left text-sm">
+            <thead className="border-b bg-muted/40">
+              <tr>
+                <th className="w-10 px-3 py-2" scope="col">
+                  <span className="sr-only">Selecionar</span>
+                </th>
+                <th className="px-3 py-2 font-medium" scope="col">
+                  Fornecedor
+                </th>
+                <th className="px-3 py-2 font-medium" scope="col">
+                  Nº nota
+                </th>
+                <th className="px-3 py-2 font-medium" scope="col">
+                  Série
+                </th>
+                <th className="px-3 py-2 font-medium" scope="col">
+                  Emissão
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {carregando ? (
+                <LinhasSkeletonTabela colunas={5} linhas={5} />
+              ) : notas.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
+                    Nenhuma NFe pronta para contagem física.
+                    {nfeSemVinculo.length > 0
+                      ? ` Há ${nfeSemVinculo.length} liberada(s) sem produto vinculado — veja abaixo.`
+                      : ' Liberadas documentais (NFS-e/CT-e) não entram nesta tela.'}
+                  </td>
+                </tr>
+              ) : (
+                notas.map((n) => {
+                  const marcada = selecionadas.has(n.id)
+                  return (
+                    <tr
+                      key={n.id}
+                      className={`border-b last:border-0 ${marcada ? 'bg-primary/5' : ''}`}
+                    >
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={marcada}
+                          onChange={() => alternar(n.id)}
+                          aria-label={`Selecionar nota ${n.numero ?? n.id}`}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="font-medium">{n.nomeEmitente || '—'}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {n.documentoEmitente || ''}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 tabular-nums">{n.numero ?? '—'}</td>
+                      <td className="px-3 py-2 tabular-nums">{n.serie ?? '—'}</td>
+                      <td className="px-3 py-2">{formatarData(n.dataEmissao)}</td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </CardPadrao>
+
+      {!carregando && nfeSemVinculo.length > 0 && (
+        <CardPadrao titulo="Liberadas, mas ainda não contáveis">
+          <p className="mb-3 text-sm text-muted-foreground">
+            Estas NFes estão em Liberadas p/ contagem, porém falta vincular o produto na Entrada
+            de Notas (aba Cadastro → Conciliar produto). Depois disso, volte aqui e atualize.
+          </p>
+          <ul className="space-y-2 text-sm">
+            {nfeSemVinculo.map((n) => (
+              <li
+                key={n.id}
+                className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2"
+              >
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="font-medium">
+                    {n.nomeEmitente || '—'} · NF {n.numero ?? '—'}
+                  </span>
+                  <Link
+                    href={`/entrada-notas/${n.id}?aba=cadastro`}
+                    className="text-primary underline"
+                  >
+                    Abrir na Entrada
+                  </Link>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{n.motivo}</p>
+              </li>
+            ))}
+          </ul>
+        </CardPadrao>
+      )}
+    </div>
+  )
+}
+
+export default function PaginaContagens() {
+  return (
+    <ProtegerRota chaveDaPagina="contagens">
+      <ConteudoListaContagens />
+    </ProtegerRota>
+  )
+}

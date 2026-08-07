@@ -879,7 +879,7 @@ function ConteudoEntradaNotas() {
             : painel === 'consolidada'
               ? 'Notas com entrada consolidada. NFe com estoque lançado (físico + fiscal). NFS-e/CTe documentais não movimentam estoque.'
               : painel === 'contagem'
-                ? 'Liberadas para contagem — consolide na nota (senha gerente) para lançar o estoque'
+                ? 'Liberadas para contagem — logística confere em Contagens; consolidar só após contagem OK (NFe produto)'
                 : 'Lista do banco local — use Filtrar para atualizar'
         }
       >

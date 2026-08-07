@@ -3,6 +3,7 @@
  */
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import { normalizarDocumento } from '../../compartilhado/validacoes/documentos.js'
+import { STATUS_PAINEL_CONTAGEM } from '../entrada-notas/status-entrada-contagem.js'
 import { REGRAS_FISCAIS_PADRAO } from './esquema-focus-nfe.js'
 import { xmlNfeTemItensParseaveis } from './parser-xml-nfe.js'
 
@@ -157,7 +158,7 @@ async function listarNfesPorPainel(
   const painel = filtros?.painel ?? 'analise'
   const statusPorPainel: Record<string, string[]> = {
     analise: ['pendente', 'em_analise', 'stand_by'],
-    contagem: ['entrada_contagem'],
+    contagem: [...STATUS_PAINEL_CONTAGEM],
     consolidada: ['entrada_consolidada'],
     problemas: ['com_problema', 'problema_resolvido'],
     cancelada: ['cancelada'],
@@ -246,7 +247,7 @@ async function contarCtesForaDoFiltroData(
   const painel = filtros.painel ?? 'analise'
   const statusPorPainel: Record<string, string[]> = {
     analise: ['pendente', 'em_analise', 'stand_by'],
-    contagem: ['entrada_contagem'],
+    contagem: [...STATUS_PAINEL_CONTAGEM],
     consolidada: ['entrada_consolidada'],
     problemas: ['com_problema', 'problema_resolvido'],
     cancelada: ['cancelada'],

@@ -1644,6 +1644,8 @@ async function importarXml(companyId: string, xmlBruto: string) {
   if (
     existente &&
     (existente.statusEntrada === 'entrada_contagem' ||
+      existente.statusEntrada === 'entrada_contagem_ok' ||
+      existente.statusEntrada === 'entrada_contagem_divergente' ||
       existente.statusEntrada === 'entrada_consolidada')
   ) {
     throw new ErroDaAplicacao(

@@ -287,6 +287,15 @@ function statusAbaDeEtapa(etapa?: ResultadoEtapa | null): StatusDaAba {
   return 'idle'
 }
 
+function notaLiberadaOuConsolidada(status: string): boolean {
+  return (
+    status === 'entrada_contagem' ||
+    status === 'entrada_contagem_ok' ||
+    status === 'entrada_contagem_divergente' ||
+    status === 'entrada_consolidada'
+  )
+}
+
 function abasValidasParaNota(nota: DetalheNota): AbaId[] {
   if (nota.tipoDocumento === 'nfse') return ['cadastro', 'lancamento']
   if (nota.tipoDocumento === 'cte') return ['cadastro', 'frete', 'lancamento']
@@ -296,7 +305,7 @@ function abasValidasParaNota(nota: DetalheNota): AbaId[] {
 function abaInicial(nota: DetalheNota): AbaId {
   const etapa = nota.etapaAtual
   const motivo = nota.analise?.motivoParada
-  if (nota.statusEntrada === 'entrada_contagem' || nota.statusEntrada === 'entrada_consolidada') {
+  if (notaLiberadaOuConsolidada(nota.statusEntrada)) {
     return 'lancamento'
   }
   // Gate frete (modFrete=1 sem CT-e) ou CT-e aguardando NF
@@ -318,7 +327,7 @@ function resolverAbaInicial(nota: DetalheNota, abaQuery: string | null): AbaId {
 
 /** Posição efetiva no pipeline — nota finalizada conta como além do fim (pode voltar de qualquer etapa). */
 function etapaEfetiva(nota: DetalheNota): EtapaPipeline | 'lancamento' {
-  if (nota.statusEntrada === 'entrada_contagem' || nota.statusEntrada === 'entrada_consolidada') {
+  if (notaLiberadaOuConsolidada(nota.statusEntrada)) {
     return 'lancamento'
   }
   const motivo = nota.analise?.motivoParada
@@ -399,8 +408,7 @@ function mensagemAposAnalisar(nota: DetalheNota): string | null {
     return 'Entrada automática concluída (Liberar para contagem).'
   }
   if (
-    nota.statusEntrada === 'entrada_contagem' ||
-    nota.statusEntrada === 'entrada_consolidada'
+    notaLiberadaOuConsolidada(nota.statusEntrada)
   ) {
     return `Nota lançada: ${rotuloStatusEntrada(nota.statusEntrada)}.`
   }
@@ -427,6 +435,8 @@ function rotuloStatusEntrada(status: string): string {
     em_analise: 'Em análise',
     stand_by: 'Em espera',
     entrada_contagem: 'Liberada para contagem',
+    entrada_contagem_ok: 'Contagem OK — pronta para consolidar',
+    entrada_contagem_divergente: 'Contagem divergente (pendente admin)',
     entrada_consolidada: 'Entrada consolidada',
     cancelada: 'Cancelada',
     com_problema: 'Com problema',
@@ -1022,14 +1032,13 @@ function ConteudoDetalheEntrada() {
           }
         } else if (path === '/lancar' && body?.modo === 'contagem') {
           setMensagem(
-            'Liberada para contagem — estoque ainda não foi movimentado. Use Consolidar estoque para lançar no estoque.'
+            ehDocumentalEntrada(data.nota.tipoDocumento)
+              ? 'Liberada para contagem documental.'
+              : 'Liberada para contagem — a logística confere em Contagens de entrada. Só depois consolide o estoque.'
           )
         } else if (data.nota.origemLancamento === 'automatica') {
           setMensagem('Entrada automática concluída (Liberar para contagem — sem estoque).')
-        } else if (
-          data.nota.statusEntrada === 'entrada_contagem' ||
-          data.nota.statusEntrada === 'entrada_consolidada'
-        ) {
+        } else if (notaLiberadaOuConsolidada(data.nota.statusEntrada)) {
           setMensagem(`Nota lançada: ${rotuloStatusEntrada(data.nota.statusEntrada)}.`)
         } else if (path === '/manifestar') {
           setMensagem(
@@ -1222,8 +1231,7 @@ function ConteudoDetalheEntrada() {
   }
 
   const finalizada =
-    nota?.statusEntrada === 'entrada_contagem' ||
-    nota?.statusEntrada === 'entrada_consolidada' ||
+    notaLiberadaOuConsolidada(nota?.statusEntrada ?? '') ||
     nota?.statusEntrada === 'cancelada' ||
     nota?.statusEntrada === 'problema_resolvido'
 
@@ -1232,9 +1240,15 @@ function ConteudoDetalheEntrada() {
   const pipelineBloqueado = finalizada || comProblema
   const podeMarcarProblema =
     Boolean(nota) &&
-    !['entrada_contagem', 'entrada_consolidada', 'cancelada', 'com_problema', 'problema_resolvido'].includes(
-      nota!.statusEntrada
-    )
+    ![
+      'entrada_contagem',
+      'entrada_contagem_ok',
+      'entrada_contagem_divergente',
+      'entrada_consolidada',
+      'cancelada',
+      'com_problema',
+      'problema_resolvido',
+    ].includes(nota!.statusEntrada)
 
   const ehDocumental = ehDocumentalEntrada(nota?.tipoDocumento)
   const ehNfse = nota?.tipoDocumento === 'nfse'
@@ -2449,9 +2463,13 @@ function ConteudoDetalheEntrada() {
                   ? 'Fora do fluxo (com problema)'
                   : nota.statusEntrada === 'entrada_consolidada'
                     ? 'Entrada consolidada'
-                    : nota.statusEntrada === 'entrada_contagem'
-                      ? 'Liberada para contagem'
-                      : 'Finalizada'
+                    : nota.statusEntrada === 'entrada_contagem_ok'
+                      ? 'Contagem OK — pronta para consolidar'
+                      : nota.statusEntrada === 'entrada_contagem_divergente'
+                        ? 'Contagem divergente'
+                        : nota.statusEntrada === 'entrada_contagem'
+                          ? 'Liberada para contagem'
+                          : 'Finalizada'
               }
             >
               <p className="text-sm">
@@ -2464,16 +2482,47 @@ function ConteudoDetalheEntrada() {
                   ? ' Use o card Nota com problema para tratativas e desfecho.'
                   : problemaResolvido
                     ? ' Problema resolvido — nota fora do fluxo de entrada.'
-                    : nota.statusEntrada === 'entrada_contagem'
-                      ? ' Estoque ainda não lançado — informe a senha de gerente e consolide para gravar no estoque.'
-                      : nota.statusEntrada === 'entrada_consolidada' && !ehDocumental
-                        ? nota.estoqueLancado || estoqueResumo?.movimentou
-                          ? ' Estoque lançado (físico e fiscal). Veja o resumo abaixo.'
-                          : ' Consolidada — sem movimentos de estoque (itens sem produto ou sem controle).'
-                        : nota.statusEntrada === 'entrada_consolidada' && ehDocumental
-                          ? ' Documental — sem movimentação de estoque.'
-                          : ''}
+                    : nota.statusEntrada === 'entrada_contagem' && !ehDocumental
+                      ? ' Aguardando contagem cega da logística.'
+                      : nota.statusEntrada === 'entrada_contagem' && ehDocumental
+                        ? ' Documental — pode consolidar sem contagem física.'
+                        : nota.statusEntrada === 'entrada_contagem_ok'
+                          ? ' Contagem conferida. Informe a senha de gerente e consolide para gravar no estoque.'
+                          : nota.statusEntrada === 'entrada_contagem_divergente'
+                            ? ' Contagem gravada com divergência — consolidar bloqueado até correção administrativa.'
+                            : nota.statusEntrada === 'entrada_consolidada' && !ehDocumental
+                              ? nota.estoqueLancado || estoqueResumo?.movimentou
+                                ? ' Estoque lançado (físico e fiscal). Veja o resumo abaixo.'
+                                : ' Consolidada — sem movimentos de estoque (itens sem produto ou sem controle).'
+                              : nota.statusEntrada === 'entrada_consolidada' && ehDocumental
+                                ? ' Documental — sem movimentação de estoque.'
+                                : ''}
               </p>
+              {nota.statusEntrada === 'entrada_contagem' && !ehDocumental && (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {(nota.itens ?? []).some((i) => i.produtoId) ? (
+                    <>
+                      Abra{' '}
+                      <Link href="/contagens" className="text-primary underline">
+                        Contagens de entrada
+                      </Link>{' '}
+                      para a logística bipar os produtos. Só depois desta etapa o consolidar fica
+                      disponível.
+                    </>
+                  ) : (
+                    <>
+                      Esta NFe <strong>não aparece</strong> em Contagens enquanto algum item
+                      estiver <strong>Sem vínculo</strong> de produto. Vá na aba{' '}
+                      <strong>Cadastro</strong>, use <strong>Conciliar produto</strong> em cada
+                      item e depois volte a{' '}
+                      <Link href="/contagens" className="text-primary underline">
+                        Contagens de entrada
+                      </Link>
+                      .
+                    </>
+                  )}
+                </p>
+              )}
               {nota.statusEntrada === 'entrada_consolidada' && (
                 <p className="mt-2 text-sm text-muted-foreground">
                   Consulta as abas anteriores (Frete, Cadastro, Fiscal, Negociação) para auditoria.
@@ -2484,7 +2533,8 @@ function ConteudoDetalheEntrada() {
                   .
                 </p>
               )}
-              {nota.statusEntrada === 'entrada_contagem' && (
+              {(nota.statusEntrada === 'entrada_contagem_ok' ||
+                (nota.statusEntrada === 'entrada_contagem' && ehDocumental)) && (
                 <div className="mt-4 space-y-3 rounded-md border border-border/80 bg-muted/20 p-3">
                   <p className="text-sm text-muted-foreground">
                     {ehDocumental

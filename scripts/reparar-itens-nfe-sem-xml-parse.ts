@@ -136,6 +136,8 @@ async function main() {
 
       const finalizada =
         nota.statusEntrada === 'entrada_contagem' ||
+        nota.statusEntrada === 'entrada_contagem_ok' ||
+        nota.statusEntrada === 'entrada_contagem_divergente' ||
         nota.statusEntrada === 'entrada_consolidada'
       if (finalizada) {
         await repositorioEntradaNotas.atualizarNota(n.id, {

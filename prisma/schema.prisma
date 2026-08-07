@@ -46,6 +46,7 @@ model Company {
   marcas                      Marca[]
   estoqueSaldos               EstoqueSaldo[]
   estoqueMovimentos           EstoqueMovimento[]
+  contagensEntrada            ContagemEntrada[]
   createdAt                   DateTime                     @default(now())
 }
 
@@ -139,7 +140,7 @@ model NfeRecebida {
   nfeCompleta              Boolean   @default(false)
   tipoNfe                  String?
   versaoFocus              Int       @default(0)
-  /// pendente | em_analise | stand_by | com_problema | problema_resolvido | entrada_contagem | entrada_consolidada | cancelada
+  /// pendente | em_analise | stand_by | com_problema | problema_resolvido | entrada_contagem | entrada_contagem_ok | entrada_contagem_divergente | entrada_consolidada | cancelada
   statusEntrada            String    @default("pendente")
   /// focus | xml
   origem                   String    @default("focus")
@@ -180,6 +181,7 @@ model NfeRecebida {
   vinculosComoNfe          NfeCteVinculo[]          @relation("VinculoNfeMercadoria")
   vinculosComoCte          NfeCteVinculo[]          @relation("VinculoCte")
   despesasEntrada          DespesaEntradaDocumento[]
+  contagensEntradaNotas    ContagemEntradaNota[]
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 
@@ -614,6 +616,7 @@ model User {
   logsDeAuditoria   LogDeAuditoria[]
   tratativasNfe     NfeRecebidaTratativa[]
   estoqueMovimentos EstoqueMovimento[]
+  contagensEntrada  ContagemEntrada[]
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 }
@@ -781,9 +784,10 @@ model Produto {
   similaresDe       ProdutoSimilar[]         @relation("ProdutoSimilar")
   itensPedidoCompra PedidoCompraItem[]
   pendencias        PendenciaFornecedor[]
-  itensNfeRecebida  NfeRecebidaItem[]
-  estoqueSaldo      EstoqueSaldo?
-  estoqueMovimentos EstoqueMovimento[]
+  itensNfeRecebida     NfeRecebidaItem[]
+  estoqueSaldo         EstoqueSaldo?
+  estoqueMovimentos    EstoqueMovimento[]
+  contagensEntradaItens ContagemEntradaItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -791,6 +795,67 @@ model Produto {
   @@unique([sku, companyId])
   @@index([companyId, ativo])
   @@index([companyId, nomeVenda])
+}
+
+// ─── Contagem de entrada cega (logística) ─────────────────────────────────────
+
+model ContagemEntrada {
+  id           String   @id @default(uuid())
+  companyId    String
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// aberta | em_andamento | ok | divergente | cancelada
+  status       String   @default("aberta")
+  usuarioId    String?
+  usuario      User?    @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  iniciadoEm   DateTime?
+  finalizadoEm DateTime?
+  observacao   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  notas ContagemEntradaNota[]
+  itens ContagemEntradaItem[]
+
+  @@index([companyId, status])
+  @@index([companyId, createdAt])
+}
+
+model ContagemEntradaNota {
+  id                String         @id @default(uuid())
+  contagemEntradaId String
+  contagemEntrada   ContagemEntrada @relation(fields: [contagemEntradaId], references: [id], onDelete: Cascade)
+  nfeRecebidaId     String
+  nfeRecebida       NfeRecebida    @relation(fields: [nfeRecebidaId], references: [id], onDelete: Restrict)
+  createdAt         DateTime       @default(now())
+
+  @@unique([contagemEntradaId, nfeRecebidaId])
+  @@index([nfeRecebidaId])
+}
+
+model ContagemEntradaItem {
+  id                String         @id @default(uuid())
+  contagemEntradaId String
+  contagemEntrada   ContagemEntrada @relation(fields: [contagemEntradaId], references: [id], onDelete: Cascade)
+  produtoId         String
+  produto           Produto        @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  /// Snapshot exibido ao conferente
+  nomeExibicao      String
+  codigoBarras      String?
+  codigoOriginal    String?
+  marca             String?
+  unidade           String?
+  qtdEmbalagemPadrao Decimal?      @db.Decimal(18, 4)
+  /// Quantidade esperada em unidade de venda — NUNCA enviar ao cliente na API cega
+  qtdEsperada       Decimal        @db.Decimal(18, 4)
+  qtdContada        Decimal        @default(0) @db.Decimal(18, 4)
+  /// pendente | ok | divergente
+  statusItem        String         @default("pendente")
+  updatedAt         DateTime       @updatedAt
+  createdAt         DateTime       @default(now())
+
+  @@unique([contagemEntradaId, produtoId])
+  @@index([contagemEntradaId])
+  @@index([produtoId])
 }
 
 // ─── Estoque — saldos + kardex (ledger append-only) ───────────────────────────

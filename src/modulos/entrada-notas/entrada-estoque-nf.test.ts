@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import {
+  mensagemBloqueioConsolidar,
+  podeConsolidarEstoque,
+} from './status-entrada-contagem.js'
 
 /**
  * Contrato da fórmula usada em servico-pipeline-entrada ao montar linhas de estoque:
@@ -35,18 +39,22 @@ describe('custo unitário entrada NF (contrato)', () => {
 })
 
 describe('fluxo contagem → consolidar (regra de status)', () => {
-  it('permite consolidar a partir de entrada_contagem; bloqueia só se já consolidada', () => {
-    function podeConsolidar(status: string) {
-      if (status === 'entrada_consolidada') return false
-      if (status === 'cancelada' || status === 'com_problema' || status === 'problema_resolvido') {
-        return false
-      }
-      // aberta ou entrada_contagem
-      return true
-    }
-    expect(podeConsolidar('entrada_contagem')).toBe(true)
-    expect(podeConsolidar('em_analise')).toBe(true)
-    expect(podeConsolidar('entrada_consolidada')).toBe(false)
-    expect(podeConsolidar('cancelada')).toBe(false)
+  it('NFe com produtos: consolidar só com entrada_contagem_ok', () => {
+    const fisico = { exigeContagemFisica: true }
+    expect(podeConsolidarEstoque('entrada_contagem', fisico)).toBe(false)
+    expect(podeConsolidarEstoque('entrada_contagem_ok', fisico)).toBe(true)
+    expect(podeConsolidarEstoque('entrada_contagem_divergente', fisico)).toBe(false)
+    expect(podeConsolidarEstoque('entrada_consolidada', fisico)).toBe(false)
+    expect(mensagemBloqueioConsolidar('entrada_contagem')).toMatch(/contagem logística/i)
+    expect(mensagemBloqueioConsolidar('entrada_contagem_divergente')).toMatch(/divergente/i)
+  })
+
+  it('documental sem produtos: permite consolidar no pipeline ou liberada; bloqueia divergente', () => {
+    const doc = { exigeContagemFisica: false }
+    expect(podeConsolidarEstoque('em_analise', doc)).toBe(true)
+    expect(podeConsolidarEstoque('entrada_contagem', doc)).toBe(true)
+    expect(podeConsolidarEstoque('entrada_contagem_ok', doc)).toBe(true)
+    expect(podeConsolidarEstoque('entrada_contagem_divergente', doc)).toBe(false)
+    expect(podeConsolidarEstoque('entrada_consolidada', doc)).toBe(false)
   })
 })
