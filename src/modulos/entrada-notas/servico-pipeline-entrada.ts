@@ -121,6 +121,94 @@ function resolverItensPorEmbalagem(
   return valor != null && Number.isFinite(valor) && valor > 0 ? valor : 1
 }
 
+/** Quantidade de entrada (qtd NF × múltiplo de compra), mesma base da UI Cadastro. */
+function qtdEntradaDoItem(
+  quantidade: number | null | undefined,
+  itensPorEmbalagem: number
+): number | null {
+  if (quantidade == null || !Number.isFinite(quantidade)) return null
+  const mult = itensPorEmbalagem > 0 ? itensPorEmbalagem : 1
+  return Math.round(quantidade * mult * 1e6) / 1e6
+}
+
+/**
+ * Peso da linha para rateio: peso unitário do cadastro × qtd entrada.
+ * Null se produto sem peso ou qtd inválida.
+ */
+function pesoLinhaRateioKg(params: {
+  pesoUnitarioKg: number | null | undefined
+  quantidadeNf: number | null | undefined
+  itensPorEmbalagem: number
+}): number | null {
+  const pesoUnit = params.pesoUnitarioKg
+  const qtd = qtdEntradaDoItem(params.quantidadeNf, params.itensPorEmbalagem)
+  if (pesoUnit == null || !Number.isFinite(pesoUnit) || pesoUnit <= 0) return null
+  if (qtd == null || qtd <= 0) return null
+  return Math.round(pesoUnit * qtd * 1e6) / 1e6
+}
+
+type ItemNotaParaRateio = {
+  id: string
+  nItem?: number | null
+  descricao?: string | null
+  quantidade: unknown
+  valorTotal: unknown
+  produtoId: string | null
+  produto?: {
+    nomeVenda?: string | null
+    pesoKg?: unknown
+    fornecedores?: Array<{ fornecedorPessoaId: string; multiplicadorEntrada: unknown }>
+  } | null
+}
+
+function montarItensParaRateio(
+  itens: ItemNotaParaRateio[],
+  fornecedorPessoaId: string | null | undefined
+) {
+  return itens.map((i) => {
+    const itensPorEmbalagem = resolverItensPorEmbalagem(
+      i.produto?.fornecedores,
+      fornecedorPessoaId
+    )
+    const quantidade = decimalNum(i.quantidade as never)
+    const pesoUnitarioKg = decimalNum(i.produto?.pesoKg as never)
+    return {
+      id: i.id,
+      valorTotal: decimalNum(i.valorTotal as never),
+      quantidade,
+      pesoLinhaKg: pesoLinhaRateioKg({
+        pesoUnitarioKg,
+        quantidadeNf: quantidade,
+        itensPorEmbalagem,
+      }),
+      pesoUnitarioKg,
+      nItem: i.nItem,
+      descricao: i.descricao,
+      produtoId: i.produtoId,
+      nomeProduto: i.produto?.nomeVenda?.trim() || null,
+    }
+  })
+}
+
+/** Mensagens de bloqueio quando regra = peso e falta peso no cadastro. */
+function bloqueiosPesoRateio(
+  itensMontados: ReturnType<typeof montarItensParaRateio>
+): string[] {
+  const bloqueios: string[] = []
+  for (const item of itensMontados) {
+    if (item.pesoLinhaKg != null && item.pesoLinhaKg > 0) continue
+    const rotulo =
+      item.nomeProduto ||
+      (item.nItem != null ? `item #${item.nItem}` : null) ||
+      item.descricao?.trim() ||
+      'produto'
+    bloqueios.push(
+      `Produto "${rotulo}" sem peso cadastrado — informe o peso (kg) no cadastro do produto ou altere a Regra de rateio do frete no fornecedor.`
+    )
+  }
+  return bloqueios
+}
+
 /**
  * Pedidos abertos elegíveis na Negociação: sempre pela rede do grupo econômico
  * (emitente + Fornecedores relacionados transitivos). Sem vínculos → só o emitente.
@@ -1058,7 +1146,8 @@ async function analisarNota(
       avisos: [`${qtdCtes} CT-e(s) vinculado(s) — frete destinatário ok.`],
       bloqueios: [],
     }
-    await persistirRateioFreteItens(companyId, notaId)
+    // Rateio só após todos os produtos vinculados (aba Cadastro) — limpa prévia precoce.
+    await limparCustoFreteItens(nota.itens.map((i) => i.id))
   } else {
     analise.frete = {
       status: 'ok',
@@ -1123,6 +1212,17 @@ async function analisarNota(
     if (!bloqueios.some((b) => b.includes(avisoXmlFocus))) {
       bloqueios.unshift(avisoXmlFocus)
     }
+    analise.cadastro = {
+      ...analise.cadastro,
+      status: 'bloqueante',
+      bloqueios,
+    }
+  }
+
+  // Rateio: só com todos os itens vinculados; peso exige peso no cadastro (sem fallback).
+  const syncRateio = await sincronizarRateioAposCadastro(companyId, notaId)
+  if (syncRateio.bloqueiosPeso.length > 0) {
+    const bloqueios = [...(analise.cadastro.bloqueios ?? []), ...syncRateio.bloqueiosPeso]
     analise.cadastro = {
       ...analise.cadastro,
       status: 'bloqueante',
@@ -1286,7 +1386,7 @@ async function analisarNota(
 }
 
 /**
- * Zera o frete rateado nos itens (frete remetente / sem rateio).
+ * Zera o frete rateado nos itens (frete remetente / sem rateio / vínculos incompletos).
  */
 async function limparCustoFreteItens(itemIds: string[]) {
   for (const id of itemIds) {
@@ -1295,45 +1395,93 @@ async function limparCustoFreteItens(itemIds: string[]) {
 }
 
 /**
- * Rateia o custo do frete nos itens da NF (prévia para a aba Cadastro).
- * Não cria DespesaEntradaDocumento — isso fica no lançamento.
+ * Após Cadastro: rateia frete só se todos os itens estiverem vinculados.
+ * Regra peso: exige peso unitário no cadastro × qtd entrada; sem fallback.
+ * Devolve bloqueios de peso para o pipeline marcar Cadastro como bloqueante.
  */
-async function persistirRateioFreteItens(companyId: string, notaId: string) {
+async function sincronizarRateioAposCadastro(
+  companyId: string,
+  notaId: string
+): Promise<{ bloqueiosPeso: string[] }> {
   const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
-  if (!nota || nota.tipoDocumento === 'nfse' || nota.tipoDocumento === 'cte') return
+  if (!nota || nota.tipoDocumento === 'nfse' || nota.tipoDocumento === 'cte') {
+    return { bloqueiosPeso: [] }
+  }
 
   if (!exigeRateioFrete(nota.modFrete)) {
     await limparCustoFreteItens(nota.itens.map((i) => i.id))
-    return
+    return { bloqueiosPeso: [] }
   }
 
   const vinculos = nota.vinculosComoNfe ?? []
   if (vinculos.length === 0) {
     await limparCustoFreteItens(nota.itens.map((i) => i.id))
-    return
+    return { bloqueiosPeso: [] }
   }
 
+  if (nota.itens.length === 0 || nota.itens.some((i) => !i.produtoId)) {
+    await limparCustoFreteItens(nota.itens.map((i) => i.id))
+    return { bloqueiosPeso: [] }
+  }
+
+  const regra = regraRateioFreteCadastro(
+    nota.fornecedorPessoa?.papeis?.[0]?.dadosFornecedor?.regraRateioFrete
+  )
+  if (!regra) {
+    await limparCustoFreteItens(nota.itens.map((i) => i.id))
+    return { bloqueiosPeso: [] }
+  }
+
+  const itensMontados = montarItensParaRateio(nota.itens, nota.fornecedorPessoaId)
+  if (regra === 'peso') {
+    const bloqueios = bloqueiosPesoRateio(itensMontados)
+    if (bloqueios.length > 0) {
+      await limparCustoFreteItens(nota.itens.map((i) => i.id))
+      return { bloqueiosPeso: bloqueios }
+    }
+  }
+
+  await persistirRateioFreteItensComItens(companyId, notaId, nota, itensMontados, regra)
+  return { bloqueiosPeso: [] }
+}
+
+/**
+ * Rateia o custo do frete nos itens (prévia após vínculos completos).
+ * Não cria DespesaEntradaDocumento — isso fica no lançamento.
+ */
+async function persistirRateioFreteItensComItens(
+  _companyId: string,
+  _notaId: string,
+  nota: {
+    vinculosComoNfe?: Array<{
+      valorFrete?: unknown
+      cteRecebida?: { valorTotal?: unknown } | null
+    }> | null
+  },
+  itensMontados: ReturnType<typeof montarItensParaRateio>,
+  regra: string
+) {
+  const vinculos = nota.vinculosComoNfe ?? []
   const valorTotalFrete = vinculos.reduce((acc, v) => {
     const n = decimalNum(v.valorFrete) ?? decimalNum(v.cteRecebida?.valorTotal) ?? 0
     return acc + n
   }, 0)
 
-  const regra = regraRateioFreteCadastro(
-    nota.fornecedorPessoa?.papeis?.[0]?.dadosFornecedor?.regraRateioFrete
-  )
-  if (!regra) return
-
   const rateio = ratearCustoFrete({
     regra,
     valorTotalFrete,
-    itens: nota.itens.map((i) => ({
+    itens: itensMontados.map((i) => ({
       id: i.id,
-      valorTotal: decimalNum(i.valorTotal),
-      quantidade: decimalNum(i.quantidade),
-      pesoKg: decimalNum(i.pesoKg),
-      pesoProdutoKg: decimalNum(i.produto?.pesoKg ?? null),
+      valorTotal: i.valorTotal,
+      quantidade: i.quantidade,
+      pesoLinhaKg: i.pesoLinhaKg,
     })),
   })
+
+  if (rateio.erros.length > 0) {
+    await limparCustoFreteItens(itensMontados.map((i) => i.id))
+    return
+  }
 
   for (const item of rateio.itens) {
     await repositorioEntradaNotas.atualizarItem(item.id, {
@@ -1375,22 +1523,37 @@ async function aplicarRateioEDespesasFrete(companyId: string, notaId: string) {
     )
   }
 
-  const rateio = ratearCustoFrete({
-    regra,
-    valorTotalFrete,
-    itens: nota.itens.map((i) => ({
-      id: i.id,
-      valorTotal: decimalNum(i.valorTotal),
-      quantidade: decimalNum(i.quantidade),
-      pesoKg: decimalNum(i.pesoKg),
-      pesoProdutoKg: decimalNum(i.produto?.pesoKg ?? null),
-    })),
-  })
+  if (nota.itens.length === 0 || nota.itens.some((i) => !i.produtoId)) {
+    await limparCustoFreteItens(nota.itens.map((i) => i.id))
+  } else {
+    const itensMontados = montarItensParaRateio(nota.itens, nota.fornecedorPessoaId)
+    if (regra === 'peso') {
+      const bloqueios = bloqueiosPesoRateio(itensMontados)
+      if (bloqueios.length > 0) {
+        throw new ErroDaAplicacao(bloqueios[0], 400)
+      }
+    }
 
-  for (const item of rateio.itens) {
-    await repositorioEntradaNotas.atualizarItem(item.id, {
-      custoFreteRateado: item.custoFreteRateado,
+    const rateio = ratearCustoFrete({
+      regra,
+      valorTotalFrete,
+      itens: itensMontados.map((i) => ({
+        id: i.id,
+        valorTotal: i.valorTotal,
+        quantidade: i.quantidade,
+        pesoLinhaKg: i.pesoLinhaKg,
+      })),
     })
+
+    if (rateio.erros.length > 0) {
+      throw new ErroDaAplicacao(rateio.erros[0], 400)
+    }
+
+    for (const item of rateio.itens) {
+      await repositorioEntradaNotas.atualizarItem(item.id, {
+        custoFreteRateado: item.custoFreteRateado,
+      })
+    }
   }
 
   for (const v of vinculos) {
@@ -1859,6 +2022,16 @@ async function recalcularSomenteCadastro(companyId: string, notaId: string) {
     })
   }
 
+  let resultadoCadastro = cadastro.resultado
+  const syncRateio = await sincronizarRateioAposCadastro(companyId, notaId)
+  if (syncRateio.bloqueiosPeso.length > 0) {
+    resultadoCadastro = {
+      ...resultadoCadastro,
+      status: 'bloqueante',
+      bloqueios: [...(resultadoCadastro.bloqueios ?? []), ...syncRateio.bloqueiosPeso],
+    }
+  }
+
   const analiseAtual: AnaliseJson = (nota.analiseJson as AnaliseJson | null) ?? {
     versao: 1,
     atualizadoEm: new Date().toISOString(),
@@ -1870,9 +2043,9 @@ async function recalcularSomenteCadastro(companyId: string, notaId: string) {
   }
   const analise: AnaliseJson = {
     ...analiseAtual,
-    cadastro: cadastro.resultado,
+    cadastro: resultadoCadastro,
     autoLancado: false,
-    motivoParada: podeAvancarCadastro(cadastro.resultado) ? null : 'cadastro',
+    motivoParada: podeAvancarCadastro(resultadoCadastro) ? null : 'cadastro',
   }
 
   await repositorioEntradaNotas.atualizarNota(notaId, {

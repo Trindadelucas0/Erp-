@@ -913,7 +913,7 @@ describe('servicoEntradaNotas.analisarNota — frete remetente', () => {
     expect(analisarCadastro).not.toHaveBeenCalled()
   })
 
-  it('destinatário com CT-e + valor + CFOP + rateio + prévia grava custoFreteRateado e avança', async () => {
+  it('destinatário com CT-e ok não rateia frete enquanto Cadastro está bloqueante', async () => {
     const fake = ligarRepositorioFake(
       buildNotaFixture({
         statusEntrada: 'em_analise',
@@ -965,8 +965,326 @@ describe('servicoEntradaNotas.analisarNota — frete remetente', () => {
     expect(analisarCadastro).toHaveBeenCalled()
     expect(nota.etapaAtual).toBe('cadastro')
     expect(nota.analise.motivoParada).toBe('cadastro')
+    expect(fake.getEstado().itens[0]?.custoFreteRateado).toBeNull()
+    expect(nota.itens[0]?.custoFreteRateado).toBeNull()
+  })
+
+  it('destinatário rateia frete só após todos os produtos vinculados (regra valor)', async () => {
+    vi.mocked(analisarCadastro).mockResolvedValue({
+      resultado: { status: 'ok', avisos: [], bloqueios: [] },
+      fornecedorPessoaId: 'fornecedor-1',
+      itensAtualizados: [
+        { id: 'item-1', produtoId: 'produto-1', vinculoModo: 'barras', criticaCadastro: false },
+      ],
+    } as never)
+    vi.mocked(analisarFiscalItens).mockReturnValue({
+      resultado: { status: 'bloqueante', avisos: [], bloqueios: ['Fiscal pendente'] },
+      itensCritica: [{ id: 'item-1', criticaFiscal: true }],
+    } as never)
+
+    const fake = ligarRepositorioFake(
+      buildNotaFixture({
+        statusEntrada: 'em_analise',
+        etapaAtual: 'cadastro',
+        origemLancamento: null,
+        modFrete: '1',
+        analiseJson: null,
+        vinculosComoNfe: [
+          {
+            id: 'vinculo-1',
+            valorFrete: 20,
+            cteRecebida: {
+              id: 'cte-1',
+              valorTotal: 20,
+              xmlConteudo: null,
+              cfopEntradaId: 'cfop-entrada-1',
+              cfopEntrada: { id: 'cfop-entrada-1', codigo: '1.353', nome: 'Frete', subtipoCfop: '03' },
+              chaveNfe: '2'.repeat(44),
+              nomeEmitente: 'Transportadora',
+              despesasEntrada: [
+                {
+                  id: 'desp-1',
+                  origem: 'cte',
+                  vencimento: new Date('2026-09-01T12:00:00'),
+                  numeroDocumento: '5406',
+                  valor: 20,
+                  parcelas: [
+                    { numeroDocumento: '5406', vencimento: '2026-09-01', valor: 20 },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+        fornecedorPessoa: {
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor' } }],
+        },
+        itens: [
+          {
+            id: 'item-1',
+            nItem: 1,
+            descricao: 'Produto',
+            gtin: '7891234567890',
+            codigoProduto: 'ABC',
+            ncm: null,
+            cfop: null,
+            cst: null,
+            origem: null,
+            quantidade: 1,
+            valorUnitario: 10,
+            valorTotal: 10,
+            pesoKg: null,
+            custoFreteRateado: null,
+            cfopEntradaId: null,
+            produtoId: 'produto-1',
+            vinculoModo: 'barras',
+            criticaCadastro: false,
+            criticaFiscal: false,
+            criticaNegociacao: false,
+            produto: {
+              id: 'produto-1',
+              nomeVenda: 'Produto',
+              pesoKg: 2,
+              fornecedores: [{ fornecedorPessoaId: 'fornecedor-1', multiplicadorEntrada: 1 }],
+            },
+          },
+        ],
+      })
+    )
+
+    const resultado = await servicoEntradaNotas.analisarNota('empresa-1', 'nota-1', {
+      pararEm: 'cadastro',
+    })
+    const nota = resultado.nota as {
+      etapaAtual: string
+      analise: { motivoParada: string | null; frete: { status: string }; cadastro: { status: string } }
+      itens: Array<{ custoFreteRateado: number | null }>
+    }
+
+    expect(nota.analise.frete.status).toBe('ok')
+    expect(nota.analise.cadastro.status).toBe('ok')
+    expect(nota.etapaAtual).toBe('cadastro')
     expect(fake.getEstado().itens[0]?.custoFreteRateado).toBe(20)
     expect(nota.itens[0]?.custoFreteRateado).toBe(20)
+  })
+
+  it('regra peso bloqueia Cadastro se produto sem peso e não rateia', async () => {
+    vi.mocked(analisarCadastro).mockResolvedValue({
+      resultado: { status: 'ok', avisos: [], bloqueios: [] },
+      fornecedorPessoaId: 'fornecedor-1',
+      itensAtualizados: [
+        { id: 'item-1', produtoId: 'produto-1', vinculoModo: 'barras', criticaCadastro: false },
+      ],
+    } as never)
+
+    const fake = ligarRepositorioFake(
+      buildNotaFixture({
+        statusEntrada: 'em_analise',
+        etapaAtual: 'cadastro',
+        origemLancamento: null,
+        modFrete: '1',
+        analiseJson: null,
+        vinculosComoNfe: [
+          {
+            id: 'vinculo-1',
+            valorFrete: 100,
+            cteRecebida: {
+              id: 'cte-1',
+              valorTotal: 100,
+              xmlConteudo: null,
+              cfopEntradaId: 'cfop-entrada-1',
+              cfopEntrada: { id: 'cfop-entrada-1', codigo: '1.353', nome: 'Frete', subtipoCfop: '03' },
+              chaveNfe: '2'.repeat(44),
+              nomeEmitente: 'Transportadora',
+              despesasEntrada: [
+                {
+                  id: 'desp-1',
+                  origem: 'cte',
+                  vencimento: new Date('2026-09-01T12:00:00'),
+                  numeroDocumento: '5406',
+                  valor: 100,
+                  parcelas: [
+                    { numeroDocumento: '5406', vencimento: '2026-09-01', valor: 100 },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+        fornecedorPessoa: {
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'peso' } }],
+        },
+        itens: [
+          {
+            id: 'item-1',
+            nItem: 1,
+            descricao: 'Sem peso',
+            gtin: null,
+            codigoProduto: 'X',
+            ncm: null,
+            cfop: null,
+            cst: null,
+            origem: null,
+            quantidade: 10,
+            valorUnitario: 5,
+            valorTotal: 50,
+            pesoKg: null,
+            custoFreteRateado: null,
+            cfopEntradaId: null,
+            produtoId: 'produto-1',
+            vinculoModo: 'barras',
+            criticaCadastro: false,
+            criticaFiscal: false,
+            criticaNegociacao: false,
+            produto: {
+              id: 'produto-1',
+              nomeVenda: 'Sem peso',
+              pesoKg: null,
+              fornecedores: [{ fornecedorPessoaId: 'fornecedor-1', multiplicadorEntrada: 1 }],
+            },
+          },
+        ],
+      })
+    )
+
+    const resultado = await servicoEntradaNotas.analisarNota('empresa-1', 'nota-1')
+    const nota = resultado.nota as {
+      etapaAtual: string
+      analise: {
+        motivoParada: string | null
+        cadastro: { status: string; bloqueios: string[] }
+      }
+      itens: Array<{ custoFreteRateado: number | null }>
+    }
+
+    expect(nota.etapaAtual).toBe('cadastro')
+    expect(nota.analise.motivoParada).toBe('cadastro')
+    expect(nota.analise.cadastro.status).toBe('bloqueante')
+    expect(nota.analise.cadastro.bloqueios.some((b) => /peso/i.test(b))).toBe(true)
+    expect(fake.getEstado().itens[0]?.custoFreteRateado).toBeNull()
+  })
+
+  it('regra peso rateia com peso unitário × qtd entrada', async () => {
+    vi.mocked(analisarCadastro).mockResolvedValue({
+      resultado: { status: 'ok', avisos: [], bloqueios: [] },
+      fornecedorPessoaId: 'fornecedor-1',
+      itensAtualizados: [
+        { id: 'item-1', produtoId: 'produto-1', vinculoModo: 'barras', criticaCadastro: false },
+        { id: 'item-2', produtoId: 'produto-2', vinculoModo: 'barras', criticaCadastro: false },
+      ],
+    } as never)
+    vi.mocked(analisarFiscalItens).mockReturnValue({
+      resultado: { status: 'bloqueante', avisos: [], bloqueios: ['Fiscal pendente'] },
+      itensCritica: [
+        { id: 'item-1', criticaFiscal: true },
+        { id: 'item-2', criticaFiscal: true },
+      ],
+    } as never)
+
+    const fake = ligarRepositorioFake(
+      buildNotaFixture({
+        statusEntrada: 'em_analise',
+        etapaAtual: 'cadastro',
+        origemLancamento: null,
+        modFrete: '1',
+        analiseJson: null,
+        vinculosComoNfe: [
+          {
+            id: 'vinculo-1',
+            valorFrete: 1000,
+            cteRecebida: {
+              id: 'cte-1',
+              valorTotal: 1000,
+              xmlConteudo: null,
+              cfopEntradaId: 'cfop-entrada-1',
+              cfopEntrada: { id: 'cfop-entrada-1', codigo: '1.353', nome: 'Frete', subtipoCfop: '03' },
+              chaveNfe: '2'.repeat(44),
+              nomeEmitente: 'Transportadora',
+              despesasEntrada: [
+                {
+                  id: 'desp-1',
+                  origem: 'cte',
+                  vencimento: new Date('2026-09-01T12:00:00'),
+                  numeroDocumento: '5406',
+                  valor: 1000,
+                  parcelas: [
+                    { numeroDocumento: '5406', vencimento: '2026-09-01', valor: 1000 },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+        fornecedorPessoa: {
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'peso' } }],
+        },
+        itens: [
+          {
+            id: 'item-1',
+            nItem: 1,
+            descricao: 'A',
+            gtin: null,
+            codigoProduto: 'A',
+            ncm: null,
+            cfop: null,
+            cst: null,
+            origem: null,
+            quantidade: 100,
+            valorUnitario: 1,
+            valorTotal: 100,
+            pesoKg: null,
+            custoFreteRateado: null,
+            cfopEntradaId: null,
+            produtoId: 'produto-1',
+            vinculoModo: 'barras',
+            criticaCadastro: false,
+            criticaFiscal: false,
+            criticaNegociacao: false,
+            // peso unit 1.2 × qtd 100 = 120 kg
+            produto: {
+              id: 'produto-1',
+              nomeVenda: 'A',
+              pesoKg: 1.2,
+              fornecedores: [{ fornecedorPessoaId: 'fornecedor-1', multiplicadorEntrada: 1 }],
+            },
+          },
+          {
+            id: 'item-2',
+            nItem: 2,
+            descricao: 'B',
+            gtin: null,
+            codigoProduto: 'B',
+            ncm: null,
+            cfop: null,
+            cst: null,
+            origem: null,
+            quantidade: 200,
+            valorUnitario: 1,
+            valorTotal: 200,
+            pesoKg: null,
+            custoFreteRateado: null,
+            cfopEntradaId: null,
+            produtoId: 'produto-2',
+            vinculoModo: 'barras',
+            criticaCadastro: false,
+            criticaFiscal: false,
+            criticaNegociacao: false,
+            // peso unit 3 × qtd 200 = 600 kg
+            produto: {
+              id: 'produto-2',
+              nomeVenda: 'B',
+              pesoKg: 3,
+              fornecedores: [{ fornecedorPessoaId: 'fornecedor-1', multiplicadorEntrada: 1 }],
+            },
+          },
+        ],
+      })
+    )
+
+    await servicoEntradaNotas.analisarNota('empresa-1', 'nota-1', { pararEm: 'cadastro' })
+    const estado = fake.getEstado()
+    expect(estado.itens.find((i) => i.id === 'item-1')?.custoFreteRateado).toBe(166.67)
+    expect(estado.itens.find((i) => i.id === 'item-2')?.custoFreteRateado).toBe(833.33)
   })
 })
 

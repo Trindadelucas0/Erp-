@@ -303,13 +303,6 @@ export function ItemVinculoCadastroGrid({
           )}
 
           <dl className="flex-1 grid gap-1 text-xs text-muted-foreground">
-            {fretePorUndTexto != null && (
-              <LinhaEspelho
-                rotulo="Frete por und"
-                valor={fretePorUndTexto}
-                valorClassName="font-sans text-foreground"
-              />
-            )}
             <LinhaEspelho
               rotulo="Código de barras"
               valor={gtinSistema}
@@ -356,6 +349,13 @@ export function ItemVinculoCadastroGrid({
               valor={qtdEntradaValorSistema}
               valorClassName="font-sans text-foreground"
             />
+            {vinculado && fretePorUndTexto != null && (
+              <LinhaEspelho
+                rotulo="Frete por und"
+                valor={fretePorUndTexto}
+                valorClassName="font-sans text-foreground"
+              />
+            )}
           </dl>
 
           {vinculado && rotuloVinculo && (

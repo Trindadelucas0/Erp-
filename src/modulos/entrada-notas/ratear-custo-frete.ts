@@ -1,16 +1,22 @@
 /**
  * Rateio do custo de frete (CT-e) entre itens da NF de mercadoria.
  * Regras: valor | peso | quantidade | igual.
+ *
+ * Peso: base = pesoLinhaKg (peso unitário do cadastro × qtd entrada).
+ * Sem fallback silencioso — se a base de peso for inválida, retorna erro.
  */
 export type RegraRateioFrete = 'valor' | 'peso' | 'quantidade' | 'igual'
 
 export type ItemRateioFrete = {
   id: string
   valorTotal: number | null
+  /** Quantidade da NF (regra quantidade) */
   quantidade: number | null
-  pesoKg: number | null
-  /** Fallback de peso do cadastro do produto */
-  pesoProdutoKg?: number | null
+  /**
+   * Peso da linha para rateio por peso: peso unitário do produto × qtd entrada.
+   * Obrigatório e > 0 quando regra = peso.
+   */
+  pesoLinhaKg: number | null
 }
 
 export type ResultadoRateioItem = {
@@ -21,6 +27,8 @@ export type ResultadoRateioItem = {
 export type ResultadoRateioFrete = {
   regraAplicada: RegraRateioFrete
   avisos: string[]
+  /** Bloqueios sem rateio (ex.: peso ausente). Quando preenchido, parcelas ficam 0. */
+  erros: string[]
   itens: ResultadoRateioItem[]
 }
 
@@ -35,12 +43,6 @@ function normalizarRegra(regra: string | null | undefined): RegraRateioFrete {
   return 'valor'
 }
 
-function pesoDoItem(item: ItemRateioFrete): number {
-  const xml = item.pesoKg ?? 0
-  if (xml > 0) return xml
-  return item.pesoProdutoKg ?? 0
-}
-
 /**
  * Distribui `valorTotalFrete` entre os itens. Último item absorve residual de arredondamento.
  */
@@ -50,11 +52,13 @@ export function ratearCustoFrete(params: {
   valorTotalFrete: number
 }): ResultadoRateioFrete {
   const avisos: string[] = []
+  const erros: string[] = []
   const valor = Number(params.valorTotalFrete)
   if (!Number.isFinite(valor) || valor <= 0 || params.itens.length === 0) {
     return {
       regraAplicada: normalizarRegra(params.regra),
       avisos,
+      erros,
       itens: params.itens.map((i) => ({ id: i.id, custoFreteRateado: 0 })),
     }
   }
@@ -62,22 +66,43 @@ export function ratearCustoFrete(params: {
   let regra = normalizarRegra(params.regra)
 
   if (regra === 'peso') {
-    const somaPeso = params.itens.reduce((acc, i) => acc + pesoDoItem(i), 0)
-    if (somaPeso <= 0) {
-      avisos.push('Rateio por peso sem pesos válidos — usando valor dos itens.')
-      regra = 'valor'
+    const semPeso = params.itens.filter((i) => {
+      const p = i.pesoLinhaKg
+      return p == null || !Number.isFinite(p) || p <= 0
+    })
+    if (semPeso.length > 0) {
+      erros.push(
+        'Rateio por peso exige peso cadastrado em todos os produtos (peso unitário × quantidade de entrada). Cadastre o peso no produto ou altere a regra de rateio no fornecedor.'
+      )
+      return {
+        regraAplicada: 'peso',
+        avisos,
+        erros,
+        itens: params.itens.map((i) => ({ id: i.id, custoFreteRateado: 0 })),
+      }
     }
   }
 
   const pesos: number[] = params.itens.map((item) => {
     if (regra === 'igual') return 1
     if (regra === 'quantidade') return Math.max(0, item.quantidade ?? 0)
-    if (regra === 'peso') return Math.max(0, pesoDoItem(item))
+    if (regra === 'peso') return Math.max(0, item.pesoLinhaKg ?? 0)
     return Math.max(0, item.valorTotal ?? 0)
   })
 
   let soma = pesos.reduce((a, b) => a + b, 0)
   if (soma <= 0) {
+    if (regra === 'peso') {
+      erros.push(
+        'Rateio por peso com peso total zerado. Cadastre o peso no produto ou altere a regra de rateio no fornecedor.'
+      )
+      return {
+        regraAplicada: 'peso',
+        avisos,
+        erros,
+        itens: params.itens.map((i) => ({ id: i.id, custoFreteRateado: 0 })),
+      }
+    }
     avisos.push('Base de rateio zerada — dividindo igualmente.')
     regra = 'igual'
     for (let i = 0; i < pesos.length; i++) pesos[i] = 1
@@ -93,5 +118,5 @@ export function ratearCustoFrete(params: {
     resultados.push({ id: params.itens[i].id, custoFreteRateado: parcela })
   }
 
-  return { regraAplicada: regra, avisos, itens: resultados }
+  return { regraAplicada: regra, avisos, erros, itens: resultados }
 }
