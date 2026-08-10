@@ -1441,7 +1441,20 @@ async function sincronizarRateioAposCadastro(
     }
   }
 
-  await persistirRateioFreteItensComItens(companyId, notaId, nota, itensMontados, regra)
+  const persistido = await persistirRateioFreteItensComItens(
+    companyId,
+    notaId,
+    nota,
+    itensMontados,
+    regra
+  )
+  if (!persistido.ok) {
+    // Erros de peso/valor: sobem como bloqueio de Cadastro quando regra = peso
+    if (regra === 'peso') {
+      return { bloqueiosPeso: persistido.erros }
+    }
+    return { bloqueiosPeso: [] }
+  }
   return { bloqueiosPeso: [] }
 }
 
@@ -1453,6 +1466,9 @@ async function persistirRateioFreteItensComItens(
   _companyId: string,
   _notaId: string,
   nota: {
+    tipoDocumento?: string | null
+    valorTotal?: unknown
+    xmlConteudo?: string | null
     vinculosComoNfe?: Array<{
       valorFrete?: unknown
       cteRecebida?: { valorTotal?: unknown } | null
@@ -1460,12 +1476,21 @@ async function persistirRateioFreteItensComItens(
   },
   itensMontados: ReturnType<typeof montarItensParaRateio>,
   regra: string
-) {
-  const vinculos = nota.vinculosComoNfe ?? []
-  const valorTotalFrete = vinculos.reduce((acc, v) => {
-    const n = decimalNum(v.valorFrete) ?? decimalNum(v.cteRecebida?.valorTotal) ?? 0
-    return acc + n
-  }, 0)
+): Promise<{ ok: boolean; erros: string[] }> {
+  const valorTotalFrete = resolverTotalTransporteFrete({
+    tipoDocumento: nota.tipoDocumento ?? 'nfe55',
+    valorTotal: nota.valorTotal,
+    xmlConteudo: nota.xmlConteudo ?? null,
+    vinculosComoNfe: nota.vinculosComoNfe ?? [],
+  })
+
+  if (valorTotalFrete <= 0) {
+    await limparCustoFreteItens(itensMontados.map((i) => i.id))
+    return {
+      ok: false,
+      erros: ['Valor do frete ausente ou zerado — não é possível ratear nos itens.'],
+    }
+  }
 
   const rateio = ratearCustoFrete({
     regra,
@@ -1480,7 +1505,7 @@ async function persistirRateioFreteItensComItens(
 
   if (rateio.erros.length > 0) {
     await limparCustoFreteItens(itensMontados.map((i) => i.id))
-    return
+    return { ok: false, erros: rateio.erros }
   }
 
   for (const item of rateio.itens) {
@@ -1488,6 +1513,7 @@ async function persistirRateioFreteItensComItens(
       custoFreteRateado: item.custoFreteRateado,
     })
   }
+  return { ok: true, erros: [] }
 }
 
 /**
@@ -1508,10 +1534,7 @@ async function aplicarRateioEDespesasFrete(companyId: string, notaId: string) {
     return
   }
 
-  const valorTotalFrete = vinculos.reduce((acc, v) => {
-    const n = decimalNum(v.valorFrete) ?? decimalNum(v.cteRecebida?.valorTotal) ?? 0
-    return acc + n
-  }, 0)
+  const valorTotalFrete = resolverTotalTransporteFrete(nota)
 
   const regra = regraRateioFreteCadastro(
     nota.fornecedorPessoa?.papeis?.[0]?.dadosFornecedor?.regraRateioFrete
@@ -1532,6 +1555,13 @@ async function aplicarRateioEDespesasFrete(companyId: string, notaId: string) {
       if (bloqueios.length > 0) {
         throw new ErroDaAplicacao(bloqueios[0], 400)
       }
+    }
+
+    if (valorTotalFrete <= 0) {
+      throw new ErroDaAplicacao(
+        'Valor do frete ausente ou zerado — não é possível ratear nos itens.',
+        400
+      )
     }
 
     const rateio = ratearCustoFrete({
@@ -1557,7 +1587,7 @@ async function aplicarRateioEDespesasFrete(companyId: string, notaId: string) {
   }
 
   for (const v of vinculos) {
-    const valor = decimalNum(v.valorFrete) ?? decimalNum(v.cteRecebida?.valorTotal) ?? 0
+    const valor = parcelaFreteDoVinculo(v)
     if (valor <= 0) continue
     const pessoaId = v.cteRecebida?.fornecedorPessoaId ?? null
     await clientePrisma.despesaEntradaDocumento.upsert({
@@ -1705,6 +1735,43 @@ async function obterDetalhe(
     }
   }
   if (sugeriuCfopCte) {
+    nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+    if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  }
+
+  // Recalcula/limpa frete rateado ao abrir detalhe (evita R$ 0,00 stale / rateio precoce).
+  const statusAbertoRateio = ['pendente', 'em_analise', 'stand_by'].includes(nota.statusEntrada)
+  if (
+    statusAbertoRateio &&
+    (nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento)
+  ) {
+    const syncRateio = await sincronizarRateioAposCadastro(companyId, notaId)
+    if (syncRateio.bloqueiosPeso.length > 0) {
+      const analiseAtual = (nota.analiseJson as {
+        cadastro?: { status?: string; avisos?: string[]; bloqueios?: string[] }
+        [k: string]: unknown
+      } | null) ?? null
+      if (analiseAtual) {
+        const bloqueios = [
+          ...new Set([...(analiseAtual.cadastro?.bloqueios ?? []), ...syncRateio.bloqueiosPeso]),
+        ]
+        const analiseAtualizada = {
+          ...analiseAtual,
+          cadastro: {
+            ...(analiseAtual.cadastro ?? { avisos: [], bloqueios: [] }),
+            status: 'bloqueante' as const,
+            avisos: analiseAtual.cadastro?.avisos ?? [],
+            bloqueios,
+          },
+          motivoParada: 'cadastro',
+        }
+        await repositorioEntradaNotas.atualizarNota(notaId, {
+          analiseJson: asJson(analiseAtualizada),
+          etapaAtual: 'cadastro',
+          statusEntrada: 'em_analise',
+        })
+      }
+    }
     nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
     if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
   }
@@ -2843,10 +2910,7 @@ function resolverTotalTransporteFrete(nota: {
   }
   const vinculos = nota.vinculosComoNfe ?? []
   const somaCtes = vinculos.reduce((acc, v) => {
-    const n =
-      decimalNum(v.valorFrete as { toNumber?: () => number } | number | null) ??
-      decimalNum(v.cteRecebida?.valorTotal as { toNumber?: () => number } | number | null) ??
-      0
+    const n = parcelaFreteDoVinculo(v)
     return acc + (Number.isFinite(n) ? n : 0)
   }, 0)
   if (somaCtes > 0) return Math.round(somaCtes * 100) / 100
@@ -2855,6 +2919,21 @@ function resolverTotalTransporteFrete(nota: {
     const freteNf = transp?.valorFreteNf
     return freteNf != null && Number.isFinite(freteNf) ? Math.round(freteNf * 100) / 100 : 0
   }
+  return 0
+}
+
+/**
+ * Parcela do vínculo: valorFrete > 0; senão valor do CT-e > 0.
+ * Evita `valorFrete = 0` travar o fallback via `??`.
+ */
+function parcelaFreteDoVinculo(v: {
+  valorFrete?: unknown
+  cteRecebida?: { valorTotal?: unknown } | null
+}): number {
+  const doVinculo = decimalNum(v.valorFrete as { toNumber?: () => number } | number | null)
+  if (doVinculo != null && Number.isFinite(doVinculo) && doVinculo > 0) return doVinculo
+  const doCte = decimalNum(v.cteRecebida?.valorTotal as { toNumber?: () => number } | number | null)
+  if (doCte != null && Number.isFinite(doCte) && doCte > 0) return doCte
   return 0
 }
 

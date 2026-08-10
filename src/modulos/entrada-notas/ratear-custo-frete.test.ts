@@ -19,7 +19,6 @@ describe('ratearCustoFrete', () => {
   })
 
   it('rateia por peso (pesoLinhaKg = peso unit × qtd entrada)', () => {
-    // Ex.: 720 kg total, R$ 1000 → taxa ≈ 1,3889; item 120 kg → 166,67
     const r = ratearCustoFrete({
       regra: 'peso',
       itens: [
@@ -40,19 +39,57 @@ describe('ratearCustoFrete', () => {
     expect(r.itens.find((i) => i.id === 'b')?.custoFreteRateado).toBe(30)
   })
 
-  it('peso ausente/zerado não cai para valor — retorna erro', () => {
+  it('peso ausente/zerado não cai para valor — retorna erro e não rateia parcial', () => {
     const r = ratearCustoFrete({
       regra: 'peso',
       itens: [
         { id: 'a', valorTotal: 50, quantidade: 1, pesoLinhaKg: 0 },
-        { id: 'b', valorTotal: 50, quantidade: 1, pesoLinhaKg: null },
+        { id: 'b', valorTotal: 50, quantidade: 1, pesoLinhaKg: 10 },
       ],
       valorTotalFrete: 20,
     })
     expect(r.regraAplicada).toBe('peso')
     expect(r.erros.length).toBeGreaterThan(0)
-    expect(r.itens[0].custoFreteRateado).toBe(0)
-    expect(r.itens[1].custoFreteRateado).toBe(0)
+    expect(r.itens.every((i) => i.custoFreteRateado === 0)).toBe(true)
+  })
+
+  it('três itens: um sem peso bloqueia todos (não deixa uns com frete e outro 0)', () => {
+    const r = ratearCustoFrete({
+      regra: 'peso',
+      itens: [
+        { id: '1', valorTotal: 100, quantidade: 4, pesoLinhaKg: null },
+        { id: '2', valorTotal: 200, quantidade: 11, pesoLinhaKg: 50 },
+        { id: '3', valorTotal: 50, quantidade: 3, pesoLinhaKg: 10 },
+      ],
+      valorTotalFrete: 100,
+    })
+    expect(r.erros.length).toBeGreaterThan(0)
+    expect(r.itens.find((i) => i.id === '1')?.custoFreteRateado).toBe(0)
+    expect(r.itens.find((i) => i.id === '2')?.custoFreteRateado).toBe(0)
+    expect(r.itens.find((i) => i.id === '3')?.custoFreteRateado).toBe(0)
+  })
+
+  it('três itens todos com peso: nenhum fica R$ 0,00', () => {
+    const r = ratearCustoFrete({
+      regra: 'peso',
+      itens: [
+        { id: '1', valorTotal: 476.32, quantidade: 4, pesoLinhaKg: 16 },
+        { id: '2', valorTotal: 1169.63, quantidade: 11, pesoLinhaKg: 220 },
+        { id: '3', valorTotal: 170.1, quantidade: 3, pesoLinhaKg: 9 },
+      ],
+      valorTotalFrete: 80,
+    })
+    expect(r.erros).toHaveLength(0)
+    for (const item of r.itens) {
+      expect(item.custoFreteRateado).toBeGreaterThan(0)
+    }
+    const soma = r.itens.reduce((a, i) => a + i.custoFreteRateado, 0)
+    expect(soma).toBeCloseTo(80, 2)
+  })
+
+  it('valor do frete zerado retorna erro', () => {
+    const r = ratearCustoFrete({ regra: 'peso', itens, valorTotalFrete: 0 })
+    expect(r.erros.length).toBeGreaterThan(0)
   })
 
   it('rateia por quantidade e igual', () => {

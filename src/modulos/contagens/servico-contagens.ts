@@ -72,6 +72,13 @@ function mapearNotaCega(nota: {
   }
 }
 
+function limparNomeExibicaoLegado(nome: string, sku: string | null): string {
+  if (!sku) return nome
+  const sufixo = ` (${sku})`
+  if (nome.endsWith(sufixo)) return nome.slice(0, -sufixo.length).trimEnd()
+  return nome
+}
+
 function mapearItemCego(item: {
   id: string
   produtoId: string
@@ -83,11 +90,14 @@ function mapearItemCego(item: {
   qtdEmbalagemPadrao: unknown
   qtdContada: unknown
   statusItem: string
+  produto?: { sku?: string | null } | null
 }) {
+  const sku = item.produto?.sku?.trim() || null
   return {
     id: item.id,
     produtoId: item.produtoId,
-    nomeExibicao: item.nomeExibicao,
+    sku,
+    nomeExibicao: limparNomeExibicaoLegado(item.nomeExibicao, sku),
     codigoBarras: item.codigoBarras,
     codigoOriginal: item.codigoOriginal,
     marca: item.marca,
@@ -190,9 +200,7 @@ async function criar(companyId: string, usuarioId: string, nfeRecebidaIds: strin
 
       porProduto.set(item.produtoId, {
         produtoId: item.produtoId,
-        nomeExibicao: produto.sku
-          ? `${produto.nomeVenda} (${produto.sku})`
-          : produto.nomeVenda,
+        nomeExibicao: produto.nomeVenda,
         codigoBarras: produto.codigoBarras,
         codigoOriginal: vinculo?.codigoFornecedor ?? item.codigoProduto ?? null,
         marca: produto.marca || null,

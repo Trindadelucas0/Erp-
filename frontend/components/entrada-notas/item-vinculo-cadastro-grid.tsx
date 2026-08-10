@@ -211,13 +211,14 @@ export function ItemVinculoCadastroGrid({
       : null
   const fretePorUnd =
     freteRateado != null &&
+    freteRateado > 0 &&
     qtdEntrada != null &&
     Number.isFinite(qtdEntrada) &&
     qtdEntrada > 0
       ? freteRateado / qtdEntrada
       : null
   const fretePorUndTexto =
-    fretePorUnd != null
+    fretePorUnd != null && fretePorUnd > 0
       ? fretePorUnd.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
       : null
   const qtdEntradaValorSistema = (
@@ -239,209 +240,296 @@ export function ItemVinculoCadastroGrid({
 
   const rotuloVinculo = rotuloVinculoModo(item.vinculoModo)
   const unidadeNfTitulo = item.unidade?.trim() || null
+  const mostrarFrete = vinculado && fretePorUndTexto != null
 
-  const dlEspelho = (
-    <dl className="grid gap-1 text-xs text-muted-foreground">
-      <LinhaEspelho rotulo="Código de barras" valor={gtinNf} />
-      <LinhaEspelho rotulo="Código original" valor={codOrigNf} />
+  const estiloSistema = vinculado
+    ? 'border-l-4 border-l-emerald-500 bg-emerald-50 dark:bg-emerald-950/30'
+    : pendenteDocumental
+      ? 'border-l-4 border-l-muted-foreground/40 bg-muted/20'
+      : 'border-l-4 border-l-destructive bg-destructive/10'
+
+  function cabecalhoNf() {
+    return (
+      <div className="space-y-2">
+        <p className="text-xs font-bold uppercase tracking-wider text-foreground">NF</p>
+        <p className="font-medium">
+          #{item.nItem} {item.descricao ?? '—'}
+          {unidadeNfTitulo ? (
+            <span className="ml-1 text-xs font-normal text-muted-foreground">
+              · {unidadeNfTitulo}
+            </span>
+          ) : null}
+        </p>
+      </div>
+    )
+  }
+
+  function cabecalhoSistema() {
+    return (
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-bold uppercase tracking-wider text-foreground">SISTEMA</p>
+          <span
+            className={cn(
+              'rounded-full px-2 py-0.5 text-xs font-semibold',
+              vinculado
+                ? 'bg-emerald-600/15 text-emerald-700 dark:text-emerald-300'
+                : pendenteDocumental
+                  ? 'bg-muted text-muted-foreground'
+                  : 'bg-destructive/15 text-destructive'
+            )}
+          >
+            {vinculado ? 'Vinculado' : pendenteDocumental ? 'Não exigido' : 'Sem vínculo'}
+          </span>
+        </div>
+        {item.produto ? (
+          <p className="font-medium">{rotuloProdutoSistema(item.produto)}</p>
+        ) : (
+          <p
+            className={cn(
+              'font-medium',
+              pendenteDocumental ? 'text-muted-foreground' : 'text-destructive'
+            )}
+          >
+            {pendenteDocumental ? 'Vínculo não exigido (uso/consumo)' : 'Sem vínculo'}
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  function campoBarrasNf() {
+    return <LinhaEspelho rotulo="Código de barras" valor={gtinNf} />
+  }
+  function campoBarrasSistema() {
+    return (
+      <LinhaEspelho
+        rotulo="Código de barras"
+        valor={gtinSistema}
+        valorClassName={cn(
+          gtinBate && 'font-semibold text-emerald-700 dark:text-emerald-300',
+          gtinSistema === 'sem GTIN' && 'text-muted-foreground'
+        )}
+      />
+    )
+  }
+  function campoOriginalNf() {
+    return <LinhaEspelho rotulo="Código original" valor={codOrigNf} />
+  }
+  function campoOriginalSistema() {
+    return (
+      <LinhaEspelho
+        rotulo="Código original"
+        valor={codOrigSistema}
+        valorClassName={cn(
+          codOrigBate && 'font-semibold text-emerald-700 dark:text-emerald-300'
+        )}
+        acao={
+          podeGravarOriginal ? (
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto p-0 text-xs font-normal"
+              disabled={acao || gravandoCodigo}
+              aria-label={gravandoCodigo ? 'Gravando código original' : 'Gravar código original'}
+              onClick={async () => {
+                if (!onGravarCodigoOriginal) return
+                setGravandoCodigo(true)
+                try {
+                  await onGravarCodigoOriginal()
+                } finally {
+                  setGravandoCodigo(false)
+                }
+              }}
+            >
+              {gravandoCodigo ? (
+                <Loader2 className="size-3.5 animate-spin" aria-hidden />
+              ) : (
+                'Gravar'
+              )}
+            </Button>
+          ) : undefined
+        }
+      />
+    )
+  }
+  function campoQtdNf() {
+    return (
       <LinhaEspelho rotulo="Qtd × unit." valor={qtdUnitTexto} valorClassName="font-sans" />
-    </dl>
-  )
+    )
+  }
+  function campoQtdSistema() {
+    return (
+      <LinhaEspelho
+        rotulo="Qtd entrada"
+        valor={qtdEntradaValorSistema}
+        valorClassName="font-sans text-foreground"
+      />
+    )
+  }
+  function campoFreteSistema() {
+    if (!mostrarFrete) return null
+    return (
+      <LinhaEspelho
+        rotulo="Frete por und"
+        valor={fretePorUndTexto}
+        valorClassName="font-sans text-foreground"
+      />
+    )
+  }
+
+  function rodapeSistema() {
+    return (
+      <div className="space-y-2">
+        {vinculado && rotuloVinculo && (
+          <p className="text-right text-[10px] text-muted-foreground/70">
+            vínculo: {rotuloVinculo}
+          </p>
+        )}
+
+        {item.criticaCadastro && !vinculoNaoExigido && (
+          <p className="text-xs text-destructive">Crítica de cadastro — concilie o produto</p>
+        )}
+
+        {vinculado && !finalizada && (
+          <p className="text-xs text-muted-foreground">
+            Vínculo travado — ajuste no cadastro do produto se houver divergência.
+          </p>
+        )}
+
+        {!finalizada && permitirAcoesVinculo && !item.produtoId && (
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
+            <Button type="button" size="sm" disabled={acao} onClick={onAbrirBusca}>
+              Conciliar produto
+            </Button>
+          </div>
+        )}
+
+        {buscando && permitirAcoesVinculo && !item.produtoId && (
+          <div className="mt-1 space-y-2 rounded-md border border-dashed p-3">
+            <p className="text-[11px] text-muted-foreground">
+              Digite palavras-chave — a lista atualiza sozinha enquanto você digita.
+            </p>
+            <div className="flex gap-2">
+              <input
+                autoFocus
+                className="min-w-0 flex-1 rounded-md border bg-background px-3 py-2 text-sm"
+                placeholder="Ex.: esgoto 75 ou ESG…"
+                aria-label="Buscar produto para conciliar"
+                aria-busy={carregandoBusca}
+                value={buscaProduto}
+                onFocus={(e) => e.currentTarget.select()}
+                onChange={(e) => onBuscaChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') onBuscar()
+                }}
+              />
+              {carregandoBusca ? (
+                <span
+                  className="inline-flex items-center px-2 text-muted-foreground"
+                  aria-live="polite"
+                >
+                  <Loader2 className="size-4 animate-spin" aria-hidden />
+                  <span className="sr-only">Buscando…</span>
+                </span>
+              ) : null}
+              <Button type="button" size="sm" variant="ghost" onClick={onFecharBusca}>
+                Fechar
+              </Button>
+            </div>
+            <ul className="max-h-40 space-y-1 overflow-y-auto">
+              {produtos.map((p) => (
+                <li
+                  key={p.id}
+                  className="flex items-center justify-between gap-2 rounded px-2 py-1 hover:bg-muted"
+                >
+                  <span className="min-w-0 flex-1 truncate text-left">{rotuloProdutoBusca(p)}</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={acao}
+                    onClick={() => void onVincular(p.id)}
+                  >
+                    Conciliar
+                  </Button>
+                </li>
+              ))}
+              {!carregandoBusca && produtos.length === 0 && (
+                <li className="px-2 py-1 text-xs text-muted-foreground">
+                  {buscaProduto.trim().length < 2
+                    ? 'Digite pelo menos 2 caracteres para buscar.'
+                    : 'Nenhum produto ainda — continue digitando ou refine as palavras-chave.'}
+                </li>
+              )}
+              {carregandoBusca && produtos.length === 0 && (
+                <li className="px-2 py-1 text-xs text-muted-foreground">Buscando…</li>
+              )}
+            </ul>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <article className="overflow-hidden rounded-md border text-sm">
-      <div className="grid grid-cols-1 sm:grid-cols-2">
+      {/* Mobile: NF completo, depois SISTEMA (frete no final). */}
+      <div className="sm:hidden">
         <section
-          className="min-w-0 space-y-2 border-b bg-muted/40 p-3 sm:border-b-0 sm:border-r"
+          className="min-w-0 space-y-2 border-b bg-muted/40 p-3"
           aria-label="Produto da nota fiscal"
         >
-          <p className="text-xs font-bold uppercase tracking-wider text-foreground">NF</p>
-          <p className="font-medium">
-            #{item.nItem} {item.descricao ?? '—'}
-            {unidadeNfTitulo ? (
-              <span className="ml-1 text-xs font-normal text-muted-foreground">
-                · {unidadeNfTitulo}
-              </span>
-            ) : null}
-          </p>
-          {dlEspelho}
+          {cabecalhoNf()}
+          <dl className="grid gap-1 text-xs text-muted-foreground">
+            {campoBarrasNf()}
+            {campoOriginalNf()}
+            {campoQtdNf()}
+          </dl>
         </section>
+        <section
+          className={cn('relative min-w-0 space-y-2 p-3', estiloSistema)}
+          aria-label="Produto do sistema"
+        >
+          {cabecalhoSistema()}
+          <dl className="grid gap-1 text-xs text-muted-foreground">
+            {campoBarrasSistema()}
+            {campoOriginalSistema()}
+            {campoQtdSistema()}
+            {campoFreteSistema()}
+          </dl>
+          {rodapeSistema()}
+        </section>
+      </div>
 
+      {/* Desktop: linhas pareadas — barras/original/qtd cara a cara; frete só à direita no fim. */}
+      <div className="hidden sm:grid sm:grid-cols-2 sm:grid-rows-[auto_auto_auto_auto_auto]">
+        <section
+          className="min-w-0 bg-muted/40 p-3 sm:row-span-5 sm:grid sm:grid-rows-subgrid sm:gap-y-1 sm:border-r"
+          aria-label="Produto da nota fiscal"
+        >
+          {cabecalhoNf()}
+          <div className="text-xs text-muted-foreground">{campoBarrasNf()}</div>
+          <div className="text-xs text-muted-foreground">{campoOriginalNf()}</div>
+          <div className="text-xs text-muted-foreground">{campoQtdNf()}</div>
+          <div aria-hidden className="min-h-0" />
+        </section>
         <section
           className={cn(
-            'relative flex min-h-full min-w-0 flex-col space-y-2 p-3',
-            vinculado
-              ? 'border-l-4 border-l-emerald-500 bg-emerald-50 dark:bg-emerald-950/30'
-              : pendenteDocumental
-                ? 'border-l-4 border-l-muted-foreground/40 bg-muted/20'
-                : 'border-l-4 border-l-destructive bg-destructive/10'
+            'relative min-w-0 p-3 sm:row-span-5 sm:grid sm:grid-rows-subgrid sm:gap-y-1',
+            estiloSistema
           )}
           aria-label="Produto do sistema"
         >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs font-bold uppercase tracking-wider text-foreground">SISTEMA</p>
-            <span
-              className={cn(
-                'rounded-full px-2 py-0.5 text-xs font-semibold',
-                vinculado
-                  ? 'bg-emerald-600/15 text-emerald-700 dark:text-emerald-300'
-                  : pendenteDocumental
-                    ? 'bg-muted text-muted-foreground'
-                    : 'bg-destructive/15 text-destructive'
-              )}
-            >
-              {vinculado ? 'Vinculado' : pendenteDocumental ? 'Não exigido' : 'Sem vínculo'}
-            </span>
-          </div>
-
-          {item.produto ? (
-            <p className="font-medium">{rotuloProdutoSistema(item.produto)}</p>
-          ) : (
-            <p className={cn('font-medium', pendenteDocumental ? 'text-muted-foreground' : 'text-destructive')}>
-              {pendenteDocumental ? 'Vínculo não exigido (uso/consumo)' : 'Sem vínculo'}
-            </p>
-          )}
-
-          <dl className="flex-1 grid gap-1 text-xs text-muted-foreground">
-            <LinhaEspelho
-              rotulo="Código de barras"
-              valor={gtinSistema}
-              valorClassName={cn(
-                gtinBate && 'font-semibold text-emerald-700 dark:text-emerald-300',
-                gtinSistema === 'sem GTIN' && 'text-muted-foreground'
-              )}
-            />
-            <LinhaEspelho
-              rotulo="Código original"
-              valor={codOrigSistema}
-              valorClassName={cn(
-                codOrigBate && 'font-semibold text-emerald-700 dark:text-emerald-300'
-              )}
-              acao={
-                podeGravarOriginal ? (
-                  <Button
-                    type="button"
-                    variant="link"
-                    className="h-auto p-0 text-xs font-normal"
-                    disabled={acao || gravandoCodigo}
-                    aria-label={gravandoCodigo ? 'Gravando código original' : 'Gravar código original'}
-                    onClick={async () => {
-                      if (!onGravarCodigoOriginal) return
-                      setGravandoCodigo(true)
-                      try {
-                        await onGravarCodigoOriginal()
-                      } finally {
-                        setGravandoCodigo(false)
-                      }
-                    }}
-                  >
-                    {gravandoCodigo ? (
-                      <Loader2 className="size-3.5 animate-spin" aria-hidden />
-                    ) : (
-                      'Gravar'
-                    )}
-                  </Button>
-                ) : undefined
-              }
-            />
-            <LinhaEspelho
-              rotulo="Qtd entrada"
-              valor={qtdEntradaValorSistema}
-              valorClassName="font-sans text-foreground"
-            />
-            {vinculado && fretePorUndTexto != null && (
-              <LinhaEspelho
-                rotulo="Frete por und"
-                valor={fretePorUndTexto}
-                valorClassName="font-sans text-foreground"
-              />
-            )}
-          </dl>
-
-          {vinculado && rotuloVinculo && (
-            <p className="text-right text-[10px] text-muted-foreground/70">
-              vínculo: {rotuloVinculo}
-            </p>
-          )}
-
-          {item.criticaCadastro && !vinculoNaoExigido && (
-            <p className="text-xs text-destructive">Crítica de cadastro — concilie o produto</p>
-          )}
-
-          {vinculado && !finalizada && (
-            <p className="text-xs text-muted-foreground">
-              Vínculo travado — ajuste no cadastro do produto se houver divergência.
-            </p>
-          )}
-
-          {!finalizada && permitirAcoesVinculo && !item.produtoId && (
-            <div className="flex flex-wrap gap-1.5 pt-0.5">
-              <Button type="button" size="sm" disabled={acao} onClick={onAbrirBusca}>
-                Conciliar produto
-              </Button>
-            </div>
-          )}
-
-          {buscando && permitirAcoesVinculo && !item.produtoId && (
-            <div className="mt-1 space-y-2 rounded-md border border-dashed p-3">
-              <p className="text-[11px] text-muted-foreground">
-                Digite palavras-chave — a lista atualiza sozinha enquanto você digita.
-              </p>
-              <div className="flex gap-2">
-                <input
-                  autoFocus
-                  className="min-w-0 flex-1 rounded-md border bg-background px-3 py-2 text-sm"
-                  placeholder="Ex.: esgoto 75 ou ESG…"
-                  aria-label="Buscar produto para conciliar"
-                  aria-busy={carregandoBusca}
-                  value={buscaProduto}
-                  onFocus={(e) => e.currentTarget.select()}
-                  onChange={(e) => onBuscaChange(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') onBuscar()
-                  }}
-                />
-                {carregandoBusca ? (
-                  <span className="inline-flex items-center px-2 text-muted-foreground" aria-live="polite">
-                    <Loader2 className="size-4 animate-spin" aria-hidden />
-                    <span className="sr-only">Buscando…</span>
-                  </span>
-                ) : null}
-                <Button type="button" size="sm" variant="ghost" onClick={onFecharBusca}>
-                  Fechar
-                </Button>
-              </div>
-              <ul className="max-h-40 space-y-1 overflow-y-auto">
-                {produtos.map((p) => (
-                  <li
-                    key={p.id}
-                    className="flex items-center justify-between gap-2 rounded px-2 py-1 hover:bg-muted"
-                  >
-                    <span className="min-w-0 flex-1 truncate text-left">{rotuloProdutoBusca(p)}</span>
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={acao}
-                      onClick={() => void onVincular(p.id)}
-                    >
-                      Conciliar
-                    </Button>
-                  </li>
-                ))}
-                {!carregandoBusca && produtos.length === 0 && (
-                  <li className="px-2 py-1 text-xs text-muted-foreground">
-                    {buscaProduto.trim().length < 2
-                      ? 'Digite pelo menos 2 caracteres para buscar.'
-                      : 'Nenhum produto ainda — continue digitando ou refine as palavras-chave.'}
-                  </li>
-                )}
-                {carregandoBusca && produtos.length === 0 && (
-                  <li className="px-2 py-1 text-xs text-muted-foreground">Buscando…</li>
-                )}
-              </ul>
-            </div>
-          )}
+          {cabecalhoSistema()}
+          <div className="text-xs text-muted-foreground">{campoBarrasSistema()}</div>
+          <div className="text-xs text-muted-foreground">{campoOriginalSistema()}</div>
+          <div className="text-xs text-muted-foreground">{campoQtdSistema()}</div>
+          <div className="text-xs text-muted-foreground">{campoFreteSistema()}</div>
         </section>
+      </div>
+      <div className="hidden sm:grid sm:grid-cols-2">
+        <div className="bg-muted/40 sm:border-r" aria-hidden />
+        <div className={cn('p-3 pt-1', estiloSistema)}>{rodapeSistema()}</div>
       </div>
     </article>
   )

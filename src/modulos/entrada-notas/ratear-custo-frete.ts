@@ -4,6 +4,7 @@
  *
  * Peso: base = pesoLinhaKg (peso unitário do cadastro × qtd entrada).
  * Sem fallback silencioso — se a base de peso for inválida, retorna erro.
+ * Nenhum item com base > 0 deve ficar com parcela R$ 0,00 quando há frete a ratear.
  */
 export type RegraRateioFrete = 'valor' | 'peso' | 'quantidade' | 'igual'
 
@@ -27,7 +28,7 @@ export type ResultadoRateioItem = {
 export type ResultadoRateioFrete = {
   regraAplicada: RegraRateioFrete
   avisos: string[]
-  /** Bloqueios sem rateio (ex.: peso ausente). Quando preenchido, parcelas ficam 0. */
+  /** Bloqueios sem rateio (ex.: peso ausente). Quando preenchido, não persistir parcelas. */
   erros: string[]
   itens: ResultadoRateioItem[]
 }
@@ -44,7 +45,65 @@ function normalizarRegra(regra: string | null | undefined): RegraRateioFrete {
 }
 
 /**
- * Distribui `valorTotalFrete` entre os itens. Último item absorve residual de arredondamento.
+ * Rateio por resto maior: evita parcela R$ 0,00 em item com base > 0.
+ * Últimos centavos vão para quem tem maior parte fracionária (prioriza base > 0).
+ */
+function distribuirPorRestoMaior(valor: number, pesos: number[], ids: string[]): ResultadoRateioItem[] {
+  const totalCentavos = Math.round(valor * 100)
+  const somaPesos = pesos.reduce((a, b) => a + b, 0)
+  if (somaPesos <= 0 || totalCentavos <= 0) {
+    return ids.map((id) => ({ id, custoFreteRateado: 0 }))
+  }
+
+  const exatos = pesos.map((p) => (totalCentavos * p) / somaPesos)
+  const floors = exatos.map((e) => Math.floor(e))
+  let restante = totalCentavos - floors.reduce((a, b) => a + b, 0)
+
+  const ordem = exatos
+    .map((e, i) => ({ i, frac: e - floors[i], peso: pesos[i] }))
+    .sort((a, b) => {
+      if (b.frac !== a.frac) return b.frac - a.frac
+      return b.peso - a.peso
+    })
+
+  const centavos = [...floors]
+  for (const { i } of ordem) {
+    if (restante <= 0) break
+    if (pesos[i] <= 0) continue
+    centavos[i] += 1
+    restante -= 1
+  }
+  // Se ainda sobrar (só bases zeradas na ordem), joga no maior peso
+  if (restante > 0) {
+    let idxMaior = 0
+    for (let i = 1; i < pesos.length; i++) {
+      if (pesos[i] > pesos[idxMaior]) idxMaior = i
+    }
+    centavos[idxMaior] += restante
+  }
+
+  // Item com base > 0 e 0 centavos: tira 1 centavo do maior e dá a ele
+  for (let i = 0; i < pesos.length; i++) {
+    if (pesos[i] <= 0 || centavos[i] > 0) continue
+    let doador = -1
+    for (let j = 0; j < pesos.length; j++) {
+      if (j === i) continue
+      if (centavos[j] > 1 && (doador < 0 || centavos[j] > centavos[doador])) doador = j
+    }
+    if (doador >= 0) {
+      centavos[doador] -= 1
+      centavos[i] += 1
+    }
+  }
+
+  return ids.map((id, i) => ({
+    id,
+    custoFreteRateado: arred2(centavos[i] / 100),
+  }))
+}
+
+/**
+ * Distribui `valorTotalFrete` entre os itens.
  */
 export function ratearCustoFrete(params: {
   regra: string | null | undefined
@@ -55,6 +114,9 @@ export function ratearCustoFrete(params: {
   const erros: string[] = []
   const valor = Number(params.valorTotalFrete)
   if (!Number.isFinite(valor) || valor <= 0 || params.itens.length === 0) {
+    if (params.itens.length > 0 && !(Number.isFinite(valor) && valor > 0)) {
+      erros.push('Valor do frete ausente ou zerado — não é possível ratear nos itens.')
+    }
     return {
       regraAplicada: normalizarRegra(params.regra),
       avisos,
@@ -109,13 +171,25 @@ export function ratearCustoFrete(params: {
     soma = pesos.length
   }
 
-  const resultados: ResultadoRateioItem[] = []
-  let acumulado = 0
-  for (let i = 0; i < params.itens.length; i++) {
-    const ehUltimo = i === params.itens.length - 1
-    const parcela = ehUltimo ? arred2(valor - acumulado) : arred2((valor * pesos[i]) / soma)
-    acumulado = arred2(acumulado + parcela)
-    resultados.push({ id: params.itens[i].id, custoFreteRateado: parcela })
+  const resultados = distribuirPorRestoMaior(
+    valor,
+    pesos,
+    params.itens.map((i) => i.id)
+  )
+
+  if (regra === 'peso') {
+    const zeradoComPeso = resultados.some((r, i) => (pesos[i] ?? 0) > 0 && r.custoFreteRateado <= 0)
+    if (zeradoComPeso) {
+      erros.push(
+        'Rateio por peso gerou frete R$ 0,00 em item com peso. Verifique os pesos cadastrados ou o valor do frete.'
+      )
+      return {
+        regraAplicada: 'peso',
+        avisos,
+        erros,
+        itens: params.itens.map((i) => ({ id: i.id, custoFreteRateado: 0 })),
+      }
+    }
   }
 
   return { regraAplicada: regra, avisos, erros, itens: resultados }

@@ -224,6 +224,7 @@ async function buscarSessaoCompleta(companyId: string, id: string) {
           produto: {
             select: {
               id: true,
+              sku: true,
               codigoBarras: true,
               embalagensMaster: {
                 select: { codigoBarras: true, quantidade: true },

@@ -23,6 +23,7 @@ type EntradaSessao = {
 type ItemSessao = {
   id: string
   produtoId: string
+  sku: string | null
   nomeExibicao: string
   codigoBarras: string | null
   codigoOriginal: string | null
@@ -325,10 +326,11 @@ function ConteudoSessaoContagem() {
             Produtos das entradas (contagem cega)
           </h2>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left text-sm">
+            <table className="w-full min-w-[800px] text-left text-sm">
               <thead>
                 <tr className="border-b text-muted-foreground">
-                  <th className="px-3 py-2 font-medium">Código / Nome</th>
+                  <th className="px-3 py-2 font-medium">Código</th>
+                  <th className="px-3 py-2 font-medium">Nome</th>
                   <th className="px-3 py-2 font-medium">Cód. original / Barras</th>
                   <th className="px-3 py-2 font-medium">Marca</th>
                   <th className="px-3 py-2 font-medium">Qtd. emb.</th>
@@ -344,6 +346,7 @@ function ConteudoSessaoContagem() {
                       item.statusItem === 'divergente' ? 'bg-amber-500/10' : ''
                     }`}
                   >
+                    <td className="px-3 py-2 font-mono tabular-nums">{item.sku || '—'}</td>
                     <td className="px-3 py-2 font-medium">{item.nomeExibicao}</td>
                     <td className="px-3 py-2 text-xs">
                       <div>{item.codigoOriginal || '—'}</div>
