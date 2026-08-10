@@ -3,6 +3,10 @@
 import { useState, type ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  CabecalhoOpcaoProduto,
+  LinhaOpcaoProduto,
+} from '@/components/produtos/linha-opcao-produto'
 import { cn } from '@/lib/utils'
 
 export type ItemVinculoCadastro = {
@@ -90,25 +94,17 @@ function rotuloProdutoSistema(produto: NonNullable<ItemVinculoCadastro['produto'
 
   return (
     <>
-      {produto.nomeVenda}
-      {produto.sku ? (
-        <span className="ml-1 font-mono text-xs text-muted-foreground">({produto.sku})</span>
+      {produto.sku?.trim() ? (
+        <span className="mr-1.5 font-mono text-xs tabular-nums text-muted-foreground">
+          {produto.sku.trim()}
+        </span>
       ) : null}
+      {produto.nomeVenda}
       {extras.length > 0 ? (
         <span className="ml-1 text-xs text-muted-foreground">· {extras.join(' · ')}</span>
       ) : null}
     </>
   )
-}
-
-function rotuloProdutoBusca(produto: ProdutoBuscaVinculo): string {
-  const partes: string[] = []
-  let nome = produto.nomeVenda
-  if (produto.sku) nome += ` (${produto.sku})`
-  partes.push(nome)
-  const marca = produto.marca?.trim()
-  if (marca) partes.push(marca)
-  return partes.join(' · ')
 }
 
 type LinhaEspelhoProps = {
@@ -438,12 +434,29 @@ export function ItemVinculoCadastroGrid({
               </Button>
             </div>
             <ul className="max-h-40 space-y-1 overflow-y-auto">
+              {produtos.length > 0 ? (
+                <li className="px-2 py-0.5" aria-hidden>
+                  <CabecalhoOpcaoProduto className="border-0 px-0 py-0.5" />
+                </li>
+              ) : null}
               {produtos.map((p) => (
                 <li
                   key={p.id}
                   className="flex items-center justify-between gap-2 rounded px-2 py-1 hover:bg-muted"
                 >
-                  <span className="min-w-0 flex-1 truncate text-left">{rotuloProdutoBusca(p)}</span>
+                  <LinhaOpcaoProduto
+                    sku={p.sku}
+                    nome={p.nomeVenda}
+                    termoBusca={buscaProduto}
+                    complemento={
+                      p.marca?.trim() ? (
+                        <span className="ml-1.5 text-xs text-muted-foreground">
+                          · {p.marca.trim()}
+                        </span>
+                      ) : null
+                    }
+                    className="text-left"
+                  />
                   <Button
                     type="button"
                     size="sm"

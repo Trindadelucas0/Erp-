@@ -1084,7 +1084,7 @@ function ConteudoDaPagina() {
             rotulo="Buscar"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Nome, SKU, marca ou código de barras..."
+            placeholder="Nome, código, marca ou código de barras..."
           />
         </div>
 
@@ -1111,7 +1111,7 @@ function ConteudoDaPagina() {
             <thead>
               <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
                 <th className="px-4 py-3 font-medium w-16">Foto</th>
-                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="SKU" coluna="sku" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Código" coluna="sku" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
                 <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Nome" coluna="nome" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
                 <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Marca" coluna="marca" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
                 <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Unidade" coluna="unidade" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
@@ -1354,7 +1354,7 @@ function ConteudoDaPagina() {
               <div className="flex flex-col gap-4">
                 <div className="flex flex-wrap items-end gap-4">
                   <InputPadrao
-                    rotulo="SKU"
+                    rotulo="Código"
                     value={form.sku}
                     onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
                     disabled={skuSomenteLeitura}

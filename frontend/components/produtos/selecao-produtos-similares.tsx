@@ -3,9 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import { clienteHttp } from '@/services/api'
+import {
+  CabecalhoOpcaoProduto,
+  LinhaOpcaoProduto,
+} from '@/components/produtos/linha-opcao-produto'
 import { Button } from '@/components/ui/button'
 import { useFecharAoSairComMouse } from '@/lib/dropdown-catalogo'
-import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
 import { resolverUrlUpload } from '@/lib/resolver-url-upload'
 import { cn } from '@/lib/utils'
 
@@ -96,7 +99,7 @@ export function SelecaoProdutosSimilares({ selecionados, aoMudar, excluirId, dis
             return (
               <span
                 key={s.id}
-                className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 text-xs"
+                className="inline-flex max-w-full items-center gap-1.5 rounded-md bg-muted px-2 py-1 text-xs"
               >
                 {urlFoto ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -108,8 +111,12 @@ export function SelecaoProdutosSimilares({ selecionados, aoMudar, excluirId, dis
                 ) : (
                   <div className="size-5 shrink-0 rounded bg-background" />
                 )}
-                {s.sku ? `${s.sku} — ` : ''}
-                {s.nomeVenda}
+                {s.sku ? (
+                  <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
+                    {s.sku}
+                  </span>
+                ) : null}
+                <span className="min-w-0 truncate">{s.nomeVenda}</span>
                 {!disabled && (
                   <button
                     type="button"
@@ -145,46 +152,50 @@ export function SelecaoProdutosSimilares({ selecionados, aoMudar, excluirId, dis
             />
           </div>
           {aberto && (
-            <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-md border border-border bg-card shadow-md">
-              {resultados
-                .filter((r) => !selecionados.some((s) => s.id === r.id))
-                .slice(0, 20)
-                .map((r) => {
-                  const urlFoto = resolverUrlUpload(r.urlFotoMiniatura)
-                  return (
-                    <button
-                      key={r.id}
-                      type="button"
-                      className={cn(
-                        'flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted'
-                      )}
-                      onClick={() => adicionar(r)}
-                    >
-                      {urlFoto ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={urlFoto}
-                          alt=""
-                          className="size-8 shrink-0 rounded object-cover"
+            <div className="absolute z-20 mt-1 max-h-48 w-full overflow-hidden rounded-md border border-border bg-card shadow-md">
+              <div className="flex items-center gap-2 border-b border-border px-3 py-1.5">
+                <div className="size-8 shrink-0" aria-hidden />
+                <CabecalhoOpcaoProduto className="border-0 px-0 py-0" />
+              </div>
+              <div className="max-h-40 overflow-auto">
+                {resultados
+                  .filter((r) => !selecionados.some((s) => s.id === r.id))
+                  .slice(0, 20)
+                  .map((r) => {
+                    const urlFoto = resolverUrlUpload(r.urlFotoMiniatura)
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        className={cn(
+                          'flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted'
+                        )}
+                        onClick={() => adicionar(r)}
+                      >
+                        {urlFoto ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={urlFoto}
+                            alt=""
+                            className="size-8 shrink-0 rounded object-cover"
+                          />
+                        ) : (
+                          <div className="size-8 shrink-0 rounded bg-muted" />
+                        )}
+                        <LinhaOpcaoProduto
+                          sku={r.sku}
+                          nome={r.nomeVenda}
+                          termoBusca={busca}
                         />
-                      ) : (
-                        <div className="size-8 shrink-0 rounded bg-muted" />
-                      )}
-                      <span className="min-w-0 truncate">
-                        {r.sku ? (
-                          <>
-                            <TextoDestaqueBusca texto={r.sku} termo={busca} />
-                            {' — '}
-                          </>
-                        ) : null}
-                        <TextoDestaqueBusca texto={r.nomeVenda} termo={busca} />
-                      </span>
-                    </button>
-                  )
-                })}
-              {resultados.length === 0 && (
-                <p className="px-3 py-2 text-xs text-muted-foreground">Nenhum produto encontrado.</p>
-              )}
+                      </button>
+                    )
+                  })}
+                {resultados.length === 0 && (
+                  <p className="px-3 py-2 text-xs text-muted-foreground">
+                    Nenhum produto encontrado.
+                  </p>
+                )}
+              </div>
             </div>
           )}
         </div>

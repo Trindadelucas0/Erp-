@@ -142,11 +142,7 @@ export function TelaKardexEstoque() {
     void carregar()
   }, [carregar])
 
-  const produtoRotulo = produto
-    ? produto.sku
-      ? `${produto.sku} — ${produto.nomeVenda}`
-      : produto.nomeVenda
-    : ''
+  const produtoRotulo = produto?.nomeVenda ?? ''
 
   const unidade =
     kardex?.produto.unidade ?? produto?.unidade ?? 'Unidades'

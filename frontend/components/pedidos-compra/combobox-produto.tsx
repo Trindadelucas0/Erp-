@@ -4,7 +4,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Loader2, Search, X } from 'lucide-react'
 import { Label } from '@/components/ui/label'
-import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
+import {
+  CabecalhoOpcaoProduto,
+  LinhaOpcaoProduto,
+} from '@/components/produtos/linha-opcao-produto'
 import {
   notificarAberturaDropdownCatalogo,
   useFecharAoSairComMouse,
@@ -51,10 +54,6 @@ type Props = {
 
 const ALTURA_MAXIMA_LISTA = 240
 const DEBOUNCE_BUSCA_MS = 300
-
-function rotuloProduto(p: ProdutoOpcao) {
-  return p.sku ? `${p.sku} — ${p.nomeVenda}` : p.nomeVenda
-}
 
 function codigoBarrasCorresponde(codigo: string | null | undefined, termo: string): boolean {
   if (!codigo?.trim()) return false
@@ -199,13 +198,11 @@ export function ComboboxProduto({
 
   // Com busca no servidor, a lista já veio filtrada; filtro local só afina a página atual.
   const filtrados = filtrarProdutos(produtos, aberto ? busca : '')
-  const textoExibido = selecionado ? rotuloProduto(selecionado) : ''
+  const textoExibido = selecionado?.nomeVenda ?? ''
 
   const listaDropdown = aberto && posicao && montado && (
-    <ul
-      ref={listaRef}
-      role="listbox"
-      className="fixed z-[60] overflow-auto rounded-md border border-border bg-popover text-popover-foreground shadow-md text-sm"
+    <div
+      className="fixed z-[60] flex flex-col overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-md text-sm"
       style={{
         top: posicao.top,
         left: posicao.left,
@@ -214,50 +211,51 @@ export function ComboboxProduto({
       }}
       {...zonaHover}
     >
-      {carregandoBusca && filtrados.length === 0 ? (
-        <li className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" aria-hidden />
-          Buscando...
-        </li>
-      ) : filtrados.length === 0 ? (
-        <li className="px-3 py-2 text-muted-foreground">Nenhum produto encontrado</li>
-      ) : (
-        filtrados.map((p) => {
-          const urlFoto = resolverUrlUpload(p.urlFotoMiniatura)
-          return (
-            <li key={p.id}>
-              <button
-                type="button"
-                role="option"
-                aria-selected={valor === p.id}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => selecionar(p.id)}
-              >
-                {urlFoto ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={urlFoto}
-                    alt=""
-                    className="size-8 shrink-0 rounded object-cover"
-                  />
-                ) : (
-                  <div className="size-8 shrink-0 rounded bg-muted" />
-                )}
-                <span className="min-w-0 flex flex-1 items-start gap-2">
-                  {p.sku && (
-                    <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                      <TextoDestaqueBusca texto={p.sku} termo={busca} />
-                    </span>
+      {filtrados.length > 0 ? (
+        <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5">
+          <div className="size-8 shrink-0" aria-hidden />
+          <CabecalhoOpcaoProduto className="border-0 px-0 py-0" />
+        </div>
+      ) : null}
+      <ul ref={listaRef} role="listbox" className="min-h-0 flex-1 overflow-auto">
+        {carregandoBusca && filtrados.length === 0 ? (
+          <li className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+            Buscando...
+          </li>
+        ) : filtrados.length === 0 ? (
+          <li className="px-3 py-2 text-muted-foreground">Nenhum produto encontrado</li>
+        ) : (
+          filtrados.map((p) => {
+            const urlFoto = resolverUrlUpload(p.urlFotoMiniatura)
+            return (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={valor === p.id}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => selecionar(p.id)}
+                >
+                  {urlFoto ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={urlFoto}
+                      alt=""
+                      className="size-8 shrink-0 rounded object-cover"
+                    />
+                  ) : (
+                    <div className="size-8 shrink-0 rounded bg-muted" />
                   )}
-                  <TextoDestaqueBusca texto={p.nomeVenda} termo={busca} className="truncate" />
-                </span>
-              </button>
-            </li>
-          )
-        })
-      )}
-    </ul>
+                  <LinhaOpcaoProduto sku={p.sku} nome={p.nomeVenda} termoBusca={busca} />
+                </button>
+              </li>
+            )
+          })
+        )}
+      </ul>
+    </div>
   )
 
   return (
@@ -278,7 +276,7 @@ export function ComboboxProduto({
             }}
             onKeyDown={aoTeclarBusca}
             disabled={disabled}
-            placeholder="Buscar por SKU, nome ou código de barras..."
+            placeholder="Buscar por código, nome ou código de barras..."
             className={cn(
               'flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent py-1 pl-9 pr-2 text-base shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30'
             )}

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { BlocoPagamentoPrazos, type PrazoPagamento } from '@/components/pedidos-compra/bloco-pagamento-prazos'
 import { ComboboxPessoa } from '@/components/pedidos-compra/combobox-pessoa'
+import { ComboboxProduto } from '@/components/pedidos-compra/combobox-produto'
 import { LancamentoItensPedido } from '@/components/pedidos-compra/lancamento-itens-pedido'
 import { ConfirmacaoComSenha } from '@/components/compartilhado/confirmacao-com-senha'
 import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
@@ -1941,17 +1942,17 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
             value={formPendencia.descricao}
             onChange={(e) => setFormPendencia((f) => ({ ...f, descricao: e.target.value }))}
           />
-          <SelectPadrao
+          <ComboboxProduto
             rotulo="Produto (opcional)"
+            produtos={(() => {
+              const mapa = new Map(produtos.map((p) => [p.id, p]))
+              for (const p of produtosBusca) mapa.set(p.id, p)
+              return [...mapa.values()]
+            })()}
             valor={formPendencia.produtoId}
             aoMudar={(v) => setFormPendencia((f) => ({ ...f, produtoId: v }))}
-            opcoes={[
-              { value: '', label: 'Nenhum' },
-              ...produtos.map((p) => ({
-                value: p.id,
-                label: `${p.sku ? p.sku + ' — ' : ''}${p.nomeVenda}`,
-              })),
-            ]}
+            aoBuscar={buscarProdutosPedido}
+            carregandoBusca={carregandoBuscaProdutos}
           />
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setModalPendenciaAberto(false)}>

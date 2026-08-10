@@ -34,9 +34,6 @@ export function PainelProdutoKardex({ produto, fornecedores }: Props) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <Package className="size-4 shrink-0 text-primary" />
-            {produto.sku && (
-              <span className="font-mono text-xs font-semibold text-primary">{produto.sku}</span>
-            )}
             <h2 className="text-base font-semibold tracking-tight text-foreground">
               {produto.nomeVenda}
             </h2>
@@ -78,7 +75,8 @@ export function PainelProdutoKardex({ produto, fornecedores }: Props) {
         </Link>
       </div>
 
-      <div className="grid gap-3 border-t pt-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 border-t pt-3 sm:grid-cols-2 lg:grid-cols-5">
+        <Meta rotulo="Código" valor={produto.sku} />
         <Meta rotulo="Unidade" valor={produto.unidade} />
         <Meta rotulo="Marca" valor={produto.marca} />
         <Meta rotulo="Código de barras" valor={produto.codigoBarras} />

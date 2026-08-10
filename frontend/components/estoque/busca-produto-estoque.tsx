@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, Search, X } from 'lucide-react'
 import { clienteHttp } from '@/services/api'
+import {
+  CabecalhoOpcaoProduto,
+  LinhaOpcaoProduto,
+} from '@/components/produtos/linha-opcao-produto'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 
@@ -31,7 +35,7 @@ export function BuscaProdutoEstoque({ valor, aoSelecionar, disabled }: Props) {
 
   useEffect(() => {
     if (valor) {
-      setTermo(valor.sku ? `${valor.sku} — ${valor.nomeVenda}` : valor.nomeVenda)
+      setTermo(valor.nomeVenda)
     }
   }, [valor])
 
@@ -103,7 +107,7 @@ export function BuscaProdutoEstoque({ valor, aoSelecionar, disabled }: Props) {
           value={termo}
           onChange={(e) => aoDigitar(e.target.value)}
           onFocus={() => opcoes.length > 0 && setAberto(true)}
-          placeholder="Digite o SKU ou nome do produto"
+          placeholder="Digite o código ou nome do produto"
           className={cn(
             'flex h-9 w-full rounded-md border border-input bg-transparent py-1 pr-8 pl-8 text-sm shadow-xs',
             'placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] outline-none',
@@ -125,26 +129,35 @@ export function BuscaProdutoEstoque({ valor, aoSelecionar, disabled }: Props) {
         )}
       </div>
       {aberto && opcoes.length > 0 && (
-        <ul className="absolute z-40 mt-1 max-h-60 w-full overflow-auto rounded-md border bg-popover py-1 text-sm shadow-md">
-          {opcoes.map((p) => (
-            <li key={p.id}>
-              <button
-                type="button"
-                className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left hover:bg-accent"
-                onClick={() => {
-                  aoSelecionar(p)
-                  setTermo(p.sku ? `${p.sku} — ${p.nomeVenda}` : p.nomeVenda)
-                  setAberto(false)
-                }}
-              >
-                <span className="font-medium">{p.nomeVenda}</span>
-                <span className="text-xs text-muted-foreground">
-                  {p.sku ? `SKU ${p.sku}` : 'Sem SKU'} · {p.unidade}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div className="absolute z-40 mt-1 max-h-60 w-full overflow-hidden rounded-md border bg-popover text-sm shadow-md">
+          <CabecalhoOpcaoProduto />
+          <ul className="max-h-52 overflow-auto py-1">
+            {opcoes.map((p) => (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  className="flex w-full items-baseline gap-2 px-3 py-2 text-left hover:bg-accent"
+                  onClick={() => {
+                    aoSelecionar(p)
+                    setTermo(p.nomeVenda)
+                    setAberto(false)
+                  }}
+                >
+                  <LinhaOpcaoProduto
+                    sku={p.sku}
+                    nome={p.nomeVenda}
+                    termoBusca={termo}
+                    complemento={
+                      <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                        · {p.unidade}
+                      </span>
+                    }
+                  />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   )
