@@ -47,6 +47,9 @@ model Company {
   estoqueSaldos               EstoqueSaldo[]
   estoqueMovimentos           EstoqueMovimento[]
   contagensEntrada            ContagemEntrada[]
+  contasPagar                 ContaPagar[]
+  contaPagarCodigoSeq         ContaPagarCodigoSeq?
+  contasPagarBaixas           ContaPagarBaixa[]
   createdAt                   DateTime                     @default(now())
 }
 
@@ -181,6 +184,7 @@ model NfeRecebida {
   vinculosComoNfe          NfeCteVinculo[]          @relation("VinculoNfeMercadoria")
   vinculosComoCte          NfeCteVinculo[]          @relation("VinculoCte")
   despesasEntrada          DespesaEntradaDocumento[]
+  contasPagar              ContaPagar[]
   contagensEntradaNotas    ContagemEntradaNota[]
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
@@ -248,12 +252,107 @@ model DespesaEntradaDocumento {
   vencimento        DateTime?
   /// Prévia com N duplicatas: [{ numeroDocumento, vencimento, valor }]
   parcelas          Json?
+  contaPagar        ContaPagar?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
   @@unique([nfeRecebidaId, origem])
   @@index([companyId, status])
   @@index([pessoaId])
+}
+
+/// Sequência do código interno de Contas a Pagar por empresa (como SKU).
+model ContaPagarCodigoSeq {
+  companyId String  @id
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  proximo   Int     @default(1)
+}
+
+model ContaPagar {
+  id                String   @id @default(uuid())
+  companyId         String
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// Código interno sequencial por empresa (exibição estilo 451.113)
+  codigo            String
+  /// duplicata | tributos
+  tipo              String
+  /// darf_simples | darf_normal | gps — só quando tipo=tributos
+  tipoTributo       String?
+  codigoReceita     String?
+  numeroReferencia  String?
+  pessoaId          String?
+  pessoa            Pessoa?  @relation(fields: [pessoaId], references: [id], onDelete: SetNull)
+  planoFinanceiroId String?
+  planoFinanceiro   PlanoFinanceiro? @relation(fields: [planoFinanceiroId], references: [id], onDelete: SetNull)
+  /// manual | nfe | cte
+  origem            String   @default("manual")
+  nfeRecebidaId     String?
+  nfeRecebida       NfeRecebida? @relation(fields: [nfeRecebidaId], references: [id], onDelete: SetNull)
+  despesaEntradaId  String?  @unique
+  despesaEntrada    DespesaEntradaDocumento? @relation(fields: [despesaEntradaId], references: [id], onDelete: SetNull)
+  numeroDocumento   String?
+  dataEmissao       DateTime?
+  /// aberto | parcial | pago | cancelado
+  status            String   @default("aberto")
+  valorTotal        Decimal  @db.Decimal(18, 2)
+  valorDesconto     Decimal  @default(0) @db.Decimal(18, 2)
+  valorJuros        Decimal  @default(0) @db.Decimal(18, 2)
+  valorMulta        Decimal  @default(0) @db.Decimal(18, 2)
+  valorImpostoRetido Decimal @default(0) @db.Decimal(18, 2)
+  observacao        String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  parcelas ContaPagarParcela[]
+
+  @@unique([companyId, codigo])
+  @@index([companyId, status])
+  @@index([companyId, tipo])
+  @@index([pessoaId])
+  @@index([nfeRecebidaId])
+  @@index([planoFinanceiroId])
+}
+
+model ContaPagarParcela {
+  id              String     @id @default(uuid())
+  contaPagarId    String
+  contaPagar      ContaPagar @relation(fields: [contaPagarId], references: [id], onDelete: Cascade)
+  numeroParcela   Int
+  numeroDocumento String?
+  vencimento      DateTime
+  valor           Decimal    @db.Decimal(18, 2)
+  valorPago       Decimal    @default(0) @db.Decimal(18, 2)
+  /// aberta | parcial | paga | cancelada
+  status          String     @default("aberta")
+  pagoEm          DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  baixas          ContaPagarBaixa[]
+
+  @@unique([contaPagarId, numeroParcela])
+  @@index([vencimento])
+  @@index([status])
+}
+
+/// Evento de pagamento (baixa total ou parcial) de uma parcela.
+model ContaPagarBaixa {
+  id                 String           @id @default(uuid())
+  contaPagarParcelaId String
+  parcela            ContaPagarParcela @relation(fields: [contaPagarParcelaId], references: [id], onDelete: Cascade)
+  companyId          String
+  company            Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  pagoEm             DateTime
+  valorPrincipal     Decimal          @db.Decimal(18, 2)
+  valorJuros         Decimal          @default(0) @db.Decimal(18, 2)
+  valorMulta         Decimal          @default(0) @db.Decimal(18, 2)
+  valorDesconto      Decimal          @default(0) @db.Decimal(18, 2)
+  usuarioId          String?
+  usuario            User?            @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  observacao         String?
+  createdAt          DateTime         @default(now())
+
+  @@index([contaPagarParcelaId])
+  @@index([companyId, pagoEm])
 }
 
 model NfeRecebidaItem {
@@ -341,6 +440,7 @@ model Pessoa {
   pendenciasFornecedor        PendenciaFornecedor[]
   nfesRecebidasComoFornecedor NfeRecebida[]
   despesasEntradaDocumento    DespesaEntradaDocumento[]
+  contasPagar                 ContaPagar[]
   estoqueMovimentosComoParceiro EstoqueMovimento[]
 
   createdAt DateTime @default(now())
@@ -549,6 +649,7 @@ model PlanoFinanceiro {
   fornecedores            FornecedorPlanoFinanceiro[]
   paresPlanoCfop          FornecedorParPlanoCfopPadrao[]
   despesasEntrada         DespesaEntradaDocumento[]
+  contasPagar             ContaPagar[]
   createdAt               DateTime                       @default(now())
 
   @@unique([codigo, companyId])
@@ -617,6 +718,7 @@ model User {
   tratativasNfe     NfeRecebidaTratativa[]
   estoqueMovimentos EstoqueMovimento[]
   contagensEntrada  ContagemEntrada[]
+  contasPagarBaixas ContaPagarBaixa[]
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 }
