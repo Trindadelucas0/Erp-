@@ -35,6 +35,23 @@ const MIMES_OK = new Set([
   'image/webp',
 ])
 
+function mimePelaExtensao(nome: string): string {
+  const n = nome.toLowerCase()
+  if (n.endsWith('.pdf')) return 'application/pdf'
+  if (n.endsWith('.jpg') || n.endsWith('.jpeg')) return 'image/jpeg'
+  if (n.endsWith('.png')) return 'image/png'
+  if (n.endsWith('.webp')) return 'image/webp'
+  return ''
+}
+
+function resolverMimeArquivo(file: File): string {
+  const informado = (file.type || '').toLowerCase()
+  if (informado && MIMES_OK.has(informado)) {
+    return informado === 'image/jpg' ? 'image/jpeg' : informado
+  }
+  return mimePelaExtensao(file.name)
+}
+
 type Props = {
   contaId: string | null
   somenteLeitura?: boolean
@@ -104,8 +121,8 @@ export function AnexosContaPagar({ contaId, somenteLeitura = false }: Props) {
     setErro(null)
     setInfo(null)
 
-    const mime = (file.type || '').toLowerCase()
-    if (!MIMES_OK.has(mime)) {
+    const mime = resolverMimeArquivo(file)
+    if (!mime || !MIMES_OK.has(mime)) {
       setErro('Tipo não permitido. Use PDF, JPG, PNG ou WEBP.')
       return
     }
@@ -119,7 +136,7 @@ export function AnexosContaPagar({ contaId, somenteLeitura = false }: Props) {
     setEnviando(true)
     try {
       let nomeArquivo = file.name
-      let mimeType = mime === 'image/jpg' ? 'image/jpeg' : mime
+      let mimeType = mime
       let base64Arquivo: string
 
       if (!ehPdf) {
@@ -272,9 +289,11 @@ export function AnexosContaPagar({ contaId, somenteLeitura = false }: Props) {
             </>
           )}
 
-          {somenteLeitura && anexos.length === 0 ? (
-            <div className="rounded-lg border border-border bg-muted/20 px-4 py-4 text-sm text-muted-foreground">
-              Nenhum anexo neste título.
+          {somenteLeitura && contaId ? (
+            <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+              {anexos.length === 0
+                ? 'Nenhum anexo neste título (somente visualização).'
+                : 'Anexos somente para download neste modo.'}
             </div>
           ) : null}
 

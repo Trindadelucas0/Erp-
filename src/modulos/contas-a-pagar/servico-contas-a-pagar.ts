@@ -228,15 +228,9 @@ async function baixar(
   }
 }
 
-function assertContaPermiteAnexoMutacao(conta: {
-  origem: string
-  status: string
-}) {
-  if (conta.origem !== 'manual') {
-    throw new ErroDaAplicacao('Só é possível anexar/excluir em títulos de origem manual', 400)
-  }
-  if (conta.status !== 'aberto') {
-    throw new ErroDaAplicacao('Só é possível anexar/excluir em títulos com status aberto', 400)
+function assertContaPermiteAnexoMutacao(conta: { status: string }) {
+  if (conta.status === 'cancelado') {
+    throw new ErroDaAplicacao('Não é possível anexar/excluir em título cancelado', 400)
   }
 }
 

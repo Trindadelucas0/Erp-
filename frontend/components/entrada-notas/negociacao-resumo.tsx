@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronUp,
   ClipboardList,
+  PackageMinus,
   PackageX,
   Scale,
   Tag,
@@ -18,6 +19,7 @@ import { cn } from '@/lib/utils'
 
 export type CategoriaAchadoNegociacao =
   | 'fora_pedido'
+  | 'fora_nota'
   | 'quantidade'
   | 'preco'
   | 'prazo'
@@ -49,6 +51,7 @@ export type ResultadoEtapaNegociacao = {
 
 const ORDEM_CATEGORIAS: CategoriaAchadoNegociacao[] = [
   'fora_pedido',
+  'fora_nota',
   'quantidade',
   'preco',
   'prazo',
@@ -63,6 +66,11 @@ const META_CATEGORIA: Record<
     rotulo: 'Fora do pedido',
     dica: 'Itens da NF sem correspondente no pedido selecionado. Troque o pedido ou libere críticas com senha.',
     Icon: PackageX,
+  },
+  fora_nota: {
+    rotulo: 'Fora da nota fiscal',
+    dica: 'Itens do pedido sem correspondente na NF. Confira se o pedido está correto — entrega parcial é comum.',
+    Icon: PackageMinus,
   },
   quantidade: {
     rotulo: 'Quantidade',
@@ -234,21 +242,16 @@ function ConteudoCategoria({
   const visiveis = expandido ? itens : itens.slice(0, LIMITE_LISTA)
   const temBloqueio = itens.some((a) => a.severidade === 'bloqueio')
 
-  if (categoria === 'fora_pedido') {
+  if (categoria === 'fora_pedido' || categoria === 'fora_nota') {
     const numeroPedido =
       itens.find((a) => a.numeroPedido != null)?.numeroPedido ??
       (() => {
         const m = itens[0]?.mensagem?.match(/pedido\s*#(\d+)/i)
         return m ? Number(m[1]) : null
       })()
-
-    return (
-      <ListaComLimite
-        total={itens.length}
-        expandido={expandido}
-        onToggle={() => setExpandido((v) => !v)}
-      >
-        <p className="text-sm text-foreground">
+    const resumo =
+      categoria === 'fora_pedido' ? (
+        <>
           {itens.length === 1
             ? '1 item da NF não está no'
             : `${itens.length} itens da NF não estão no`}{' '}
@@ -258,7 +261,28 @@ function ConteudoCategoria({
             <span className="font-medium">pedido selecionado</span>
           )}
           .
-        </p>
+        </>
+      ) : (
+        <>
+          {itens.length === 1
+            ? '1 item do'
+            : `${itens.length} itens do`}{' '}
+          {numeroPedido != null ? (
+            <span className="font-medium">pedido #{numeroPedido}</span>
+          ) : (
+            <span className="font-medium">pedido selecionado</span>
+          )}{' '}
+          {itens.length === 1 ? 'não está na NF' : 'não estão na NF'}.
+        </>
+      )
+
+    return (
+      <ListaComLimite
+        total={itens.length}
+        expandido={expandido}
+        onToggle={() => setExpandido((v) => !v)}
+      >
+        <p className="text-sm text-foreground">{resumo}</p>
         <ul className="grid gap-1 sm:grid-cols-2">
           {visiveis.map((a, i) => (
             <li
@@ -267,7 +291,7 @@ function ConteudoCategoria({
                 'rounded-md border px-2.5 py-1.5 text-sm',
                 temBloqueio
                   ? 'border-destructive/20 bg-destructive/5 text-destructive'
-                  : 'border-border bg-muted/40 text-muted-foreground'
+                  : 'border-amber-500/25 bg-amber-500/5 text-amber-800'
               )}
             >
               <span className="line-clamp-2">{a.produto ?? a.mensagem}</span>

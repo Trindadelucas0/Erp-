@@ -78,6 +78,129 @@ describe('analisarNegociacao — mensagens e categorias', () => {
     expect(resultado.itensCritica[0].criticaNegociacao).toBe(true)
   })
 
+  it('item do PO sem correspondente na NF → fora_nota aviso (não bloqueia)', () => {
+    const resultado = analisarNegociacao({
+      itensNf: [
+        {
+          id: 'item-1',
+          produtoId: 'prod-a',
+          quantidade: 10,
+          valorUnitario: 5,
+          nomeSistema: 'PRODUTO A',
+        },
+      ],
+      pedido: {
+        id: 'po-1',
+        numero: 6,
+        condicaoPagamento: '30 dias',
+        prazosPagamento: null,
+        itens: [
+          { produtoId: 'prod-a', quantidade: 10, precoUnitario: 5, nome: 'PRODUTO A' },
+          { produtoId: 'prod-b', quantidade: 3, precoUnitario: 8, nome: 'PRODUTO B' },
+        ],
+      },
+      prazoNf: '30 dias',
+      prazoInformadoUsuario: null,
+    })
+
+    expect(resultado.resultado.status).toBe('aviso')
+    expect(resultado.resultado.bloqueios).toHaveLength(0)
+    const achados = resultado.resultado.detalhes?.achados as Array<{
+      categoria: string
+      severidade: string
+      mensagem: string
+      produto?: string
+      numeroPedido?: number
+    }>
+    expect(achados).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          categoria: 'fora_nota',
+          severidade: 'aviso',
+          mensagem: 'PRODUTO B está no pedido #6 e não está na NF.',
+          produto: 'PRODUTO B',
+          numeroPedido: 6,
+        }),
+      ])
+    )
+    expect(achados.filter((a) => a.categoria === 'fora_nota')).toHaveLength(1)
+    expect(resultado.itensCritica[0].criticaNegociacao).toBe(false)
+  })
+
+  it('item do PO casado com a NF → não gera fora_nota', () => {
+    const resultado = analisarNegociacao({
+      itensNf: [
+        {
+          id: 'item-1',
+          produtoId: 'p1',
+          quantidade: 10,
+          valorUnitario: 5,
+          nomeSistema: 'PROD',
+        },
+      ],
+      pedido: {
+        id: 'po-1',
+        numero: 1,
+        condicaoPagamento: '30 dias',
+        prazosPagamento: null,
+        itens: [{ produtoId: 'p1', quantidade: 10, precoUnitario: 5, nome: 'PROD' }],
+      },
+      prazoNf: '30 dias',
+      prazoInformadoUsuario: null,
+    })
+
+    const achados = (resultado.resultado.detalhes?.achados as Array<{ categoria: string }>) ?? []
+    expect(achados.filter((a) => a.categoria === 'fora_nota')).toHaveLength(0)
+    expect(resultado.resultado.status).toBe('ok')
+  })
+
+  it('pedido errado: fora_pedido + fora_nota juntos', () => {
+    const resultado = analisarNegociacao({
+      itensNf: [
+        {
+          id: 'item-1',
+          produtoId: 'nf-only',
+          quantidade: 1,
+          valorUnitario: 10,
+          nomeSistema: 'ITEM DA NF',
+        },
+      ],
+      pedido: {
+        id: 'po-1',
+        numero: 9,
+        condicaoPagamento: '30 dias',
+        prazosPagamento: null,
+        itens: [
+          { produtoId: 'po-only-1', quantidade: 2, precoUnitario: 3, nome: 'ITEM PO 1' },
+          { produtoId: 'po-only-2', quantidade: 4, precoUnitario: 5, nome: 'ITEM PO 2' },
+        ],
+      },
+      prazoNf: '30 dias',
+      prazoInformadoUsuario: null,
+    })
+
+    expect(resultado.resultado.status).toBe('bloqueante')
+    const achados = resultado.resultado.detalhes?.achados as Array<{
+      categoria: string
+      severidade: string
+      produto?: string
+    }>
+    expect(achados.filter((a) => a.categoria === 'fora_pedido')).toEqual([
+      expect.objectContaining({
+        categoria: 'fora_pedido',
+        severidade: 'bloqueio',
+        produto: 'ITEM DA NF',
+      }),
+    ])
+    expect(achados.filter((a) => a.categoria === 'fora_nota')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ categoria: 'fora_nota', severidade: 'aviso', produto: 'ITEM PO 1' }),
+        expect.objectContaining({ categoria: 'fora_nota', severidade: 'aviso', produto: 'ITEM PO 2' }),
+      ])
+    )
+    expect(achados.filter((a) => a.categoria === 'fora_nota')).toHaveLength(2)
+  })
+
   it('sem nomeSistema usa descricaoNf como fallback', () => {
     const resultado = analisarNegociacao({
       itensNf: [

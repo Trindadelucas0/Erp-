@@ -22,6 +22,8 @@ type Props = {
   planos: Opcao[]
   codigoExibicao?: string | null
   somenteLeitura?: boolean
+  /** Independente dos campos: anexos podem ser liberados em título NFe/CT-e. */
+  anexosSomenteLeitura?: boolean
   erro?: string | null
   /** Id do título gravado — necessário para anexar. */
   contaId?: string | null
@@ -34,12 +36,15 @@ export function FormularioContaPagar({
   planos,
   codigoExibicao,
   somenteLeitura = false,
+  anexosSomenteLeitura,
   erro,
   contaId = null,
 }: Props) {
   function patch(parcial: Partial<FormContaPagar>) {
     aoMudar({ ...form, ...parcial })
   }
+
+  const anexosBloqueados = anexosSomenteLeitura ?? somenteLeitura
 
   return (
     <div className="min-w-0 space-y-4">
@@ -233,7 +238,7 @@ export function FormularioContaPagar({
 
       <AnexosContaPagar
         contaId={contaId}
-        somenteLeitura={somenteLeitura}
+        somenteLeitura={anexosBloqueados}
       />
     </div>
   )

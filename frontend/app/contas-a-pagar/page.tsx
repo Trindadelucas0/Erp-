@@ -532,6 +532,9 @@ function ConteudoContasAPagar() {
               : null
           }
           somenteLeitura={somenteLeitura || (!podeEditar && Boolean(editando))}
+          anexosSomenteLeitura={
+            !podeEditar || Boolean(editando && editando.status === 'cancelado')
+          }
           erro={erroForm}
           contaId={editando?.id ?? null}
         />

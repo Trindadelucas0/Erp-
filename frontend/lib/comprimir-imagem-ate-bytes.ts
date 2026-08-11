@@ -114,7 +114,12 @@ export async function prepararImagemAteBytes(
   file: File,
   maxBytes: number
 ): Promise<ImagemComprimidaAteBytes> {
-  if (!file.type.startsWith('image/')) {
+  const mimeInformado = (file.type || '').toLowerCase()
+  const pareceImagem =
+    mimeInformado.startsWith('image/') ||
+    /\.(jpe?g|png|webp)$/i.test(file.name)
+
+  if (!pareceImagem) {
     throw new Error('Arquivo não é imagem')
   }
 

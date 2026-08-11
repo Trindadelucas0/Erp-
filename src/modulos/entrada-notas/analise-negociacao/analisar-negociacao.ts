@@ -13,6 +13,7 @@ const TOLERANCIA_QTD = 0.0001
 
 export type CategoriaAchadoNegociacao =
   | 'fora_pedido'
+  | 'fora_nota'
   | 'quantidade'
   | 'preco'
   | 'prazo'
@@ -235,6 +236,19 @@ export function analisarNegociacao(params: {
     }
 
     itensCritica.push({ id: item.id, criticaNegociacao: critica })
+  }
+
+  for (const itemPo of params.pedido.itens) {
+    const chave = `${itemPo.produtoId}:${itemPo.quantidade}:${itemPo.precoUnitario}`
+    if (usadosPo.has(chave)) continue
+    const nomePo = rotuloProduto(itemPo.nome)
+    pushAchado({
+      categoria: 'fora_nota',
+      severidade: 'aviso',
+      mensagem: `${nomePo} está no pedido #${params.pedido.numero} e não está na NF.`,
+      produto: nomePo,
+      numeroPedido: params.pedido.numero,
+    })
   }
 
   const prazoEfetivo = (params.prazoNf ?? params.prazoInformadoUsuario ?? '').trim()
