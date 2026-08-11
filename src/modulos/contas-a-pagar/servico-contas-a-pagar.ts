@@ -4,6 +4,7 @@ import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js
 import type {
   DadosParaCriarContaPagar,
   DadosParaEditarContaPagar,
+  FiltroHistoricoBaixas,
   FiltroListagemContasPagar,
 } from './esquema-contas-a-pagar.js'
 import { repositorioDeContasAPagar, ErroBaixa } from './repositorio-contas-a-pagar.js'
@@ -161,10 +162,7 @@ async function listarParaBaixar(companyId: string, filtro: FiltroListagemContasP
   return repositorioDeContasAPagar.listarParaBaixar(companyId, filtro)
 }
 
-async function listarHistoricoBaixas(
-  companyId: string,
-  filtro: import('./esquema-contas-a-pagar.js').FiltroHistoricoBaixas
-) {
+async function listarHistoricoBaixas(companyId: string, filtro: FiltroHistoricoBaixas) {
   return repositorioDeContasAPagar.listarHistoricoBaixas(companyId, filtro)
 }
 
