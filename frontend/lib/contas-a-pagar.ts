@@ -19,6 +19,8 @@ export type ContaPagarLista = {
   planoFinanceiroId: string | null
   planoFinanceiro: { id: string; codigo: string; nome: string } | null
   origem: string
+  nfeRecebidaId?: string | null
+  despesaEntradaId?: string | null
   numeroDocumento: string | null
   dataEmissao: string | null
   dataCadastro: string
@@ -31,10 +33,55 @@ export type ContaPagarLista = {
   valorImpostoRetido: number
   valorLiquido: number
   saldoDevedor?: number
+  valorPagoPrincipal?: number
+  totalJurosBaixas?: number
+  totalMultaBaixas?: number
   parcelaId?: string | null
   observacao: string | null
+  parcelas?: Array<{
+    id: string
+    numeroParcela: number
+    numeroDocumento: string | null
+    vencimento: string
+    valor: number
+    valorPago: number
+    saldoDevedor: number
+    status: string
+    baixas?: ContaPagarBaixaItem[]
+  }>
+  baixas?: ContaPagarBaixaItem[]
   createdAt: string
   updatedAt: string
+}
+
+export type ContaPagarBaixaItem = {
+  id: string
+  pagoEm: string
+  valorPrincipal: number
+  valorJuros: number
+  valorMulta: number
+  valorDesconto: number
+  valorTotalPago: number
+  observacao: string | null
+  createdAt: string
+  usuario: { id: string; name: string } | null
+  numeroParcela?: number
+  parcelaId?: string
+}
+
+export type HistoricoBaixaLista = ContaPagarBaixaItem & {
+  contaPagarId: string
+  codigo: string
+  codigoExibicao?: string
+  numeroDocumento: string | null
+  pessoa: ContaPagarLista['pessoa']
+  origem: string
+  statusConta: string
+  valorTotalTitulo: number
+  valorPagoPrincipalTitulo: number
+  saldoDevedorTitulo: number
+  totalJurosBaixas: number
+  totalMultaBaixas: number
 }
 
 export type FormContaPagar = {
@@ -107,6 +154,20 @@ export function contaParaForm(conta: ContaPagarLista): FormContaPagar {
     observacao: conta.observacao ?? '',
   }
 }
+
+export function rotuloOrigemContaPagar(origem: string): string {
+  if (origem === 'nfe') return 'NFe'
+  if (origem === 'cte') return 'CT-e'
+  if (origem === 'manual') return 'Manual'
+  return origem
+}
+
+export const OPCOES_ORIGEM_CONTA: { value: string; label: string }[] = [
+  { value: '', label: 'Todas as origens' },
+  { value: 'manual', label: 'Manual' },
+  { value: 'nfe', label: 'NFe' },
+  { value: 'cte', label: 'CT-e' },
+]
 
 export function rotuloTipo(tipo: string): string {
   if (tipo === 'tributos') return 'Tributos'

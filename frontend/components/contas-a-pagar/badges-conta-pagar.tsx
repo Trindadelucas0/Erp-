@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import {
   rotuloStatusContaPagar,
   rotuloTipo,
+  rotuloOrigemContaPagar,
   tituloVencido,
   varianteStatusContaPagar,
 } from '@/lib/contas-a-pagar'
@@ -41,6 +42,28 @@ export function BadgeTipoContaPagar({ tipo, className }: PropsTipo) {
       )}
     >
       {rotuloTipo(tipo)}
+    </Badge>
+  )
+}
+
+type PropsOrigem = {
+  origem: string
+  className?: string
+}
+
+export function BadgeOrigemContaPagar({ origem, className }: PropsOrigem) {
+  const auto = origem === 'nfe' || origem === 'cte'
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        auto
+          ? 'border-sky-500/40 bg-sky-500/10 text-sky-800'
+          : 'border-border text-muted-foreground',
+        className
+      )}
+    >
+      {rotuloOrigemContaPagar(origem)}
     </Badge>
   )
 }

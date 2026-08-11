@@ -855,3 +855,139 @@ export function montarVisualizacaoDoXml(xmlBruto: string): VisualizacaoNotaFisca
     itens: tipo === 'nfe55' ? extrairItensDoXml(xml) : [],
   }
 }
+
+export type DuplicataCobrancaXml = {
+  numeroDocumento: string | null
+  vencimento: Date | null
+  valor: number | null
+}
+
+/** Extrai cobr/dup (nDup, dVenc, vDup) do XML da NFe 55. */
+export function extrairDuplicatasCobrancaDoXml(xmlBruto: string): DuplicataCobrancaXml[] {
+  const xml = normalizarXmlNfe(xmlBruto)
+  if (!xml) return []
+
+  const dups = todosBlocosTag(xml, 'dup')
+  const out: DuplicataCobrancaXml[] = []
+  for (const bloco of dups) {
+    const nDup = extrairCampoXml(bloco, 'nDup')
+    const dVenc = extrairCampoXml(bloco, 'dVenc')
+    const vDup = extrairCampoXml(bloco, 'vDup')
+    out.push({
+      numeroDocumento: nDup?.trim() || null,
+      vencimento: parseDataEmissao(dVenc),
+      valor: parseValor(vDup),
+    })
+  }
+  return out
+}
+
+function parseDatasPrazoTexto(texto: string | null | undefined): Date[] {
+  if (!texto?.trim()) return []
+  const datas: Date[] = []
+  const iso = [...texto.matchAll(/\b(\d{4}-\d{2}-\d{2})\b/g)]
+  for (const m of iso) {
+    const d = parseDataEmissao(m[1])
+    if (d) datas.push(d)
+  }
+  if (datas.length > 0) return datas
+  const br = [...texto.matchAll(/\b(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})\b/g)]
+  for (const m of br) {
+    const d = parseDataEmissao(`${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`)
+    if (d) datas.push(d)
+  }
+  return datas
+}
+
+/**
+ * Monta parcelas de ContaPagar a partir das duplicatas da NFe.
+ * Fail-closed se não houver vencimento utilizável (§7.4).
+ */
+export function montarParcelasContaPagarDaNfe(input: {
+  duplicatasXml: DuplicataCobrancaXml[]
+  valorTotalNf: number
+  prazoPagamentoXml?: string | null
+  prazoPagamentoTexto?: string | null
+}):
+  | {
+      ok: true
+      parcelas: Array<{ numeroDocumento: string | null; vencimento: Date; valor: number }>
+    }
+  | { ok: false; mensagem: string } {
+  const dupsComVenc = input.duplicatasXml.filter((d) => d.vencimento != null)
+  if (dupsComVenc.length > 0) {
+    const comValor = dupsComVenc.filter((d) => d.valor != null && d.valor > 0)
+    if (comValor.length === dupsComVenc.length) {
+      return {
+        ok: true,
+        parcelas: comValor.map((d) => ({
+          numeroDocumento: d.numeroDocumento,
+          vencimento: d.vencimento!,
+          valor: d.valor!,
+        })),
+      }
+    }
+    if (!(input.valorTotalNf > 0)) {
+      return {
+        ok: false,
+        mensagem:
+          'NF sem valor total e duplicatas sem vDup — não é possível gerar Contas a Pagar.',
+      }
+    }
+    const n = dupsComVenc.length
+    const base = Math.floor((input.valorTotalNf / n) * 100) / 100
+    const parcelas = dupsComVenc.map((d, idx) => {
+      const valor =
+        idx === n - 1
+          ? Math.round((input.valorTotalNf - base * (n - 1)) * 100) / 100
+          : base
+      return {
+        numeroDocumento: d.numeroDocumento,
+        vencimento: d.vencimento!,
+        valor,
+      }
+    })
+    return { ok: true, parcelas }
+  }
+
+  const datas = [
+    ...parseDatasPrazoTexto(input.prazoPagamentoXml),
+    ...parseDatasPrazoTexto(input.prazoPagamentoTexto),
+  ]
+  const unicas: Date[] = []
+  const seen = new Set<string>()
+  for (const d of datas) {
+    const key = d.toISOString().slice(0, 10)
+    if (seen.has(key)) continue
+    seen.add(key)
+    unicas.push(d)
+  }
+
+  if (unicas.length === 0) {
+    return {
+      ok: false,
+      mensagem:
+        'NF sem duplicatas/vencimento (cobr/dup) — informe o prazo na Negociação ou corrija o XML antes de lançar.',
+    }
+  }
+  if (!(input.valorTotalNf > 0)) {
+    return {
+      ok: false,
+      mensagem: 'NF sem valor total — não é possível gerar Contas a Pagar.',
+    }
+  }
+
+  const n = unicas.length
+  const base = Math.floor((input.valorTotalNf / n) * 100) / 100
+  return {
+    ok: true,
+    parcelas: unicas.map((vencimento, idx) => ({
+      numeroDocumento: null,
+      vencimento,
+      valor:
+        idx === n - 1
+          ? Math.round((input.valorTotalNf - base * (n - 1)) * 100) / 100
+          : base,
+    })),
+  }
+}

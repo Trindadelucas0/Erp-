@@ -12,7 +12,17 @@ export class ErroBaixa extends Error {
 const includeDetalhe = {
   pessoa: { select: { id: true, nome: true, nomeFantasia: true, cnpj: true, cpf: true } },
   planoFinanceiro: { select: { id: true, codigo: true, nome: true } },
-  parcelas: { orderBy: { numeroParcela: 'asc' as const } },
+  parcelas: {
+    orderBy: { numeroParcela: 'asc' as const },
+    include: {
+      baixas: {
+        orderBy: { pagoEm: 'desc' as const },
+        include: {
+          usuario: { select: { id: true, name: true } },
+        },
+      },
+    },
+  },
 } satisfies Prisma.ContaPagarInclude
 
 function decimalParaNumero(v: Prisma.Decimal | number | null | undefined): number {
@@ -32,14 +42,72 @@ export function formatarCodigoContaPagar(codigo: string): string {
   return n.toLocaleString('pt-BR')
 }
 
+function mapearBaixa(
+  b: {
+    id: string
+    pagoEm: Date
+    valorPrincipal: Prisma.Decimal | number
+    valorJuros: Prisma.Decimal | number
+    valorMulta: Prisma.Decimal | number
+    valorDesconto: Prisma.Decimal | number
+    observacao: string | null
+    createdAt: Date
+    usuario?: { id: string; name: string } | null
+  }
+) {
+  const principal = decimalParaNumero(b.valorPrincipal)
+  const juros = decimalParaNumero(b.valorJuros)
+  const multa = decimalParaNumero(b.valorMulta)
+  const desconto = decimalParaNumero(b.valorDesconto)
+  return {
+    id: b.id,
+    pagoEm: b.pagoEm.toISOString(),
+    valorPrincipal: principal,
+    valorJuros: juros,
+    valorMulta: multa,
+    valorDesconto: desconto,
+    valorTotalPago: Math.round((principal + juros + multa - desconto) * 100) / 100,
+    observacao: b.observacao,
+    createdAt: b.createdAt.toISOString(),
+    usuario: b.usuario ? { id: b.usuario.id, name: b.usuario.name } : null,
+  }
+}
+
 export function mapearContaPagar(
   row: Prisma.ContaPagarGetPayload<{ include: typeof includeDetalhe }>
 ) {
   const parcela = row.parcelas[0] ?? null
   const vencimento = parcela?.vencimento ?? null
-  const valorParcela = parcela ? decimalParaNumero(parcela.valor) : decimalParaNumero(row.valorTotal)
-  const valorPago = parcela ? decimalParaNumero(parcela.valorPago) : 0
-  const saldoDevedor = Math.max(0, Math.round((valorParcela - valorPago) * 100) / 100)
+  const parcelas = row.parcelas.map((p) => {
+    const valor = decimalParaNumero(p.valor)
+    const valorPago = decimalParaNumero(p.valorPago)
+    const baixas = (p.baixas ?? []).map(mapearBaixa)
+    return {
+      id: p.id,
+      numeroParcela: p.numeroParcela,
+      numeroDocumento: p.numeroDocumento,
+      vencimento: p.vencimento.toISOString(),
+      valor,
+      valorPago,
+      saldoDevedor: Math.max(0, Math.round((valor - valorPago) * 100) / 100),
+      status: p.status,
+      baixas,
+    }
+  })
+  const saldoDevedor = Math.max(
+    0,
+    Math.round(parcelas.reduce((acc, p) => acc + p.saldoDevedor, 0) * 100) / 100
+  )
+  const valorPagoPrincipal = Math.round(
+    parcelas.reduce((acc, p) => acc + p.valorPago, 0) * 100
+  ) / 100
+  const todasBaixas = parcelas.flatMap((p) =>
+    p.baixas.map((b) => ({ ...b, numeroParcela: p.numeroParcela, parcelaId: p.id }))
+  )
+  const totalJurosBaixas =
+    Math.round(todasBaixas.reduce((acc, b) => acc + b.valorJuros, 0) * 100) / 100
+  const totalMultaBaixas =
+    Math.round(todasBaixas.reduce((acc, b) => acc + b.valorMulta, 0) * 100) / 100
 
   return {
     id: row.id,
@@ -67,6 +135,8 @@ export function mapearContaPagar(
         }
       : null,
     origem: row.origem,
+    nfeRecebidaId: row.nfeRecebidaId,
+    despesaEntradaId: row.despesaEntradaId,
     numeroDocumento: row.numeroDocumento,
     dataEmissao: row.dataEmissao?.toISOString() ?? null,
     dataCadastro: row.createdAt.toISOString(),
@@ -82,21 +152,15 @@ export function mapearContaPagar(
       decimalParaNumero(row.valorDesconto) -
       decimalParaNumero(row.valorImpostoRetido),
     saldoDevedor,
+    valorPagoPrincipal,
+    totalJurosBaixas,
+    totalMultaBaixas,
     parcelaId: parcela?.id ?? null,
     observacao: row.observacao,
-    parcelas: row.parcelas.map((p) => ({
-      id: p.id,
-      numeroParcela: p.numeroParcela,
-      numeroDocumento: p.numeroDocumento,
-      vencimento: p.vencimento.toISOString(),
-      valor: decimalParaNumero(p.valor),
-      valorPago: decimalParaNumero(p.valorPago),
-      saldoDevedor: Math.max(
-        0,
-        Math.round((decimalParaNumero(p.valor) - decimalParaNumero(p.valorPago)) * 100) / 100
-      ),
-      status: p.status,
-    })),
+    parcelas,
+    baixas: todasBaixas.sort(
+      (a, b) => new Date(b.pagoEm).getTime() - new Date(a.pagoEm).getTime()
+    ),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   }
@@ -123,6 +187,8 @@ function montarWhere(
   if (filtro.pessoaId) where.pessoaId = filtro.pessoaId
   if (filtro.planoFinanceiroId) where.planoFinanceiroId = filtro.planoFinanceiroId
   if (filtro.tipo) where.tipo = filtro.tipo
+  if (filtro.origem) where.origem = filtro.origem
+  if (filtro.nfeRecebidaId) where.nfeRecebidaId = filtro.nfeRecebidaId
   if (filtro.status) where.status = filtro.status
   if (filtro.codigo) {
     const digits = filtro.codigo.replace(/\D/g, '')
@@ -253,6 +319,126 @@ export const repositorioDeContasAPagar = {
     return mapearContaPagar(row)
   },
 
+  async buscarPorDespesaEntradaId(companyId: string, despesaEntradaId: string) {
+    const row = await clientePrisma.contaPagar.findFirst({
+      where: { companyId, despesaEntradaId },
+      include: includeDetalhe,
+    })
+    return row ? mapearContaPagar(row) : null
+  },
+
+  async buscarPorNfeOrigem(companyId: string, nfeRecebidaId: string, origem: string) {
+    const row = await clientePrisma.contaPagar.findFirst({
+      where: { companyId, nfeRecebidaId, origem },
+      include: includeDetalhe,
+    })
+    return row ? mapearContaPagar(row) : null
+  },
+
+  /**
+   * Cria título a partir da Entrada (NFe/CT-e) com N parcelas.
+   * Idempotente: se já existir por despesaEntradaId ou (nfeRecebidaId+origem), devolve o existente.
+   */
+  async criarDeEntrada(
+    companyId: string,
+    dados: {
+      origem: 'nfe' | 'cte'
+      tipo?: string
+      pessoaId: string | null
+      planoFinanceiroId: string | null
+      nfeRecebidaId: string | null
+      despesaEntradaId: string | null
+      numeroDocumento: string | null
+      dataEmissao: Date | null
+      observacao: string | null
+      parcelas: Array<{
+        numeroDocumento: string | null
+        vencimento: Date
+        valor: number
+      }>
+    }
+  ) {
+    if (dados.despesaEntradaId) {
+      const existente = await this.buscarPorDespesaEntradaId(companyId, dados.despesaEntradaId)
+      if (existente) return { conta: existente, criado: false as const }
+    }
+    if (dados.nfeRecebidaId && dados.origem === 'nfe') {
+      const existente = await this.buscarPorNfeOrigem(companyId, dados.nfeRecebidaId, 'nfe')
+      if (existente) return { conta: existente, criado: false as const }
+    }
+
+    if (!dados.parcelas.length) {
+      throw new ErroBaixa('Título da entrada exige ao menos uma parcela com vencimento')
+    }
+    for (const p of dados.parcelas) {
+      if (!p.vencimento || Number.isNaN(p.vencimento.getTime())) {
+        throw new ErroBaixa('Data de vencimento é obrigatória em cada parcela')
+      }
+      if (!(p.valor > 0)) {
+        throw new ErroBaixa('Valor de cada parcela deve ser maior que zero')
+      }
+    }
+
+    const valorTotal =
+      Math.round(dados.parcelas.reduce((acc, p) => acc + p.valor, 0) * 100) / 100
+
+    const row = await clientePrisma.$transaction(async (tx) => {
+      if (dados.despesaEntradaId) {
+        const ja = await tx.contaPagar.findFirst({
+          where: { despesaEntradaId: dados.despesaEntradaId },
+          include: includeDetalhe,
+        })
+        if (ja) return { row: ja, criado: false as const }
+      }
+      if (dados.nfeRecebidaId && dados.origem === 'nfe') {
+        const ja = await tx.contaPagar.findFirst({
+          where: { companyId, nfeRecebidaId: dados.nfeRecebidaId, origem: 'nfe' },
+          include: includeDetalhe,
+        })
+        if (ja) return { row: ja, criado: false as const }
+      }
+
+      const codigo = await alocarProximoCodigo(tx, companyId)
+      const criado = await tx.contaPagar.create({
+        data: {
+          companyId,
+          codigo,
+          tipo: dados.tipo ?? 'duplicata',
+          tipoTributo: null,
+          codigoReceita: null,
+          numeroReferencia: null,
+          pessoaId: dados.pessoaId,
+          planoFinanceiroId: dados.planoFinanceiroId,
+          origem: dados.origem,
+          nfeRecebidaId: dados.nfeRecebidaId,
+          despesaEntradaId: dados.despesaEntradaId,
+          numeroDocumento: dados.numeroDocumento,
+          dataEmissao: dados.dataEmissao,
+          status: 'aberto',
+          valorTotal,
+          valorDesconto: 0,
+          valorJuros: 0,
+          valorMulta: 0,
+          valorImpostoRetido: 0,
+          observacao: dados.observacao,
+          parcelas: {
+            create: dados.parcelas.map((p, idx) => ({
+              numeroParcela: idx + 1,
+              numeroDocumento: p.numeroDocumento,
+              vencimento: p.vencimento,
+              valor: p.valor,
+              status: 'aberta',
+            })),
+          },
+        },
+        include: includeDetalhe,
+      })
+      return { row: criado, criado: true as const }
+    })
+
+    return { conta: mapearContaPagar(row.row), criado: row.criado }
+  },
+
   async atualizar(
     companyId: string,
     id: string,
@@ -357,9 +543,103 @@ export const repositorioDeContasAPagar = {
       orderBy: [{ createdAt: 'desc' }],
       take: 500,
     })
-    return rows
-      .map(mapearContaPagar)
-      .filter((c) => (c.saldoDevedor ?? 0) > 0)
+    const saida: ReturnType<typeof mapearContaPagar>[] = []
+    for (const row of rows) {
+      const mapped = mapearContaPagar(row)
+      for (const p of mapped.parcelas) {
+        if (p.status === 'paga' || p.status === 'cancelada') continue
+        if (p.saldoDevedor <= 0) continue
+        saida.push({
+          ...mapped,
+          parcelaId: p.id,
+          vencimento: p.vencimento,
+          saldoDevedor: p.saldoDevedor,
+          numeroDocumento: p.numeroDocumento ?? mapped.numeroDocumento,
+        })
+      }
+    }
+    return saida
+  },
+
+  async listarHistoricoBaixas(
+    companyId: string,
+    filtro: {
+      pessoaId?: string
+      contaPagarId?: string
+      nfeRecebidaId?: string
+      pagoEmDe?: string
+      pagoEmAte?: string
+      q?: string
+    }
+  ) {
+    const where: Prisma.ContaPagarBaixaWhereInput = { companyId }
+    const pagoEm: Prisma.DateTimeFilter = {}
+    if (filtro.pagoEmDe) {
+      const d = new Date(filtro.pagoEmDe)
+      if (!Number.isNaN(d.getTime())) pagoEm.gte = d
+    }
+    if (filtro.pagoEmAte) {
+      const d = new Date(filtro.pagoEmAte)
+      if (!Number.isNaN(d.getTime())) {
+        d.setHours(23, 59, 59, 999)
+        pagoEm.lte = d
+      }
+    }
+    if (Object.keys(pagoEm).length > 0) where.pagoEm = pagoEm
+
+    const parcelaWhere: Prisma.ContaPagarParcelaWhereInput = {}
+    const contaWhere: Prisma.ContaPagarWhereInput = { companyId }
+    if (filtro.contaPagarId) contaWhere.id = filtro.contaPagarId
+    if (filtro.pessoaId) contaWhere.pessoaId = filtro.pessoaId
+    if (filtro.nfeRecebidaId) contaWhere.nfeRecebidaId = filtro.nfeRecebidaId
+    if (filtro.q?.trim()) {
+      const q = filtro.q.trim()
+      contaWhere.OR = [
+        { codigo: { contains: q, mode: 'insensitive' } },
+        { numeroDocumento: { contains: q, mode: 'insensitive' } },
+        { pessoa: { nome: { contains: q, mode: 'insensitive' } } },
+      ]
+    }
+    parcelaWhere.contaPagar = contaWhere
+    where.parcela = parcelaWhere
+
+    const rows = await clientePrisma.contaPagarBaixa.findMany({
+      where,
+      include: {
+        usuario: { select: { id: true, name: true } },
+        parcela: {
+          include: {
+            contaPagar: {
+              include: includeDetalhe,
+            },
+          },
+        },
+      },
+      orderBy: [{ pagoEm: 'desc' }, { createdAt: 'desc' }],
+      take: 300,
+    })
+
+    return rows.map((b) => {
+      const conta = mapearContaPagar(b.parcela.contaPagar)
+      const baixa = mapearBaixa(b)
+      return {
+        ...baixa,
+        parcelaId: b.parcela.id,
+        numeroParcela: b.parcela.numeroParcela,
+        contaPagarId: conta.id,
+        codigo: conta.codigo,
+        codigoExibicao: conta.codigoExibicao,
+        numeroDocumento: conta.numeroDocumento,
+        pessoa: conta.pessoa,
+        origem: conta.origem,
+        statusConta: conta.status,
+        valorTotalTitulo: conta.valorTotal,
+        valorPagoPrincipalTitulo: conta.valorPagoPrincipal,
+        saldoDevedorTitulo: conta.saldoDevedor,
+        totalJurosBaixas: conta.totalJurosBaixas,
+        totalMultaBaixas: conta.totalMultaBaixas,
+      }
+    })
   },
 
   async executarBaixas(

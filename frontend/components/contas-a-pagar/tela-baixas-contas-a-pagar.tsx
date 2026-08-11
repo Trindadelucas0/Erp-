@@ -42,6 +42,8 @@ type LinhaBaixa = {
 type Props = {
   fornecedores: Opcao[]
   planos: Opcao[]
+  /** Chamado após baixa bem-sucedida (para a aba Títulos atualizar). */
+  aoBaixar?: () => void
 }
 
 function parseNum(texto: string): number {
@@ -50,7 +52,7 @@ function parseNum(texto: string): number {
   return Number.isFinite(n) ? n : 0
 }
 
-export function TelaBaixasContasAPagar({ fornecedores, planos }: Props) {
+export function TelaBaixasContasAPagar({ fornecedores, planos, aoBaixar }: Props) {
   const podeEditar = usePermissao('financeiro:edit')
   const [linhas, setLinhas] = useState<LinhaBaixa[]>([])
   const [carregando, setCarregando] = useState(true)
@@ -157,6 +159,7 @@ export function TelaBaixasContasAPagar({ fornecedores, planos }: Props) {
         })),
       })
       await carregar()
+      aoBaixar?.()
     } catch (e) {
       setErro(extrairMensagemApi(e, 'Não foi possível baixar os títulos.'))
     } finally {

@@ -55,10 +55,14 @@ export const esquemaDeCriacaoDeContaPagar = z
 
 export const esquemaDeEdicaoDeContaPagar = esquemaDeCriacaoDeContaPagar
 
+export const ORIGENS_CONTA_PAGAR = ['manual', 'nfe', 'cte'] as const
+
 export const esquemaFiltroListagemContasPagar = z.object({
   pessoaId: z.string().uuid().optional(),
   planoFinanceiroId: z.string().uuid().optional(),
   tipo: z.enum(TIPOS_CONTA_PAGAR).optional(),
+  origem: z.enum(ORIGENS_CONTA_PAGAR).optional(),
+  nfeRecebidaId: z.string().uuid().optional(),
   codigo: z.string().trim().max(40).optional(),
   numeroDocumento: z.string().trim().max(60).optional(),
   vencimentoDe: z.string().trim().optional(),
@@ -86,4 +90,14 @@ export const esquemaBaixaLote = z.object({
 export type DadosParaCriarContaPagar = z.infer<typeof esquemaDeCriacaoDeContaPagar>
 export type DadosParaEditarContaPagar = z.infer<typeof esquemaDeEdicaoDeContaPagar>
 export type FiltroListagemContasPagar = z.infer<typeof esquemaFiltroListagemContasPagar>
+export const esquemaFiltroHistoricoBaixas = z.object({
+  pessoaId: z.string().uuid().optional(),
+  contaPagarId: z.string().uuid().optional(),
+  nfeRecebidaId: z.string().uuid().optional(),
+  pagoEmDe: z.string().trim().optional(),
+  pagoEmAte: z.string().trim().optional(),
+  q: z.string().trim().max(120).optional(),
+})
+
+export type FiltroHistoricoBaixas = z.infer<typeof esquemaFiltroHistoricoBaixas>
 export type DadosBaixaLote = z.infer<typeof esquemaBaixaLote>

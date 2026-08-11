@@ -4,6 +4,7 @@ import {
   esquemaBaixaLote,
   esquemaDeCriacaoDeContaPagar,
   esquemaDeEdicaoDeContaPagar,
+  esquemaFiltroHistoricoBaixas,
   esquemaFiltroListagemContasPagar,
 } from './esquema-contas-a-pagar.js'
 import { servicoDeContasAPagar } from './servico-contas-a-pagar.js'
@@ -28,6 +29,18 @@ async function listarParaBaixar(requisicao: FastifyRequest, resposta: FastifyRep
   }
   const contas = await servicoDeContasAPagar.listarParaBaixar(companyId(requisicao), parse.data)
   return resposta.send({ contas })
+}
+
+async function listarHistoricoBaixas(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parse = esquemaFiltroHistoricoBaixas.safeParse(requisicao.query ?? {})
+  if (!parse.success) {
+    throw new ErroDaAplicacao(parse.error.errors[0]?.message ?? 'Filtro inválido', 400)
+  }
+  const baixas = await servicoDeContasAPagar.listarHistoricoBaixas(
+    companyId(requisicao),
+    parse.data
+  )
+  return resposta.send({ baixas })
 }
 
 async function obter(requisicao: FastifyRequest, resposta: FastifyReply) {
@@ -90,6 +103,7 @@ async function baixar(requisicao: FastifyRequest, resposta: FastifyReply) {
 export const controladorDeContasAPagar = {
   listar,
   listarParaBaixar,
+  listarHistoricoBaixas,
   obter,
   criar,
   editar,

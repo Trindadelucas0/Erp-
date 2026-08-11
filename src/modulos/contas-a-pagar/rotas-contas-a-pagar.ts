@@ -19,6 +19,12 @@ export async function rotasDeContasAPagar(aplicacao: FastifyInstance) {
     controladorDeContasAPagar.listarParaBaixar
   )
 
+  aplicacao.get(
+    '/historico-baixas',
+    { preHandler: [...auth, middlewareDeAutorizacao('financeiro:view')] },
+    controladorDeContasAPagar.listarHistoricoBaixas
+  )
+
   aplicacao.post(
     '/baixas',
     { preHandler: [...auth, middlewareDeAutorizacao('financeiro:edit')] },

@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
@@ -14,7 +15,9 @@ import { Abas } from '@/components/ui/abas'
 import { LinhasSkeletonTabela } from '@/components/ui/linhas-skeleton-tabela'
 import { FormularioContaPagar } from '@/components/contas-a-pagar/formulario-conta-pagar'
 import { TelaBaixasContasAPagar } from '@/components/contas-a-pagar/tela-baixas-contas-a-pagar'
+import { TelaHistoricoBaixasContasAPagar } from '@/components/contas-a-pagar/tela-historico-baixas-contas-a-pagar'
 import {
+  BadgeOrigemContaPagar,
   BadgeStatusContaPagar,
   BadgeTipoContaPagar,
   CelulaVencimentoContaPagar,
@@ -22,6 +25,7 @@ import {
 import {
   ContaPagarLista,
   FormContaPagar,
+  OPCOES_ORIGEM_CONTA,
   OPCOES_STATUS_CONTA,
   OPCOES_TIPO_CONTA,
   classeLinhaStatusContaPagar,
@@ -43,6 +47,8 @@ type Filtros = {
   pessoaId: string
   planoFinanceiroId: string
   tipo: string
+  origem: string
+  nfeRecebidaId: string
   status: string
   codigo: string
   numeroDocumento: string
@@ -56,6 +62,8 @@ const FILTROS_VAZIOS: Filtros = {
   pessoaId: '',
   planoFinanceiroId: '',
   tipo: '',
+  origem: '',
+  nfeRecebidaId: '',
   status: '',
   codigo: '',
   numeroDocumento: '',
@@ -68,6 +76,7 @@ const FILTROS_VAZIOS: Filtros = {
 function ConteudoContasAPagar() {
   const podeCriar = usePermissao('financeiro:create')
   const podeEditar = usePermissao('financeiro:edit')
+  const searchParams = useSearchParams()
 
   const [contas, setContas] = useState<ContaPagarLista[]>([])
   const [fornecedores, setFornecedores] = useState<Opcao[]>([])
@@ -119,6 +128,8 @@ function ConteudoContasAPagar() {
       if (f.pessoaId) params.pessoaId = f.pessoaId
       if (f.planoFinanceiroId) params.planoFinanceiroId = f.planoFinanceiroId
       if (f.tipo) params.tipo = f.tipo
+      if (f.origem) params.origem = f.origem
+      if (f.nfeRecebidaId) params.nfeRecebidaId = f.nfeRecebidaId
       if (f.status) params.status = f.status
       if (f.codigo.trim()) params.codigo = f.codigo.trim()
       if (f.numeroDocumento.trim()) params.numeroDocumento = f.numeroDocumento.trim()
@@ -140,9 +151,16 @@ function ConteudoContasAPagar() {
 
   useEffect(() => {
     void carregarCatalogos()
-    void carregar(FILTROS_VAZIOS)
+    const nfeRecebidaId = searchParams.get('nfeRecebidaId')?.trim() || ''
+    const origem = searchParams.get('origem')?.trim() || ''
+    const iniciais =
+      nfeRecebidaId || origem
+        ? { ...FILTROS_VAZIOS, nfeRecebidaId, origem }
+        : FILTROS_VAZIOS
+    setFiltros(iniciais)
+    void carregar(iniciais)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [carregarCatalogos])
+  }, [carregarCatalogos, searchParams])
 
   function abrirNovo() {
     setEditando(null)
@@ -207,8 +225,18 @@ function ConteudoContasAPagar() {
     }
   }
 
-  const somenteLeitura = Boolean(editando && editando.status !== 'aberto')
+  const somenteLeitura = Boolean(
+    editando && (editando.status !== 'aberto' || editando.origem !== 'manual')
+  )
   const [aba, setAba] = useState('titulos')
+  const [tokenHistorico, setTokenHistorico] = useState(0)
+
+  function aoMudarAba(nova: string) {
+    setAba(nova)
+    if (nova === 'titulos') {
+      void carregar(filtros)
+    }
+  }
 
   return (
     <div className="min-w-0 space-y-4">
@@ -216,15 +244,25 @@ function ConteudoContasAPagar() {
         <Abas
           className="mb-4"
           abaAtiva={aba}
-          aoMudar={setAba}
+          aoMudar={aoMudarAba}
           abas={[
             { id: 'titulos', rotulo: 'Títulos' },
             { id: 'baixas', rotulo: 'Baixas' },
+            { id: 'pagamentos', rotulo: 'Pagamentos' },
           ]}
         />
 
         {aba === 'baixas' ? (
-          <TelaBaixasContasAPagar fornecedores={fornecedores} planos={planos} />
+          <TelaBaixasContasAPagar
+            fornecedores={fornecedores}
+            planos={planos}
+            aoBaixar={() => {
+              void carregar(filtros)
+              setTokenHistorico((t) => t + 1)
+            }}
+          />
+        ) : aba === 'pagamentos' ? (
+          <TelaHistoricoBaixasContasAPagar recarregarToken={tokenHistorico} />
         ) : (
           <>
             <div className="mb-3 flex flex-wrap gap-2">
@@ -239,9 +277,14 @@ function ConteudoContasAPagar() {
             </div>
 
             <p className="mb-3 text-sm text-muted-foreground">
-              Cadastro e visualização de títulos. Use a aba <strong>Baixas</strong> para pagar um ou
-              vários de uma vez.
+              Cadastro e visualização de títulos (manual ou gerados pela Entrada de Notas). Use a aba{' '}
+              <strong>Baixas</strong> para pagar um ou vários de uma vez.
             </p>
+            {filtros.nfeRecebidaId ? (
+              <p className="mb-3 text-sm text-sky-800">
+                Filtrando títulos da nota de entrada. Use Limpar para ver todos.
+              </p>
+            ) : null}
 
         <div className="mb-4 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <div className="min-w-0">
@@ -277,6 +320,15 @@ function ConteudoContasAPagar() {
               valor={filtros.tipo}
               aoMudar={(tipo) => setFiltros((f) => ({ ...f, tipo }))}
               opcoes={[{ value: '', label: 'Todos' }, ...OPCOES_TIPO_CONTA]}
+              compacto
+            />
+          </div>
+          <div className="min-w-0">
+            <SelectPadrao
+              rotulo="Origem"
+              valor={filtros.origem}
+              aoMudar={(origem) => setFiltros((f) => ({ ...f, origem }))}
+              opcoes={OPCOES_ORIGEM_CONTA}
               compacto
             />
           </div>
@@ -354,16 +406,17 @@ function ConteudoContasAPagar() {
                 <th className="px-3 py-2 font-medium">Valor</th>
                 <th className="px-3 py-2 font-medium">Saldo</th>
                 <th className="px-3 py-2 font-medium">Tipo</th>
+                <th className="px-3 py-2 font-medium">Origem</th>
                 <th className="px-3 py-2 font-medium">Status</th>
                 <th className="px-3 py-2 font-medium">Cadastro</th>
               </tr>
             </thead>
             <tbody>
               {carregando ? (
-                <LinhasSkeletonTabela colunas={10} linhas={6} />
+                <LinhasSkeletonTabela colunas={11} linhas={6} />
               ) : contas.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">
+                  <td colSpan={11} className="px-3 py-8 text-center text-muted-foreground">
                     Nenhum título encontrado.
                   </td>
                 </tr>
@@ -402,6 +455,9 @@ function ConteudoContasAPagar() {
                       <BadgeTipoContaPagar tipo={conta.tipo} />
                     </td>
                     <td className="px-3 py-2">
+                      <BadgeOrigemContaPagar origem={conta.origem} />
+                    </td>
+                    <td className="px-3 py-2">
                       <BadgeStatusContaPagar status={conta.status} />
                     </td>
                     <td className="px-3 py-2">{formatarDataBr(conta.dataCadastro)}</td>
@@ -432,6 +488,7 @@ function ConteudoContasAPagar() {
             <div className="mt-2 flex flex-wrap gap-2">
               <BadgeStatusContaPagar status={editando.status} />
               <BadgeTipoContaPagar tipo={editando.tipo} />
+              <BadgeOrigemContaPagar origem={editando.origem} />
             </div>
           ) : undefined
         }
@@ -485,7 +542,9 @@ function ConteudoContasAPagar() {
 export default function PaginaContasAPagar() {
   return (
     <ProtegerRota chaveDaPagina="contas-a-pagar">
-      <ConteudoContasAPagar />
+      <Suspense fallback={<p className="text-sm text-muted-foreground">Carregando…</p>}>
+        <ConteudoContasAPagar />
+      </Suspense>
     </ProtegerRota>
   )
 }

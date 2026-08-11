@@ -97,7 +97,7 @@ export const esquemaParcelaFinanceiroFrete = z.object({
   valor: z.number().finite().nonnegative(),
 })
 
-/** Stub financeiro frete (prévia) — sem gerar contas a pagar. */
+/** Stub financeiro frete (prévia) — ContaPagar é gerada no liberar/consolidar. */
 export const esquemaFinanceiroFrete = z
   .object({
     cteId: z.string().uuid().optional(),

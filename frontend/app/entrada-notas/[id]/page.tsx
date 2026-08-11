@@ -257,6 +257,15 @@ type DetalheNota = {
   estoqueLancado?: boolean
   /** Resumo persistente dos movimentos (reabre no detalhe consolidado). */
   estoqueResumo?: EstoqueResumoLancamento | null
+  /** Títulos gerados em Contas a Pagar (mercadoria + frete). */
+  contasPagar?: Array<{
+    id: string
+    codigo: string
+    origem: string
+    status: string
+    valorTotal: number
+    nfeRecebidaId: string | null
+  }>
 }
 
 type ProdutoBusca = {
@@ -997,6 +1006,7 @@ function ConteudoDetalheEntrada() {
         mensagem?: string
         sucesso?: boolean
         estoqueResumo?: EstoqueResumoLancamento
+        contasPagarResumo?: { gerados: number; contas: Array<{ codigo: string; origem: string }> }
       }>(`/entrada-notas/${id}${path}`, body ?? {})
       if (data.nota) {
         setNota(data.nota)
@@ -1009,10 +1019,16 @@ function ConteudoDetalheEntrada() {
         ) {
           setAbaAtiva(abaInicial(data.nota))
         }
+        const sufixoContas =
+          data.contasPagarResumo && data.contasPagarResumo.gerados > 0
+            ? ` · ${data.contasPagarResumo.gerados} título(s) em Contas a Pagar.`
+            : data.nota.contasPagar && data.nota.contasPagar.length > 0
+              ? ` · ${data.nota.contasPagar.length} título(s) em Contas a Pagar.`
+              : ''
         if (path === '/analisar' || path.startsWith('/analisar')) {
           setMensagem(mensagemAposAnalisar(data.nota))
         } else if (path === '/financeiro-frete') {
-          setMensagem('Prévia financeira do frete salva (stub — sem contas a pagar).')
+          setMensagem('Prévia financeira do frete salva (vira Contas a Pagar ao liberar/consolidar).')
         } else if (path === '/definir-cfop-entrada' || path === '/definir-cfop-entrada-cte') {
           setMensagem('CFOP de entrada atualizado.')
         } else if (path === '/lancar' && body?.modo === 'consolidar') {
@@ -1021,25 +1037,26 @@ function ConteudoDetalheEntrada() {
           if (resumo) setEstoqueResumo(resumo)
           if (resumo?.movimentou) {
             setMensagem(
-              `Estoque consolidado: ${resumo.itensProcessados} produto(s) no estoque (físico e fiscal).`
+              `Estoque consolidado: ${resumo.itensProcessados} produto(s) no estoque (físico e fiscal).${sufixoContas}`
             )
           } else if (ehDocumentalEntrada(data.nota.tipoDocumento)) {
-            setMensagem('Nota consolidada (documental — sem movimentação de estoque).')
+            setMensagem(`Nota consolidada (documental — sem movimentação de estoque).${sufixoContas}`)
           } else {
             setMensagem(
-              'Nota consolidada. Nenhum item com controle de estoque foi lançado.'
+              `Nota consolidada. Nenhum item com controle de estoque foi lançado.${sufixoContas}`
             )
           }
         } else if (path === '/lancar' && body?.modo === 'contagem') {
           setMensagem(
-            ehDocumentalEntrada(data.nota.tipoDocumento)
+            (ehDocumentalEntrada(data.nota.tipoDocumento)
               ? 'Liberada para contagem documental.'
-              : 'Liberada para contagem — a logística confere em Contagens de entrada. Só depois consolide o estoque.'
+              : 'Liberada para contagem — a logística confere em Contagens de entrada. Só depois consolide o estoque.') +
+              sufixoContas
           )
         } else if (data.nota.origemLancamento === 'automatica') {
-          setMensagem('Entrada automática concluída (Liberar para contagem — sem estoque).')
+          setMensagem(`Entrada automática concluída (Liberar para contagem — sem estoque).${sufixoContas}`)
         } else if (notaLiberadaOuConsolidada(data.nota.statusEntrada)) {
-          setMensagem(`Nota lançada: ${rotuloStatusEntrada(data.nota.statusEntrada)}.`)
+          setMensagem(`Nota lançada: ${rotuloStatusEntrada(data.nota.statusEntrada)}.${sufixoContas}`)
         } else if (path === '/manifestar') {
           setMensagem(
             'Manifestação enviada à Focus. Nota marcada como cancelada — veja o painel Canceladas.'
@@ -2455,6 +2472,10 @@ function ConteudoDetalheEntrada() {
                   {ehDocumental ? 'Consolidar (documental)' : 'Consolidar estoque'}
                 </Button>
               </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Ao liberar ou consolidar, o sistema gera automaticamente os títulos em Contas a Pagar
+                (mercadoria e frete, quando houver).
+              </p>
             </CardPadrao>
           ) : (
             <CardPadrao
@@ -2498,6 +2519,17 @@ function ConteudoDetalheEntrada() {
                                 ? ' Documental — sem movimentação de estoque.'
                                 : ''}
               </p>
+              {(nota.contasPagar?.length ?? 0) > 0 && (
+                <p className="mt-2 text-sm">
+                  <strong>{nota.contasPagar!.length}</strong> título(s) em Contas a Pagar.{' '}
+                  <Link
+                    href={`/contas-a-pagar?nfeRecebidaId=${encodeURIComponent(nota.id)}`}
+                    className="text-primary underline"
+                  >
+                    Ver títulos a pagar
+                  </Link>
+                </p>
+              )}
               {nota.statusEntrada === 'entrada_contagem' && !ehDocumental && (
                 <p className="mt-2 text-sm text-muted-foreground">
                   {(nota.itens ?? []).some((i) => i.produtoId) ? (

@@ -41,6 +41,7 @@ import {
   podeConsolidarEstoque,
   STATUS_PAINEL_CONTAGEM,
 } from './status-entrada-contagem.js'
+import { gerarTitulosContasPagarDaEntrada } from '../contas-a-pagar/gerar-titulos-entrada.js'
 import {
   extrairFlagsFornecedorDaNota,
   resolverModoDocumentalEntrada,
@@ -959,11 +960,15 @@ async function analisarNota(
 ): Promise<{
   nota: Record<string, unknown>
   pedidosDisponiveis: Array<{ id: string; numero: number; status: string }>
+  contasPagarResumo?: {
+    gerados: number
+    contas: Array<{ id: string; codigo: string; origem: string }>
+  }
 }> {
   const importarFocus = opcoes?.importarFocusSeAusente !== false
   let avisoXmlFocus: string | null = null
 
-  // Reanalisar: completa XML na Focus se a nota ainda só tem resumo DistDFe.
+  // Reanalisar: completa XML incompleto (resNFe) na Focus antes do pipeline.
   if (importarFocus) {
     const pre = await repositorioEntradaNotas.buscarNotaPorId(companyId, notaId)
     if (
@@ -1376,13 +1381,20 @@ async function analisarNota(
   analise.autoLancado = true
   analise.motivoParada = null
   await aplicarRateioEDespesasFrete(companyId, notaId)
+  const contasPagarResumo = await gerarTitulosContasPagarDaEntrada(companyId, notaId)
   await lancarContagem(notaId, 'automatica')
   await repositorioEntradaNotas.atualizarNota(notaId, {
     analiseJson: asJson(analise),
     etapaAtual: 'lancamento',
   })
-  logFocus('info', 'entrada_auto_contagem', { companyId, notaId, chave: nota.chaveNfe })
-  return await obterDetalhe(companyId, notaId)
+  logFocus('info', 'entrada_auto_contagem', {
+    companyId,
+    notaId,
+    chave: nota.chaveNfe,
+    contasPagarGerados: contasPagarResumo.gerados,
+  })
+  const detalhe = await obterDetalhe(companyId, notaId)
+  return { ...detalhe, contasPagarResumo }
 }
 
 /**
@@ -1811,6 +1823,30 @@ async function obterDetalhe(
     : null
   const estoqueLancado = Boolean(estoqueResumo?.movimentou)
 
+  const contasPagarRows = await clientePrisma.contaPagar.findMany({
+    where: {
+      companyId,
+      nfeRecebidaId: notaId,
+    },
+    select: {
+      id: true,
+      codigo: true,
+      origem: true,
+      status: true,
+      valorTotal: true,
+      nfeRecebidaId: true,
+    },
+    orderBy: { createdAt: 'asc' },
+  })
+  const contasPagar = contasPagarRows.map((c) => ({
+    id: c.id,
+    codigo: c.codigo,
+    origem: c.origem,
+    status: c.status,
+    valorTotal: decimalNum(c.valorTotal),
+    nfeRecebidaId: c.nfeRecebidaId,
+  }))
+
   return {
     nota: {
       id: nota.id,
@@ -1834,6 +1870,7 @@ async function obterDetalhe(
       problemaResolvidoEm: nota.problemaResolvidoEm ?? null,
       estoqueLancado,
       estoqueResumo,
+      contasPagar,
       avisoReparoXml,
       tratativas: (nota.tratativas ?? []).map((t) => ({
         id: t.id,
@@ -2677,6 +2714,8 @@ async function lancar(
   }
 
   let estoqueResumo: ResultadoEntradaNotaFiscal | null = null
+  let contasPagarResumo: Awaited<ReturnType<typeof gerarTitulosContasPagarDaEntrada>> | null =
+    null
 
   if (modo === 'consolidar') {
     if (!podeConsolidarEstoque(nota.statusEntrada, { exigeContagemFisica })) {
@@ -2686,6 +2725,10 @@ async function lancar(
     const ok = await servicoDeAutenticacao.verificarSenhaDoUsuario(usuarioId, senha)
     if (!ok) throw new ErroDaAplicacao('Senha inválida.', 403)
     await aplicarRateioEDespesasFrete(companyId, notaId)
+    contasPagarResumo = await gerarTitulosContasPagarDaEntrada(companyId, notaId, {
+      // Legado já em contagem: não trava consolidar se NF não tiver cobr/dup
+      exigirVencimentoMercadoria: !noPainelContagem,
+    })
     estoqueResumo = await lancarEstoqueAoConsolidar(companyId, notaId, usuarioId)
     await repositorioEntradaNotas.atualizarNota(notaId, {
       statusEntrada: 'entrada_consolidada',
@@ -2694,11 +2737,16 @@ async function lancar(
     })
   } else {
     await aplicarRateioEDespesasFrete(companyId, notaId)
+    contasPagarResumo = await gerarTitulosContasPagarDaEntrada(companyId, notaId)
     await lancarContagem(notaId, 'humana')
   }
 
   const detalhe = await obterDetalhe(companyId, notaId)
-  return estoqueResumo != null ? { ...detalhe, estoqueResumo } : detalhe
+  return {
+    ...detalhe,
+    ...(estoqueResumo != null ? { estoqueResumo } : {}),
+    ...(contasPagarResumo != null ? { contasPagarResumo } : {}),
+  }
 }
 
 /**
@@ -2773,7 +2821,8 @@ async function desvincularCte(companyId: string, notaId: string, vinculoId: stri
 
 /**
  * Stub financeiro do frete (prévia contas a pagar): N duplicatas
- * (número, vencimento e valor) em DespesaEntradaDocumento — sem gerar título/AP.
+ * (número, vencimento e valor) em DespesaEntradaDocumento.
+ * ContaPagar é gerada no Liberar/Consolidar (`gerarTitulosContasPagarDaEntrada`).
  * Soma das parcelas deve bater com o Valor Frete (total do transporte).
  */
 const TOLERANCIA_PARCELAS_FRETE = 0.01

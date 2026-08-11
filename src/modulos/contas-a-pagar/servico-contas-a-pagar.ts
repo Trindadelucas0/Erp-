@@ -161,6 +161,13 @@ async function listarParaBaixar(companyId: string, filtro: FiltroListagemContasP
   return repositorioDeContasAPagar.listarParaBaixar(companyId, filtro)
 }
 
+async function listarHistoricoBaixas(
+  companyId: string,
+  filtro: import('./esquema-contas-a-pagar.js').FiltroHistoricoBaixas
+) {
+  return repositorioDeContasAPagar.listarHistoricoBaixas(companyId, filtro)
+}
+
 async function baixar(
   companyId: string,
   usuarioId: string,
@@ -220,6 +227,7 @@ async function baixar(
 export const servicoDeContasAPagar = {
   listar,
   listarParaBaixar,
+  listarHistoricoBaixas,
   obter,
   criar,
   editar,
