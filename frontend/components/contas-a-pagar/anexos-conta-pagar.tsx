@@ -170,17 +170,23 @@ export function AnexosContaPagar({ contaId, somenteLeitura = false }: Props) {
 
   async function baixar(anexo: AnexoContaPagar) {
     if (!contaId) return
+    setErro(null)
     try {
-      const { data } = await clienteHttp.get(
+      const resposta = await clienteHttp.get(
         `/contas-a-pagar/${contaId}/anexos/${anexo.id}/download`,
         { responseType: 'blob' }
       )
-      const url = URL.createObjectURL(data)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = anexo.nomeArquivo
-      a.click()
-      URL.revokeObjectURL(url)
+      const blob = new Blob([resposta.data], {
+        type: anexo.mimeType || 'application/octet-stream',
+      })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = anexo.nomeArquivo
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
     } catch (e) {
       setErro(extrairMensagemApi(e, 'Falha ao baixar o anexo.'))
     }
@@ -204,7 +210,7 @@ export function AnexosContaPagar({ contaId, somenteLeitura = false }: Props) {
         <div className="min-w-0 space-y-0.5">
           <h3 className="text-sm font-medium leading-none">Anexos</h3>
           <p className="text-xs text-muted-foreground">
-            Boleto, comprovante ou documento do título
+            Envie boleto ou comprovante. O arquivo fica guardado neste título.
           </p>
         </div>
         <div className="flex flex-wrap gap-1">
@@ -222,28 +228,36 @@ export function AnexosContaPagar({ contaId, somenteLeitura = false }: Props) {
             <Lock className="size-4" aria-hidden />
           </div>
           <div className="min-w-0 space-y-1 pt-0.5">
-            <p className="text-sm font-medium">Grave o título primeiro</p>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              Depois de salvar, anexe PDF (até 2 MB) ou imagem — fotos maiores são reduzidas
-              automaticamente para caber no limite.
-            </p>
+            <p className="text-sm font-medium">Ainda não dá para escolher arquivo</p>
+            <ol className="mt-1 list-decimal space-y-1 pl-4 text-xs leading-relaxed text-muted-foreground">
+              <li>Preencha os dados do título (valor e vencimento).</li>
+              <li>
+                Clique no botão <strong className="text-foreground">Gravar</strong> embaixo.
+              </li>
+              <li>
+                Depois aparece a caixa de anexo — clique nela e abrirão as pastas do computador
+                para você escolher o arquivo.
+              </li>
+            </ol>
           </div>
         </div>
       ) : (
         <>
           {podeAnexar && (
-            <>
-              <input
-                ref={inputRef}
-                type="file"
-                accept=".pdf,image/jpeg,image/png,image/webp,application/pdf"
-                className="hidden"
-                onChange={(e) => void aoEscolherArquivo(e.target.files?.[0] ?? null)}
-              />
-              <button
-                type="button"
-                disabled={enviando}
-                onClick={() => inputRef.current?.click()}
+            <div className="space-y-2">
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                <strong className="font-medium text-foreground">Como anexar:</strong> clique na
+                caixa abaixo → abrem as pastas do computador → escolha o PDF ou a foto → o arquivo
+                é enviado e fica salvo aqui para baixar depois.
+              </p>
+              <label
+                className={cn(
+                  'relative flex w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-6 text-center transition-colors',
+                  arrastando
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border bg-muted/20 hover:border-muted-foreground/40 hover:bg-muted/40',
+                  enviando && 'pointer-events-none opacity-60'
+                )}
                 onDragEnter={(e) => {
                   e.preventDefault()
                   setArrastando(true)
@@ -261,32 +275,40 @@ export function AnexosContaPagar({ contaId, somenteLeitura = false }: Props) {
                   setArrastando(false)
                   void aoEscolherArquivo(e.dataTransfer.files?.[0] ?? null)
                 }}
-                className={cn(
-                  'flex w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-6 text-center transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  arrastando
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border bg-muted/20 hover:border-muted-foreground/40 hover:bg-muted/40',
-                  enviando && 'pointer-events-none opacity-60'
-                )}
               >
-                <div className="flex size-10 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm ring-1 ring-border">
+                <input
+                  ref={inputRef}
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp,application/pdf"
+                  className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+                  disabled={enviando}
+                  aria-label="Abrir pastas do computador para escolher o arquivo"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null
+                    void aoEscolherArquivo(file)
+                    e.target.value = ''
+                  }}
+                />
+                <div className="pointer-events-none flex size-10 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm ring-1 ring-border">
                   {enviando ? (
                     <Upload className="size-4 animate-pulse" aria-hidden />
                   ) : (
                     <Paperclip className="size-4" aria-hidden />
                   )}
                 </div>
-                <div className="space-y-0.5">
+                <div className="pointer-events-none space-y-1">
                   <p className="text-sm font-medium">
-                    {enviando ? 'Enviando…' : 'Clique ou arraste um arquivo'}
+                    {enviando
+                      ? 'Enviando arquivo…'
+                      : 'Clique aqui para abrir as pastas e escolher o arquivo'}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    PDF até 2 MB · imagem maior é convertida automaticamente
+                    Ou arraste o arquivo até esta caixa. PDF até 2 MB; foto maior é reduzida
+                    automaticamente.
                   </p>
                 </div>
-              </button>
-            </>
+              </label>
+            </div>
           )}
 
           {somenteLeitura && contaId ? (
@@ -313,7 +335,9 @@ export function AnexosContaPagar({ contaId, somenteLeitura = false }: Props) {
           )}
 
           {contaId && anexos.length === 0 && !erro && !somenteLeitura ? (
-            <p className="text-center text-xs text-muted-foreground">Nenhum arquivo anexado ainda.</p>
+            <p className="text-center text-xs text-muted-foreground">
+              Ainda não há arquivo. Use a caixa acima para abrir as pastas e escolher.
+            </p>
           ) : null}
 
           {anexos.length > 0 && (
@@ -335,16 +359,16 @@ export function AnexosContaPagar({ contaId, somenteLeitura = false }: Props) {
                         {a.usuario?.name ? ` · ${a.usuario.name}` : ''}
                       </div>
                     </div>
-                    <div className="flex shrink-0 gap-0.5">
+                    <div className="flex shrink-0 items-center gap-0.5">
                       <Button
                         type="button"
                         size="sm"
-                        variant="ghost"
-                        className="size-8 p-0"
+                        variant="outline"
+                        className="h-8 gap-1.5 px-2"
                         onClick={() => void baixar(a)}
-                        aria-label={`Baixar ${a.nomeArquivo}`}
                       >
                         <Download className="size-3.5" />
+                        Baixar
                       </Button>
                       {!somenteLeitura && (
                         <Button

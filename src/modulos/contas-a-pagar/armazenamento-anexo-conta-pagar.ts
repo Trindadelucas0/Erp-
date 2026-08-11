@@ -57,13 +57,14 @@ export async function salvarAnexoContaPagar(
   await writeFile(path.join(pasta, nomeNoDisco), buffer)
 
   return {
-    caminhoArquivo: path.join(PASTA_BASE, contaPagarId, nomeNoDisco),
+    caminhoArquivo: [PASTA_BASE, contaPagarId, nomeNoDisco].join('/'),
     tamanhoBytes: buffer.length,
   }
 }
 
 export function caminhoAbsolutoAnexoContaPagar(caminhoRelativo: string): string {
-  return path.join(process.cwd(), 'uploads', caminhoRelativo)
+  const normalizado = caminhoRelativo.replace(/\\/g, '/')
+  return path.join(process.cwd(), 'uploads', ...normalizado.split('/').filter(Boolean))
 }
 
 export async function removerAnexoContaPagar(caminhoRelativo: string): Promise<void> {

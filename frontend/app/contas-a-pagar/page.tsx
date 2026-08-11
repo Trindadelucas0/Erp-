@@ -16,6 +16,8 @@ import { LinhasSkeletonTabela } from '@/components/ui/linhas-skeleton-tabela'
 import { FormularioContaPagar } from '@/components/contas-a-pagar/formulario-conta-pagar'
 import { TelaBaixasContasAPagar } from '@/components/contas-a-pagar/tela-baixas-contas-a-pagar'
 import { TelaHistoricoBaixasContasAPagar } from '@/components/contas-a-pagar/tela-historico-baixas-contas-a-pagar'
+import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
+import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import {
   BadgeOrigemContaPagar,
   BadgeStatusContaPagar,
@@ -76,6 +78,8 @@ const FILTROS_VAZIOS: Filtros = {
 function ConteudoContasAPagar() {
   const podeCriar = usePermissao('financeiro:create')
   const podeEditar = usePermissao('financeiro:edit')
+  const { perfil } = useSessaoDoUsuario()
+  const ehAdmin = perfil?.ehAdmin === true
   const searchParams = useSearchParams()
 
   const [contas, setContas] = useState<ContaPagarLista[]>([])
@@ -91,6 +95,7 @@ function ConteudoContasAPagar() {
   const [erroForm, setErroForm] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
   const [excluindo, setExcluindo] = useState(false)
+  const [confirmExcluirAberto, setConfirmExcluirAberto] = useState(false)
 
   const carregarCatalogos = useCallback(async () => {
     try {
@@ -181,6 +186,7 @@ function ConteudoContasAPagar() {
     setModalAberto(false)
     setEditando(null)
     setErroForm(null)
+    setConfirmExcluirAberto(false)
   }
 
   async function gravar() {
@@ -195,12 +201,20 @@ function ConteudoContasAPagar() {
       const payload = formParaPayload(form)
       if (editando) {
         await clienteHttp.put(`/contas-a-pagar/${editando.id}`, payload)
+        setModalAberto(false)
+        setEditando(null)
+        await carregar()
       } else {
-        await clienteHttp.post('/contas-a-pagar', payload)
+        // Mantém o modal aberto com o id gerado para liberar anexos na hora
+        const { data } = await clienteHttp.post<{ conta: ContaPagarLista }>(
+          '/contas-a-pagar',
+          payload
+        )
+        const criada = data.conta
+        setEditando(criada)
+        setForm(contaParaForm(criada))
+        await carregar()
       }
-      setModalAberto(false)
-      setEditando(null)
-      await carregar()
     } catch (e) {
       setErroForm(extrairMensagemApi(e, 'Não foi possível gravar a conta a pagar.'))
     } finally {
@@ -208,9 +222,9 @@ function ConteudoContasAPagar() {
     }
   }
 
-  async function excluir() {
-    if (!editando) return
-    if (!window.confirm(`Excluir o título ${formatarCodigoContaPagar(editando.codigo)}?`)) return
+  async function confirmarExclusaoTitulo() {
+    if (!editando || !ehAdmin) return
+    setConfirmExcluirAberto(false)
     setExcluindo(true)
     setErroForm(null)
     try {
@@ -228,6 +242,7 @@ function ConteudoContasAPagar() {
   const somenteLeitura = Boolean(
     editando && (editando.status !== 'aberto' || editando.origem !== 'manual')
   )
+  const podeExcluirTitulo = Boolean(ehAdmin && editando && !somenteLeitura)
   const [aba, setAba] = useState('titulos')
   const [tokenHistorico, setTokenHistorico] = useState(0)
 
@@ -497,12 +512,12 @@ function ConteudoContasAPagar() {
         rodape={
           <div className="flex flex-wrap justify-between gap-2">
             <div>
-              {editando && podeEditar && !somenteLeitura && (
+              {podeExcluirTitulo && (
                 <Button
                   type="button"
                   variant="destructive"
                   disabled={salvando || excluindo}
-                  onClick={() => void excluir()}
+                  onClick={() => setConfirmExcluirAberto(true)}
                 >
                   {excluindo ? 'Excluindo…' : 'Excluir'}
                 </Button>
@@ -539,6 +554,26 @@ function ConteudoContasAPagar() {
           contaId={editando?.id ?? null}
         />
       </Modal>
+
+      <ModalConfirmacao
+        aberto={confirmExcluirAberto}
+        titulo="Excluir título?"
+        mensagem={
+          editando
+            ? `Tem certeza que deseja excluir o título ${
+                editando.codigoExibicao ?? formatarCodigoContaPagar(editando.codigo)
+              }?\n\nEsta ação não pode ser desfeita.`
+            : 'Tem certeza que deseja excluir este título?'
+        }
+        textoConfirmar={excluindo ? 'Excluindo…' : 'Excluir título'}
+        textoCancelar="Cancelar"
+        aoCancelar={() => {
+          if (!excluindo) setConfirmExcluirAberto(false)
+        }}
+        aoConfirmar={() => {
+          if (!excluindo) void confirmarExclusaoTitulo()
+        }}
+      />
     </div>
   )
 }

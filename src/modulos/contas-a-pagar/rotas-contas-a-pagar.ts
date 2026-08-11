@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { middlewareDeAutenticacao } from '../../infraestrutura/autenticacao/middleware-de-autenticacao.js'
 import { middlewareDeAutorizacao } from '../../infraestrutura/autenticacao/middleware-de-autorizacao.js'
 import { middlewareEmpresaAtiva } from '../../infraestrutura/autenticacao/middleware-empresa-ativa.js'
+import { middlewareSomenteAdmin } from '../../infraestrutura/autenticacao/middleware-somente-admin.js'
 import { controladorDeContasAPagar } from './controlador-contas-a-pagar.js'
 
 export async function rotasDeContasAPagar(aplicacao: FastifyInstance) {
@@ -75,7 +76,7 @@ export async function rotasDeContasAPagar(aplicacao: FastifyInstance) {
 
   aplicacao.delete(
     '/:id',
-    { preHandler: [...auth, middlewareDeAutorizacao('financeiro:edit')] },
+    { preHandler: [...auth, middlewareSomenteAdmin] },
     controladorDeContasAPagar.excluir
   )
 }

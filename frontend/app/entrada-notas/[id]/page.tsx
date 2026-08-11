@@ -513,6 +513,21 @@ function parcelaFinanceiroVazia(): ParcelaFinanceiroFrete {
   return { numeroDocumento: '', vencimento: '', valor: '' }
 }
 
+/**
+ * Valor default da prévia sem stub: prefere Valor Frete / total transporte
+ * (para a soma já bater no Salvar). Fallback: vRec do XML.
+ */
+function valorDefaultFinanceiroFrete(
+  totalTransporte: number,
+  sugestaoValor: number | null | undefined
+): number | null {
+  if (totalTransporte > 0) return Math.round(totalTransporte * 100) / 100
+  if (sugestaoValor != null && Number.isFinite(sugestaoValor) && sugestaoValor > 0) {
+    return Math.round(sugestaoValor * 100) / 100
+  }
+  return null
+}
+
 function stubParaParcelasUi(
   stub:
     | {
@@ -570,7 +585,7 @@ function assinaturaCtesFinanceiro(nota: DetalheNota | null | undefined): string 
   return (nota?.ctesVinculados ?? [])
     .map(
       (v) =>
-        `${v.id}:${v.financeiro?.id ?? ''}:${v.financeiro?.valor ?? ''}:${v.sugestaoFinanceiroFrete?.numeroDocumento ?? ''}:${v.sugestaoFinanceiroFrete?.valor ?? ''}:${assinaturaParcelas(v.financeiro?.parcelas)}`
+        `${v.id}:${v.financeiro?.id ?? ''}:${v.financeiro?.valor ?? ''}:${v.valorFrete ?? ''}:${v.cte?.valorTotal ?? ''}:${v.sugestaoFinanceiroFrete?.numeroDocumento ?? ''}:${v.sugestaoFinanceiroFrete?.valor ?? ''}:${assinaturaParcelas(v.financeiro?.parcelas)}`
     )
     .join('|')
 }
@@ -855,13 +870,14 @@ function ConteudoDetalheEntrada() {
 
   useEffect(() => {
     if (!nota) return
+    const totalTransporte = resolverTotalTransporteUi(nota)
     if (nota.tipoDocumento === 'cte') {
       const fin = (nota.despesasFrete ?? [])[0]
       const sugestao = nota.sugestaoFinanceiroFrete
       setFinParcelas(
         stubParaParcelasUi(fin, {
           numeroDocumento: sugestao?.numeroDocumento ?? '',
-          valor: sugestao?.valor ?? null,
+          valor: valorDefaultFinanceiroFrete(totalTransporte, sugestao?.valor),
         })
       )
       return
@@ -872,13 +888,14 @@ function ConteudoDetalheEntrada() {
     setFinParcelas(
       stubParaParcelasUi(fin, {
         numeroDocumento: sugestao?.numeroDocumento ?? '',
-        valor: sugestao?.valor ?? null,
+        valor: valorDefaultFinanceiroFrete(totalTransporte, sugestao?.valor),
       })
     )
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reidrata só quando vínculos/despesa mudam
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reidrata só quando vínculos/despesa/total frete mudam
   }, [
     nota?.id,
     nota?.tipoDocumento,
+    nota?.valorTotal,
     nota?.sugestaoFinanceiroFrete?.numeroDocumento,
     nota?.sugestaoFinanceiroFrete?.valor,
     assinaturaDespesasFrete(nota),
@@ -2234,10 +2251,10 @@ function ConteudoDetalheEntrada() {
           {(ehNfe55 || ehCte) && (
             <CardPadrao titulo="Financeiro (prévia)">
               <p className="mb-3 text-xs text-muted-foreground">
-                Prévia — contas a pagar será gerado no lançamento (futuro). Hoje só grava stub
-                (duplicatas: número, vencimento e valor) sem título no financeiro. Ao adicionar
-                parcela o valor é dividido por igual; você pode ajustar depois. A soma deve bater
-                com o Valor Frete (total do transporte).
+                Com CT-e vinculado, número do documento e valor (Valor Frete / total do transporte)
+                vêm preenchidos automaticamente. Informe só a data de vencimento de cada parcela e
+                Salvar — a prévia não grava sem vencimento. Contas a pagar é gerado no lançamento. Ao
+                adicionar parcela o valor é dividido por igual; a soma deve bater com o Valor Frete.
                 {freteConsultivo
                   ? ' Frete do remetente: edição desabilitada (somente consulta).'
                   : ''}

@@ -128,7 +128,11 @@ async function baixarAnexo(requisicao: FastifyRequest, resposta: FastifyReply) {
   const { caminhoAbsoluto, nomeArquivo, mimeType } =
     await servicoDeContasAPagar.baixarAnexoArquivo(companyId(requisicao), id, anexoId)
   const buffer = await readFile(caminhoAbsoluto)
-  resposta.header('Content-Disposition', `attachment; filename="${nomeArquivo}"`)
+  const nomeSeguro = nomeArquivo.replace(/["\r\n]/g, '_')
+  resposta.header(
+    'Content-Disposition',
+    `attachment; filename="${nomeSeguro}"; filename*=UTF-8''${encodeURIComponent(nomeArquivo)}`
+  )
   return resposta.type(mimeType).send(buffer)
 }
 
