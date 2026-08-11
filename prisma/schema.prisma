@@ -50,6 +50,7 @@ model Company {
   contasPagar                 ContaPagar[]
   contaPagarCodigoSeq         ContaPagarCodigoSeq?
   contasPagarBaixas           ContaPagarBaixa[]
+  contasPagarAnexos           ContaPagarAnexo[]
   createdAt                   DateTime                     @default(now())
 }
 
@@ -304,6 +305,7 @@ model ContaPagar {
   updatedAt         DateTime @updatedAt
 
   parcelas ContaPagarParcela[]
+  anexos   ContaPagarAnexo[]
 
   @@unique([companyId, codigo])
   @@index([companyId, status])
@@ -311,6 +313,25 @@ model ContaPagar {
   @@index([pessoaId])
   @@index([nfeRecebidaId])
   @@index([planoFinanceiroId])
+}
+
+/// Anexo de documento do título (PDF/imagem), máx. 2 MB.
+model ContaPagarAnexo {
+  id             String     @id @default(uuid())
+  companyId      String
+  company        Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contaPagarId   String
+  contaPagar     ContaPagar @relation(fields: [contaPagarId], references: [id], onDelete: Cascade)
+  nomeArquivo    String
+  mimeType       String
+  caminhoArquivo String
+  tamanhoBytes   Int
+  usuarioId      String?
+  usuario        User?      @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  createdAt      DateTime   @default(now())
+
+  @@index([contaPagarId])
+  @@index([companyId])
 }
 
 model ContaPagarParcela {
@@ -719,6 +740,7 @@ model User {
   estoqueMovimentos EstoqueMovimento[]
   contagensEntrada  ContagemEntrada[]
   contasPagarBaixas ContaPagarBaixa[]
+  contasPagarAnexos ContaPagarAnexo[]
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 }

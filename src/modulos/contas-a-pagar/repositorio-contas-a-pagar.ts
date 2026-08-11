@@ -254,9 +254,91 @@ export const repositorioDeContasAPagar = {
   async buscarPorId(companyId: string, id: string) {
     const row = await clientePrisma.contaPagar.findFirst({
       where: { id, companyId },
-      include: includeDetalhe,
+      include: {
+        ...includeDetalhe,
+        anexos: {
+          orderBy: { createdAt: 'desc' },
+          include: { usuario: { select: { id: true, name: true } } },
+        },
+      },
     })
-    return row ? mapearContaPagar(row) : null
+    if (!row) return null
+    const mapped = mapearContaPagar(row)
+    return {
+      ...mapped,
+      anexos: (row.anexos ?? []).map((a) => ({
+        id: a.id,
+        nomeArquivo: a.nomeArquivo,
+        mimeType: a.mimeType,
+        tamanhoBytes: a.tamanhoBytes,
+        createdAt: a.createdAt.toISOString(),
+        usuario: a.usuario ? { id: a.usuario.id, name: a.usuario.name } : null,
+      })),
+    }
+  },
+
+  async listarAnexos(companyId: string, contaPagarId: string) {
+    const conta = await clientePrisma.contaPagar.findFirst({
+      where: { id: contaPagarId, companyId },
+      select: { id: true },
+    })
+    if (!conta) return null
+    const rows = await clientePrisma.contaPagarAnexo.findMany({
+      where: { contaPagarId, companyId },
+      orderBy: { createdAt: 'desc' },
+      include: { usuario: { select: { id: true, name: true } } },
+    })
+    return rows.map((a) => ({
+      id: a.id,
+      nomeArquivo: a.nomeArquivo,
+      mimeType: a.mimeType,
+      tamanhoBytes: a.tamanhoBytes,
+      createdAt: a.createdAt.toISOString(),
+      usuario: a.usuario ? { id: a.usuario.id, name: a.usuario.name } : null,
+    }))
+  },
+
+  async criarAnexo(
+    companyId: string,
+    contaPagarId: string,
+    dados: {
+      nomeArquivo: string
+      mimeType: string
+      caminhoArquivo: string
+      tamanhoBytes: number
+      usuarioId: string | null
+    }
+  ) {
+    const row = await clientePrisma.contaPagarAnexo.create({
+      data: {
+        companyId,
+        contaPagarId,
+        nomeArquivo: dados.nomeArquivo,
+        mimeType: dados.mimeType,
+        caminhoArquivo: dados.caminhoArquivo,
+        tamanhoBytes: dados.tamanhoBytes,
+        usuarioId: dados.usuarioId,
+      },
+      include: { usuario: { select: { id: true, name: true } } },
+    })
+    return {
+      id: row.id,
+      nomeArquivo: row.nomeArquivo,
+      mimeType: row.mimeType,
+      tamanhoBytes: row.tamanhoBytes,
+      createdAt: row.createdAt.toISOString(),
+      usuario: row.usuario ? { id: row.usuario.id, name: row.usuario.name } : null,
+    }
+  },
+
+  async buscarAnexo(companyId: string, contaPagarId: string, anexoId: string) {
+    return clientePrisma.contaPagarAnexo.findFirst({
+      where: { id: anexoId, contaPagarId, companyId },
+    })
+  },
+
+  async deletarAnexo(anexoId: string) {
+    await clientePrisma.contaPagarAnexo.delete({ where: { id: anexoId } })
   },
 
   async criar(

@@ -32,6 +32,30 @@ export async function rotasDeContasAPagar(aplicacao: FastifyInstance) {
   )
 
   aplicacao.get(
+    '/:id/anexos',
+    { preHandler: [...auth, middlewareDeAutorizacao('financeiro:view')] },
+    controladorDeContasAPagar.listarAnexos
+  )
+
+  aplicacao.post(
+    '/:id/anexos',
+    { preHandler: [...auth, middlewareDeAutorizacao('financeiro:edit')] },
+    controladorDeContasAPagar.enviarAnexo
+  )
+
+  aplicacao.get(
+    '/:id/anexos/:anexoId/download',
+    { preHandler: [...auth, middlewareDeAutorizacao('financeiro:view')] },
+    controladorDeContasAPagar.baixarAnexo
+  )
+
+  aplicacao.delete(
+    '/:id/anexos/:anexoId',
+    { preHandler: [...auth, middlewareDeAutorizacao('financeiro:edit')] },
+    controladorDeContasAPagar.excluirAnexo
+  )
+
+  aplicacao.get(
     '/:id',
     { preHandler: [...auth, middlewareDeAutorizacao('financeiro:view')] },
     controladorDeContasAPagar.obter

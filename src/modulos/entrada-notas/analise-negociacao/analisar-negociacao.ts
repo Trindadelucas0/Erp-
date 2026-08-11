@@ -2,6 +2,11 @@
  * Etapa 3 — Análise de negociação (NF × pedido de compra).
  */
 import type { ResultadoEtapa } from '../tipos-analise.js'
+import {
+  formatarDiasPrazo,
+  normalizarPrazoParaDias,
+  prazosIguais,
+} from './normalizar-prazo-negociacao.js'
 
 const TOLERANCIA_PRECO = 0.01
 const TOLERANCIA_QTD = 0.0001
@@ -74,6 +79,8 @@ export function analisarNegociacao(params: {
   } | null
   prazoNf: string | null
   prazoInformadoUsuario: string | null
+  /** Emissão da NF — base para converter dVenc em dias. */
+  dataEmissao?: Date | string | null
   /** Consumo/Prestador documental: não exige PO. */
   modoDocumental?: boolean
 }): {
@@ -240,15 +247,32 @@ export function analisarNegociacao(params: {
     })
     temNegativa = true
   } else if (params.pedido.condicaoPagamento) {
-    const poPrazo = params.pedido.condicaoPagamento.trim().toLowerCase()
-    const nfPrazo = prazoEfetivo.toLowerCase()
-    if (poPrazo && nfPrazo && poPrazo !== nfPrazo) {
-      pushAchado({
-        categoria: 'prazo',
-        severidade: 'aviso',
-        mensagem: `Prazo de pagamento diverge do pedido (NF: ${prazoEfetivo} × pedido: ${params.pedido.condicaoPagamento}).`,
-      })
-      temPositiva = true
+    const diasNf = normalizarPrazoParaDias(prazoEfetivo, params.dataEmissao)
+    const diasPedido = normalizarPrazoParaDias(params.pedido.condicaoPagamento)
+    if (diasNf && diasPedido) {
+      if (!prazosIguais(diasNf, diasPedido)) {
+        pushAchado({
+          categoria: 'prazo',
+          severidade: 'aviso',
+          mensagem: `Prazo de pagamento diverge do pedido (NF: ${formatarDiasPrazo(diasNf)} × pedido: ${formatarDiasPrazo(diasPedido)}).`,
+        })
+        temPositiva = true
+      }
+    } else {
+      const poPrazo = params.pedido.condicaoPagamento.trim().toLowerCase()
+      const nfPrazo = prazoEfetivo.toLowerCase()
+      if (poPrazo && nfPrazo && poPrazo !== nfPrazo) {
+        const rotuloNf = diasNf ? formatarDiasPrazo(diasNf) : prazoEfetivo
+        const rotuloPedido = diasPedido
+          ? formatarDiasPrazo(diasPedido)
+          : params.pedido.condicaoPagamento
+        pushAchado({
+          categoria: 'prazo',
+          severidade: 'aviso',
+          mensagem: `Prazo de pagamento diverge do pedido (NF: ${rotuloNf} × pedido: ${rotuloPedido}).`,
+        })
+        temPositiva = true
+      }
     }
   }
 

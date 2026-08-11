@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import {
@@ -6,6 +7,7 @@ import {
   esquemaDeEdicaoDeContaPagar,
   esquemaFiltroHistoricoBaixas,
   esquemaFiltroListagemContasPagar,
+  esquemaUploadAnexoContaPagar,
 } from './esquema-contas-a-pagar.js'
 import { servicoDeContasAPagar } from './servico-contas-a-pagar.js'
 
@@ -100,6 +102,47 @@ async function baixar(requisicao: FastifyRequest, resposta: FastifyReply) {
   return resposta.status(201).send(resultado)
 }
 
+async function listarAnexos(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id } = requisicao.params as { id: string }
+  const anexos = await servicoDeContasAPagar.listarAnexos(companyId(requisicao), id)
+  return resposta.send({ anexos })
+}
+
+async function enviarAnexo(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id } = requisicao.params as { id: string }
+  const parse = esquemaUploadAnexoContaPagar.safeParse(requisicao.body)
+  if (!parse.success) {
+    throw new ErroDaAplicacao(parse.error.errors[0]?.message ?? 'Dados do anexo inválidos', 400)
+  }
+  const anexo = await servicoDeContasAPagar.enviarAnexo(
+    companyId(requisicao),
+    id,
+    requisicao.idDoUsuario!,
+    parse.data
+  )
+  return resposta.status(201).send({ anexo })
+}
+
+async function baixarAnexo(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id, anexoId } = requisicao.params as { id: string; anexoId: string }
+  const { caminhoAbsoluto, nomeArquivo, mimeType } =
+    await servicoDeContasAPagar.baixarAnexoArquivo(companyId(requisicao), id, anexoId)
+  const buffer = await readFile(caminhoAbsoluto)
+  resposta.header('Content-Disposition', `attachment; filename="${nomeArquivo}"`)
+  return resposta.type(mimeType).send(buffer)
+}
+
+async function excluirAnexo(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id, anexoId } = requisicao.params as { id: string; anexoId: string }
+  const resultado = await servicoDeContasAPagar.excluirAnexo(
+    companyId(requisicao),
+    id,
+    anexoId,
+    requisicao.idDoUsuario!
+  )
+  return resposta.send(resultado)
+}
+
 export const controladorDeContasAPagar = {
   listar,
   listarParaBaixar,
@@ -109,4 +152,8 @@ export const controladorDeContasAPagar = {
   editar,
   excluir,
   baixar,
+  listarAnexos,
+  enviarAnexo,
+  baixarAnexo,
+  excluirAnexo,
 }

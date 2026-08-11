@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { analisarNegociacao } from './analisar-negociacao.js'
+import {
+  formatarDiasPrazo,
+  normalizarPrazoParaDias,
+} from './normalizar-prazo-negociacao.js'
 
 describe('analisarNegociacao — modo documental', () => {
   it('sem PO e modoDocumental=true → aviso, não bloqueante', () => {
@@ -138,6 +142,123 @@ describe('analisarNegociacao — mensagens e categorias', () => {
           valorPedido: 420,
         }),
       ])
+    )
+  })
+})
+
+describe('normalizarPrazoParaDias', () => {
+  it('converte vencimentos ISO em dias a partir da emissão', () => {
+    expect(
+      normalizarPrazoParaDias(
+        '2026-09-08, 2026-09-21, 2026-10-05, 2026-10-19, 2026-11-03',
+        '2026-08-11'
+      )
+    ).toEqual([28, 41, 55, 69, 84])
+  })
+
+  it('sem emissão e só datas → null', () => {
+    expect(normalizarPrazoParaDias('2026-09-08, 2026-09-21', null)).toBeNull()
+  })
+
+  it('extrai dias de texto do pedido', () => {
+    expect(normalizarPrazoParaDias('28/42/56/70/84')).toEqual([28, 42, 56, 70, 84])
+    expect(normalizarPrazoParaDias('30 dias')).toEqual([30])
+    expect(formatarDiasPrazo([28, 42, 56])).toBe('28/42/56')
+  })
+})
+
+describe('analisarNegociacao — prazo em dias', () => {
+  const itensOk = [
+    {
+      id: 'item-1',
+      produtoId: 'p1',
+      quantidade: 10,
+      valorUnitario: 5,
+      nomeSistema: 'PROD',
+    },
+  ]
+  const itensPo = [{ produtoId: 'p1', quantidade: 10, precoUnitario: 5, nome: 'PROD' }]
+
+  it('datas da NF equivalentes aos dias do pedido → sem aviso de prazo', () => {
+    // 2026-08-11 + 28/42/56/70/84
+    const resultado = analisarNegociacao({
+      itensNf: itensOk,
+      pedido: {
+        id: 'po-1',
+        numero: 1,
+        condicaoPagamento: '28/42/56/70/84',
+        prazosPagamento: null,
+        itens: itensPo,
+      },
+      prazoNf: '2026-09-08, 2026-09-22, 2026-10-06, 2026-10-20, 2026-11-03',
+      prazoInformadoUsuario: null,
+      dataEmissao: '2026-08-11',
+    })
+
+    expect(resultado.resultado.avisos.filter((a) => a.includes('Prazo de pagamento'))).toHaveLength(
+      0
+    )
+    expect(resultado.classificacao).toBe('ok')
+  })
+
+  it('datas da NF divergentes → aviso com dias nos dois lados', () => {
+    const resultado = analisarNegociacao({
+      itensNf: itensOk,
+      pedido: {
+        id: 'po-1',
+        numero: 1,
+        condicaoPagamento: '30/60',
+        prazosPagamento: null,
+        itens: itensPo,
+      },
+      prazoNf: '2026-09-08, 2026-09-22, 2026-10-06, 2026-10-20, 2026-11-03',
+      prazoInformadoUsuario: null,
+      dataEmissao: '2026-08-11',
+    })
+
+    expect(resultado.resultado.avisos[0]).toBe(
+      'Prazo de pagamento diverge do pedido (NF: 28/42/56/70/84 × pedido: 30/60).'
+    )
+    expect(resultado.classificacao).toBe('positiva')
+  })
+
+  it('texto já em dias (30 dias × 30) → ok', () => {
+    const resultado = analisarNegociacao({
+      itensNf: itensOk,
+      pedido: {
+        id: 'po-1',
+        numero: 1,
+        condicaoPagamento: '30',
+        prazosPagamento: null,
+        itens: itensPo,
+      },
+      prazoNf: '30 dias',
+      prazoInformadoUsuario: null,
+    })
+
+    expect(resultado.resultado.avisos.filter((a) => a.includes('Prazo de pagamento'))).toHaveLength(
+      0
+    )
+    expect(resultado.classificacao).toBe('ok')
+  })
+
+  it('sem emissão e só datas na NF → mantém aviso (não inventa match)', () => {
+    const resultado = analisarNegociacao({
+      itensNf: itensOk,
+      pedido: {
+        id: 'po-1',
+        numero: 1,
+        condicaoPagamento: '28/42/56/70/84',
+        prazosPagamento: null,
+        itens: itensPo,
+      },
+      prazoNf: '2026-09-08, 2026-09-22, 2026-10-06, 2026-10-20, 2026-11-03',
+      prazoInformadoUsuario: null,
+      dataEmissao: null,
+    })
+
+    expect(resultado.resultado.avisos.some((a) => a.includes('Prazo de pagamento diverge'))).toBe(
+      true
     )
   })
 })

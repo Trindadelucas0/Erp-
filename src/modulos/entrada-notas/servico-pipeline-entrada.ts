@@ -1336,6 +1336,7 @@ async function analisarNota(
       : null,
     prazoNf: nota.prazoPagamentoXml,
     prazoInformadoUsuario: nota.prazoPagamentoTexto,
+    dataEmissao: nota.dataEmissao,
     modoDocumental,
   })
 

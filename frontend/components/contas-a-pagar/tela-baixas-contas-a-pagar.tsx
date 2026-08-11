@@ -412,6 +412,7 @@ export function TelaBaixasContasAPagar({ fornecedores, planos, aoBaixar }: Props
               detalhe.conta.codigoExibicao ?? formatarCodigoContaPagar(detalhe.conta.codigo)
             }
             somenteLeitura
+            contaId={detalhe.conta.id}
           />
         )}
       </Modal>

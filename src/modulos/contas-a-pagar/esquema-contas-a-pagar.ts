@@ -101,3 +101,25 @@ export const esquemaFiltroHistoricoBaixas = z.object({
 
 export type FiltroHistoricoBaixas = z.infer<typeof esquemaFiltroHistoricoBaixas>
 export type DadosBaixaLote = z.infer<typeof esquemaBaixaLote>
+
+const MIME_ANEXO_CONTA = [
+  'application/pdf',
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+] as const
+
+/** ~2 MB em base64 (~2.7M chars). Validação fina no storage pelo buffer. */
+export const esquemaUploadAnexoContaPagar = z.object({
+  nomeArquivo: z.string().min(1, 'Nome do arquivo obrigatório').max(200),
+  mimeType: z.enum(MIME_ANEXO_CONTA, {
+    invalid_type_error: 'Tipo não permitido. Use PDF, JPG, PNG ou WEBP.',
+  }),
+  base64Arquivo: z
+    .string()
+    .min(50, 'Arquivo inválido')
+    .max(3_500_000, 'Arquivo não pode ser superior a 2 MB'),
+})
+
+export type DadosUploadAnexoContaPagar = z.infer<typeof esquemaUploadAnexoContaPagar>

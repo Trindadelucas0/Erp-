@@ -4,6 +4,9 @@ import { InputPadrao } from '@/components/ui/input-padrao'
 import { SelectPadrao } from '@/components/ui/select-padrao'
 import { TextareaPadrao } from '@/components/ui/textarea-padrao'
 import { Label } from '@/components/ui/label'
+import { ComboboxPessoa } from '@/components/pedidos-compra/combobox-pessoa'
+import { ComboboxPlanoFinanceiro } from '@/components/contas-a-pagar/combobox-plano-financeiro'
+import { AnexosContaPagar } from '@/components/contas-a-pagar/anexos-conta-pagar'
 import {
   FormContaPagar,
   OPCOES_TIPO_CONTA,
@@ -20,6 +23,8 @@ type Props = {
   codigoExibicao?: string | null
   somenteLeitura?: boolean
   erro?: string | null
+  /** Id do título gravado — necessário para anexar. */
+  contaId?: string | null
 }
 
 export function FormularioContaPagar({
@@ -30,6 +35,7 @@ export function FormularioContaPagar({
   codigoExibicao,
   somenteLeitura = false,
   erro,
+  contaId = null,
 }: Props) {
   function patch(parcial: Partial<FormContaPagar>) {
     aoMudar({ ...form, ...parcial })
@@ -152,31 +158,28 @@ export function FormularioContaPagar({
 
       <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="min-w-0">
-          <SelectPadrao
+          <ComboboxPessoa
             rotulo="Fornecedor"
+            pessoas={fornecedores}
             valor={form.pessoaId}
             aoMudar={(pessoaId) => patch({ pessoaId })}
-            opcoes={[
-              { value: '', label: '— Sem fornecedor —' },
-              ...fornecedores.map((f) => ({ value: f.id, label: f.nome })),
-            ]}
             disabled={somenteLeitura}
+            permitirVazio
+            rotuloVazio="Sem fornecedor"
+            placeholder="Digite para buscar fornecedor..."
           />
         </div>
 
         <div className="min-w-0">
-          <SelectPadrao
+          <ComboboxPlanoFinanceiro
             rotulo="Plano financeiro"
+            planos={planos}
             valor={form.planoFinanceiroId}
             aoMudar={(planoFinanceiroId) => patch({ planoFinanceiroId })}
-            opcoes={[
-              { value: '', label: '— Sem plano —' },
-              ...planos.map((p) => ({
-                value: p.id,
-                label: p.codigo ? `${p.codigo} ${p.nome}` : p.nome,
-              })),
-            ]}
             disabled={somenteLeitura}
+            permitirVazio
+            rotuloVazio="Sem plano"
+            placeholder="Digite código ou nome do plano..."
           />
         </div>
       </div>
@@ -226,6 +229,11 @@ export function FormularioContaPagar({
         onChange={(e) => patch({ observacao: e.target.value })}
         disabled={somenteLeitura}
         className="min-h-[100px]"
+      />
+
+      <AnexosContaPagar
+        contaId={contaId}
+        somenteLeitura={somenteLeitura}
       />
     </div>
   )

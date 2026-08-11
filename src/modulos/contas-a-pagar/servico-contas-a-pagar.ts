@@ -8,6 +8,12 @@ import type {
   FiltroListagemContasPagar,
 } from './esquema-contas-a-pagar.js'
 import { repositorioDeContasAPagar, ErroBaixa } from './repositorio-contas-a-pagar.js'
+import type { DadosUploadAnexoContaPagar } from './esquema-contas-a-pagar.js'
+import {
+  caminhoAbsolutoAnexoContaPagar,
+  removerAnexoContaPagar,
+  salvarAnexoContaPagar,
+} from './armazenamento-anexo-conta-pagar.js'
 
 function parseData(iso: string | null | undefined): Date | null {
   if (!iso) return null
@@ -222,6 +228,96 @@ async function baixar(
   }
 }
 
+function assertContaPermiteAnexoMutacao(conta: {
+  origem: string
+  status: string
+}) {
+  if (conta.origem !== 'manual') {
+    throw new ErroDaAplicacao('Só é possível anexar/excluir em títulos de origem manual', 400)
+  }
+  if (conta.status !== 'aberto') {
+    throw new ErroDaAplicacao('Só é possível anexar/excluir em títulos com status aberto', 400)
+  }
+}
+
+async function listarAnexos(companyId: string, contaId: string) {
+  const anexos = await repositorioDeContasAPagar.listarAnexos(companyId, contaId)
+  if (anexos == null) throw new ErroDaAplicacao('Conta a pagar não encontrada', 404)
+  return anexos
+}
+
+async function enviarAnexo(
+  companyId: string,
+  contaId: string,
+  usuarioId: string,
+  dados: DadosUploadAnexoContaPagar
+) {
+  const conta = await repositorioDeContasAPagar.buscarPorId(companyId, contaId)
+  if (!conta) throw new ErroDaAplicacao('Conta a pagar não encontrada', 404)
+  assertContaPermiteAnexoMutacao(conta)
+
+  const { caminhoArquivo, tamanhoBytes } = await salvarAnexoContaPagar(
+    contaId,
+    dados.mimeType,
+    dados.base64Arquivo
+  )
+
+  const anexo = await repositorioDeContasAPagar.criarAnexo(companyId, contaId, {
+    nomeArquivo: dados.nomeArquivo.trim(),
+    mimeType: dados.mimeType.toLowerCase(),
+    caminhoArquivo,
+    tamanhoBytes,
+    usuarioId,
+  })
+
+  await registrarAuditoria({
+    usuarioId,
+    acao: 'anexar',
+    entidade: 'ContaPagarAnexo',
+    entidadeId: anexo.id,
+    valoresDepois: { contaId, nomeArquivo: anexo.nomeArquivo, tamanhoBytes },
+  })
+
+  return anexo
+}
+
+async function baixarAnexoArquivo(companyId: string, contaId: string, anexoId: string) {
+  const anexo = await repositorioDeContasAPagar.buscarAnexo(companyId, contaId, anexoId)
+  if (!anexo) throw new ErroDaAplicacao('Anexo não encontrado', 404)
+  return {
+    caminhoAbsoluto: caminhoAbsolutoAnexoContaPagar(anexo.caminhoArquivo),
+    nomeArquivo: anexo.nomeArquivo,
+    mimeType: anexo.mimeType,
+  }
+}
+
+async function excluirAnexo(
+  companyId: string,
+  contaId: string,
+  anexoId: string,
+  usuarioId: string
+) {
+  const conta = await repositorioDeContasAPagar.buscarPorId(companyId, contaId)
+  if (!conta) throw new ErroDaAplicacao('Conta a pagar não encontrada', 404)
+  assertContaPermiteAnexoMutacao(conta)
+
+  const anexo = await repositorioDeContasAPagar.buscarAnexo(companyId, contaId, anexoId)
+  if (!anexo) throw new ErroDaAplicacao('Anexo não encontrado', 404)
+
+  await removerAnexoContaPagar(anexo.caminhoArquivo)
+  await repositorioDeContasAPagar.deletarAnexo(anexo.id)
+
+  await registrarAuditoria({
+    usuarioId,
+    acao: 'excluir_anexo',
+    entidade: 'ContaPagarAnexo',
+    entidadeId: anexoId,
+    valoresAntes: { contaId, nomeArquivo: anexo.nomeArquivo },
+  })
+
+  return { ok: true }
+}
+
 export const servicoDeContasAPagar = {
   listar,
   listarParaBaixar,
@@ -231,4 +327,8 @@ export const servicoDeContasAPagar = {
   editar,
   excluir,
   baixar,
+  listarAnexos,
+  enviarAnexo,
+  baixarAnexoArquivo,
+  excluirAnexo,
 }

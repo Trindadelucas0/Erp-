@@ -533,6 +533,7 @@ function ConteudoContasAPagar() {
           }
           somenteLeitura={somenteLeitura || (!podeEditar && Boolean(editando))}
           erro={erroForm}
+          contaId={editando?.id ?? null}
         />
       </Modal>
     </div>
