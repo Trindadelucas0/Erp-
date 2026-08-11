@@ -14,6 +14,7 @@ import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import { Button } from '@/components/ui/button'
 import { formatarDataBr } from '@/lib/contas-a-pagar'
+import { prepararImagemAteBytes } from '@/lib/comprimir-imagem-ate-bytes'
 import { cn } from '@/lib/utils'
 
 export type AnexoContaPagar = {
@@ -71,6 +72,7 @@ function BadgeTipo({ children }: { children: string }) {
 export function AnexosContaPagar({ contaId, somenteLeitura = false }: Props) {
   const [anexos, setAnexos] = useState<AnexoContaPagar[]>([])
   const [erro, setErro] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
   const [arrastando, setArrastando] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -100,31 +102,49 @@ export function AnexosContaPagar({ contaId, somenteLeitura = false }: Props) {
   async function aoEscolherArquivo(file: File | null) {
     if (!file || !contaId || somenteLeitura) return
     setErro(null)
+    setInfo(null)
 
-    if (file.size > MAX_BYTES) {
-      setErro('Arquivo não pode ser superior a 2 MB')
-      return
-    }
     const mime = (file.type || '').toLowerCase()
     if (!MIMES_OK.has(mime)) {
       setErro('Tipo não permitido. Use PDF, JPG, PNG ou WEBP.')
       return
     }
 
+    const ehPdf = mime === 'application/pdf'
+    if (ehPdf && file.size > MAX_BYTES) {
+      setErro('PDF não pode ser superior a 2 MB')
+      return
+    }
+
     setEnviando(true)
     try {
-      const base64Arquivo = await lerArquivoBase64(file)
+      let nomeArquivo = file.name
+      let mimeType = mime === 'image/jpg' ? 'image/jpeg' : mime
+      let base64Arquivo: string
+
+      if (!ehPdf) {
+        const preparado = await prepararImagemAteBytes(file, MAX_BYTES)
+        nomeArquivo = preparado.nomeArquivo
+        mimeType = preparado.mimeType
+        base64Arquivo = preparado.dataUrl
+        if (preparado.feedback) setInfo(preparado.feedback)
+      } else {
+        base64Arquivo = await lerArquivoBase64(file)
+      }
+
       const { data } = await clienteHttp.post<{ anexo: AnexoContaPagar }>(
         `/contas-a-pagar/${contaId}/anexos`,
         {
-          nomeArquivo: file.name,
-          mimeType: mime === 'image/jpg' ? 'image/jpeg' : mime,
+          nomeArquivo,
+          mimeType,
           base64Arquivo,
         }
       )
       setAnexos((prev) => [data.anexo, ...prev])
     } catch (e) {
-      setErro(extrairMensagemApi(e, 'Não foi possível anexar o arquivo.'))
+      const fallback =
+        e instanceof Error ? e.message : 'Não foi possível anexar o arquivo.'
+      setErro(extrairMensagemApi(e, fallback))
     } finally {
       setEnviando(false)
       if (inputRef.current) inputRef.current.value = ''
@@ -187,7 +207,8 @@ export function AnexosContaPagar({ contaId, somenteLeitura = false }: Props) {
           <div className="min-w-0 space-y-1 pt-0.5">
             <p className="text-sm font-medium">Grave o título primeiro</p>
             <p className="text-xs leading-relaxed text-muted-foreground">
-              Depois de salvar, você poderá anexar PDF ou imagem (até 2 MB cada).
+              Depois de salvar, anexe PDF (até 2 MB) ou imagem — fotos maiores são reduzidas
+              automaticamente para caber no limite.
             </p>
           </div>
         </div>
@@ -244,7 +265,7 @@ export function AnexosContaPagar({ contaId, somenteLeitura = false }: Props) {
                     {enviando ? 'Enviando…' : 'Clique ou arraste um arquivo'}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    PDF ou imagem · até 2 MB
+                    PDF até 2 MB · imagem maior é convertida automaticamente
                   </p>
                 </div>
               </button>
@@ -256,6 +277,12 @@ export function AnexosContaPagar({ contaId, somenteLeitura = false }: Props) {
               Nenhum anexo neste título.
             </div>
           ) : null}
+
+          {info && (
+            <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              {info}
+            </p>
+          )}
 
           {erro && (
             <p

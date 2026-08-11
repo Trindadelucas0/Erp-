@@ -1933,14 +1933,6 @@ function ConteudoDetalheEntrada() {
               />
             </CardPadrao>
           )}
-          {!pipelineBloqueado && (
-            <CardManifestoDestinatario
-              acao={acao}
-              justificativa={justificativaManifesto}
-              onJustificativaChange={setJustificativaManifesto}
-              onManifestar={(tipo) => void manifestar(tipo)}
-            />
-          )}
         </div>
       )}
 
