@@ -113,12 +113,21 @@ function sessaoEditavel(status: string): boolean {
 }
 
 async function listarDisponiveis(companyId: string) {
-  const { notas, ignoradas } = await repositorioContagens.listarNotasDisponiveis(companyId)
+  const [{ notas, ignoradas }, sessoesBrutas] = await Promise.all([
+    repositorioContagens.listarNotasDisponiveis(companyId),
+    repositorioContagens.listarSessoesAtivas(companyId),
+  ])
   return {
     notas: notas.map(mapearNotaCega),
     ignoradas: ignoradas.map((n) => ({
       ...mapearNotaCega(n),
       motivo: n.motivo,
+    })),
+    sessoesAtivas: sessoesBrutas.map((sessao) => ({
+      id: sessao.id,
+      status: sessao.status,
+      iniciadoEm: sessao.iniciadoEm,
+      entradas: sessao.notas.map((n) => mapearNotaCega(n.nfeRecebida)),
     })),
   }
 }

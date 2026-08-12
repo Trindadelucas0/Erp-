@@ -7,6 +7,10 @@ import {
   normalizarXmlNfe,
 } from '../focus-nfe/parser-xml-nfe.js'
 import { repositorioDeContasAPagar, ErroBaixa } from './repositorio-contas-a-pagar.js'
+import {
+  primeiroPlanoLiberadoFornecedor,
+  resolverPlanoFinanceiroMercadoriaNfe,
+} from './resolver-plano-financeiro-entrada.js'
 
 function decimalNum(v: unknown): number {
   if (v == null) return 0
@@ -57,28 +61,6 @@ function parcelasDoStubDespesa(despesa: {
     })
   }
   return out
-}
-
-async function primeiroPlanoLiberadoFornecedor(
-  companyId: string,
-  pessoaId: string | null
-): Promise<string | null> {
-  if (!pessoaId) return null
-  const papel = await clientePrisma.pessoaPapel.findFirst({
-    where: { pessoaId, papel: 'fornecedor', ativo: true, pessoa: { companyId } },
-    select: {
-      dadosFornecedor: {
-        select: {
-          planosFinanceiros: {
-            take: 1,
-            select: { planoFinanceiroId: true },
-            orderBy: { planoFinanceiroId: 'asc' },
-          },
-        },
-      },
-    },
-  })
-  return papel?.dadosFornecedor?.planosFinanceiros?.[0]?.planoFinanceiroId ?? null
 }
 
 async function promoverFreteParaContaPagar(companyId: string, notaMercadoriaId: string) {
@@ -194,10 +176,10 @@ async function gerarTituloMercadoriaNfe(
   }
 
   const nNF = xml ? extrairCampoXml(xml, 'nNF') : null
-  const planoFinanceiroId = await primeiroPlanoLiberadoFornecedor(
-    companyId,
-    nota.fornecedorPessoaId
-  )
+  const planoFinanceiroId = await resolverPlanoFinanceiroMercadoriaNfe(companyId, {
+    notaId,
+    fornecedorPessoaId: nota.fornecedorPessoaId,
+  })
 
   try {
     return await repositorioDeContasAPagar.criarDeEntrada(companyId, {

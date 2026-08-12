@@ -440,18 +440,25 @@ export function ConteudoDaPaginaCfops() {
                 />
               )}
 
-              {!cfopEhSaida && classificacaoAtual && (
-                <ComboboxPlanoFinanceiro
-                  rotulo="Plano financeiro padrão"
-                  planos={planosFinanceiros}
-                  valor={form.planoFinanceiroPadraoId}
-                  aoMudar={(planoId) =>
-                    setForm((f) => ({ ...f, planoFinanceiroPadraoId: planoId }))
-                  }
-                  disabled={salvando}
-                  permitirVazio
-                />
-              )}
+              {!cfopEhSaida && classificacaoAtual ? (
+                <SecaoFormularioErp titulo="Financeiro">
+                  <p className="mb-3 text-xs text-muted-foreground">
+                    Plano aplicado automaticamente ao gerar Contas a Pagar na Entrada de Notas,
+                    conforme o CFOP de entrada prevalente dos itens (maior valor na NF).
+                  </p>
+                  <ComboboxPlanoFinanceiro
+                    rotulo="Plano financeiro padrão"
+                    planos={planosFinanceiros}
+                    valor={form.planoFinanceiroPadraoId}
+                    aoMudar={(planoId) =>
+                      setForm((f) => ({ ...f, planoFinanceiroPadraoId: planoId }))
+                    }
+                    disabled={salvando}
+                    permitirVazio
+                    obrigatorio={false}
+                  />
+                </SecaoFormularioErp>
+              ) : null}
 
               <SecaoFormularioErp titulo="Características opcionais">
                 <p className="mb-3 text-xs text-muted-foreground">

@@ -26,6 +26,18 @@ import {
   formatarMoedaBr,
   tituloVencido,
 } from '@/lib/contas-a-pagar'
+import { cn } from '@/lib/utils'
+
+const TH = 'px-2 py-1.5 font-medium whitespace-nowrap'
+const TD = 'px-2 py-1 whitespace-nowrap'
+const STICKY_LEFT = 'sticky left-0 z-10 bg-inherit shadow-[1px_0_0_0_hsl(var(--border))]'
+const STICKY_RIGHT_VER = 'sticky right-0 z-10 bg-inherit'
+const STICKY_RIGHT_MULTA = 'sticky right-[3.25rem] z-10 bg-inherit'
+const STICKY_RIGHT_JUROS = 'sticky right-[8rem] z-10 bg-inherit'
+const STICKY_RIGHT_PRINCIPAL =
+  'sticky right-[12.75rem] z-10 bg-inherit shadow-[-1px_0_0_0_hsl(var(--border))]'
+const INPUT_VALOR =
+  'h-7 w-[5.25rem] rounded-md border border-input bg-background px-1.5 text-right text-sm tabular-nums'
 
 type Opcao = { id: string; nome: string; codigo?: string }
 
@@ -176,7 +188,7 @@ export function TelaBaixasContasAPagar({ fornecedores, planos, aoBaixar }: Props
       </div>
 
       <div className="flex min-w-0 flex-wrap items-end justify-between gap-3">
-        <div className="min-w-[10rem]">
+        <div className="min-w-[10rem] shrink-0">
           <InputPadrao
             rotulo="Data pagamento"
             type="date"
@@ -184,35 +196,67 @@ export function TelaBaixasContasAPagar({ fornecedores, planos, aoBaixar }: Props
             onChange={(e) => setPagoEm(e.target.value)}
           />
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" onClick={() => void carregar()} disabled={carregando}>
-            Atualizar
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => alternarTodas(true)}
-            disabled={carregando || linhas.length === 0}
-          >
-            Marcar todos
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => alternarTodas(false)}
-            disabled={carregando || linhas.length === 0}
-          >
-            Desmarcar
-          </Button>
+        <div className="flex min-w-0 flex-wrap items-end justify-end gap-2 sm:gap-3">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void carregar()}
+              disabled={carregando}
+            >
+              Atualizar
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => alternarTodas(true)}
+              disabled={carregando || linhas.length === 0}
+            >
+              Marcar todos
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => alternarTodas(false)}
+              disabled={carregando || linhas.length === 0}
+            >
+              Desmarcar
+            </Button>
+          </div>
+          {totais.qtd > 0 && (
+            <div
+              className="flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded-md border border-border bg-muted/30 px-3 py-1.5 text-xs sm:text-sm"
+              aria-live="polite"
+            >
+              <span>
+                Selecionados: <strong className="text-foreground">{totais.qtd}</strong>
+              </span>
+              <span>
+                Principal: <strong className="text-foreground">{formatarMoedaBr(totais.principal)}</strong>
+              </span>
+              <span>
+                Juros: <strong className="text-foreground">{formatarMoedaBr(totais.juros)}</strong>
+              </span>
+              <span>
+                Multa: <strong className="text-foreground">{formatarMoedaBr(totais.multa)}</strong>
+              </span>
+              <span className="text-foreground">
+                Total:{' '}
+                <strong className="text-sm sm:text-base">{formatarMoedaBr(totais.total)}</strong>
+              </span>
+            </div>
+          )}
           {podeEditar && (
             <Button
               type="button"
+              size="sm"
               disabled={baixando || selecionadas.length === 0}
               onClick={() => void baixarSelecionados()}
             >
-              {baixando
-                ? 'Baixando…'
-                : `Baixar selecionados (${selecionadas.length})`}
+              {baixando ? 'Baixando…' : `Baixar selecionados (${selecionadas.length})`}
             </Button>
           )}
         </div>
@@ -225,37 +269,37 @@ export function TelaBaixasContasAPagar({ fornecedores, planos, aoBaixar }: Props
       )}
 
       <div className="min-w-0 overflow-x-auto rounded-md border">
-        <table className="w-full min-w-[1100px] text-left text-sm">
+        <table className="w-full min-w-[920px] text-left text-sm">
           <thead className="bg-muted/50 text-muted-foreground">
             <tr>
-              <th className="px-2 py-2">
+              <th className={cn(TH, STICKY_LEFT, 'w-10 bg-muted/50')}>
                 <Checkbox
                   checked={linhas.length > 0 && linhas.every((l) => l.selecionado)}
                   onCheckedChange={(v) => alternarTodas(v === true)}
                   aria-label="Selecionar todos"
                 />
               </th>
-              <th className="px-3 py-2 font-medium">Código</th>
-              <th className="px-3 py-2 font-medium">Emissão</th>
-              <th className="px-3 py-2 font-medium">Vencimento</th>
-              <th className="px-3 py-2 font-medium">Fornecedor</th>
-              <th className="px-3 py-2 font-medium">Documento</th>
-              <th className="px-3 py-2 font-medium">Valor</th>
-              <th className="px-3 py-2 font-medium">Saldo</th>
-              <th className="px-3 py-2 font-medium">Tipo</th>
-              <th className="px-3 py-2 font-medium">Status</th>
-              <th className="px-3 py-2 font-medium">Principal</th>
-              <th className="px-3 py-2 font-medium">Juros</th>
-              <th className="px-3 py-2 font-medium">Multa</th>
-              <th className="px-3 py-2 font-medium"> </th>
+              <th className={TH}>Código</th>
+              <th className={TH}>Vencimento</th>
+              <th className={cn(TH, 'max-w-[12rem]')}>Fornecedor</th>
+              <th className={TH}>Documento</th>
+              <th className={cn(TH, 'text-right')}>Valor</th>
+              <th className={cn(TH, 'text-right')}>Saldo</th>
+              <th className={TH}>Tipo / Status</th>
+              <th className={cn(TH, STICKY_RIGHT_PRINCIPAL, 'bg-muted/50 text-right')}>
+                Principal
+              </th>
+              <th className={cn(TH, STICKY_RIGHT_JUROS, 'bg-muted/50 text-right')}>Juros</th>
+              <th className={cn(TH, STICKY_RIGHT_MULTA, 'bg-muted/50 text-right')}>Multa</th>
+              <th className={cn(TH, STICKY_RIGHT_VER, 'bg-muted/50 w-[3.25rem]')}> </th>
             </tr>
           </thead>
           <tbody>
             {carregando ? (
-              <LinhasSkeletonTabela colunas={14} linhas={6} />
+              <LinhasSkeletonTabela colunas={12} linhas={6} />
             ) : linhas.length === 0 ? (
               <tr>
-                <td colSpan={14} className="px-3 py-8 text-center text-muted-foreground">
+                <td colSpan={12} className="px-3 py-8 text-center text-muted-foreground">
                   Nenhum título aberto para baixa.
                 </td>
               </tr>
@@ -264,14 +308,18 @@ export function TelaBaixasContasAPagar({ fornecedores, planos, aoBaixar }: Props
                 const dias = diasAteVencimento(linha.conta.vencimento)
                 const vencido = tituloVencido(linha.conta.status, linha.conta.vencimento)
                 const baseClass = classeLinhaStatusContaPagar(linha.conta.status, vencido)
+                const nomeFornecedor = linha.conta.pessoa?.nome ?? '—'
                 return (
                   <tr
                     key={linha.parcelaId}
-                    className={`border-t ${
-                      linha.selecionado ? 'bg-primary/10 ring-1 ring-inset ring-primary/20' : baseClass
-                    }`}
+                    className={cn(
+                      'border-t',
+                      linha.selecionado
+                        ? 'bg-primary/10 ring-1 ring-inset ring-primary/20'
+                        : baseClass
+                    )}
                   >
-                    <td className="px-2 py-2">
+                    <td className={cn(TD, STICKY_LEFT, 'w-10')}>
                       <Checkbox
                         checked={linha.selecionado}
                         onCheckedChange={(v) =>
@@ -279,12 +327,11 @@ export function TelaBaixasContasAPagar({ fornecedores, planos, aoBaixar }: Props
                         }
                       />
                     </td>
-                    <td className="px-3 py-2 font-medium">
+                    <td className={cn(TD, 'font-medium')}>
                       {linha.conta.codigoExibicao ??
                         formatarCodigoContaPagar(linha.conta.codigo)}
                     </td>
-                    <td className="px-3 py-2">{formatarDataBr(linha.conta.dataEmissao)}</td>
-                    <td className="px-3 py-2">
+                    <td className={TD}>
                       <CelulaVencimentoContaPagar
                         status={linha.conta.status}
                         vencimento={linha.conta.vencimento}
@@ -292,55 +339,63 @@ export function TelaBaixasContasAPagar({ fornecedores, planos, aoBaixar }: Props
                         dias={dias}
                       />
                     </td>
-                    <td className="px-3 py-2">{linha.conta.pessoa?.nome ?? '—'}</td>
-                    <td className="px-3 py-2">{linha.conta.numeroDocumento || '—'}</td>
-                    <td className="px-3 py-2 tabular-nums">
+                    <td className={cn(TD, 'max-w-[12rem]')}>
+                      <span className="block truncate" title={nomeFornecedor}>
+                        {nomeFornecedor}
+                      </span>
+                    </td>
+                    <td className={TD}>{linha.conta.numeroDocumento || '—'}</td>
+                    <td className={cn(TD, 'text-right tabular-nums')}>
                       {formatarMoedaBr(linha.conta.valorTotal)}
                     </td>
-                    <td className="px-3 py-2 tabular-nums font-medium">
+                    <td className={cn(TD, 'text-right tabular-nums font-medium')}>
                       {formatarMoedaBr(linha.conta.saldoDevedor ?? 0)}
                     </td>
-                    <td className="px-3 py-2">
-                      <BadgeTipoContaPagar tipo={linha.conta.tipo} />
+                    <td className={TD}>
+                      <div className="flex flex-col items-start gap-0.5">
+                        <BadgeTipoContaPagar tipo={linha.conta.tipo} className="text-xs" />
+                        <BadgeStatusContaPagar status={linha.conta.status} className="text-xs" />
+                      </div>
                     </td>
-                    <td className="px-3 py-2">
-                      <BadgeStatusContaPagar status={linha.conta.status} />
-                    </td>
-                    <td className="px-2 py-1">
+                    <td className={cn(TD, STICKY_RIGHT_PRINCIPAL)}>
                       <input
-                        className="h-8 w-24 rounded-md border border-input bg-background px-2 text-sm"
+                        className={INPUT_VALOR}
                         value={linha.valorPrincipal}
                         disabled={!podeEditar}
+                        aria-label={`Principal do título ${formatarCodigoContaPagar(linha.conta.codigo)}`}
                         onChange={(e) =>
                           patchLinha(linha.parcelaId, { valorPrincipal: e.target.value })
                         }
                       />
                     </td>
-                    <td className="px-2 py-1">
+                    <td className={cn(TD, STICKY_RIGHT_JUROS)}>
                       <input
-                        className="h-8 w-20 rounded-md border border-input bg-background px-2 text-sm"
+                        className={INPUT_VALOR}
                         value={linha.valorJuros}
                         disabled={!podeEditar}
+                        aria-label={`Juros do título ${formatarCodigoContaPagar(linha.conta.codigo)}`}
                         onChange={(e) =>
                           patchLinha(linha.parcelaId, { valorJuros: e.target.value })
                         }
                       />
                     </td>
-                    <td className="px-2 py-1">
+                    <td className={cn(TD, STICKY_RIGHT_MULTA)}>
                       <input
-                        className="h-8 w-20 rounded-md border border-input bg-background px-2 text-sm"
+                        className={INPUT_VALOR}
                         value={linha.valorMulta}
                         disabled={!podeEditar}
+                        aria-label={`Multa do título ${formatarCodigoContaPagar(linha.conta.codigo)}`}
                         onChange={(e) =>
                           patchLinha(linha.parcelaId, { valorMulta: e.target.value })
                         }
                       />
                     </td>
-                    <td className="px-2 py-2">
+                    <td className={cn(TD, STICKY_RIGHT_VER, 'w-[3.25rem]')}>
                       <Button
                         type="button"
                         size="sm"
                         variant="ghost"
+                        className="h-7 px-2"
                         onClick={() =>
                           setDetalhe({
                             conta: linha.conta,
@@ -357,25 +412,6 @@ export function TelaBaixasContasAPagar({ fornecedores, planos, aoBaixar }: Props
             )}
           </tbody>
         </table>
-      </div>
-
-      <div className="flex flex-wrap gap-4 rounded-md border bg-card px-3 py-3 text-sm shadow-xs">
-        <span>
-          Selecionados: <strong>{totais.qtd}</strong>
-        </span>
-        <span>
-          Principal: <strong>{formatarMoedaBr(totais.principal)}</strong>
-        </span>
-        <span>
-          Juros: <strong>{formatarMoedaBr(totais.juros)}</strong>
-        </span>
-        <span>
-          Multa: <strong>{formatarMoedaBr(totais.multa)}</strong>
-        </span>
-        <span className="text-foreground">
-          Total da baixa:{' '}
-          <strong className="text-base">{formatarMoedaBr(totais.total)}</strong>
-        </span>
       </div>
 
       <Modal

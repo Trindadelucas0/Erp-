@@ -234,8 +234,22 @@ function ConteudoSessaoContagem() {
         >
           Cancelar
         </Button>
-        <Button type="button" variant="ghost" asChild>
-          <Link href="/contagens">Fechar</Link>
+        <Button
+          type="button"
+          variant="ghost"
+          disabled={acao}
+          onClick={() => {
+            if (
+              !window.confirm(
+                'A contagem continuará em andamento. Você pode retomá-la em Contagens de entrada. Sair mesmo assim?'
+              )
+            ) {
+              return
+            }
+            router.push('/contagens')
+          }}
+        >
+          Sair
         </Button>
       </aside>
 

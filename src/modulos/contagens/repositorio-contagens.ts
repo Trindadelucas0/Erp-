@@ -84,6 +84,35 @@ async function listarNotasDisponiveis(companyId: string) {
   return { notas, ignoradas }
 }
 
+async function listarSessoesAtivas(companyId: string) {
+  return clientePrisma.contagemEntrada.findMany({
+    where: {
+      companyId,
+      status: { in: [...STATUS_SESSAO_CONTAGEM_ATIVA] },
+    },
+    select: {
+      id: true,
+      status: true,
+      iniciadoEm: true,
+      notas: {
+        include: {
+          nfeRecebida: {
+            select: {
+              id: true,
+              chaveNfe: true,
+              nomeEmitente: true,
+              documentoEmitente: true,
+              dataEmissao: true,
+              statusEntrada: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: [{ iniciadoEm: 'desc' }, { createdAt: 'desc' }],
+  })
+}
+
 async function buscarNotasParaSessao(companyId: string, ids: string[]) {
   return clientePrisma.nfeRecebida.findMany({
     where: {
@@ -327,6 +356,7 @@ async function cancelarSessao(dados: {
 
 export const repositorioContagens = {
   listarNotasDisponiveis,
+  listarSessoesAtivas,
   buscarNotasParaSessao,
   notasEmSessaoAtiva,
   criarSessao,

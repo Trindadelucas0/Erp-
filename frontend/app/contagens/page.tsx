@@ -22,6 +22,13 @@ type NotaDisponivel = {
 
 type NotaIgnorada = NotaDisponivel & { motivo: string }
 
+type SessaoAtiva = {
+  id: string
+  status: string
+  iniciadoEm: string | null
+  entradas: NotaDisponivel[]
+}
+
 function formatarData(iso: string | null): string {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -33,6 +40,7 @@ function ConteudoListaContagens() {
   const router = useRouter()
   const [notas, setNotas] = useState<NotaDisponivel[]>([])
   const [ignoradas, setIgnoradas] = useState<NotaIgnorada[]>([])
+  const [sessoesAtivas, setSessoesAtivas] = useState<SessaoAtiva[]>([])
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set())
   const [carregando, setCarregando] = useState(true)
   const [iniciando, setIniciando] = useState(false)
@@ -45,9 +53,11 @@ function ConteudoListaContagens() {
       const { data } = await clienteHttp.get<{
         notas: NotaDisponivel[]
         ignoradas?: NotaIgnorada[]
+        sessoesAtivas?: SessaoAtiva[]
       }>('/contagens/disponiveis')
       setNotas(data.notas ?? [])
       setIgnoradas(data.ignoradas ?? [])
+      setSessoesAtivas(data.sessoesAtivas ?? [])
       setSelecionadas(new Set())
     } catch (e) {
       setErro(extrairMensagemApi(e, 'Falha ao listar entradas liberadas.'))
@@ -93,6 +103,41 @@ function ConteudoListaContagens() {
 
   return (
     <div className="space-y-4">
+      {!carregando && sessoesAtivas.length > 0 && (
+        <CardPadrao titulo="Contagens em andamento">
+          <p className="mb-3 text-sm text-muted-foreground">
+            Estas entradas saem da lista de novas contagens enquanto a sessão estiver aberta. Use{' '}
+            <strong>Continuar contagem</strong> para retomar ou <strong>Cancelar</strong> dentro da
+            sessão para liberar a nota de novo.
+          </p>
+          <ul className="space-y-3 text-sm">
+            {sessoesAtivas.map((sessao) => (
+              <li
+                key={sessao.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-3"
+              >
+                <div className="min-w-0 space-y-1">
+                  <p className="font-medium">
+                    Iniciada em {formatarData(sessao.iniciadoEm)} · status {sessao.status}
+                  </p>
+                  <ul className="text-muted-foreground">
+                    {sessao.entradas.map((e) => (
+                      <li key={e.id}>
+                        {e.nomeEmitente || '—'} · NF {e.numero ?? '—'}
+                        {e.serie ? ` · Série ${e.serie}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <Button type="button" asChild>
+                  <Link href={`/contagens/${sessao.id}`}>Continuar contagem</Link>
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </CardPadrao>
+      )}
+
       <CardPadrao
         titulo="Entradas liberadas para contagem"
         acoes={
@@ -147,9 +192,11 @@ function ConteudoListaContagens() {
                 <tr>
                   <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
                     Nenhuma NFe pronta para contagem física.
-                    {nfeSemVinculo.length > 0
-                      ? ` Há ${nfeSemVinculo.length} liberada(s) sem produto vinculado — veja abaixo.`
-                      : ' Liberadas documentais (NFS-e/CT-e) não entram nesta tela.'}
+                    {sessoesAtivas.length > 0
+                      ? ' Há contagens em andamento acima — use Continuar contagem.'
+                      : nfeSemVinculo.length > 0
+                        ? ` Há ${nfeSemVinculo.length} liberada(s) sem produto vinculado — veja abaixo.`
+                        : ' Liberadas documentais (NFS-e/CT-e) não entram nesta tela.'}
                   </td>
                 </tr>
               ) : (
