@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
+import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import { Button } from '@/components/ui/button'
@@ -65,9 +66,16 @@ function ConteudoSessaoContagem() {
   const [divergentes, setDivergentes] = useState<string[]>([])
   const [codigoBip, setCodigoBip] = useState('')
   const [observacao, setObservacao] = useState('')
+  const [confirmacaoSair, setConfirmacaoSair] = useState(false)
+  const [confirmacaoCancelar, setConfirmacaoCancelar] = useState(false)
 
   const editavel =
     sessao?.status === 'aberta' || sessao?.status === 'em_andamento'
+
+  const sessaoFinalizada =
+    sessao?.status === 'ok' ||
+    sessao?.status === 'divergente' ||
+    sessao?.status === 'cancelada'
 
   const carregar = useCallback(async () => {
     if (!id) return
@@ -77,6 +85,13 @@ function ConteudoSessaoContagem() {
       const { data } = await clienteHttp.get<SessaoContagem>(`/contagens/${id}`)
       setSessao(data)
       setObservacao(data.observacao ?? '')
+      if (data.status === 'divergente') {
+        setDivergentes(
+          data.itens
+            .filter((i) => i.statusItem === 'divergente')
+            .map((i) => i.nomeExibicao)
+        )
+      }
     } catch (e) {
       setErro(extrairMensagemApi(e, 'Falha ao carregar contagem.'))
     } finally {
@@ -167,7 +182,7 @@ function ConteudoSessaoContagem() {
       setSessao(data.sessao)
       setDivergentes(data.divergentes ?? [])
       setMensagem(data.mensagem)
-      if (data.ok) {
+      if (data.ok || data.sessao.status === 'ok' || data.sessao.status === 'divergente') {
         setTimeout(() => router.push('/contagens'), 1200)
       }
     } catch (e) {
@@ -177,9 +192,18 @@ function ConteudoSessaoContagem() {
     }
   }
 
-  async function cancelar() {
+  function solicitarSair() {
+    if (acao) return
+    if (sessaoFinalizada) {
+      router.push('/contagens')
+      return
+    }
+    setConfirmacaoSair(true)
+  }
+
+  async function executarCancelar() {
     if (!id || !editavel) return
-    if (!window.confirm('Cancelar esta contagem? As entradas voltam para liberadas.')) return
+    setConfirmacaoCancelar(false)
     setAcao(true)
     try {
       await clienteHttp.post(`/contagens/${id}/cancelar`)
@@ -230,7 +254,7 @@ function ConteudoSessaoContagem() {
           variant="outline"
           className="border-orange-500/50 text-orange-700 dark:text-orange-400"
           disabled={acao || !editavel}
-          onClick={() => void cancelar()}
+          onClick={() => setConfirmacaoCancelar(true)}
         >
           Cancelar
         </Button>
@@ -238,16 +262,7 @@ function ConteudoSessaoContagem() {
           type="button"
           variant="ghost"
           disabled={acao}
-          onClick={() => {
-            if (
-              !window.confirm(
-                'A contagem continuará em andamento. Você pode retomá-la em Contagens de entrada. Sair mesmo assim?'
-              )
-            ) {
-              return
-            }
-            router.push('/contagens')
-          }}
+          onClick={solicitarSair}
         >
           Sair
         </Button>
@@ -279,9 +294,18 @@ function ConteudoSessaoContagem() {
                 <li key={nome}>{nome}</li>
               ))}
             </ul>
-            <p className="mt-2 text-muted-foreground">
-              Reconte e use Gravar de novo. Se persistir, use &quot;Gravar com divergência&quot;.
-            </p>
+            {editavel ? (
+              <p className="mt-2 text-muted-foreground">
+                Reconte e use Gravar de novo. Se persistir, use &quot;Gravar com divergência&quot;.
+              </p>
+            ) : sessao.status === 'divergente' ? (
+              <p className="mt-2 text-muted-foreground">
+                Contagem finalizada com divergência. Acesse <strong>Entrada de Notas</strong>, abra
+                a nota na aba <strong>Lançamento</strong> e use o card{' '}
+                <strong>Divergência na contagem</strong> para anexar a ressalva assinada e
+                resolver.
+              </p>
+            ) : null}
           </div>
         )}
 
@@ -416,6 +440,29 @@ function ConteudoSessaoContagem() {
           />
         </div>
       </div>
+
+      <ModalConfirmacao
+        aberto={confirmacaoSair}
+        titulo="Sair da contagem?"
+        mensagem="A contagem continuará em andamento. Você pode retomá-la em Contagens de entrada. Sair mesmo assim?"
+        textoConfirmar="Sair"
+        textoCancelar="Continuar contagem"
+        aoConfirmar={() => {
+          setConfirmacaoSair(false)
+          router.push('/contagens')
+        }}
+        aoCancelar={() => setConfirmacaoSair(false)}
+      />
+
+      <ModalConfirmacao
+        aberto={confirmacaoCancelar}
+        titulo="Cancelar contagem?"
+        mensagem="Cancelar esta contagem? As entradas voltam para liberadas."
+        textoConfirmar="Cancelar contagem"
+        textoCancelar="Voltar"
+        aoConfirmar={() => void executarCancelar()}
+        aoCancelar={() => setConfirmacaoCancelar(false)}
+      />
     </div>
   )
 }
