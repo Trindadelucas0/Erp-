@@ -14,6 +14,12 @@ export type CfopSugestaoEntradaCatalogo = {
   descricao: string
 } | null
 
+export type CfopPlanoFinanceiroPadraoCatalogo = {
+  id: string
+  codigo: string
+  descricao: string
+} | null
+
 export type CfopRegistro = {
   id: string
   codigo: string
@@ -28,11 +34,16 @@ export type CfopRegistro = {
   ativo: boolean
   cfopSugestaoEntradaId: string | null
   cfopSugestaoEntrada: CfopSugestaoEntradaCatalogo
+  planoFinanceiroPadraoId: string | null
+  planoFinanceiroPadrao: CfopPlanoFinanceiroPadraoCatalogo
   createdAt: Date
 }
 
 const includeSugestaoEntrada = {
   cfopSugestaoEntrada: {
+    select: { id: true, codigo: true, nome: true },
+  },
+  planoFinanceiroPadrao: {
     select: { id: true, codigo: true, nome: true },
   },
 } as const
@@ -42,6 +53,13 @@ function mapearSugestaoEntrada(
 ): CfopSugestaoEntradaCatalogo {
   if (!cfop) return null
   return { id: cfop.id, codigo: cfop.codigo, descricao: cfop.nome }
+}
+
+function mapearPlanoFinanceiroPadrao(
+  plano: { id: string; codigo: string; nome: string } | null | undefined
+): CfopPlanoFinanceiroPadraoCatalogo {
+  if (!plano) return null
+  return { id: plano.id, codigo: plano.codigo, descricao: plano.nome }
 }
 
 function mapear(cfop: {
@@ -58,6 +76,8 @@ function mapear(cfop: {
   ativo: boolean
   cfopSugestaoEntradaId?: string | null
   cfopSugestaoEntrada?: { id: string; codigo: string; nome: string } | null
+  planoFinanceiroPadraoId?: string | null
+  planoFinanceiroPadrao?: { id: string; codigo: string; nome: string } | null
   createdAt: Date
 }): CfopRegistro {
   return {
@@ -74,6 +94,8 @@ function mapear(cfop: {
     ativo: cfop.ativo,
     cfopSugestaoEntradaId: cfop.cfopSugestaoEntradaId ?? null,
     cfopSugestaoEntrada: mapearSugestaoEntrada(cfop.cfopSugestaoEntrada),
+    planoFinanceiroPadraoId: cfop.planoFinanceiroPadraoId ?? null,
+    planoFinanceiroPadrao: mapearPlanoFinanceiroPadrao(cfop.planoFinanceiroPadrao),
     createdAt: cfop.createdAt,
   }
 }
@@ -129,7 +151,13 @@ async function buscarPorCodigo(companyId: string, codigo: string) {
   return clientePrisma.cfop.findFirst({ where: { companyId, codigo } })
 }
 
-async function criar(companyId: string, dados: DadosParaCriarCfop & { cfopSugestaoEntradaId: string | null }) {
+async function criar(
+  companyId: string,
+  dados: DadosParaCriarCfop & {
+    cfopSugestaoEntradaId: string | null
+    planoFinanceiroPadraoId: string | null
+  }
+) {
   const classificados = dadosClassificados(dados.codigo, dados.subtipoCfop)
   const aproveitarCreditoIcms = aproveitarCreditoIcmsPermitido(
     dados.codigo,
@@ -142,6 +170,7 @@ async function criar(companyId: string, dados: DadosParaCriarCfop & { cfopSugest
       nome: dados.nome,
       descricao: dados.descricao || '',
       cfopSugestaoEntradaId: dados.cfopSugestaoEntradaId,
+      planoFinanceiroPadraoId: dados.planoFinanceiroPadraoId,
       ...classificados,
       aproveitarCreditoIcms,
     },
@@ -153,7 +182,10 @@ async function criar(companyId: string, dados: DadosParaCriarCfop & { cfopSugest
 async function atualizar(
   companyId: string,
   id: string,
-  dados: DadosParaEditarCfop & { cfopSugestaoEntradaId: string | null },
+  dados: DadosParaEditarCfop & {
+    cfopSugestaoEntradaId: string | null
+    planoFinanceiroPadraoId: string | null
+  },
   codigo: string
 ) {
   const classificados = dadosClassificados(codigo, dados.subtipoCfop)
@@ -167,6 +199,7 @@ async function atualizar(
       nome: dados.nome,
       descricao: dados.descricao || '',
       cfopSugestaoEntradaId: dados.cfopSugestaoEntradaId,
+      planoFinanceiroPadraoId: dados.planoFinanceiroPadraoId,
       ...classificados,
       aproveitarCreditoIcms,
     },
@@ -191,6 +224,16 @@ async function validarIdsEntradaFornecedor(companyId: string, ids: string[]) {
   }
 }
 
+async function validarPlanoFinanceiroAtivo(companyId: string, id: string) {
+  const plano = await clientePrisma.planoFinanceiro.findFirst({
+    where: { id, companyId, ativo: true },
+    select: { id: true },
+  })
+  if (!plano) {
+    throw new Error('Plano financeiro não encontrado ou inativo')
+  }
+}
+
 export const repositorioDeCfops = {
   listarPorEmpresa,
   buscarPorId,
@@ -199,4 +242,5 @@ export const repositorioDeCfops = {
   atualizar,
   mapear,
   validarIdsEntradaFornecedor,
+  validarPlanoFinanceiroAtivo,
 }

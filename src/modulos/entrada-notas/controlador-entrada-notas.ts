@@ -1,6 +1,7 @@
 /**
  * Controlador HTTP — Entrada de Notas (pipeline).
  */
+import { readFile } from 'node:fs/promises'
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { servicoEntradaNotas } from './servico-pipeline-entrada.js'
@@ -18,6 +19,7 @@ import {
   esquemaLiberarCriticas,
   esquemaManifestar,
   esquemaMarcarProblema,
+  esquemaResolverDivergencia,
   esquemaResolverProblema,
   esquemaTratativa,
   esquemaVincularCte,
@@ -270,6 +272,43 @@ async function lancar(requisicao: FastifyRequest, resposta: FastifyReply) {
   return resposta.send(dados)
 }
 
+async function liberarParaContagem(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const dados = await servicoEntradaNotas.liberarParaContagem(
+    companyIdDe(requisicao),
+    notaIdDe(requisicao)
+  )
+  return resposta.send(dados)
+}
+
+async function resolverDivergencia(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parsed = esquemaResolverDivergencia.safeParse(requisicao.body)
+  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
+  const dados = await servicoEntradaNotas.resolverDivergenciaContagem(
+    companyIdDe(requisicao),
+    notaIdDe(requisicao),
+    usuarioIdDe(requisicao),
+    parsed.data
+  )
+  return resposta.send(dados)
+}
+
+async function baixarAnexoDivergencia(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { anexoId } = requisicao.params as { id: string; anexoId: string }
+  const { caminhoAbsoluto, nomeArquivo, mimeType } =
+    await servicoEntradaNotas.baixarAnexoDivergencia(
+      companyIdDe(requisicao),
+      notaIdDe(requisicao),
+      anexoId
+    )
+  const buffer = await readFile(caminhoAbsoluto)
+  const nomeSeguro = nomeArquivo.replace(/["\r\n]/g, '_')
+  resposta.header(
+    'Content-Disposition',
+    `attachment; filename="${nomeSeguro}"; filename*=UTF-8''${encodeURIComponent(nomeArquivo)}`
+  )
+  return resposta.type(mimeType).send(buffer)
+}
+
 async function vincularCte(requisicao: FastifyRequest, resposta: FastifyReply) {
   const parsed = esquemaVincularCte.safeParse(requisicao.body ?? {})
   if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
@@ -357,6 +396,9 @@ export const controladorEntradaNotas = {
   resolverProblema,
   descancelar,
   lancar,
+  liberarParaContagem,
+  resolverDivergencia,
+  baixarAnexoDivergencia,
   vincularCte,
   desvincularCte,
   salvarFinanceiroFrete,

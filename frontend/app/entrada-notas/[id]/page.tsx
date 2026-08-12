@@ -30,7 +30,7 @@ import {
 } from '@/components/entrada-notas/negociacao-resumo'
 import { CadastroResumo } from '@/components/entrada-notas/cadastro-resumo'
 import { EtapaResumo } from '@/components/entrada-notas/etapa-resumo'
-import { CheckCircle2 } from 'lucide-react'
+import { CheckCircle2, Paperclip, Download } from 'lucide-react'
 import { formatarQtdEstoque } from '@/lib/estoque'
 import { SUBTIPO_CFOP_CONHECIMENTO_FRETE } from '@/lib/cfop'
 import { distribuirParcelasIguais } from '@/lib/parcelas-pagamento-pedido'
@@ -40,7 +40,43 @@ import {
   rotuloTipoDocumentoLongo,
 } from '@/lib/tipo-documento-entrada'
 import { gravarDeepLinkFornecedor } from '@/lib/fornecedor-deep-link'
+import { prepararImagemAteBytes } from '@/lib/comprimir-imagem-ate-bytes'
 import type { StatusDaAba } from '@/hooks/use-validacao-de-abas'
+
+const MAX_BYTES_ANEXO_DIVERGENCIA = 2 * 1024 * 1024
+const MIMES_ANEXO_DIVERGENCIA_OK = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+])
+
+function mimeAnexoDivergenciaPelaExtensao(nome: string): string {
+  const n = nome.toLowerCase()
+  if (n.endsWith('.pdf')) return 'application/pdf'
+  if (n.endsWith('.jpg') || n.endsWith('.jpeg')) return 'image/jpeg'
+  if (n.endsWith('.png')) return 'image/png'
+  if (n.endsWith('.webp')) return 'image/webp'
+  return ''
+}
+
+function resolverMimeAnexoDivergencia(file: File): string {
+  const informado = (file.type || '').toLowerCase()
+  if (informado && MIMES_ANEXO_DIVERGENCIA_OK.has(informado)) {
+    return informado === 'image/jpg' ? 'image/jpeg' : informado
+  }
+  return mimeAnexoDivergenciaPelaExtensao(file.name)
+}
+
+function lerArquivoBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ''))
+    reader.onerror = () => reject(new Error('Falha ao ler o arquivo'))
+    reader.readAsDataURL(file)
+  })
+}
 
 type ResultadoEtapa = {
   status: string
@@ -208,6 +244,10 @@ type DetalheNota = {
   problemaDesfecho?: string | null
   problemaMarcadoEm?: string | null
   problemaResolvidoEm?: string | null
+  /// bloqueio | null — desfecho da correção de divergência de contagem (§7.17)
+  divergenciaDesfecho?: string | null
+  divergenciaResolvidaEm?: string | null
+  anexoDivergencia?: { id: string; nomeArquivo: string } | null
   tratativas?: TratativaNota[]
   modFrete?: string | null
   chaveNfeReferenciada?: string | null
@@ -298,6 +338,7 @@ function statusAbaDeEtapa(etapa?: ResultadoEtapa | null): StatusDaAba {
 
 function notaLiberadaOuConsolidada(status: string): boolean {
   return (
+    status === 'aguardando_chegada' ||
     status === 'entrada_contagem' ||
     status === 'entrada_contagem_ok' ||
     status === 'entrada_contagem_divergente' ||
@@ -443,9 +484,10 @@ function rotuloStatusEntrada(status: string): string {
     pendente: 'Pendente',
     em_analise: 'Em análise',
     stand_by: 'Em espera',
+    aguardando_chegada: 'Aguardando chegada',
     entrada_contagem: 'Liberada para contagem',
     entrada_contagem_ok: 'Contagem OK — pronta para consolidar',
-    entrada_contagem_divergente: 'Contagem divergente (pendente admin)',
+    entrada_contagem_divergente: 'Contagem divergente — pendente correção admin',
     entrada_consolidada: 'Entrada consolidada',
     cancelada: 'Cancelada',
     com_problema: 'Com problema',
@@ -784,6 +826,14 @@ function ConteudoDetalheEntrada() {
   const [mensagem, setMensagem] = useState<string | null>(null)
   const [estoqueResumo, setEstoqueResumo] = useState<EstoqueResumoLancamento | null>(null)
   const [senha, setSenha] = useState('')
+  const [senhaDivergencia, setSenhaDivergencia] = useState('')
+  const [anexoDivergenciaArquivo, setAnexoDivergenciaArquivo] = useState<{
+    nomeArquivo: string
+    mimeType: string
+    base64Arquivo: string
+  } | null>(null)
+  const [infoAnexoDivergencia, setInfoAnexoDivergencia] = useState<string | null>(null)
+  const [erroAnexoDivergencia, setErroAnexoDivergencia] = useState<string | null>(null)
   const [obsContato, setObsContato] = useState('')
   const [justificativaManifesto, setJustificativaManifesto] = useState('')
   const [textoTratativa, setTextoTratativa] = useState('')
@@ -1063,12 +1113,27 @@ function ConteudoDetalheEntrada() {
               `Nota consolidada. Nenhum item com controle de estoque foi lançado.${sufixoContas}`
             )
           }
+        } else if (path === '/resolver-divergencia') {
+          setSenhaDivergencia('')
+          setAnexoDivergenciaArquivo(null)
+          setInfoAnexoDivergencia(null)
+          setMensagem(
+            `Divergência resolvida: itens bloqueados no estoque, ressalva assinada anexada.${sufixoContas}`
+          )
         } else if (path === '/lancar' && body?.modo === 'contagem') {
           setMensagem(
             (ehDocumentalEntrada(data.nota.tipoDocumento)
               ? 'Liberada para contagem documental.'
               : 'Liberada para contagem — a logística confere em Contagens de entrada. Só depois consolide o estoque.') +
               sufixoContas
+          )
+        } else if (path === '/liberar-para-contagem') {
+          setMensagem(
+            `Liberada para contagem — a logística confere em Contagens de entrada.${sufixoContas}`
+          )
+        } else if (data.nota.statusEntrada === 'aguardando_chegada') {
+          setMensagem(
+            `Nota de revenda lançada — aguardando chegada física para liberar a contagem.${sufixoContas}`
           )
         } else if (data.nota.origemLancamento === 'automatica') {
           setMensagem(`Entrada automática concluída (Liberar para contagem — sem estoque).${sufixoContas}`)
@@ -1118,6 +1183,65 @@ function ConteudoDetalheEntrada() {
       return false
     } finally {
       setAcao(false)
+    }
+  }
+
+  async function aoEscolherArquivoDivergencia(file: File | null) {
+    if (!file) return
+    setErroAnexoDivergencia(null)
+    setInfoAnexoDivergencia(null)
+
+    const mime = resolverMimeAnexoDivergencia(file)
+    if (!mime || !MIMES_ANEXO_DIVERGENCIA_OK.has(mime)) {
+      setErroAnexoDivergencia('Tipo não permitido. Use PDF, JPG, PNG ou WEBP.')
+      return
+    }
+
+    const ehPdf = mime === 'application/pdf'
+    if (ehPdf && file.size > MAX_BYTES_ANEXO_DIVERGENCIA) {
+      setErroAnexoDivergencia('PDF não pode ser superior a 2 MB')
+      return
+    }
+
+    try {
+      let nomeArquivo = file.name
+      let mimeType = mime
+      let base64Arquivo: string
+
+      if (!ehPdf) {
+        const preparado = await prepararImagemAteBytes(file, MAX_BYTES_ANEXO_DIVERGENCIA)
+        nomeArquivo = preparado.nomeArquivo
+        mimeType = preparado.mimeType
+        base64Arquivo = preparado.dataUrl
+        if (preparado.feedback) setInfoAnexoDivergencia(preparado.feedback)
+      } else {
+        base64Arquivo = await lerArquivoBase64(file)
+      }
+
+      setAnexoDivergenciaArquivo({ nomeArquivo, mimeType, base64Arquivo })
+    } catch (e) {
+      setErroAnexoDivergencia(e instanceof Error ? e.message : 'Não foi possível ler o arquivo.')
+    }
+  }
+
+  async function baixarAnexoDivergencia(anexoId: string, nomeArquivo: string) {
+    setErro(null)
+    try {
+      const resposta = await clienteHttp.get(
+        `/entrada-notas/${id}/anexo-divergencia/${anexoId}/download`,
+        { responseType: 'blob' }
+      )
+      const blob = new Blob([resposta.data])
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = nomeArquivo
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (e) {
+      setErro(extrairMensagemApi(e, 'Falha ao baixar o anexo.'))
     }
   }
 
@@ -2496,10 +2620,12 @@ function ConteudoDetalheEntrada() {
                     : nota.statusEntrada === 'entrada_contagem_ok'
                       ? 'Contagem OK — pronta para consolidar'
                       : nota.statusEntrada === 'entrada_contagem_divergente'
-                        ? 'Contagem divergente'
+                        ? 'Divergência na contagem'
                         : nota.statusEntrada === 'entrada_contagem'
                           ? 'Liberada para contagem'
-                          : 'Finalizada'
+                          : nota.statusEntrada === 'aguardando_chegada'
+                            ? 'Aguardando chegada'
+                            : 'Finalizada'
               }
             >
               <p className="text-sm">
@@ -2512,22 +2638,43 @@ function ConteudoDetalheEntrada() {
                   ? ' Use o card Nota com problema para tratativas e desfecho.'
                   : problemaResolvido
                     ? ' Problema resolvido — nota fora do fluxo de entrada.'
-                    : nota.statusEntrada === 'entrada_contagem' && !ehDocumental
-                      ? ' Aguardando contagem cega da logística.'
-                      : nota.statusEntrada === 'entrada_contagem' && ehDocumental
-                        ? ' Documental — pode consolidar sem contagem física.'
-                        : nota.statusEntrada === 'entrada_contagem_ok'
-                          ? ' Contagem conferida. Informe a senha de gerente e consolide para gravar no estoque.'
-                          : nota.statusEntrada === 'entrada_contagem_divergente'
-                            ? ' Contagem gravada com divergência — consolidar bloqueado até correção administrativa.'
-                            : nota.statusEntrada === 'entrada_consolidada' && !ehDocumental
-                              ? nota.estoqueLancado || estoqueResumo?.movimentou
-                                ? ' Estoque lançado (físico e fiscal). Veja o resumo abaixo.'
-                                : ' Consolidada — sem movimentos de estoque (itens sem produto ou sem controle).'
-                              : nota.statusEntrada === 'entrada_consolidada' && ehDocumental
-                                ? ' Documental — sem movimentação de estoque.'
-                                : ''}
+                    : nota.statusEntrada === 'aguardando_chegada'
+                      ? ' Nota de revenda lançada — aguardando chegada física da mercadoria. Libere para a logística iniciar a contagem.'
+                      : nota.statusEntrada === 'entrada_contagem' && !ehDocumental
+                        ? ' Aguardando contagem cega da logística.'
+                        : nota.statusEntrada === 'entrada_contagem' && ehDocumental
+                          ? ' Documental — pode consolidar sem contagem física.'
+                          : nota.statusEntrada === 'entrada_contagem_ok'
+                            ? ' Contagem conferida. Informe a senha de gerente e consolide para gravar no estoque.'
+                            : nota.statusEntrada === 'entrada_contagem_divergente'
+                              ? ' Contagem gravada com divergência — nota inteira retida. Só é liberada anexando a ressalva assinada e informando a senha de gerente.'
+                              : nota.statusEntrada === 'entrada_consolidada' && !ehDocumental
+                                ? nota.estoqueLancado || estoqueResumo?.movimentou
+                                  ? ' Estoque lançado (físico e fiscal). Veja o resumo abaixo.'
+                                  : ' Consolidada — sem movimentos de estoque (itens sem produto ou sem controle).'
+                                : nota.statusEntrada === 'entrada_consolidada' && ehDocumental
+                                  ? ' Documental — sem movimentação de estoque.'
+                                  : ''}
               </p>
+              {nota.statusEntrada === 'aguardando_chegada' && (
+                <div className="mt-4 space-y-3 rounded-md border border-border/80 bg-muted/20 p-3">
+                  <p className="text-sm text-muted-foreground">
+                    Nota de revenda vinculada a pedido de compra. Assim que a mercadoria chegar,
+                    libere para a logística iniciar a contagem em{' '}
+                    <Link href="/contagens" className="text-primary underline">
+                      Contagens de entrada
+                    </Link>
+                    .
+                  </p>
+                  <BotaoPrimario
+                    type="button"
+                    disabled={acao}
+                    onClick={() => postAcao('/liberar-para-contagem', {})}
+                  >
+                    Liberar para contagem
+                  </BotaoPrimario>
+                </div>
+              )}
               {(nota.contasPagar?.length ?? 0) > 0 && (
                 <p className="mt-2 text-sm">
                   <strong>{nota.contasPagar!.length}</strong> título(s) em Contas a Pagar.{' '}
@@ -2573,6 +2720,95 @@ function ConteudoDetalheEntrada() {
                   </Link>
                   .
                 </p>
+              )}
+              {nota.statusEntrada === 'entrada_consolidada' && nota.divergenciaDesfecho === 'bloqueio' && (
+                <div className="mt-3 space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300">
+                  <p>
+                    <strong>Consolidada com divergência</strong> — itens bloqueados no estoque
+                    (disponível zerado) até desbloqueio manual.
+                    {nota.divergenciaResolvidaEm
+                      ? ` Resolvida em ${new Date(nota.divergenciaResolvidaEm).toLocaleString('pt-BR')}.`
+                      : ''}
+                  </p>
+                  {nota.anexoDivergencia && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5"
+                      onClick={() => void baixarAnexoDivergencia(nota.anexoDivergencia!.id, nota.anexoDivergencia!.nomeArquivo)}
+                    >
+                      <Download className="size-3.5" />
+                      Baixar ressalva assinada
+                    </Button>
+                  )}
+                </div>
+              )}
+              {nota.statusEntrada === 'entrada_contagem_divergente' && (
+                <div className="mt-4 space-y-3 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800/60 dark:bg-amber-950/30">
+                  <p className="text-sm text-amber-800 dark:text-amber-300">
+                    A nota inteira fica retida — todos os itens com produto entram bloqueados no
+                    estoque (físico e fiscal lançados, mas disponível zerado). Só é liberada
+                    anexando a foto/PDF da ressalva assinada pelo motorista e informando a senha de
+                    gerente.
+                  </p>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="anexo-divergencia">Ressalva assinada (PDF, JPG, PNG ou WEBP — máx. 2 MB)</Label>
+                    <label
+                      htmlFor="anexo-divergencia"
+                      className="relative flex w-full max-w-md cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-background px-3 py-2 text-sm hover:border-muted-foreground/40"
+                    >
+                      <Paperclip className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                      <span className="min-w-0 flex-1 truncate">
+                        {anexoDivergenciaArquivo?.nomeArquivo ?? 'Clique para escolher o arquivo…'}
+                      </span>
+                      <input
+                        id="anexo-divergencia"
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp,application/pdf"
+                        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] ?? null
+                          void aoEscolherArquivoDivergencia(file)
+                          e.target.value = ''
+                        }}
+                      />
+                    </label>
+                    {infoAnexoDivergencia && (
+                      <p className="text-xs text-muted-foreground">{infoAnexoDivergencia}</p>
+                    )}
+                    {erroAnexoDivergencia && (
+                      <p className="text-xs text-destructive">{erroAnexoDivergencia}</p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div>
+                      <Label htmlFor="senha-divergencia">Senha gerente</Label>
+                      <input
+                        id="senha-divergencia"
+                        type="password"
+                        className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
+                        value={senhaDivergencia}
+                        onChange={(e) => setSenhaDivergencia(e.target.value)}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      disabled={acao || !senhaDivergencia.trim() || !anexoDivergenciaArquivo}
+                      onClick={() =>
+                        postAcao('/resolver-divergencia', {
+                          senha: senhaDivergencia,
+                          anexo: anexoDivergenciaArquivo,
+                        })
+                      }
+                    >
+                      Concluir entrada com bloqueio
+                    </Button>
+                  </div>
+                </div>
               )}
               {(nota.statusEntrada === 'entrada_contagem_ok' ||
                 (nota.statusEntrada === 'entrada_contagem' && ehDocumental)) && (

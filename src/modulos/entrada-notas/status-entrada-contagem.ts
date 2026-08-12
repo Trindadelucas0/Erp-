@@ -8,6 +8,13 @@ export const STATUS_CONTAGEM_OK = 'entrada_contagem_ok' as const
 export const STATUS_CONTAGEM_DIVERGENTE = 'entrada_contagem_divergente' as const
 export const STATUS_CONSOLIDADA = 'entrada_consolidada' as const
 
+/**
+ * Status pós-lançamento exclusivo de NFe 55 de revenda com pedido de compra vinculado
+ * (`PedidoCompra.tipoCompra === 'revenda'`) — retém a nota antes da contagem física até o
+ * operador clicar "Liberar para contagem" (§7 DOCUMENTACAO-SISTEMA.md).
+ */
+export const STATUS_AGUARDANDO_CHEGADA = 'aguardando_chegada' as const
+
 /** Painel "Liberadas p/ contagem" — inclui OK e divergente até consolidar/corrigir. */
 export const STATUS_PAINEL_CONTAGEM: readonly string[] = [
   STATUS_AGUARDANDO_CONTAGEM,
@@ -15,8 +22,9 @@ export const STATUS_PAINEL_CONTAGEM: readonly string[] = [
   STATUS_CONTAGEM_DIVERGENTE,
 ]
 
-/** Nota já saiu do pipeline de análise (liberada ou além). */
+/** Nota já saiu do pipeline de análise (liberada ou além — inclui "aguardando chegada"). */
 export const STATUS_POS_LIBERACAO: readonly string[] = [
+  STATUS_AGUARDANDO_CHEGADA,
   ...STATUS_PAINEL_CONTAGEM,
   STATUS_CONSOLIDADA,
 ]
@@ -34,6 +42,11 @@ export function notaJaLiberadaOuConsolidada(status: string): boolean {
 /** Logística só inicia contagem física em NFes aguardando (não OK/divergente). */
 export function podeIniciarContagemLogistica(status: string): boolean {
   return status === STATUS_AGUARDANDO_CONTAGEM
+}
+
+/** Só nota "aguardando chegada" pode ser liberada para o painel de contagem. */
+export function podeLiberarParaContagem(status: string): boolean {
+  return status === STATUS_AGUARDANDO_CHEGADA
 }
 
 /**

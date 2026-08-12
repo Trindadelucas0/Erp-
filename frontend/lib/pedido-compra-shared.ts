@@ -109,8 +109,8 @@ export const STATUS_PEDIDO_FILTRAVEL = [
   { value: 'rascunho' as const, label: 'Rascunho' },
   { value: 'enviado' as const, label: 'Enviado' },
   { value: 'aprovado' as const, label: 'Aprovado' },
-  { value: 'parcial' as const, label: 'Recebimento parcial' },
-  { value: 'recebido' as const, label: 'Recebido' },
+  { value: 'parcial' as const, label: 'Entregue parcialmente' },
+  { value: 'recebido' as const, label: 'Concluído' },
   { value: 'cancelado' as const, label: 'Cancelado' },
 ]
 
@@ -176,8 +176,8 @@ export const FILTRO_STATUS_OPCOES: { value: FiltroStatus; label: string }[] = [
   { value: 'rascunho', label: 'Rascunho' },
   { value: 'enviado', label: 'Enviado' },
   { value: 'aprovado', label: 'Aprovado' },
-  { value: 'parcial', label: 'Recebimento parcial' },
-  { value: 'recebido', label: 'Recebido' },
+  { value: 'parcial', label: 'Entregue parcialmente' },
+  { value: 'recebido', label: 'Concluído' },
   { value: 'cancelado', label: 'Cancelado' },
 ]
 

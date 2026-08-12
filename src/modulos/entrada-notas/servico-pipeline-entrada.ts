@@ -39,6 +39,10 @@ import {
   mensagemBloqueioConsolidar,
   notaJaLiberadaOuConsolidada,
   podeConsolidarEstoque,
+  podeLiberarParaContagem,
+  STATUS_AGUARDANDO_CHEGADA,
+  STATUS_AGUARDANDO_CONTAGEM,
+  STATUS_CONTAGEM_DIVERGENTE,
   STATUS_PAINEL_CONTAGEM,
 } from './status-entrada-contagem.js'
 import { gerarTitulosContasPagarDaEntrada } from '../contas-a-pagar/gerar-titulos-entrada.js'
@@ -54,6 +58,10 @@ import {
 import { arredondarQtd } from '../estoque/tipos-estoque.js'
 import { obterPessoaIdsRedePorPessoaId } from '../fornecedores/vinculos-fornecedor.js'
 import { randomUUID } from 'crypto'
+import {
+  caminhoAbsolutoAnexoEntradaNota,
+  salvarAnexoEntradaNota,
+} from './armazenamento-anexo-entrada-nota.js'
 
 type EtapaPipeline = 'cadastro' | 'fiscal' | 'negociacao' | 'frete'
 
@@ -645,12 +653,40 @@ function pipelineProntoParaLancar(
   return { ok: true }
 }
 
-async function lancarContagem(notaId: string, origem: 'automatica' | 'humana') {
+async function lancarContagem(
+  notaId: string,
+  origem: 'automatica' | 'humana',
+  statusDestino: string = STATUS_AGUARDANDO_CONTAGEM
+) {
   await repositorioEntradaNotas.atualizarNota(notaId, {
-    statusEntrada: 'entrada_contagem',
+    statusEntrada: statusDestino,
     etapaAtual: 'lancamento',
     origemLancamento: origem,
   })
+}
+
+/**
+ * Status pós-lançamento: NFe 55 de revenda com pedido vinculado (`tipoCompra='revenda'`)
+ * fica em `aguardando_chegada` até liberar manualmente para a logística; demais casos
+ * (sem pedido, bonificação/uso e consumo, ou documental) seguem direto para a contagem,
+ * como sempre — regra permanente, DOCUMENTACAO-SISTEMA.md §7.
+ */
+async function statusPosLancamento(
+  nota: {
+    tipoDocumento: string | null
+    itens: { produtoId: string | null }[]
+    pedidoCompraId: string | null
+  },
+  pedidoJaCarregado?: { tipoCompra: string } | null
+): Promise<string> {
+  const exigeContagemFisica =
+    (nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento) && nota.itens.some((i) => i.produtoId)
+  if (!exigeContagemFisica || !nota.pedidoCompraId) return STATUS_AGUARDANDO_CONTAGEM
+  const pedido =
+    pedidoJaCarregado !== undefined
+      ? pedidoJaCarregado
+      : await repositorioEntradaNotas.buscarTipoCompraPedido(nota.pedidoCompraId)
+  return pedido?.tipoCompra === 'revenda' ? STATUS_AGUARDANDO_CHEGADA : STATUS_AGUARDANDO_CONTAGEM
 }
 
 const ORDEM_ETAPAS: EtapaPipeline[] = ['frete', 'cadastro', 'fiscal', 'negociacao']
@@ -1311,6 +1347,13 @@ async function analisarNota(
     }
   }
 
+  // Negociação compara a NF contra o saldo PENDENTE do pedido (total menos já consolidado
+  // em outras NFes), não contra a quantidade original — permite completar entregas parciais
+  // sem liberar excesso além do que ainda falta (regra de status do pedido pós-entrada).
+  const consolidadoPorProduto = pedido
+    ? await repositorioEntradaNotas.somarConsolidadoPorProduto(companyId, pedido.id, notaId)
+    : new Map<string, number>()
+
   const negociacao = analisarNegociacao({
     itensNf: nota.itens.map((i) => ({
       id: i.id,
@@ -1326,12 +1369,17 @@ async function analisarNota(
           numero: pedido.numero,
           condicaoPagamento: pedido.condicaoPagamento,
           prazosPagamento: pedido.prazosPagamento,
-          itens: pedido.itens.map((i) => ({
-            produtoId: i.produtoId,
-            quantidade: decimalNum(i.quantidade) ?? 0,
-            precoUnitario: decimalNum(i.precoUnitario) ?? 0,
-            nome: i.produto?.nomeVenda,
-          })),
+          itens: pedido.itens.map((i) => {
+            const quantidadeTotal = decimalNum(i.quantidade) ?? 0
+            const consolidado = consolidadoPorProduto.get(i.produtoId) ?? 0
+            const pendente = Math.max(0, quantidadeTotal - consolidado)
+            return {
+              produtoId: i.produtoId,
+              quantidade: pendente,
+              precoUnitario: decimalNum(i.precoUnitario) ?? 0,
+              nome: i.produto?.nomeVenda,
+            }
+          }),
         }
       : null,
     prazoNf: nota.prazoPagamentoXml,
@@ -1383,7 +1431,13 @@ async function analisarNota(
   analise.motivoParada = null
   await aplicarRateioEDespesasFrete(companyId, notaId)
   const contasPagarResumo = await gerarTitulosContasPagarDaEntrada(companyId, notaId)
-  await lancarContagem(notaId, 'automatica')
+  // `pedido.id` cobre o caso de auto-vínculo por grupo econômico nesta mesma análise
+  // (nota.pedidoCompraId local ainda não reflete o UPDATE feito acima).
+  const statusDestino = await statusPosLancamento(
+    { ...nota, pedidoCompraId: pedido?.id ?? nota.pedidoCompraId },
+    pedido ? { tipoCompra: pedido.tipoCompra } : null
+  )
+  await lancarContagem(notaId, 'automatica', statusDestino)
   await repositorioEntradaNotas.atualizarNota(notaId, {
     analiseJson: asJson(analise),
     etapaAtual: 'lancamento',
@@ -1869,6 +1923,11 @@ async function obterDetalhe(
       problemaDesfecho: nota.problemaDesfecho ?? null,
       problemaMarcadoEm: nota.problemaMarcadoEm ?? null,
       problemaResolvidoEm: nota.problemaResolvidoEm ?? null,
+      divergenciaDesfecho: nota.divergenciaDesfecho ?? null,
+      divergenciaResolvidaEm: nota.divergenciaResolvidaEm ?? null,
+      anexoDivergencia: nota.anexos?.[0]
+        ? { id: nota.anexos[0].id, nomeArquivo: nota.anexos[0].nomeArquivo }
+        : null,
       estoqueLancado,
       estoqueResumo,
       contasPagar,
@@ -2661,6 +2720,49 @@ async function lancarEstoqueAoConsolidar(
   })
 }
 
+const TOLERANCIA_QTD_STATUS_PEDIDO = 0.0001
+
+/** Status do pedido em que a transição automática pós-consolidação pode agir. */
+const STATUS_PEDIDO_ELEGIVEIS_RECALCULO = ['enviado', 'aprovado', 'parcial']
+
+/**
+ * Recalcula o status do Pedido de Compra após uma NFe virar `entrada_consolidada`:
+ * todos os itens completos → `recebido` (Concluído); algum consolidado mas não todos →
+ * `parcial` (Entregue parcialmente); nada consolidado ainda → não altera.
+ * Só aplica sobre pedidos em enviado/aprovado/parcial (não sobrescreve cancelado/rascunho).
+ */
+async function recalcularStatusPedidoAposConsolidar(
+  companyId: string,
+  pedidoCompraId: string
+): Promise<void> {
+  const pedido = await repositorioEntradaNotas.buscarPedidoComItens(companyId, pedidoCompraId)
+  if (!pedido) return
+  if (!STATUS_PEDIDO_ELEGIVEIS_RECALCULO.includes(pedido.status)) return
+  if (pedido.itens.length === 0) return
+
+  const consolidadoPorProduto = await repositorioEntradaNotas.somarConsolidadoPorProduto(
+    companyId,
+    pedidoCompraId
+  )
+
+  let algumConsolidado = false
+  let todosCompletos = true
+  for (const item of pedido.itens) {
+    const quantidadeTotal = decimalNum(item.quantidade) ?? 0
+    const consolidado = consolidadoPorProduto.get(item.produtoId) ?? 0
+    if (consolidado > TOLERANCIA_QTD_STATUS_PEDIDO) algumConsolidado = true
+    const pendente = quantidadeTotal - consolidado
+    if (pendente > TOLERANCIA_QTD_STATUS_PEDIDO) todosCompletos = false
+  }
+
+  if (!algumConsolidado) return
+
+  const novoStatus = todosCompletos ? 'recebido' : 'parcial'
+  if (novoStatus !== pedido.status) {
+    await repositorioEntradaNotas.atualizarStatusPedidoCompra(pedidoCompraId, novoStatus)
+  }
+}
+
 async function lancar(
   companyId: string,
   notaId: string,
@@ -2682,6 +2784,12 @@ async function lancar(
   }
   if (modo === 'contagem' && noPainelContagem) {
     throw new ErroDaAplicacao('Nota já liberada para contagem.', 409)
+  }
+  if (modo === 'contagem' && nota.statusEntrada === STATUS_AGUARDANDO_CHEGADA) {
+    throw new ErroDaAplicacao(
+      'Nota de revenda aguardando chegada — use "Liberar para contagem" antes de lançar novamente.',
+      409
+    )
   }
   if (nota.statusEntrada === 'cancelada') {
     throw new ErroDaAplicacao('Nota cancelada — não é possível lançar.', 409)
@@ -2736,10 +2844,16 @@ async function lancar(
       etapaAtual: 'lancamento',
       origemLancamento: 'humana',
     })
+    // Roda depois da nota virar entrada_consolidada — senão a própria nota não entra
+    // na soma de "já consolidado" (somarConsolidadoPorProduto filtra por esse status).
+    if (nota.pedidoCompraId) {
+      await recalcularStatusPedidoAposConsolidar(companyId, nota.pedidoCompraId)
+    }
   } else {
     await aplicarRateioEDespesasFrete(companyId, notaId)
     contasPagarResumo = await gerarTitulosContasPagarDaEntrada(companyId, notaId)
-    await lancarContagem(notaId, 'humana')
+    const statusDestino = await statusPosLancamento(nota)
+    await lancarContagem(notaId, 'humana', statusDestino)
   }
 
   const detalhe = await obterDetalhe(companyId, notaId)
@@ -2747,6 +2861,133 @@ async function lancar(
     ...detalhe,
     ...(estoqueResumo != null ? { estoqueResumo } : {}),
     ...(contasPagarResumo != null ? { contasPagarResumo } : {}),
+  }
+}
+
+/**
+ * Libera manualmente uma NF "aguardando chegada" (revenda com pedido vinculado) para o
+ * painel de contagem — única ação de saída desse status (uma nota por vez, sem lote).
+ */
+async function liberarParaContagem(companyId: string, notaId: string) {
+  const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  if (!podeLiberarParaContagem(nota.statusEntrada)) {
+    throw new ErroDaAplicacao('Nota não está aguardando chegada.', 409)
+  }
+  await repositorioEntradaNotas.atualizarNota(notaId, { statusEntrada: STATUS_AGUARDANDO_CONTAGEM })
+  return await obterDetalhe(companyId, notaId)
+}
+
+/**
+ * Resolução administrativa da divergência de contagem (§7.17): bloqueio de itens.
+ * Nota inteira (todos os itens com produto) fica retida — devolução fiscal fica para fase
+ * futura. Exige senha de gerente (fail-closed) e a ressalva assinada anexada (sem foto/PDF
+ * não resolve, mesmo espírito da regra de vencimento obrigatório).
+ */
+async function resolverDivergenciaContagem(
+  companyId: string,
+  notaId: string,
+  usuarioId: string,
+  dados: {
+    senha: string
+    anexo: { mimeType: string; base64Arquivo: string; nomeArquivo: string }
+  }
+) {
+  const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  if (nota.statusEntrada !== STATUS_CONTAGEM_DIVERGENTE) {
+    throw new ErroDaAplicacao(
+      'Nota não está com contagem divergente pendente de correção.',
+      409
+    )
+  }
+
+  if (!dados.senha?.trim()) {
+    throw new ErroDaAplicacao(
+      'Senha de gerente obrigatória para resolver a divergência.',
+      400
+    )
+  }
+  const senhaOk = await servicoDeAutenticacao.verificarSenhaDoUsuario(usuarioId, dados.senha)
+  if (!senhaOk) throw new ErroDaAplicacao('Senha inválida.', 403)
+
+  if (!dados.anexo?.base64Arquivo?.trim() || !dados.anexo?.mimeType?.trim()) {
+    throw new ErroDaAplicacao(
+      'Anexo da ressalva assinada é obrigatório para resolver a divergência.',
+      400
+    )
+  }
+
+  const { caminhoArquivo, tamanhoBytes } = await salvarAnexoEntradaNota(
+    notaId,
+    dados.anexo.mimeType,
+    dados.anexo.base64Arquivo
+  )
+  await repositorioEntradaNotas.criarAnexoDivergencia({
+    companyId,
+    nfeRecebidaId: notaId,
+    nomeArquivo: dados.anexo.nomeArquivo?.trim() || 'ressalva-divergencia',
+    mimeType: dados.anexo.mimeType,
+    caminhoArquivo,
+    tamanhoBytes,
+    usuarioId,
+  })
+
+  // Mesmo passo do Consolidar normal: rateio de frete + lançamento físico/fiscal.
+  await aplicarRateioEDespesasFrete(companyId, notaId)
+  const estoqueResumo = await lancarEstoqueAoConsolidar(companyId, notaId, usuarioId)
+
+  // Bloqueio: cada item com produto e controle de estoque fica com a mesma quantidade
+  // da entrada bloqueada (disponível zerado) até desbloqueio manual futuro (backlog Estoque).
+  const notaParaBloqueio = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!notaParaBloqueio) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  const mapaControlaEstoque = new Map(
+    notaParaBloqueio.itens.map((i) => [i.id, i.produto?.controlaEstoque === true])
+  )
+  const linhasEntrada = montarLinhasEstoqueEntradaNf(notaParaBloqueio)
+  for (const linha of linhasEntrada) {
+    if (!mapaControlaEstoque.get(linha.itemId)) continue
+    await servicoDeEstoque.registrarMovimentoEstoque({
+      companyId,
+      produtoId: linha.produtoId,
+      dimensao: 'bloqueio',
+      tipoMovimento: 'bloqueio',
+      quantidade: linha.quantidadeEstoque,
+      origem: 'nfe_divergencia',
+      origemId: notaId,
+      chaveIdempotencia: `nfe:${notaId}:item:${linha.itemId}:bloqueio`,
+      observacao: 'Bloqueio por divergência na contagem — ressalva assinada anexada',
+      usuarioId,
+    })
+  }
+
+  await repositorioEntradaNotas.atualizarNota(notaId, {
+    statusEntrada: 'entrada_consolidada',
+    etapaAtual: 'lancamento',
+    origemLancamento: 'humana',
+    divergenciaDesfecho: 'bloqueio',
+    divergenciaResolvidaEm: new Date(),
+  })
+
+  // Roda depois da nota virar entrada_consolidada (mesmo motivo do Consolidar normal).
+  if (nota.pedidoCompraId) {
+    await recalcularStatusPedidoAposConsolidar(companyId, nota.pedidoCompraId)
+  }
+
+  const detalhe = await obterDetalhe(companyId, notaId)
+  return {
+    ...detalhe,
+    ...(estoqueResumo != null ? { estoqueResumo } : {}),
+  }
+}
+
+async function baixarAnexoDivergencia(companyId: string, notaId: string, anexoId: string) {
+  const anexo = await repositorioEntradaNotas.buscarAnexoEntradaNota(companyId, notaId, anexoId)
+  if (!anexo) throw new ErroDaAplicacao('Anexo não encontrado', 404)
+  return {
+    caminhoAbsoluto: caminhoAbsolutoAnexoEntradaNota(anexo.caminhoArquivo),
+    nomeArquivo: anexo.nomeArquivo,
+    mimeType: anexo.mimeType,
   }
 }
 
@@ -3196,6 +3437,9 @@ export const servicoEntradaNotas = {
   resolverProblema,
   descancelar,
   lancar,
+  liberarParaContagem,
+  resolverDivergenciaContagem,
+  baixarAnexoDivergencia,
   processarAposXml,
   sincronizarItensPendentesDoXml,
   reanalisarNotasPendentesPorDocumento,

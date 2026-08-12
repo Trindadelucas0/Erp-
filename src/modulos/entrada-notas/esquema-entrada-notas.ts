@@ -71,6 +71,16 @@ export const esquemaResolverProblema = z.object({
   desfecho: z.enum(['solucao']),
 })
 
+/** Resolver divergência de contagem — senha + ressalva assinada obrigatórios (§7.17). */
+export const esquemaResolverDivergencia = z.object({
+  senha: z.string().min(1, 'Senha de gerente obrigatória'),
+  anexo: z.object({
+    mimeType: z.string().min(1, 'Tipo do arquivo obrigatório'),
+    base64Arquivo: z.string().min(1, 'Arquivo obrigatório'),
+    nomeArquivo: z.string().min(1, 'Nome do arquivo obrigatório'),
+  }),
+})
+
 export const esquemaLancar = z.object({
   modo: z.enum(['contagem', 'consolidar']),
   senha: z.string().optional(),

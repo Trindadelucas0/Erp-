@@ -114,6 +114,11 @@ const includeNotaCompleta = {
       usuario: { select: { id: true, name: true, email: true } },
     },
   },
+  anexos: {
+    where: { tipoAnexo: 'ressalva_divergencia' as const },
+    orderBy: { createdAt: 'desc' as const },
+    take: 1,
+  },
 } as const
 
 export type NotaCompletaEntrada = Prisma.NfeRecebidaGetPayload<{
@@ -183,12 +188,76 @@ async function atualizarNota(
     problemaMarcadoEm?: Date | null
     problemaResolvidoEm?: Date | null
     cfopEntradaId?: string | null
+    divergenciaDesfecho?: string | null
+    divergenciaResolvidaEm?: Date | null
   }
 ) {
   return clientePrisma.nfeRecebida.update({
     where: { id },
     data: data as Prisma.NfeRecebidaUncheckedUpdateInput,
   })
+}
+
+async function criarAnexoDivergencia(dados: {
+  companyId: string
+  nfeRecebidaId: string
+  nomeArquivo: string
+  mimeType: string
+  caminhoArquivo: string
+  tamanhoBytes: number
+  usuarioId: string | null
+}) {
+  return clientePrisma.nfeRecebidaAnexo.create({
+    data: {
+      id: randomUUID(),
+      companyId: dados.companyId,
+      nfeRecebidaId: dados.nfeRecebidaId,
+      tipoAnexo: 'ressalva_divergencia',
+      nomeArquivo: dados.nomeArquivo,
+      mimeType: dados.mimeType,
+      caminhoArquivo: dados.caminhoArquivo,
+      tamanhoBytes: dados.tamanhoBytes,
+      usuarioId: dados.usuarioId,
+    },
+  })
+}
+
+async function buscarAnexoEntradaNota(companyId: string, nfeRecebidaId: string, anexoId: string) {
+  return clientePrisma.nfeRecebidaAnexo.findFirst({
+    where: { id: anexoId, nfeRecebidaId, companyId },
+  })
+}
+
+/**
+ * Soma NfeRecebidaItem.quantidade já consolidada por produto, considerando todas as
+ * NfeRecebida com esse pedidoCompraId em statusEntrada='entrada_consolidada'.
+ * `notaIdExcluida` evita a nota atual se autocontar em reprocessamento/"voltar etapa".
+ */
+async function somarConsolidadoPorProduto(
+  companyId: string,
+  pedidoCompraId: string,
+  notaIdExcluida?: string
+): Promise<Map<string, number>> {
+  const itens = await clientePrisma.nfeRecebidaItem.findMany({
+    where: {
+      produtoId: { not: null },
+      nfeRecebida: {
+        companyId,
+        pedidoCompraId,
+        statusEntrada: 'entrada_consolidada',
+        ...(notaIdExcluida ? { id: { not: notaIdExcluida } } : {}),
+      },
+    },
+    select: { produtoId: true, quantidade: true },
+  })
+
+  const mapa = new Map<string, number>()
+  for (const item of itens) {
+    if (!item.produtoId) continue
+    const qtd = item.quantidade != null ? Number(item.quantidade) : 0
+    mapa.set(item.produtoId, (mapa.get(item.produtoId) ?? 0) + qtd)
+  }
+  return mapa
 }
 
 async function criarTratativa(dados: {
@@ -391,6 +460,21 @@ async function buscarPedidoComItens(companyId: string, pedidoId: string) {
         include: { produto: { select: { id: true, nomeVenda: true } } },
       },
     },
+  })
+}
+
+/** Leve — só o campo necessário para decidir o status pós-lançamento (revenda x demais). */
+async function buscarTipoCompraPedido(pedidoId: string) {
+  return clientePrisma.pedidoCompra.findUnique({
+    where: { id: pedidoId },
+    select: { tipoCompra: true },
+  })
+}
+
+async function atualizarStatusPedidoCompra(pedidoCompraId: string, status: string) {
+  return clientePrisma.pedidoCompra.update({
+    where: { id: pedidoCompraId },
+    data: { status },
   })
 }
 
@@ -602,6 +686,11 @@ export const repositorioEntradaNotas = {
   buscarProdutoPorCodigoOriginal,
   listarPedidosAbertosFornecedor,
   buscarPedidoComItens,
+  buscarTipoCompraPedido,
+  atualizarStatusPedidoCompra,
+  somarConsolidadoPorProduto,
+  criarAnexoDivergencia,
+  buscarAnexoEntradaNota,
   gravarCodigoOriginalVinculo,
   mapaCodigoOriginalPorProduto,
   atualizarFiscalProduto,

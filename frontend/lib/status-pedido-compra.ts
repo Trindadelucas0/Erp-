@@ -7,9 +7,9 @@ export function rotuloStatusUi(status: string): string {
     case 'aprovado':
       return 'Aprovado'
     case 'parcial':
-      return 'Recebimento parcial'
+      return 'Entregue parcialmente'
     case 'recebido':
-      return 'Recebido'
+      return 'Concluído'
     case 'cancelado':
       return 'Cancelado'
     default:

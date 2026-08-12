@@ -43,6 +43,30 @@ async function validarSugestaoEntrada(
   return id
 }
 
+async function validarPlanoFinanceiroPadrao(
+  companyId: string,
+  codigo: string,
+  planoFinanceiroPadraoId: string | null | undefined
+): Promise<string | null> {
+  const id = planoFinanceiroPadraoId ?? null
+  const classificacao = inferirCfopDoCodigo(codigo)
+  if (classificacao.tipo === 'saida') {
+    if (id) {
+      throw new ErroDaAplicacao('Plano financeiro padrão só se aplica a CFOP de entrada', 400)
+    }
+    return null
+  }
+  if (!id) return null
+  try {
+    await repositorioDeCfops.validarPlanoFinanceiroAtivo(companyId, id)
+  } catch (erro) {
+    const mensagem =
+      erro instanceof Error ? erro.message : 'Plano financeiro padrão inválido'
+    throw new ErroDaAplicacao(mensagem, 400)
+  }
+  return id
+}
+
 async function listarParaGestao(
   companyId: string,
   q?: string,
@@ -87,10 +111,16 @@ async function criarCfop(companyId: string, dados: DadosParaCriarCfop, idDoAutor
     dados.codigo,
     dados.cfopSugestaoEntradaId
   )
+  const planoFinanceiroPadraoId = await validarPlanoFinanceiroPadrao(
+    companyId,
+    dados.codigo,
+    dados.planoFinanceiroPadraoId
+  )
 
   const cfop = await repositorioDeCfops.criar(companyId, {
     ...dados,
     cfopSugestaoEntradaId,
+    planoFinanceiroPadraoId,
   })
 
   await registrarAuditoria({
@@ -119,11 +149,16 @@ async function editarCfop(
     dados.cfopSugestaoEntradaId,
     id
   )
+  const planoFinanceiroPadraoId = await validarPlanoFinanceiroPadrao(
+    companyId,
+    existente.codigo,
+    dados.planoFinanceiroPadraoId
+  )
 
   const cfop = await repositorioDeCfops.atualizar(
     companyId,
     id,
-    { ...dados, cfopSugestaoEntradaId },
+    { ...dados, cfopSugestaoEntradaId, planoFinanceiroPadraoId },
     existente.codigo
   )
 

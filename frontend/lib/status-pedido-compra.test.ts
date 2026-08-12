@@ -6,8 +6,8 @@ describe('status-pedido-compra', () => {
     expect(rotuloStatusUi('rascunho')).toBe('Rascunho')
     expect(rotuloStatusUi('enviado')).toBe('Enviado')
     expect(rotuloStatusUi('aprovado')).toBe('Aprovado')
-    expect(rotuloStatusUi('parcial')).toBe('Recebimento parcial')
-    expect(rotuloStatusUi('recebido')).toBe('Recebido')
+    expect(rotuloStatusUi('parcial')).toBe('Entregue parcialmente')
+    expect(rotuloStatusUi('recebido')).toBe('Concluído')
     expect(rotuloStatusUi('cancelado')).toBe('Cancelado')
   })
 

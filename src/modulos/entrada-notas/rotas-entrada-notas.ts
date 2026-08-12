@@ -92,6 +92,21 @@ export async function rotasEntradaNotas(aplicacao: FastifyInstance): Promise<voi
   )
   aplicacao.post('/:id/descancelar', { preHandler: autenticado }, controladorEntradaNotas.descancelar)
   aplicacao.post('/:id/lancar', { preHandler: autenticado }, controladorEntradaNotas.lancar)
+  aplicacao.post(
+    '/:id/liberar-para-contagem',
+    { preHandler: autenticado },
+    controladorEntradaNotas.liberarParaContagem
+  )
+  aplicacao.post(
+    '/:id/resolver-divergencia',
+    { preHandler: autenticado },
+    controladorEntradaNotas.resolverDivergencia
+  )
+  aplicacao.get(
+    '/:id/anexo-divergencia/:anexoId/download',
+    { preHandler: autenticado },
+    controladorEntradaNotas.baixarAnexoDivergencia
+  )
   aplicacao.post('/:id/vincular-cte', { preHandler: autenticado }, controladorEntradaNotas.vincularCte)
   aplicacao.post(
     '/:id/financeiro-frete',

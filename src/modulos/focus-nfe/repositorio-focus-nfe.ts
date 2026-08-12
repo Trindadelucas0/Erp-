@@ -3,7 +3,10 @@
  */
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import { normalizarDocumento } from '../../compartilhado/validacoes/documentos.js'
-import { STATUS_PAINEL_CONTAGEM } from '../entrada-notas/status-entrada-contagem.js'
+import {
+  STATUS_AGUARDANDO_CHEGADA,
+  STATUS_PAINEL_CONTAGEM,
+} from '../entrada-notas/status-entrada-contagem.js'
 import { REGRAS_FISCAIS_PADRAO } from './esquema-focus-nfe.js'
 import { xmlNfeTemItensParseaveis } from './parser-xml-nfe.js'
 
@@ -151,13 +154,14 @@ async function listarNfesPorPainel(
   filtros?: {
     dataDe?: Date
     dataAte?: Date
-    painel?: 'analise' | 'contagem' | 'consolidada' | 'problemas' | 'cancelada'
+    painel?: 'analise' | 'aguardando_chegada' | 'contagem' | 'consolidada' | 'problemas' | 'cancelada'
     busca?: string
   }
 ) {
   const painel = filtros?.painel ?? 'analise'
   const statusPorPainel: Record<string, string[]> = {
     analise: ['pendente', 'em_analise', 'stand_by'],
+    aguardando_chegada: [STATUS_AGUARDANDO_CHEGADA],
     contagem: [...STATUS_PAINEL_CONTAGEM],
     consolidada: ['entrada_consolidada'],
     problemas: ['com_problema', 'problema_resolvido'],
@@ -237,7 +241,7 @@ async function listarCompanyIdsComFocusAtivo() {
 async function contarCtesForaDoFiltroData(
   companyId: string,
   filtros: {
-    painel?: 'analise' | 'contagem' | 'consolidada' | 'problemas' | 'cancelada'
+    painel?: 'analise' | 'aguardando_chegada' | 'contagem' | 'consolidada' | 'problemas' | 'cancelada'
     dataDe?: Date
     dataAte?: Date
   }
@@ -247,6 +251,7 @@ async function contarCtesForaDoFiltroData(
   const painel = filtros.painel ?? 'analise'
   const statusPorPainel: Record<string, string[]> = {
     analise: ['pendente', 'em_analise', 'stand_by'],
+    aguardando_chegada: [STATUS_AGUARDANDO_CHEGADA],
     contagem: [...STATUS_PAINEL_CONTAGEM],
     consolidada: ['entrada_consolidada'],
     problemas: ['com_problema', 'problema_resolvido'],

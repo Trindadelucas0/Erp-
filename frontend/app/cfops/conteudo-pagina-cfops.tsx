@@ -19,6 +19,10 @@ import {
   CampoLookupCatalogo,
   type ItemCatalogo,
 } from '@/components/compartilhado/campo-lookup-catalogo'
+import {
+  ComboboxPlanoFinanceiro,
+  type PlanoFinanceiroOpcao,
+} from '@/components/contas-a-pagar/combobox-plano-financeiro'
 import { SecaoFormularioErp } from '@/components/compartilhado/secao-formulario-erp'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { Abas } from '@/components/ui/abas'
@@ -47,6 +51,8 @@ type Cfop = {
   subtipoCfop: string | null
   aproveitarCreditoIcms: boolean
   ativo: boolean
+  planoFinanceiroPadraoId?: string | null
+  planoFinanceiroPadrao?: ItemCatalogo | null
 }
 
 const formVazio = {
@@ -57,6 +63,7 @@ const formVazio = {
   aproveitarCreditoIcms: false,
   ativo: true,
   cfopSugestaoEntrada: null as ItemCatalogo | null,
+  planoFinanceiroPadraoId: '',
 }
 
 export function ConteudoDaPaginaCfops() {
@@ -76,6 +83,7 @@ export function ConteudoDaPaginaCfops() {
   const [salvando, setSalvando] = useState(false)
   const [mensagem, setMensagem] = useState('')
   const [erro, setErro] = useState('')
+  const [planosFinanceiros, setPlanosFinanceiros] = useState<PlanoFinanceiroOpcao[]>([])
   const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<ColunaCfop>()
 
   const classificacaoAtual = useMemo(
@@ -97,17 +105,39 @@ export function ConteudoDaPaginaCfops() {
       if (buscaDebounced.trim()) params.set('q', buscaDebounced.trim())
       const { data } = await clienteHttp.get(`/cfops?${params}`)
       setLista(data.cfops ?? [])
-    } catch {
-      setErro('Erro ao carregar CFOPs.')
+      setErro('')
+    } catch (err: unknown) {
+      setErro(extrairMensagemApi(err, 'Erro ao carregar CFOPs.'))
     } finally {
       setCarregandoLista(false)
     }
   }, [buscaDebounced])
 
+  const carregarPlanosFinanceiros = useCallback(async () => {
+    try {
+      const { data } = await clienteHttp.get('/planos-financeiros', {
+        params: { tipo: 'despesa', somenteSubgrupo: 'true' },
+      })
+      const listaPlanos = data.planos ?? data ?? []
+      setPlanosFinanceiros(
+        (Array.isArray(listaPlanos) ? listaPlanos : []).map(
+          (p: { id: string; nome?: string; descricao?: string; codigo: string }) => ({
+            id: p.id,
+            nome: p.nome ?? p.descricao ?? p.codigo,
+            codigo: p.codigo,
+          })
+        )
+      )
+    } catch {
+      setPlanosFinanceiros([])
+    }
+  }, [])
+
   useEffect(() => {
     if (carregandoSessao || !estaAutenticado) return
     carregar()
-  }, [carregandoSessao, estaAutenticado, carregar])
+    carregarPlanosFinanceiros()
+  }, [carregandoSessao, estaAutenticado, carregar, carregarPlanosFinanceiros])
 
   function abrirNovo() {
     setForm(formVazio)
@@ -122,6 +152,24 @@ export function ConteudoDaPaginaCfops() {
     try {
       const { data } = await clienteHttp.get(`/cfops/${cfop.id}`)
       const c = data.cfop
+      const planoPadrao = c.planoFinanceiroPadrao as
+        | { id: string; codigo?: string; descricao?: string; nome?: string }
+        | null
+        | undefined
+      const planoId = planoPadrao?.id ?? c.planoFinanceiroPadraoId ?? ''
+      if (planoPadrao?.id) {
+        setPlanosFinanceiros((atuais) => {
+          if (atuais.some((p) => p.id === planoPadrao.id)) return atuais
+          return [
+            {
+              id: planoPadrao.id,
+              codigo: planoPadrao.codigo,
+              nome: planoPadrao.nome ?? planoPadrao.descricao ?? planoPadrao.codigo ?? '',
+            },
+            ...atuais,
+          ]
+        })
+      }
       setForm({
         codigo: c.codigo,
         nome: c.nome,
@@ -130,6 +178,7 @@ export function ConteudoDaPaginaCfops() {
         aproveitarCreditoIcms: c.aproveitarCreditoIcms ?? false,
         ativo: c.ativo,
         cfopSugestaoEntrada: c.cfopSugestaoEntrada ?? null,
+        planoFinanceiroPadraoId: planoId,
       })
       setModoEdicao(true)
       setIdEmEdicao(c.id)
@@ -159,6 +208,7 @@ export function ConteudoDaPaginaCfops() {
         subtipoCfop: form.subtipoCfop,
         aproveitarCreditoIcms: form.aproveitarCreditoIcms,
         cfopSugestaoEntradaId: cfopEhSaida ? form.cfopSugestaoEntrada?.id ?? null : null,
+        planoFinanceiroPadraoId: !cfopEhSaida ? form.planoFinanceiroPadraoId || null : null,
       }
 
       if (modoEdicao) {
@@ -337,6 +387,8 @@ export function ConteudoDaPaginaCfops() {
                 aproveitarCreditoIcms: prefixoPermiteIcms(v) ? f.aproveitarCreditoIcms : false,
                 cfopSugestaoEntrada:
                   classificacao?.tipo === 'saida' ? f.cfopSugestaoEntrada : null,
+                planoFinanceiroPadraoId:
+                  classificacao?.tipo === 'saida' ? '' : f.planoFinanceiroPadraoId,
               }))
             }}
             aoMudarNome={(v) => setForm((f) => ({ ...f, nome: v }))}
@@ -385,6 +437,19 @@ export function ConteudoDaPaginaCfops() {
                   valor={form.cfopSugestaoEntrada}
                   aoSelecionar={(v) => setForm((f) => ({ ...f, cfopSugestaoEntrada: v }))}
                   disabled={salvando}
+                />
+              )}
+
+              {!cfopEhSaida && classificacaoAtual && (
+                <ComboboxPlanoFinanceiro
+                  rotulo="Plano financeiro padrão"
+                  planos={planosFinanceiros}
+                  valor={form.planoFinanceiroPadraoId}
+                  aoMudar={(planoId) =>
+                    setForm((f) => ({ ...f, planoFinanceiroPadraoId: planoId }))
+                  }
+                  disabled={salvando}
+                  permitirVazio
                 />
               )}
 

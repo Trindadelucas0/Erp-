@@ -36,6 +36,7 @@ model Company {
   focusNfeJobs                FocusNfeJob[]
   nfesRecebidas               NfeRecebida[]
   tratativasNfeRecebida       NfeRecebidaTratativa[]
+  nfesRecebidasAnexos         NfeRecebidaAnexo[]
   despesasEntradaDocumento    DespesaEntradaDocumento[]
   produtos                    Produto[]
   pedidosCompra               PedidoCompra[]
@@ -180,6 +181,9 @@ model NfeRecebida {
   problemaDesfecho         String?
   problemaMarcadoEm        DateTime?
   problemaResolvidoEm      DateTime?
+  /// bloqueio | null (devolução fica para fase futura)
+  divergenciaDesfecho      String?
+  divergenciaResolvidaEm   DateTime?
   itens                    NfeRecebidaItem[]
   tratativas               NfeRecebidaTratativa[]
   vinculosComoNfe          NfeCteVinculo[]          @relation("VinculoNfeMercadoria")
@@ -187,6 +191,7 @@ model NfeRecebida {
   despesasEntrada          DespesaEntradaDocumento[]
   contasPagar              ContaPagar[]
   contagensEntradaNotas    ContagemEntradaNota[]
+  anexos                   NfeRecebidaAnexo[]
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 
@@ -197,6 +202,26 @@ model NfeRecebida {
   @@index([companyId, tipoDocumento])
   @@index([companyId, chaveNfeReferenciada])
   @@index([cfopEntradaId])
+}
+
+/// Anexo da NfeRecebida (hoje só a ressalva assinada da divergência de contagem).
+model NfeRecebidaAnexo {
+  id             String      @id @default(uuid())
+  companyId      String
+  company        Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  nfeRecebidaId  String
+  nfeRecebida    NfeRecebida @relation(fields: [nfeRecebidaId], references: [id], onDelete: Cascade)
+  /// ressalva_divergencia (única hoje; reservado p/ futuros tipos)
+  tipoAnexo      String      @default("ressalva_divergencia")
+  nomeArquivo    String
+  mimeType       String
+  caminhoArquivo String
+  tamanhoBytes   Int
+  usuarioId      String?
+  usuario        User?       @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  createdAt      DateTime    @default(now())
+
+  @@index([companyId, nfeRecebidaId])
 }
 
 model NfeRecebidaTratativa {
@@ -671,6 +696,7 @@ model PlanoFinanceiro {
   paresPlanoCfop          FornecedorParPlanoCfopPadrao[]
   despesasEntrada         DespesaEntradaDocumento[]
   contasPagar             ContaPagar[]
+  cfopsComPlanoPadrao     Cfop[]                         @relation("CfopPlanoFinanceiroPadrao")
   createdAt               DateTime                       @default(now())
 
   @@unique([codigo, companyId])
@@ -695,6 +721,8 @@ model Cfop {
   cfopSugestaoEntradaId String?
   cfopSugestaoEntrada   Cfop?                          @relation("CfopSugestaoEntrada", fields: [cfopSugestaoEntradaId], references: [id], onDelete: SetNull)
   cfopsComSugestao      Cfop[]                         @relation("CfopSugestaoEntrada")
+  planoFinanceiroPadraoId String?
+  planoFinanceiroPadrao   PlanoFinanceiro?             @relation("CfopPlanoFinanceiroPadrao", fields: [planoFinanceiroPadraoId], references: [id], onDelete: SetNull)
   fornecedores          FornecedorCfopEntrada[]
   paresPlanoCfop        FornecedorParPlanoCfopPadrao[]
   itensEntradaComCfop   NfeRecebidaItem[]
@@ -741,6 +769,7 @@ model User {
   contagensEntrada  ContagemEntrada[]
   contasPagarBaixas ContaPagarBaixa[]
   contasPagarAnexos ContaPagarAnexo[]
+  nfesRecebidasAnexos NfeRecebidaAnexo[]
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 }

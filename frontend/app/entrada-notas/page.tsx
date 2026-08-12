@@ -118,7 +118,13 @@ function formatarCustoExtraCentavos(centavos: number): string {
   })
 }
 
-type PainelEntrada = 'analise' | 'contagem' | 'consolidada' | 'problemas' | 'cancelada'
+type PainelEntrada =
+  | 'analise'
+  | 'aguardando_chegada'
+  | 'contagem'
+  | 'consolidada'
+  | 'problemas'
+  | 'cancelada'
 
 type FiltrosEntradaSalvos = {
   dataDe: string
@@ -141,6 +147,7 @@ type XmlVisualizacao = {
 
 const PAINEIS: Array<{ id: PainelEntrada; rotulo: string }> = [
   { id: 'analise', rotulo: 'Em análise' },
+  { id: 'aguardando_chegada', rotulo: 'Aguardando chegada' },
   { id: 'contagem', rotulo: 'Liberadas p/ contagem' },
   { id: 'consolidada', rotulo: 'Entradas consolidadas' },
   { id: 'problemas', rotulo: 'Com problemas' },
@@ -238,6 +245,7 @@ function ConteudoEntradaNotas() {
   const [reprocessando, setReprocessando] = useState(false)
   const [xmlModal, setXmlModal] = useState<XmlVisualizacao | null>(null)
   const [xmlCarregandoId, setXmlCarregandoId] = useState<string | null>(null)
+  const [liberandoId, setLiberandoId] = useState<string | null>(null)
   const [downloadRotulo, setDownloadRotulo] = useState('')
   const [pagina, setPagina] = useState(1)
   const [itensPorPagina, setItensPorPagina] = useState<ItensPorPagina>(10)
@@ -707,6 +715,20 @@ function ConteudoEntradaNotas() {
     }
   }
 
+  async function liberarParaContagem(id: string) {
+    setLiberandoId(id)
+    setErro('')
+    try {
+      await clienteHttp.post(`/entrada-notas/${id}/liberar-para-contagem`)
+      setMensagem('Nota liberada para contagem — a logística já pode conferir em Contagens de entrada.')
+      await carregar({ silencioso: true })
+    } catch (err) {
+      setErro(extrairMensagemApi(err, 'Não foi possível liberar a nota para contagem.'))
+    } finally {
+      setLiberandoId(null)
+    }
+  }
+
   async function importarUmXml(xmlBruto: string) {
     const xml = xmlBruto.replace(/^\uFEFF/, '').trim()
     const { data } = await clienteHttp.post<{ mensagem: string; chaveNfe: string }>(
@@ -876,11 +898,13 @@ function ConteudoEntradaNotas() {
         descricao={
           painelAnalise
             ? 'Sync automático ~2 min; BUSCAR força agora (Focus + completar + lista)'
-            : painel === 'consolidada'
-              ? 'Notas com entrada consolidada. NFe com estoque lançado (físico + fiscal). NFS-e/CTe documentais não movimentam estoque.'
-              : painel === 'contagem'
-                ? 'Liberadas para contagem — logística confere em Contagens; consolidar só após contagem OK (NFe produto)'
-                : 'Lista do banco local — use Filtrar para atualizar'
+            : painel === 'aguardando_chegada'
+              ? 'Nota de revenda lançada — aguardando chegada física da mercadoria. Libere para a logística iniciar a contagem.'
+              : painel === 'consolidada'
+                ? 'Notas com entrada consolidada. NFe com estoque lançado (físico + fiscal). NFS-e/CTe documentais não movimentam estoque.'
+                : painel === 'contagem'
+                  ? 'Liberadas para contagem — logística confere em Contagens; consolidar só após contagem OK (NFe produto)'
+                  : 'Lista do banco local — use Filtrar para atualizar'
         }
       >
         {painelAnalise && (
@@ -1160,6 +1184,23 @@ function ConteudoEntradaNotas() {
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex flex-wrap gap-1">
+                        {n.statusEntrada === 'aguardando_chegada' && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={liberandoId === n.id || ocupado}
+                            onClick={() => void liberarParaContagem(n.id)}
+                          >
+                            {liberandoId === n.id ? (
+                              <>
+                                <Loader2 className="mr-1 size-3.5 animate-spin" aria-hidden />
+                                Liberando…
+                              </>
+                            ) : (
+                              'Liberar para contagem'
+                            )}
+                          </Button>
+                        )}
                         {recursosDoc.verNota && (
                         <Button
                           type="button"

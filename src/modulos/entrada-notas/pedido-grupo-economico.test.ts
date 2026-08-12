@@ -15,6 +15,7 @@ vi.mock('./repositorio-entrada-notas.js', () => ({
     buscarProdutoPorCodigoOriginal: vi.fn(),
     listarPedidosAbertosFornecedor: vi.fn(),
     buscarPedidoComItens: vi.fn(),
+    somarConsolidadoPorProduto: vi.fn().mockResolvedValue(new Map()),
     gravarCodigoOriginalVinculo: vi.fn(),
     mapaCodigoOriginalPorProduto: vi.fn(),
     atualizarFiscalProduto: vi.fn(),
