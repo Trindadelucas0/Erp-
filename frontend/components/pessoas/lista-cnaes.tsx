@@ -26,7 +26,7 @@ export function ListaCnaes({ cnaes, somenteLeitura = true }: Props) {
 
   return (
     <div className="space-y-2">
-      <label className="text-sm font-medium leading-none">CNAEs</label>
+      <label className="text-sm font-semibold leading-none">CNAEs</label>
       <div className="overflow-hidden rounded-md border border-border">
         {cnaes.map((cnae) => (
           <div

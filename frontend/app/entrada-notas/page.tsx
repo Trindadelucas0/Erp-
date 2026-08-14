@@ -24,6 +24,9 @@ import {
   type VisualizacaoNota,
 } from '@/components/entrada-notas/conteudo-visualizacao-nota'
 import { BarraCarregamentoDownload } from '@/components/entrada-notas/barra-carregamento-download'
+import { TituloPagina } from '@/components/ui/titulo-pagina'
+import { classesCampoLista, classesCampoBase } from '@/components/ui/classes-campo'
+import { cn } from '@/lib/utils'
 import { CheckCircle2, Loader2 } from 'lucide-react'
 
 import { mascaraCnpj, mascaraCpf } from '@/lib/documentos'
@@ -847,15 +850,18 @@ function ConteudoEntradaNotas() {
         ativo={Boolean(xmlCarregandoId) || barraSyncAtiva}
         rotulo={barraRotulo}
       />
-      <div>
-        <p className="text-sm text-muted-foreground">Fiscal &gt; Entrada de Notas</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight">Entrada de Notas</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          O sistema sincroniza sozinho a cada ~2 min (<strong>NFe 55</strong>, <strong>NFS-e</strong> e{' '}
-          <strong>CTe</strong> em que a empresa é tomadora do frete). Use <strong>BUSCAR</strong> para forçar
-          agora (lotes de até 10). Filtros e pesquisa leem só o banco local.
-        </p>
-      </div>
+      <TituloPagina
+        caminho="Fiscal > Entrada de Notas"
+        subtitulo={
+          <>
+            O sistema sincroniza sozinho a cada ~2 min (<strong>NFe 55</strong>, <strong>NFS-e</strong> e{' '}
+            <strong>CTe</strong> em que a empresa é tomadora do frete). Use <strong>BUSCAR</strong> para forçar
+            agora (lotes de até 10). Filtros e pesquisa leem só o banco local.
+          </>
+        }
+      >
+        Entrada de Notas
+      </TituloPagina>
 
       <div className="flex flex-wrap gap-2">
         {PAINEIS.map((p) => (
@@ -950,7 +956,7 @@ function ConteudoEntradaNotas() {
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               placeholder="Emitente, valor ou chave (banco local)…"
-              className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className={classesCampoLista}
             />
           </div>
           <div className="min-w-0 w-full space-y-1 sm:w-auto">
@@ -960,7 +966,7 @@ function ConteudoEntradaNotas() {
               type="date"
               value={dataDe}
               onChange={(e) => setDataDe(e.target.value)}
-              className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:w-auto"
+              className={cn(classesCampoLista, 'sm:w-auto')}
             />
           </div>
           <div className="min-w-0 w-full space-y-1 sm:w-auto">
@@ -970,7 +976,7 @@ function ConteudoEntradaNotas() {
               type="date"
               value={dataAte}
               onChange={(e) => setDataAte(e.target.value)}
-              className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:w-auto"
+              className={cn(classesCampoLista, 'sm:w-auto')}
             />
           </div>
           <Button type="button" variant="outline" size="sm" onClick={() => carregar()} disabled={carregando}>
@@ -1455,7 +1461,7 @@ function ConteudoEntradaNotas() {
                 rows={3}
                 disabled={ocupado}
                 placeholder="Cole o XML da NF-e aqui…"
-                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono"
+                className={cn(classesCampoBase, 'min-h-[4.5rem] resize-y py-2 font-mono')}
               />
               <Button
                 type="button"

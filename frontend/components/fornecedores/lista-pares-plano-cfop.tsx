@@ -11,6 +11,7 @@ import {
   useOuvirFechamentoDropdownCatalogo,
 } from '@/lib/dropdown-catalogo'
 import { cn } from '@/lib/utils'
+import { classesCampoCompacto } from '@/components/ui/classes-campo'
 import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
 
 export type PlanoCfopPar = {
@@ -125,7 +126,7 @@ function ComboboxItem({
         <div className="flex gap-1">
           <input
             className={cn(
-              'flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50',
+              classesCampoCompacto,
               (invalido || erroSelecao) && 'border-destructive'
             )}
             value={aberto ? busca : textoAtual}

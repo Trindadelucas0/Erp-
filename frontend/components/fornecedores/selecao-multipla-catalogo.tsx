@@ -12,6 +12,7 @@ import {
 } from '@/lib/dropdown-catalogo'
 import { cn } from '@/lib/utils'
 import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
+import { classesCampo } from '@/components/ui/classes-campo'
 export type ItemCatalogo = {
   id: string
   codigo: string
@@ -122,11 +123,11 @@ export function SelecaoMultiplaCatalogo({
 
   return (
     <div className="space-y-2">
-      <label className="text-sm font-medium leading-none">{rotulo}</label>
+      <label className="text-sm font-semibold leading-none">{rotulo}</label>
       <div ref={ref} className="relative" {...zonaHover}>
         <div className="flex items-center gap-2">
           <input
-            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 pr-9 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+            className={cn(classesCampo, 'pr-9')}
             value={busca}
             onChange={(e) => {
               setBusca(e.target.value)

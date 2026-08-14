@@ -6,6 +6,7 @@
  */
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
+import { classesCampo, classesCampoBase, classesCampoLista } from '@/components/ui/classes-campo'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { LinhaTabelaClicavel } from '@/components/compartilhado/linha-tabela-clicavel'
@@ -376,12 +377,12 @@ function CampoInput({ rotulo, valor, aoMudar, tipo = 'text', placeholder, maxLen
   maxLength?: number; obrigatorio?: boolean; ajuda?: string; mensagemDeErro?: string; onBlur?: () => void; disabled?: boolean
 }) {
   return (
-    <div className="space-y-1">
-      <label className="text-sm font-medium leading-none">
+    <div className="space-y-1.5">
+      <label className="text-sm font-semibold leading-none">
         {rotulo}{obrigatorio && <span className="ml-0.5 text-destructive">*</span>}
       </label>
       <input
-        className={cn('flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50', mensagemDeErro && 'border-destructive')}
+        className={cn(classesCampo, mensagemDeErro && 'border-destructive')}
         type={tipo} value={valor} onChange={(e) => aoMudar(e.target.value)} onBlur={onBlur}
         placeholder={placeholder} maxLength={maxLength} required={obrigatorio} disabled={disabled}
       />
@@ -1077,16 +1078,16 @@ function ConteudoDaPaginaDeTransportadoras() {
 
                 {form.tipo === 'PJ' ? (
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium leading-none">CNPJ<span className="ml-0.5 text-destructive">*</span></label>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-semibold leading-none">CNPJ<span className="ml-0.5 text-destructive">*</span></label>
                       <div className="relative">
                         <input
-                          className={cn('flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50', erroDocumentoVisivel() && 'border-destructive')}
+                          className={cn(classesCampo, erroDocumentoVisivel() && 'border-destructive')}
                           type="text" value={form.documento} onChange={(e) => aoMudarDocumento(e.target.value)} onBlur={aoSairDocumento}
                           placeholder="00.000.000/0000-00" maxLength={18} disabled={modoEdicao || somenteLeitura}
                         />
                         {(verificandoDocumento || carregandoBrasilApi) && (
-                          <span className="absolute right-2 top-2 text-xs text-muted-foreground">
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
                             {carregandoBrasilApi ? 'Buscando na Receita...' : 'Verificando...'}
                           </span>
                         )}
@@ -1099,16 +1100,16 @@ function ConteudoDaPaginaDeTransportadoras() {
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium leading-none">CPF<span className="ml-0.5 text-destructive">*</span></label>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-semibold leading-none">CPF<span className="ml-0.5 text-destructive">*</span></label>
                     <div className="relative">
                       <input
-                        className={cn('flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50', erroDocumentoVisivel() && 'border-destructive')}
+                        className={cn(classesCampo, erroDocumentoVisivel() && 'border-destructive')}
                         type="text" value={form.documento} onChange={(e) => aoMudarDocumento(e.target.value)} onBlur={aoSairDocumento}
                         placeholder="000.000.000-00" maxLength={14} disabled={modoEdicao || somenteLeitura}
                       />
                       {verificandoDocumento && (
-                        <span className="absolute right-2 top-2 text-xs text-muted-foreground">Verificando...</span>
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">Verificando...</span>
                       )}
                     </div>
                     {erroDocumentoVisivel() && <p className="text-sm text-destructive">{erroDocumentoVisivel()}</p>}
@@ -1161,9 +1162,9 @@ function ConteudoDaPaginaDeTransportadoras() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-sm font-medium leading-none">Observações</label>
+                  <label className="text-sm font-semibold leading-none">Observações</label>
                   <textarea
-                    className="flex min-h-[70px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    className={cn(classesCampoBase, 'min-h-[70px] resize-y py-2')}
                     value={form.observacoes} onChange={(e) => set('observacoes', e.target.value)}
                     placeholder="Informações adicionais sobre a transportadora..." maxLength={500} rows={2}
                   />
@@ -1285,7 +1286,7 @@ function ConteudoDaPaginaDeTransportadoras() {
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar por razão social, nome fantasia, CPF/CNPJ ou UF..."
-            className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
+            className={classesCampoLista}
         </div>
 
         <div className="overflow-x-auto rounded-md border border-border">

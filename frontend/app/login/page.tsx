@@ -11,6 +11,7 @@ import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { InputPadrao } from '@/components/ui/input-padrao'
+import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { limparSessaoLocal, salvarTokenNaSessao } from '@/lib/sessao-local'
 
 function extrairMensagemDeErro(erro: unknown, padrao: string): string {
@@ -83,10 +84,14 @@ export default function PaginaDeLogin() {
   return (
     <div className="mx-auto flex min-w-0 w-full max-w-md flex-col items-center justify-center px-4 py-8">
       <div className="mb-8 text-center">
-        <h1 className="text-2xl font-bold tracking-tight text-primary">
-          ERP 
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">Sistema de Gestão</p>
+        <TituloPagina
+          className="text-center"
+          classNameTitulo="text-primary"
+          centralizado
+          subtitulo="Sistema de Gestão"
+        >
+          ERP
+        </TituloPagina>
       </div>
 
       <CardPadrao className="w-full">

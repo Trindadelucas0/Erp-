@@ -1,23 +1,11 @@
 import * as React from 'react'
 
+import { classesCampo, classesCampoCompacto } from '@/components/ui/classes-campo'
 import { cn } from '@/lib/utils'
 
-export const classesSelect = cn(
-  'h-9 w-full min-w-0 rounded-md border border-input',
-  'bg-background text-foreground',
-  'dark:bg-input/30',
-  'px-3 py-1 text-sm shadow-xs',
-  'transition-[color,box-shadow] outline-none',
-  'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
-  'disabled:cursor-not-allowed disabled:opacity-50',
-  'aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20',
-  'dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40'
-)
+export const classesSelect = classesCampo
 
-export const classesSelectCompacto = cn(
-  classesSelect,
-  'h-8 px-2 text-sm'
-)
+export const classesSelectCompacto = classesCampoCompacto
 
 export const classesOption = 'bg-background text-foreground'
 

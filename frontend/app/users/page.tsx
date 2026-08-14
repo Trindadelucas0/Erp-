@@ -37,9 +37,11 @@ import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-orden
 import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
 import { ordenarLista } from '@/lib/ordenacao-lista'
 import { textosContemTodosTermos } from '@/lib/normalizar-busca'
+import { cn } from '@/lib/utils'
 import { Checkbox } from '@/components/ui/checkbox'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Select, classesOption } from '@/components/ui/select'
+import { classesCampoLista } from '@/components/ui/classes-campo'
 import { Modal } from '@/components/ui/modal'
 import { Abas } from '@/components/ui/abas'
 import { Separator } from '@/components/ui/separator'
@@ -1084,7 +1086,7 @@ function ConteudoDaPaginaDeUsuarios() {
             value={termoBusca}
             onChange={(e) => setTermoBusca(e.target.value)}
             placeholder="Buscar por nome ou e-mail..."
-            className="h-9 flex-1 min-w-[200px] rounded-md border border-border bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            className={cn(classesCampoLista, 'min-w-[200px] flex-1')}
           />
           <Select
             className="h-9 w-auto"

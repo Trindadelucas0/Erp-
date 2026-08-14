@@ -8,6 +8,7 @@ import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import { Button } from '@/components/ui/button'
+import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 
@@ -270,7 +271,7 @@ function ConteudoSessaoContagem() {
 
       <div className="min-w-0 flex-1 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-lg font-semibold">Contagem de entrada</h1>
+          <TituloPagina>Contagem de entrada</TituloPagina>
           <span className="text-sm text-muted-foreground">
             Status: <strong>{sessao.status}</strong>
           </span>

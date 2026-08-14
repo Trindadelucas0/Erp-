@@ -7,6 +7,8 @@ import { clienteHttp } from '@/services/api'
 import { mascaraCnpj, mascaraCpf } from '@/lib/documentos'
 import { useFecharAoSairComMouse } from '@/lib/dropdown-catalogo'
 import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
+import { classesCampo } from '@/components/ui/classes-campo'
+import { cn } from '@/lib/utils'
 
 export type FornecedorRelacionadoItem = {
   dadosFornecedorId: string
@@ -209,7 +211,7 @@ export function FornecedoresRelacionadosField({
 
   return (
     <div className="space-y-2">
-      <label className="text-sm font-medium leading-none">
+      <label className="text-sm font-semibold leading-none">
         Fornecedores vinculados (mesmo grupo econômico)
       </label>
       <p className="text-xs text-muted-foreground">
@@ -220,7 +222,7 @@ export function FornecedoresRelacionadosField({
       <div className="relative" ref={containerRef} {...zonaHover}>
         <div className="flex items-center gap-2" ref={inputRowRef}>
           <input
-            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 pr-9 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+            className={cn(classesCampo, 'pr-9')}
             value={busca}
             onChange={(e) => {
               setBusca(e.target.value)

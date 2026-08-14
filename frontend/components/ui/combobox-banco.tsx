@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { classesCampo } from '@/components/ui/classes-campo'
 import { Label } from '@/components/ui/label'
 import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
 import { useFecharAoSairComMouse } from '@/lib/dropdown-catalogo'
@@ -65,7 +66,7 @@ export function ComboboxBanco({ valor, aoMudar, disabled, mensagemDeErro }: Prop
   const labelExibido = valor || ''
 
   return (
-    <div className="space-y-2" ref={containerRef}>
+    <div className="space-y-1.5" ref={containerRef}>
       <Label htmlFor="banco-combobox">Banco</Label>
       <div className="relative" {...zonaHover}>
         {aberto ? (
@@ -78,7 +79,8 @@ export function ComboboxBanco({ valor, aoMudar, disabled, mensagemDeErro }: Prop
             placeholder="Digite código ou nome..."
             disabled={disabled}
             className={cn(
-              'h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-2.5 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30',
+              classesCampo,
+              'text-base md:text-sm',
               mensagemDeErro && 'border-destructive'
             )}
           />
@@ -89,7 +91,8 @@ export function ComboboxBanco({ valor, aoMudar, disabled, mensagemDeErro }: Prop
             disabled={disabled}
             onClick={() => setAberto(true)}
             className={cn(
-              'h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-2.5 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none text-left flex items-center justify-between focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30',
+              classesCampo,
+              'flex items-center justify-between text-left text-base md:text-sm',
               mensagemDeErro && 'border-destructive',
               !labelExibido && 'text-muted-foreground'
             )}

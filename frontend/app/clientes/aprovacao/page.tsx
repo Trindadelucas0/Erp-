@@ -16,9 +16,12 @@ import { BadgeStatus } from '@/components/ui/badge-status'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { classesCampo, classesCampoBase } from '@/components/ui/classes-campo'
+import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
 import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
 import { ordenarLista } from '@/lib/ordenacao-lista'
+import { cn } from '@/lib/utils'
 import { Modal } from '@/components/ui/modal'
 import { SelectPadrao } from '@/components/ui/select-padrao'
 import {
@@ -312,12 +315,9 @@ function ConteudoAprovacao() {
   return (
     <div className="min-w-0 space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Aprovação de clientes</h1>
-          <p className="text-sm text-muted-foreground">
-            Analise cadastros pendentes e defina classificação comercial
-          </p>
-        </div>
+        <TituloPagina subtitulo="Analise cadastros pendentes e defina classificação comercial">
+          Aprovação de clientes
+        </TituloPagina>
         <Link href="/clientes">
           <Button type="button" variant="outline" size="sm">
             ← Voltar para clientes
@@ -498,9 +498,9 @@ function ConteudoAprovacao() {
             <form id="form-aprovacao" onSubmit={aoSubmeter} className="space-y-4">
               {modoReprovar ? (
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Motivo da reprovação</label>
+                  <label className="text-sm font-semibold">Motivo da reprovação</label>
                   <textarea
-                    className="flex min-h-[100px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    className={cn(classesCampoBase, 'min-h-[100px] resize-y py-2')}
                     value={form.motivoReprovacao}
                     onChange={(e) => setForm((f) => ({ ...f, motivoReprovacao: e.target.value }))}
                     required
@@ -528,10 +528,10 @@ function ConteudoAprovacao() {
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Limite de crédito (R$) *</label>
+                      <label className="text-sm font-semibold">Limite de crédito (R$) *</label>
                       <input
                         type="text"
-                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                        className={classesCampo}
                         value={form.limiteCredito}
                         onChange={(e) =>
                           setForm((f) => ({
@@ -544,10 +544,10 @@ function ConteudoAprovacao() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Condição de pagamento *</label>
+                      <label className="text-sm font-semibold">Condição de pagamento *</label>
                       <input
                         type="text"
-                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                        className={classesCampo}
                         value={form.condicaoPagamento}
                         onChange={(e) =>
                           setForm((f) => ({ ...f, condicaoPagamento: e.target.value }))

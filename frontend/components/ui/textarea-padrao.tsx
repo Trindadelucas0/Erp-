@@ -1,3 +1,4 @@
+import { classesCampoBase } from '@/components/ui/classes-campo'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 
@@ -17,12 +18,13 @@ export function TextareaPadrao({
   const idDoCampo = id ?? props.name ?? rotulo.toLowerCase().replace(/\s/g, '-')
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       <Label htmlFor={idDoCampo}>{rotulo}</Label>
       <textarea
         id={idDoCampo}
         className={cn(
-          'min-h-[160px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30',
+          classesCampoBase,
+          'min-h-[120px] resize-y py-2',
           mensagemDeErro && 'border-destructive',
           className
         )}

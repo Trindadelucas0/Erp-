@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { TituloPagina } from '@/components/ui/titulo-pagina'
 
 /**
  * Boundary de erro do detalhe — evita a tela genérica do Next
@@ -21,7 +22,7 @@ export default function ErroDetalheEntradaNota({
 
   return (
     <div className="mx-auto max-w-lg space-y-4 p-6">
-      <h1 className="text-lg font-semibold">Não foi possível abrir a nota</h1>
+      <TituloPagina>Não foi possível abrir a nota</TituloPagina>
       <p className="text-sm text-muted-foreground">
         Ocorreu um erro ao carregar o detalhe. Tente de novo; se persistir após um deploy
         recente, faça um refresh completo da página (Ctrl+F5) para limpar cache de scripts.

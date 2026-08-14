@@ -7,6 +7,7 @@ import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -1541,8 +1542,9 @@ function ConteudoDetalheEntrada() {
           <Button asChild variant="ghost" size="sm">
             <Link href="/entrada-notas">← Lista</Link>
           </Button>
-          <h1 className="text-xl font-semibold">Análise de entrada</h1>
-          <p className="font-mono text-xs text-muted-foreground">{nota.chaveNfe}</p>
+          <TituloPagina subtitulo={<span className="font-mono text-xs">{nota.chaveNfe}</span>}>
+            Análise de entrada
+          </TituloPagina>
         </div>
         <div className="flex flex-wrap gap-2">
           {recursosDoc.verNota && (

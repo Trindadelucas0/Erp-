@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { clienteHttp } from '@/services/api'
+import { cn } from '@/lib/utils'
 import {
   codigoCfopCompleto,
   inferirCfopDoCodigo,
@@ -25,6 +26,8 @@ import {
 } from '@/components/contas-a-pagar/combobox-plano-financeiro'
 import { SecaoFormularioErp } from '@/components/compartilhado/secao-formulario-erp'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { TituloPagina } from '@/components/ui/titulo-pagina'
+import { classesCampoBase } from '@/components/ui/classes-campo'
 import { Abas } from '@/components/ui/abas'
 import { BadgeStatus } from '@/components/ui/badge-status'
 import { LinhasSkeletonTabela } from '@/components/ui/linhas-skeleton-tabela'
@@ -258,10 +261,7 @@ export function ConteudoDaPaginaCfops() {
 
   return (
     <div className="min-w-0 space-y-6">
-      <div>
-        <p className="text-sm text-muted-foreground">Fiscal &gt; CFOP</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight">Cadastro de CFOP</h1>
-      </div>
+      <TituloPagina caminho="Fiscal > CFOP">Cadastro de CFOP</TituloPagina>
 
       {mensagem && (
         <p className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">{mensagem}</p>
@@ -409,7 +409,7 @@ export function ConteudoDaPaginaCfops() {
                 <Label htmlFor="cfop-descricao">Descrição</Label>
                 <textarea
                   id="cfop-descricao"
-                  className="min-h-[120px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 dark:bg-input/30"
+                  className={cn(classesCampoBase, 'min-h-[120px] resize-y py-2')}
                   value={form.descricao}
                   onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))}
                   disabled={salvando}

@@ -33,6 +33,8 @@ import { clienteHttp } from '@/services/api'
 import { usePermissao } from '@/hooks/use-permissao'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { TituloPagina } from '@/components/ui/titulo-pagina'
+import { classesCampoBase } from '@/components/ui/classes-campo'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/modal'
@@ -1181,18 +1183,19 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
             <ArrowLeft className="mr-1 size-4" />
             Voltar para lista
           </Button>
-          <p className="text-sm text-muted-foreground">Compras &gt; Pedidos de Compra</p>
-          <div className="mt-1 flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight">{titulo}</h1>
-            <BadgeStatus variante={varianteStatusUi(statusExibido)}>
-              {rotuloStatusUi(statusExibido)}
-            </BadgeStatus>
-          </div>
-          {modoVisualizacao && (
-            <p className="mt-1 text-sm text-muted-foreground">
-              Consulta dos dados do pedido (somente leitura)
-            </p>
-          )}
+          <TituloPagina
+            caminho="Compras > Pedidos de Compra"
+            subtitulo={
+              modoVisualizacao ? 'Consulta dos dados do pedido (somente leitura)' : undefined
+            }
+            aoLadoDoTitulo={
+              <BadgeStatus variante={varianteStatusUi(statusExibido)}>
+                {rotuloStatusUi(statusExibido)}
+              </BadgeStatus>
+            }
+          >
+            {titulo}
+          </TituloPagina>
         </div>
       </div>
 
@@ -1390,10 +1393,7 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
                     readOnly
                     value={form.motivoCancelamento || 'Não informado'}
                     rows={3}
-                    className={cn(
-                      'w-full min-w-0 rounded-md border border-input bg-muted/30 px-2.5 py-2 text-sm',
-                      'disabled:cursor-not-allowed disabled:opacity-70'
-                    )}
+                    className={cn(classesCampoBase, 'min-h-[4.5rem] resize-y bg-muted/30 py-2')}
                   />
                 </div>
               )}
@@ -1795,8 +1795,8 @@ export function FormularioPedidoCompra({ modo, pedidoId }: Props) {
             rows={4}
             placeholder="Descreva o motivo do cancelamento"
             className={cn(
-              'w-full min-w-0 rounded-md border border-input bg-transparent px-2.5 py-2 text-sm shadow-xs outline-none',
-              'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
+              classesCampoBase,
+              'min-h-[6rem] resize-y py-2',
               erroMotivoCancelamento && 'border-destructive'
             )}
           />

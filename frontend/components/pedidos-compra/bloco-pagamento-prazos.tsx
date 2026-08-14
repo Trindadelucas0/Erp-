@@ -5,6 +5,8 @@ import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
 import { Button } from '@/components/ui/button'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Label } from '@/components/ui/label'
+import { classesCampoCompacto } from '@/components/ui/classes-campo'
+import { cn } from '@/lib/utils'
 import {
   somarParcelasManual,
   TOLERANCIA_PARCELAS,
@@ -258,7 +260,7 @@ export function BlocoPagamentoPrazos({
                         disabled={disabled}
                         placeholder="Dias"
                         maxLength={4}
-                        className="box-border flex h-8 w-full min-w-0 max-w-full rounded-md border border-input bg-transparent px-2 text-sm"
+                        className={cn(classesCampoCompacto, 'box-border max-w-full')}
                       />
                     </td>
                     <td className="px-2 py-1.5">
@@ -270,7 +272,7 @@ export function BlocoPagamentoPrazos({
                           value={p.vencimento}
                           onChange={(e) => atualizarVencimento(index, e.target.value)}
                           disabled={disabled}
-                          className="box-border flex h-8 w-full min-w-0 max-w-full rounded-md border border-input bg-transparent px-2 text-sm"
+                          className={cn(classesCampoCompacto, 'box-border max-w-full')}
                         />
                       )}
                     </td>
@@ -287,7 +289,7 @@ export function BlocoPagamentoPrazos({
                           onChange={(e) => atualizarValor(index, e.target.value)}
                           disabled={disabled}
                           placeholder="0,00"
-                          className="box-border flex h-8 w-full min-w-0 max-w-full rounded-md border border-input bg-transparent px-2 text-sm"
+                          className={cn(classesCampoCompacto, 'box-border max-w-full')}
                         />
                       )}
                     </td>

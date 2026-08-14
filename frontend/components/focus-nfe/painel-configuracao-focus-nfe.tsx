@@ -7,6 +7,8 @@ import { CardPadrao } from '@/components/ui/card-padrao'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { classesCampoBase, classesCampoLista } from '@/components/ui/classes-campo'
+import { cn } from '@/lib/utils'
 import { mascaraCnpj } from '@/lib/documentos'
 
 type CheckFiscal = 'ncm' | 'origem' | 'cst_cfop'
@@ -356,7 +358,7 @@ export function PainelConfiguracaoFocusNfe() {
                     ? config.apiTokenMascarado ?? 'Token salvo'
                     : 'Cole o token_homologacao aqui'
                 }
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                className={classesCampoLista}
                 autoComplete="off"
               />
               <Button
@@ -511,7 +513,7 @@ export function PainelConfiguracaoFocusNfe() {
               onChange={(e) => setFiscalObs(e.target.value)}
               disabled={!podeSalvarFiscal}
               placeholder="Ex.: conferência NCM/origem/CST-CFOP na entrada"
-              className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+              className={cn(classesCampoBase, 'min-h-[4.5rem] resize-y py-2')}
             />
           </div>
 

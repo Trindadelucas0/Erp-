@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { Select, classesOption, classesSelectCompacto } from '@/components/ui/select'
+import { classesCampoCompacto } from '@/components/ui/classes-campo'
 import { mascaraDocumento, normalizarDocumento } from '@/lib/documentos'
 import { ComboboxBanco } from '@/components/ui/combobox-banco'
 
@@ -275,7 +276,7 @@ function Campo({
     <div className="space-y-1">
       <label className="text-xs font-medium text-muted-foreground">{rotulo}</label>
       <input
-        className="flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+        className={classesCampoCompacto}
         value={valor}
         onChange={(e) => aoMudar(e.target.value)}
         disabled={disabled}

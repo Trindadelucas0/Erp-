@@ -1,12 +1,22 @@
 import type { Viewport } from 'next'
-import { Manrope } from 'next/font/google'
+import { IBM_Plex_Mono, IBM_Plex_Sans } from 'next/font/google'
 import { cn } from '@/lib/utils'
 import { ProvedorSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { ProvedorDeTema } from '@/components/compartilhado/provedor-de-tema'
 import { LayoutCondicional } from '@/components/layout/layout-condicional'
 import './globals.css'
 
-const manrope = Manrope({ subsets: ['latin'], variable: '--font-sans' })
+const ibmPlexSans = IBM_Plex_Sans({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-sans',
+})
+
+const ibmPlexMono = IBM_Plex_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  variable: '--font-mono',
+})
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -30,7 +40,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="pt-BR" suppressHydrationWarning className={cn('font-sans', manrope.variable)}>
+    <html
+      lang="pt-BR"
+      suppressHydrationWarning
+      className={cn('font-sans', ibmPlexSans.variable, ibmPlexMono.variable)}
+    >
       <head>
         <script dangerouslySetInnerHTML={{ __html: scriptTemaInicial }} />
       </head>

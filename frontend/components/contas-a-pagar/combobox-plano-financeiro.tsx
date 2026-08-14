@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type FocusEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Search, X } from 'lucide-react'
+import { classesCampo, classesCampoAcao } from '@/components/ui/classes-campo'
 import { Label } from '@/components/ui/label'
 import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
 import {
@@ -236,15 +237,13 @@ export function ComboboxPlanoFinanceiro({
             disabled={disabled}
             placeholder={placeholder}
             autoComplete="off"
-            className={cn(
-              'flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent py-1 pl-9 pr-2 text-base shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30'
-            )}
+            className={cn(classesCampo, 'pl-9 pr-2 text-base md:text-sm')}
           />
           {valor && !disabled && (
             <button
               type="button"
               onClick={limpar}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input text-muted-foreground hover:text-destructive"
+              className={classesCampoAcao}
               aria-label={`Limpar ${rotulo.toLowerCase()}`}
             >
               <X className="size-3.5" />

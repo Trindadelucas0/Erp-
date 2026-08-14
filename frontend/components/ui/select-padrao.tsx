@@ -180,10 +180,10 @@ export function SelectPadrao({
   )
 
   return (
-    <div className={cn(compacto ? 'space-y-1' : 'space-y-2')}>
+    <div className={cn(compacto ? 'space-y-1' : 'space-y-1.5')}>
       <Label
         htmlFor={idDoCampo}
-        className={cn(compacto ? 'text-sm font-medium leading-none' : undefined)}
+        className={cn(compacto ? 'text-sm font-semibold leading-none' : undefined)}
       >
         {rotulo}
         {obrigatorio && <span className="ml-0.5 text-destructive">*</span>}

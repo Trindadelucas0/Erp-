@@ -21,6 +21,7 @@ import { usePermissao } from '@/hooks/use-permissao'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { useValidacaoDeAbas, type ConfigDeAba } from '@/hooks/use-validacao-de-abas'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { Abas } from '@/components/ui/abas'
 import { BadgeStatus } from '@/components/ui/badge-status'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
@@ -1050,10 +1051,7 @@ function ConteudoDaPagina() {
 
   return (
     <div className="min-w-0 space-y-6">
-      <div>
-        <p className="text-sm text-muted-foreground">Cadastros &gt; Produtos</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight">Cadastro de Produtos</h1>
-      </div>
+      <TituloPagina caminho="Cadastros > Produtos">Cadastro de Produtos</TituloPagina>
 
       {mensagem && (
         <p className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">{mensagem}</p>

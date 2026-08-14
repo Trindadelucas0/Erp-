@@ -10,6 +10,7 @@ import {
   useInstanciaDropdownCatalogo,
   useOuvirFechamentoDropdownCatalogo,
 } from '@/lib/dropdown-catalogo'
+import { classesCampo, classesCampoAcao } from '@/components/ui/classes-campo'
 import { cn } from '@/lib/utils'
 import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
 
@@ -130,13 +131,14 @@ export function CampoLookupCatalogo({
   }
 
   return (
-    <div className="space-y-1">
-      <label className="text-sm font-medium leading-none">{rotulo}</label>
+    <div className="space-y-1.5">
+      <label className="text-sm font-semibold leading-none">{rotulo}</label>
       <div ref={ref} className="relative" {...zonaHover}>
-        <div className="flex gap-1">
+        <div className="flex gap-1.5">
           <input
             className={cn(
-              'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm disabled:opacity-50',
+              classesCampo,
+              'disabled:opacity-50',
               (valorInvalido || erroSelecao) && 'border-destructive'
             )}
             value={busca}
@@ -156,7 +158,7 @@ export function CampoLookupCatalogo({
           {valor && !disabled && (
             <button
               type="button"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input text-muted-foreground hover:bg-muted hover:text-destructive"
+              className={classesCampoAcao}
               onClick={limpar}
               aria-label="Limpar seleção"
             >
@@ -165,7 +167,7 @@ export function CampoLookupCatalogo({
           )}
           <button
             type="button"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input text-muted-foreground hover:bg-muted"
+            className={cn(classesCampoAcao, 'hover:text-foreground')}
             onClick={() => (aberto ? fechar() : abrirSeFechado())}
             disabled={disabled}
           >

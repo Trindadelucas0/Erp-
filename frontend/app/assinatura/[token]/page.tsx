@@ -6,6 +6,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { clienteHttp } from '@/services/api'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { classesCampo } from '@/components/ui/classes-campo'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 
 type DadosAssinatura = {
@@ -143,10 +144,10 @@ export default function PaginaAssinatura({ params }: { params: Promise<{ token: 
             </p>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Nome completo do assinante *</label>
+              <label className="text-sm font-semibold">Nome completo do assinante *</label>
               <input
                 type="text"
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                className={classesCampo}
                 value={nomeAssinante}
                 onChange={(e) => setNomeAssinante(e.target.value)}
                 required

@@ -19,6 +19,7 @@ import {
   type StatusPedidoFiltravel,
 } from '@/lib/pedido-compra-shared'
 import { cn } from '@/lib/utils'
+import { classesCampoLista } from '@/components/ui/classes-campo'
 
 type PosicaoDropdown = {
   top: number
@@ -172,9 +173,9 @@ export function FiltroStatusMultiplo({ selecionados, aoMudar, disabled, classNam
         aria-haspopup="listbox"
         onClick={alternar}
         className={cn(
-          'flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm',
-          'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-          'disabled:cursor-not-allowed disabled:opacity-50 sm:min-w-[12rem] sm:max-w-xs'
+          classesCampoLista,
+          'flex items-center justify-between gap-2',
+          'sm:min-w-[12rem] sm:max-w-xs'
         )}
       >
         <span className="truncate text-left">{rotuloResumoStatusFiltro(selecionados)}</span>

@@ -8,6 +8,7 @@ import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Label } from '@/components/ui/label'
+import { classesCampoLista } from '@/components/ui/classes-campo'
 
 type ConfigZapsign = {
   configurado: boolean
@@ -154,7 +155,7 @@ export function PainelConfiguracaoZapsign() {
                     ? config.apiTokenMascarado ?? 'Token salvo'
                     : 'Cole sua API key aqui'
                 }
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                className={classesCampoLista}
                 autoComplete="off"
               />
               <Button

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Plus, Search, X } from 'lucide-react'
 import { Label } from '@/components/ui/label'
+import { classesCampo, classesCampoAcao } from '@/components/ui/classes-campo'
 import { Button } from '@/components/ui/button'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
@@ -152,7 +153,8 @@ export function ComboboxMarca({
                 disabled={disabled}
                 placeholder="Buscar marca..."
                 className={cn(
-                  'flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent py-1 pl-9 pr-2 text-base shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30',
+                  classesCampo,
+                  'pl-9 pr-2 text-base md:text-sm',
                   mensagemDeErro && 'border-destructive'
                 )}
               />
@@ -160,7 +162,7 @@ export function ComboboxMarca({
                 <button
                   type="button"
                   onClick={limpar}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input text-muted-foreground hover:text-destructive"
+                  className={classesCampoAcao}
                   aria-label="Limpar marca"
                 >
                   <X className="size-3.5" />

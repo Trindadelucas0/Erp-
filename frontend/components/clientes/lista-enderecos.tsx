@@ -7,6 +7,7 @@
  */
 
 import { Select, classesOption, classesSelectCompacto } from '@/components/ui/select'
+import { classesCampoCompacto } from '@/components/ui/classes-campo'
 import { paraCaixaAlta } from '@/lib/texto'
 
 export type EnderecoForm = {
@@ -96,7 +97,7 @@ function CampoEnderecoInput({
     <div className={`space-y-1${colSpan ? ` sm:col-span-${colSpan}` : ''}`}>
       <label className="text-xs font-medium leading-none text-muted-foreground">{rotulo}</label>
       <input
-        className="flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+        className={classesCampoCompacto}
         type={tipo ?? 'text'}
         value={valor}
         onChange={(e) => aoMudar(e.target.value)}

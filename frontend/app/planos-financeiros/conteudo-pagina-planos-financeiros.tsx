@@ -8,6 +8,7 @@ import { clienteHttp } from '@/services/api'
 import { usePermissao } from '@/hooks/use-permissao'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { Abas } from '@/components/ui/abas'
 import { Button } from '@/components/ui/button'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
@@ -180,13 +181,16 @@ export function ConteudoDaPaginaPlanosFinanceiros() {
 
   return (
     <div className="min-w-0 space-y-6">
-      <div>
-        <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <DollarSign className="size-3.5 shrink-0" />
-          Financeiro &gt; Planos Financeiros
-        </p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight">Planos Financeiros</h1>
-      </div>
+      <TituloPagina
+        caminho={
+          <span className="flex items-center gap-1.5">
+            <DollarSign className="size-3.5 shrink-0" />
+            Financeiro &gt; Planos Financeiros
+          </span>
+        }
+      >
+        Planos Financeiros
+      </TituloPagina>
 
       {mensagem && (
         <p className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">{mensagem}</p>

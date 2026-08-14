@@ -1,5 +1,6 @@
 'use client'
 
+import { classesCampo } from '@/components/ui/classes-campo'
 import { cn } from '@/lib/utils'
 import { sanitizarIeDigitos } from '@/lib/documentos'
 
@@ -21,14 +22,11 @@ export function CampoInscricaoEstadual({
   mensagemDeErro,
 }: Props) {
   return (
-    <div className="space-y-2">
-      <div className="space-y-1">
-        <label className="text-sm font-medium leading-none">Inscrição Estadual (IE)</label>
+    <div className="space-y-1.5">
+      <div className="space-y-1.5">
+        <label className="text-sm font-semibold leading-none">Inscrição Estadual (IE)</label>
         <input
-          className={cn(
-            'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
-            mensagemDeErro && 'border-destructive'
-          )}
+          className={cn(classesCampo, mensagemDeErro && 'border-destructive')}
           value={ieIsento ? 'ISENTO' : ie}
           onChange={(e) => aoMudarIe(sanitizarIeDigitos(e.target.value))}
           placeholder="Número da IE"

@@ -9,6 +9,7 @@ import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from
 import { useRouter } from 'next/navigation'
 import { clienteHttp } from '@/services/api'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import {
@@ -192,7 +193,7 @@ export default function PaginaPedidoPortalFornecedor() {
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-4 py-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Pedido #{pedido.numero}</h1>
+        <TituloPagina>Pedido #{pedido.numero}</TituloPagina>
         <Button variant="outline" size="sm" onClick={saindo}>
           Sair
         </Button>

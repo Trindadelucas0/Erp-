@@ -24,6 +24,7 @@ import { CardPadrao } from '@/components/ui/card-padrao'
 import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
 import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
 import { ordenarLista } from '@/lib/ordenacao-lista'
+import { classesCampo } from '@/components/ui/classes-campo'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { SelectPadrao } from '@/components/ui/select-padrao'
 import { Modal } from '@/components/ui/modal'
@@ -488,12 +489,12 @@ function ConteudoDaPaginaDeCadastros() {
                 placeholder="Nome completo da empresa"
                 required
               />
-              <div className="space-y-1">
-                <label className="text-sm font-medium leading-none">
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold leading-none">
                   CNPJ <span className="text-destructive">*</span>
                 </label>
                 <input
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  className={classesCampo}
                   value={form.cnpj}
                   onChange={(e) =>
                     atualizarCampo('cnpj', mascaraCnpj(e.target.value))
@@ -505,12 +506,12 @@ function ConteudoDaPaginaDeCadastros() {
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1">
-                <label className="text-sm font-medium leading-none">
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold leading-none">
                   Telefone
                 </label>
                 <input
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  className={classesCampo}
                   value={form.phone}
                   onChange={(e) =>
                     atualizarCampo(
@@ -540,10 +541,10 @@ function ConteudoDaPaginaDeCadastros() {
               Endereço
             </p>
             <div className="grid gap-4 sm:grid-cols-3">
-              <div className="space-y-1">
-                <label className="text-sm font-medium leading-none">CEP</label>
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold leading-none">CEP</label>
                 <input
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  className={classesCampo}
                   value={form.cep}
                   onChange={(e) =>
                     atualizarCampo('cep', mascaraCep(e.target.value))
@@ -652,7 +653,7 @@ function ConteudoDaPaginaDeCadastros() {
                           type="number"
                           min={0}
                           max={720}
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm disabled:opacity-50"
+                          className={classesCampo}
                           value={form.recursos.danfeCacheIndisponivelHoras}
                           disabled={modoVisualizacao}
                           onChange={(e) =>
@@ -671,7 +672,7 @@ function ConteudoDaPaginaDeCadastros() {
                           type="number"
                           min={0}
                           max={120}
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm disabled:opacity-50"
+                          className={classesCampo}
                           value={form.recursos.danfeRateLimitMinutos}
                           disabled={modoVisualizacao}
                           onChange={(e) =>

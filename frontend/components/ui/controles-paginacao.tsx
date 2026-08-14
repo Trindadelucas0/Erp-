@@ -1,6 +1,7 @@
 'use client'
 
 import { Label } from '@/components/ui/label'
+import { classesCampoCompacto } from '@/components/ui/classes-campo'
 import { Button } from '@/components/ui/button'
 
 export const OPCOES_ITENS_POR_PAGINA = [10, 25, 50] as const
@@ -38,7 +39,7 @@ export function ControlesPaginacao({
           </Label>
           <select
             id="itens-por-pagina"
-            className="flex h-8 rounded-md border border-input bg-transparent px-2 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className={classesCampoCompacto}
             value={itensPorPagina}
             onChange={(e) => onItensPorPaginaChange(Number(e.target.value) as ItensPorPagina)}
             aria-label="Itens por página"

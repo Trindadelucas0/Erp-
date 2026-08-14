@@ -15,6 +15,7 @@ import { PainelUnidadesMedida } from '@/components/configuracoes/painel-unidades
 import { ConteudoDaPaginaCfops } from '@/app/cfops/conteudo-pagina-cfops'
 import { ConteudoDaPaginaPlanosFinanceiros } from '@/app/planos-financeiros/conteudo-pagina-planos-financeiros'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { Abas } from '@/components/ui/abas'
 import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
 import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
@@ -416,12 +417,9 @@ function ConteudoDaPaginaDeConfiguracoes() {
 
   return (
     <div className="min-w-0 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Configurações</h1>
-        <p className="text-sm text-muted-foreground">
-          Parâmetros do sistema organizados por área
-        </p>
-      </div>
+      <TituloPagina subtitulo="Parâmetros do sistema organizados por área">
+        Configurações
+      </TituloPagina>
 
       <Abas abas={abasDisponiveis} abaAtiva={abaAtiva} aoMudar={mudarAba} />
 

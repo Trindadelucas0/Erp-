@@ -7,6 +7,7 @@ import {
   CabecalhoOpcaoProduto,
   LinhaOpcaoProduto,
 } from '@/components/produtos/linha-opcao-produto'
+import { classesCampo } from '@/components/ui/classes-campo'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 
@@ -96,7 +97,7 @@ export function BuscaProdutoEstoque({ valor, aoSelecionar, disabled }: Props) {
   }
 
   return (
-    <div ref={wrapRef} className="relative min-w-0 flex-1 space-y-2">
+    <div ref={wrapRef} className="relative min-w-0 flex-1 space-y-1.5">
       <Label htmlFor="busca-produto-estoque">Produto</Label>
       <div className="relative">
         <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -108,11 +109,7 @@ export function BuscaProdutoEstoque({ valor, aoSelecionar, disabled }: Props) {
           onChange={(e) => aoDigitar(e.target.value)}
           onFocus={() => opcoes.length > 0 && setAberto(true)}
           placeholder="Digite o código ou nome do produto"
-          className={cn(
-            'flex h-9 w-full rounded-md border border-input bg-transparent py-1 pr-8 pl-8 text-sm shadow-xs',
-            'placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] outline-none',
-            disabled && 'opacity-50'
-          )}
+          className={cn(classesCampo, 'pr-8 pl-8', disabled && 'opacity-50')}
         />
         {carregando && (
           <Loader2 className="absolute top-1/2 right-2.5 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />

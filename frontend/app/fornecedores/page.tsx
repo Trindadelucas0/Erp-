@@ -7,6 +7,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { classesCampo, classesCampoBase, classesCampoLista } from '@/components/ui/classes-campo'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { LinhaTabelaClicavel } from '@/components/compartilhado/linha-tabela-clicavel'
@@ -580,16 +581,13 @@ function CampoInput({
   onBlur?: () => void; disabled?: boolean
 }) {
   return (
-    <div className="space-y-1">
-      <label className="text-sm font-medium leading-none">
+    <div className="space-y-1.5">
+      <label className="text-sm font-semibold leading-none">
         {rotulo}
         {obrigatorio && <span className="ml-0.5 text-destructive">*</span>}
       </label>
       <input
-        className={cn(
-          'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
-          mensagemDeErro && 'border-destructive'
-        )}
+        className={cn(classesCampo, mensagemDeErro && 'border-destructive')}
         type={tipo}
         value={valor}
         onChange={(e) => aoMudar(e.target.value)}
@@ -1546,15 +1544,15 @@ function ConteudoDaPaginaDeFornecedores() {
 
                 {form.tipo === 'PJ' ? (
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium leading-none">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-semibold leading-none">
                         CNPJ
                         <span className="ml-0.5 text-destructive">*</span>
                       </label>
                       <div className="relative">
                         <input
                           className={cn(
-                            'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50',
+                            classesCampo,
                             erroDocumentoVisivel() && 'border-destructive'
                           )}
                           type="text"
@@ -1567,7 +1565,7 @@ function ConteudoDaPaginaDeFornecedores() {
                           aria-invalid={!!erroDocumentoVisivel()}
                         />
                         {(verificandoDocumento || carregandoBrasilApi) && (
-                          <span className="absolute right-2 top-2 text-xs text-muted-foreground">
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
                             {carregandoBrasilApi ? 'Buscando na Receita...' : 'Verificando...'}
                           </span>
                         )}
@@ -1588,15 +1586,15 @@ function ConteudoDaPaginaDeFornecedores() {
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium leading-none">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-semibold leading-none">
                       CPF
                       <span className="ml-0.5 text-destructive">*</span>
                     </label>
                     <div className="relative">
                       <input
                         className={cn(
-                          'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50',
+                          classesCampo,
                           erroDocumentoVisivel() && 'border-destructive'
                         )}
                         type="text"
@@ -1609,7 +1607,7 @@ function ConteudoDaPaginaDeFornecedores() {
                         aria-invalid={!!erroDocumentoVisivel()}
                       />
                       {verificandoDocumento && (
-                        <span className="absolute right-2 top-2 text-xs text-muted-foreground">Verificando...</span>
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">Verificando...</span>
                       )}
                     </div>
                     {erroDocumentoVisivel() && (
@@ -1664,9 +1662,9 @@ function ConteudoDaPaginaDeFornecedores() {
                 <Separator />
 
                 <div className="space-y-1">
-                  <label className="text-sm font-medium leading-none">Observações</label>
+                  <label className="text-sm font-semibold leading-none">Observações</label>
                   <textarea
-                    className="flex min-h-[70px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    className={cn(classesCampoBase, 'min-h-[70px] resize-y py-2')}
                     value={form.observacoes}
                     onChange={(e) => set('observacoes', e.target.value)}
                     placeholder="Informações adicionais sobre o fornecedor..."
@@ -1818,7 +1816,7 @@ function ConteudoDaPaginaDeFornecedores() {
             {abaAtiva === 'outros' && (
               <div className="min-w-0 space-y-6">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium leading-none">Tipo de fornecedor</label>
+                  <label className="text-sm font-semibold leading-none">Tipo de fornecedor</label>
                   <div className="flex flex-wrap gap-4">
                     <CampoCheckbox rotulo="Revenda" valor={form.tipoRevenda} aoMudar={(v) => aoMudarTipoFornecedor('tipoRevenda', v)} />
                     <CampoCheckbox rotulo="Consumo" valor={form.tipoConsumo} aoMudar={(v) => aoMudarTipoFornecedor('tipoConsumo', v)} />
@@ -1928,7 +1926,7 @@ function ConteudoDaPaginaDeFornecedores() {
 
                 {(form.tipoConsumo || form.tipoPrestadorServico) && (
                   <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none">Pares Plano Financeiro + CFOP Padrão</label>
+                    <label className="text-sm font-semibold leading-none">Pares Plano Financeiro + CFOP Padrão</label>
                     <p className="text-xs text-muted-foreground">Cada par define um plano financeiro padrão e o CFOP de entrada correspondente.</p>
                     <ListaParesPlanoCfop
                       pares={form.paresPlanoCfopPadrao}
@@ -1993,7 +1991,7 @@ function ConteudoDaPaginaDeFornecedores() {
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar por razão social, nome fantasia, CPF/CNPJ ou UF..."
-            className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            className={classesCampoLista}
           />
         </div>
 

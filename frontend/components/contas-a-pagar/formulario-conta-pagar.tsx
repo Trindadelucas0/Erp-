@@ -4,6 +4,8 @@ import { InputPadrao } from '@/components/ui/input-padrao'
 import { SelectPadrao } from '@/components/ui/select-padrao'
 import { TextareaPadrao } from '@/components/ui/textarea-padrao'
 import { Label } from '@/components/ui/label'
+import { classesCampo } from '@/components/ui/classes-campo'
+import { cn } from '@/lib/utils'
 import { ComboboxPessoa } from '@/components/pedidos-compra/combobox-pessoa'
 import { ComboboxPlanoFinanceiro } from '@/components/contas-a-pagar/combobox-plano-financeiro'
 import { AnexosContaPagar } from '@/components/contas-a-pagar/anexos-conta-pagar'
@@ -58,7 +60,7 @@ export function FormularioContaPagar({
         <div className="min-w-0 space-y-2">
           <Label>Código</Label>
           <input
-            className="flex h-9 w-full max-w-full rounded-md border border-input bg-muted px-3 text-sm"
+            className={cn(classesCampo, 'bg-muted')}
             value={codigoExibicao || 'Gerado ao gravar'}
             readOnly
             disabled

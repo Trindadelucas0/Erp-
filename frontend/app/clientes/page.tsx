@@ -6,6 +6,7 @@
  */
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
+import { classesCampo, classesCampoBase, classesCampoLista } from '@/components/ui/classes-campo'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { LinhaTabelaClicavel } from '@/components/compartilhado/linha-tabela-clicavel'
@@ -470,16 +471,13 @@ function CampoInput({
   disabled?: boolean
 }) {
   return (
-    <div className="space-y-1">
-      <label className="text-sm font-medium leading-none">
+    <div className="space-y-1.5">
+      <label className="text-sm font-semibold leading-none">
         {rotulo}
         {obrigatorio && <span className="ml-0.5 text-destructive">*</span>}
       </label>
       <input
-        className={cn(
-          'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
-          mensagemDeErro && 'border-destructive'
-        )}
+        className={cn(classesCampo, mensagemDeErro && 'border-destructive')}
         type={tipo}
         value={valor}
         onChange={(e) => aoMudar(e.target.value)}
@@ -1454,15 +1452,15 @@ function ConteudoDaPaginaDeClientes() {
               <Separator />
 
               {/* Campo documento unificado */}
-              <div className="space-y-1">
-                <label className="text-sm font-medium leading-none">
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold leading-none">
                   {form.tipo === 'PF' ? 'CPF' : 'CNPJ'}
                   <span className="ml-0.5 text-destructive">*</span>
                 </label>
                 <div className="relative">
                   <input
                     className={cn(
-                      'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50',
+                      classesCampo,
                       erroDocumentoVisivel() && 'border-destructive'
                     )}
                     type="text"
@@ -1475,7 +1473,7 @@ function ConteudoDaPaginaDeClientes() {
                     aria-invalid={!!erroDocumentoVisivel()}
                   />
                   {(verificandoDocumento || carregandoBrasilApi) && (
-                    <span className="absolute right-2 top-2 text-xs text-muted-foreground">
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
                       {carregandoBrasilApi ? 'Buscando na Receita...' : 'Verificando...'}
                     </span>
                   )}
@@ -1613,11 +1611,11 @@ function ConteudoDaPaginaDeClientes() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-sm font-medium leading-none">
+                    <label className="text-sm font-semibold leading-none">
                       Observação na NF
                     </label>
                     <textarea
-                      className="flex min-h-[70px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      className={cn(classesCampoBase, 'min-h-[70px] resize-y py-2')}
                       value={form.observacaoNF}
                       onChange={(e) => set('observacaoNF', e.target.value)}
                       placeholder="Texto que aparece na nota fiscal deste cliente..."
@@ -1698,9 +1696,9 @@ function ConteudoDaPaginaDeClientes() {
               )}
 
               <div className="space-y-1">
-                <label className="text-sm font-medium leading-none">Observações</label>
+                <label className="text-sm font-semibold leading-none">Observações</label>
                 <textarea
-                  className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  className={cn(classesCampoBase, 'min-h-[80px] resize-y py-2')}
                   value={form.observacoes}
                   onChange={(e) => set('observacoes', e.target.value)}
                   placeholder="Informações adicionais sobre o cliente..."
@@ -1903,7 +1901,7 @@ function ConteudoDaPaginaDeClientes() {
         <div className="mb-3 flex flex-wrap gap-3">
           <input
             ref={refBusca}
-            className="flex h-9 w-full max-w-xs rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className={cn(classesCampoLista, 'max-w-xs')}
             placeholder="Buscar por razão social, nome fantasia, CPF/CNPJ ou UF..."
             value={busca}
             onChange={(e) => setBusca(e.target.value)}

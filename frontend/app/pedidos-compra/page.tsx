@@ -8,6 +8,8 @@ import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { usePermissao } from '@/hooks/use-permissao'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { TituloPagina } from '@/components/ui/titulo-pagina'
+import { classesCampoLista, classesCampoBase } from '@/components/ui/classes-campo'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/modal'
@@ -216,10 +218,7 @@ function ConteudoDaPagina() {
 
   return (
     <div className="min-w-0 space-y-6">
-      <div>
-        <p className="text-sm text-muted-foreground">Compras &gt; Pedidos de Compra</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight">Pedidos de Compra</h1>
-      </div>
+      <TituloPagina caminho="Compras > Pedidos de Compra">Pedidos de Compra</TituloPagina>
 
       {mensagem && (
         <p className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">{mensagem}</p>
@@ -241,7 +240,7 @@ function ConteudoDaPagina() {
       >
         <div className="mb-3 flex flex-wrap items-end gap-3">
           <input
-            className="flex h-9 w-full min-w-0 max-w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:max-w-[10rem]"
+            className={cn(classesCampoLista, 'sm:max-w-[10rem]')}
             placeholder="Nº ou descrição"
             value={filtros.buscaNumero}
             onChange={(e) => setFiltros((f) => ({ ...f, buscaNumero: e.target.value }))}
@@ -253,7 +252,7 @@ function ConteudoDaPagina() {
             }
           />
           <select
-            className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:min-w-[12rem] sm:max-w-xs"
+            className={cn(classesCampoLista, 'sm:min-w-[12rem] sm:max-w-xs')}
             value={filtros.fornecedorId}
             onChange={(e) => setFiltros((f) => ({ ...f, fornecedorId: e.target.value }))}
           >
@@ -266,14 +265,14 @@ function ConteudoDaPagina() {
           </select>
           <input
             type="date"
-            className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:w-auto"
+            className={cn(classesCampoLista, 'sm:w-auto')}
             value={filtros.dataInicio}
             onChange={(e) => setFiltros((f) => ({ ...f, dataInicio: e.target.value }))}
             title="Data inicial"
           />
           <input
             type="date"
-            className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:w-auto"
+            className={cn(classesCampoLista, 'sm:w-auto')}
             value={filtros.dataFim}
             onChange={(e) => setFiltros((f) => ({ ...f, dataFim: e.target.value }))}
             title="Data final"
@@ -437,8 +436,8 @@ function ConteudoDaPagina() {
             rows={4}
             placeholder="Descreva o motivo do cancelamento"
             className={cn(
-              'w-full min-w-0 rounded-md border border-input bg-transparent px-2.5 py-2 text-sm shadow-xs outline-none',
-              'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
+              classesCampoBase,
+              'min-h-[6rem] resize-y py-2',
               erroMotivoCancelamento && 'border-destructive'
             )}
           />

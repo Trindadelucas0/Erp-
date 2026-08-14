@@ -20,7 +20,7 @@ export function InputPadrao({
   const idDoCampo = id ?? props.name ?? rotulo.toLowerCase().replace(/\s/g, '-')
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       <Label htmlFor={idDoCampo}>
         {rotulo}
         {obrigatorio && <span className="ml-0.5 text-destructive">*</span>}

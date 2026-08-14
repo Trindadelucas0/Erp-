@@ -8,6 +8,7 @@ import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { useRegistrarAtalhos } from '@/hooks/use-registrar-atalhos'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
 import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
 import { ordenarLista } from '@/lib/ordenacao-lista'
@@ -166,14 +167,7 @@ function ConteudoDaPaginaDeAuditoria() {
 
   return (
     <div className="min-w-0 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Auditoria</h1>
-          <p className="text-sm text-muted-foreground">
-            Histórico de alterações do sistema
-          </p>
-        </div>
-      </div>
+      <TituloPagina subtitulo="Histórico de alterações do sistema">Auditoria</TituloPagina>
 
       <CardPadrao titulo="Filtros">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -7,6 +7,7 @@
  */
 
 import { Select, classesOption, classesSelectCompacto } from '@/components/ui/select'
+import { classesCampoCompacto } from '@/components/ui/classes-campo'
 import { mascaraTelefone } from '@/lib/documentos'
 
 export type ContatoForm = {
@@ -131,7 +132,7 @@ export function ListaContatos({ contatos, aoMudar, disabled, mensagemDeErro }: P
                 {contato.tipo === 'email' ? 'Endereço de e-mail' : 'Número / valor'}
               </label>
               <input
-                className="flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className={classesCampoCompacto}
                 type={contato.tipo === 'email' ? 'email' : 'text'}
                 value={contato.valor}
                 onChange={(e) => {
@@ -160,7 +161,7 @@ export function ListaContatos({ contatos, aoMudar, disabled, mensagemDeErro }: P
               Descrição (opcional)
             </label>
             <input
-              className="flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className={classesCampoCompacto}
               type="text"
               value={contato.descricao}
               onChange={(e) => atualizar(idx, 'descricao', e.target.value)}

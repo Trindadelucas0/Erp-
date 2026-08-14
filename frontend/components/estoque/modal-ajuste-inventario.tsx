@@ -13,6 +13,7 @@ import { InputPadrao } from '@/components/ui/input-padrao'
 import { Button } from '@/components/ui/button'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Label } from '@/components/ui/label'
+import { classesCampo, classesCampoBase } from '@/components/ui/classes-campo'
 import { cn } from '@/lib/utils'
 
 type ModoAjuste = 'quantidade_final' | 'entrada' | 'saida'
@@ -284,7 +285,7 @@ export function ModalAjusteInventario({
           <Label htmlFor="fornecedor-inventario">Fornecedor (opcional)</Label>
           <select
             id="fornecedor-inventario"
-            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+            className={classesCampo}
             value={fornecedorPessoaId}
             onChange={(e) => setFornecedorPessoaId(e.target.value)}
             disabled={fornecedores.length === 0}
@@ -314,7 +315,7 @@ export function ModalAjusteInventario({
           </Label>
           <textarea
             id="obs-inventario"
-            className="min-h-[88px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+            className={cn(classesCampoBase, 'min-h-[88px] resize-y py-2')}
             value={observacao}
             onChange={(e) => setObservacao(e.target.value)}
             placeholder="Motivo obrigatório do ajuste"
