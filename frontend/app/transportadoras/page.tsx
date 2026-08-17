@@ -1287,6 +1287,7 @@ function ConteudoDaPaginaDeTransportadoras() {
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar por razão social, nome fantasia, CPF/CNPJ ou UF..."
             className={classesCampoLista}
+          />
         </div>
 
         <div className="overflow-x-auto rounded-md border border-border">
