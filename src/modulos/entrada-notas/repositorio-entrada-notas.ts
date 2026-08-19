@@ -115,9 +115,7 @@ const includeNotaCompleta = {
     },
   },
   anexos: {
-    where: { tipoAnexo: 'ressalva_divergencia' as const },
     orderBy: { createdAt: 'desc' as const },
-    take: 1,
   },
 } as const
 
@@ -198,9 +196,10 @@ async function atualizarNota(
   })
 }
 
-async function criarAnexoDivergencia(dados: {
+async function criarAnexoEntradaNota(dados: {
   companyId: string
   nfeRecebidaId: string
+  tipoAnexo: string
   nomeArquivo: string
   mimeType: string
   caminhoArquivo: string
@@ -212,7 +211,7 @@ async function criarAnexoDivergencia(dados: {
       id: randomUUID(),
       companyId: dados.companyId,
       nfeRecebidaId: dados.nfeRecebidaId,
-      tipoAnexo: 'ressalva_divergencia',
+      tipoAnexo: dados.tipoAnexo,
       nomeArquivo: dados.nomeArquivo,
       mimeType: dados.mimeType,
       caminhoArquivo: dados.caminhoArquivo,
@@ -220,6 +219,18 @@ async function criarAnexoDivergencia(dados: {
       usuarioId: dados.usuarioId,
     },
   })
+}
+
+async function criarAnexoDivergencia(dados: {
+  companyId: string
+  nfeRecebidaId: string
+  nomeArquivo: string
+  mimeType: string
+  caminhoArquivo: string
+  tamanhoBytes: number
+  usuarioId: string | null
+}) {
+  return criarAnexoEntradaNota({ ...dados, tipoAnexo: 'ressalva_divergencia' })
 }
 
 async function buscarAnexoEntradaNota(companyId: string, nfeRecebidaId: string, anexoId: string) {
@@ -233,6 +244,62 @@ async function buscarAnexoEntradaNota(companyId: string, nfeRecebidaId: string, 
  * NfeRecebida com esse pedidoCompraId em statusEntrada='entrada_consolidada'.
  * `notaIdExcluida` evita a nota atual se autocontar em reprocessamento/"voltar etapa".
  */
+async function buscarUltimoPrecoConsolidadoPorProduto(
+  companyId: string,
+  produtoIds: string[],
+  notaIdExcluida: string
+): Promise<Map<string, { produtoId: string; precoUnitarioVenda: number }>> {
+  const ids = [...new Set(produtoIds.filter(Boolean))]
+  const mapa = new Map<string, { produtoId: string; precoUnitarioVenda: number }>()
+  if (ids.length === 0) return mapa
+
+  const itens = await clientePrisma.nfeRecebidaItem.findMany({
+    where: {
+      produtoId: { in: ids },
+      nfeRecebida: {
+        companyId,
+        statusEntrada: 'entrada_consolidada',
+        id: { not: notaIdExcluida },
+      },
+    },
+    select: {
+      produtoId: true,
+      valorUnitario: true,
+      nfeRecebida: {
+        select: {
+          dataEmissao: true,
+          createdAt: true,
+          fornecedorPessoaId: true,
+        },
+      },
+      produto: {
+        select: {
+          fornecedores: {
+            select: { fornecedorPessoaId: true, multiplicadorEntrada: true },
+          },
+        },
+      },
+    },
+    orderBy: [{ nfeRecebida: { dataEmissao: 'desc' } }, { nfeRecebida: { createdAt: 'desc' } }],
+  })
+
+  for (const item of itens) {
+    if (!item.produtoId || mapa.has(item.produtoId)) continue
+    const valor = item.valorUnitario != null ? Number(item.valorUnitario) : NaN
+    if (!Number.isFinite(valor) || valor <= 0) continue
+    const vinculo = item.produto?.fornecedores.find(
+      (f) => f.fornecedorPessoaId === item.nfeRecebida.fornecedorPessoaId
+    )
+    const multRaw = vinculo?.multiplicadorEntrada != null ? Number(vinculo.multiplicadorEntrada) : 1
+    const mult = Number.isFinite(multRaw) && multRaw > 0 ? multRaw : 1
+    mapa.set(item.produtoId, {
+      produtoId: item.produtoId,
+      precoUnitarioVenda: valor / mult,
+    })
+  }
+  return mapa
+}
+
 async function somarConsolidadoPorProduto(
   companyId: string,
   pedidoCompraId: string,
@@ -688,8 +755,10 @@ export const repositorioEntradaNotas = {
   buscarPedidoComItens,
   buscarTipoCompraPedido,
   atualizarStatusPedidoCompra,
+  buscarUltimoPrecoConsolidadoPorProduto,
   somarConsolidadoPorProduto,
   criarAnexoDivergencia,
+  criarAnexoEntradaNota,
   buscarAnexoEntradaNota,
   gravarCodigoOriginalVinculo,
   mapaCodigoOriginalPorProduto,

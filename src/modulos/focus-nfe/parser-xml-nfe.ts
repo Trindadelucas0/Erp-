@@ -2,6 +2,8 @@
  * Extrai chave, resumo e itens de XML fiscal: NFe modelo 55, NFS-e nacional ou CTe.
  * Itens de produto (`extrairItensDoXml`) só se aplicam à NFe 55.
  */
+import { decodificarEntidadesXml } from '../../compartilhado/normalizacao/entidades-xml.js'
+
 export function normalizarXmlNfe(xml: string): string {
   return xml.replace(/^\uFEFF/, '').trim()
 }
@@ -72,7 +74,7 @@ export function extrairCampoXml(xmlBruto: string, tag: string): string | null {
   )
   const m = xml.match(re)
   if (!m?.[1]) return null
-  const texto = desembrulharCdata(m[1].trim())
+  const texto = decodificarEntidadesXml(desembrulharCdata(m[1].trim()))
   return texto || null
 }
 

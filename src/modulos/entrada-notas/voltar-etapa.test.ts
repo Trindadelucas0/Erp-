@@ -17,12 +17,21 @@ vi.mock('./repositorio-entrada-notas.js', () => ({
     buscarPedidoComItens: vi.fn(),
     gravarCodigoOriginalVinculo: vi.fn(),
     mapaCodigoOriginalPorProduto: vi.fn(),
+    buscarUltimoPrecoConsolidadoPorProduto: vi.fn().mockResolvedValue(new Map()),
     atualizarFiscalProduto: vi.fn(),
     mapaSugestaoCfopEntradaPorCodigo: vi.fn(),
     buscarCfopEntradaAtivo: vi.fn(),
     buscarCfopEntradaCteAtivo: vi.fn(),
     listarNotasPendentesPorDocumento: vi.fn(),
     listarNotasPendentesSemFornecedor: vi.fn(),
+  },
+}))
+
+vi.mock('../contagens/repositorio-contagens.js', () => ({
+  repositorioContagens: {
+    buscarSessaoFinalizadaDaNota: vi.fn().mockResolvedValue(null),
+    marcarSessaoBaixada: vi.fn(),
+    reabrirSessaoAposBaixa: vi.fn(),
   },
 }))
 
@@ -63,6 +72,7 @@ vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({
   clientePrisma: {
     produto: { findFirst: vi.fn() },
     despesaEntradaDocumento: { upsert: vi.fn() },
+    contaPagar: { findMany: vi.fn().mockResolvedValue([]) },
   },
 }))
 

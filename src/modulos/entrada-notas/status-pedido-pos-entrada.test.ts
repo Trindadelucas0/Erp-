@@ -17,6 +17,19 @@ vi.mock('./repositorio-entrada-notas.js', () => ({
     mapaSugestaoCfopEntradaPorCodigo: vi.fn().mockResolvedValue(new Map()),
     mapaCodigoOriginalPorProduto: vi.fn().mockResolvedValue(new Map()),
     listarPedidosAbertosFornecedor: vi.fn().mockResolvedValue([]),
+    buscarUltimoPrecoConsolidadoPorProduto: vi.fn().mockResolvedValue(new Map()),
+  },
+}))
+
+vi.mock('../contagens/repositorio-contagens.js', () => ({
+  repositorioContagens: {
+    buscarSessaoFinalizadaDaNota: vi.fn().mockResolvedValue({
+      id: 'sessao-1',
+      baixadaEm: new Date('2026-08-19'),
+      notas: [{ nfeRecebidaId: 'nota-1' }],
+    }),
+    marcarSessaoBaixada: vi.fn(),
+    reabrirSessaoAposBaixa: vi.fn(),
   },
 }))
 

@@ -962,6 +962,8 @@ model ContagemEntrada {
   usuario      User?    @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
   iniciadoEm   DateTime?
   finalizadoEm DateTime?
+  /// Admin baixou a contagem (trava logística até Voltar, se ainda não consolidou)
+  baixadaEm    DateTime?
   observacao   String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

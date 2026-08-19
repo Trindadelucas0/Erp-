@@ -17,6 +17,8 @@ import {
   esquemaFinanceiroFrete,
   esquemaLancar,
   esquemaLiberarCriticas,
+  esquemaBaixarContagem,
+  esquemaDesbloquearEstoque,
   esquemaManifestar,
   esquemaMarcarProblema,
   esquemaResolverDivergencia,
@@ -272,10 +274,50 @@ async function lancar(requisicao: FastifyRequest, resposta: FastifyReply) {
   return resposta.send(dados)
 }
 
+async function aceitarAuditoriaChegada(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const dados = await servicoEntradaNotas.aceitarAuditoriaChegada(
+    companyIdDe(requisicao),
+    notaIdDe(requisicao)
+  )
+  return resposta.send(dados)
+}
+
 async function liberarParaContagem(requisicao: FastifyRequest, resposta: FastifyReply) {
   const dados = await servicoEntradaNotas.liberarParaContagem(
     companyIdDe(requisicao),
     notaIdDe(requisicao)
+  )
+  return resposta.send(dados)
+}
+
+async function baixarContagem(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parsed = esquemaBaixarContagem.safeParse(requisicao.body ?? {})
+  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
+  const dados = await servicoEntradaNotas.baixarContagem(
+    companyIdDe(requisicao),
+    notaIdDe(requisicao),
+    usuarioIdDe(requisicao),
+    parsed.data.senha
+  )
+  return resposta.send(dados)
+}
+
+async function voltarParaContagem(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const dados = await servicoEntradaNotas.voltarParaContagem(
+    companyIdDe(requisicao),
+    notaIdDe(requisicao)
+  )
+  return resposta.send(dados)
+}
+
+async function desbloquearEstoque(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parsed = esquemaDesbloquearEstoque.safeParse(requisicao.body)
+  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
+  const dados = await servicoEntradaNotas.desbloquearEstoqueDivergencia(
+    companyIdDe(requisicao),
+    notaIdDe(requisicao),
+    usuarioIdDe(requisicao),
+    parsed.data
   )
   return resposta.send(dados)
 }
@@ -396,7 +438,11 @@ export const controladorEntradaNotas = {
   resolverProblema,
   descancelar,
   lancar,
+  aceitarAuditoriaChegada,
   liberarParaContagem,
+  baixarContagem,
+  voltarParaContagem,
+  desbloquearEstoque,
   resolverDivergencia,
   baixarAnexoDivergencia,
   vincularCte,

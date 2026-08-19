@@ -42,6 +42,7 @@ type SessaoContagem = {
   iniciadoEm: string | null
   finalizadoEm: string | null
   observacao: string | null
+  baixadaEm?: string | null
   entradas: EntradaSessao[]
   itens: ItemSessao[]
 }
@@ -71,7 +72,7 @@ function ConteudoSessaoContagem() {
   const [confirmacaoCancelar, setConfirmacaoCancelar] = useState(false)
 
   const editavel =
-    sessao?.status === 'aberta' || sessao?.status === 'em_andamento'
+    (sessao?.status === 'aberta' || sessao?.status === 'em_andamento') && !sessao?.baixadaEm
 
   const sessaoFinalizada =
     sessao?.status === 'ok' ||
@@ -276,6 +277,12 @@ function ConteudoSessaoContagem() {
             Status: <strong>{sessao.status}</strong>
           </span>
         </div>
+
+        {sessao.baixadaEm && (
+          <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300">
+            Contagem baixada pelo administrativo — bipagem e gravação estão bloqueadas.
+          </p>
+        )}
 
         {mensagem && (
           <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm" role="status">

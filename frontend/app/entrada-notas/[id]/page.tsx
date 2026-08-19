@@ -248,7 +248,31 @@ type DetalheNota = {
   /// bloqueio | null — desfecho da correção de divergência de contagem (§7.17)
   divergenciaDesfecho?: string | null
   divergenciaResolvidaEm?: string | null
-  anexoDivergencia?: { id: string; nomeArquivo: string } | null
+  anexoDivergencia?: { id: string; nomeArquivo: string; tipoAnexo?: string } | null
+  anexos?: Array<{ id: string; tipoAnexo: string; nomeArquivo: string; createdAt?: string }>
+  divergenciaGestao?: {
+    bloqueioExplicacao?: string
+    bloqueioEm?: string
+    desbloqueioExplicacao?: string
+    desbloqueioEm?: string
+  } | null
+  auditoriaChegada?: {
+    achados: Array<{
+      tipo: 'preco' | 'nome'
+      itemId: string
+      nItem: number
+      produto: string
+      mensagem: string
+      nomeNf?: string
+      nomeSistema?: string
+      precoAtual?: number
+      precoUltima?: number
+    }>
+    fingerprint: string
+    aceitoEm?: string | null
+    pendente: boolean
+  } | null
+  contagemBaixada?: boolean
   tratativas?: TratativaNota[]
   modFrete?: string | null
   chaveNfeReferenciada?: string | null
@@ -828,6 +852,8 @@ function ConteudoDetalheEntrada() {
   const [estoqueResumo, setEstoqueResumo] = useState<EstoqueResumoLancamento | null>(null)
   const [senha, setSenha] = useState('')
   const [senhaDivergencia, setSenhaDivergencia] = useState('')
+  const [explicacaoDivergencia, setExplicacaoDivergencia] = useState('')
+  const [explicacaoDesbloqueio, setExplicacaoDesbloqueio] = useState('')
   const [anexoDivergenciaArquivo, setAnexoDivergenciaArquivo] = useState<{
     nomeArquivo: string
     mimeType: string
@@ -1096,7 +1122,7 @@ function ConteudoDetalheEntrada() {
         if (path === '/analisar' || path.startsWith('/analisar')) {
           setMensagem(mensagemAposAnalisar(data.nota))
         } else if (path === '/financeiro-frete') {
-          setMensagem('Prévia financeira do frete salva (vira Contas a Pagar ao liberar/consolidar).')
+          setMensagem('Prévia financeira do frete salva (vira Contas a Pagar ao consolidar).')
         } else if (path === '/definir-cfop-entrada' || path === '/definir-cfop-entrada-cte') {
           setMensagem('CFOP de entrada atualizado.')
         } else if (path === '/lancar' && body?.modo === 'consolidar') {
@@ -1116,28 +1142,40 @@ function ConteudoDetalheEntrada() {
           }
         } else if (path === '/resolver-divergencia') {
           setSenhaDivergencia('')
+          setExplicacaoDivergencia('')
           setAnexoDivergenciaArquivo(null)
           setInfoAnexoDivergencia(null)
           setMensagem(
-            `Divergência resolvida: itens bloqueados no estoque, ressalva assinada anexada.${sufixoContas}`
+            `Estoque bloqueado após divergência. A nota foi para Entradas consolidadas.${sufixoContas}`
           )
-        } else if (path === '/lancar' && body?.modo === 'contagem') {
-          setMensagem(
-            (ehDocumentalEntrada(data.nota.tipoDocumento)
-              ? 'Liberada para contagem documental.'
-              : 'Liberada para contagem — a logística confere em Contagens de entrada. Só depois consolide o estoque.') +
-              sufixoContas
-          )
+        } else if (path === '/baixar-contagem') {
+          setSenha('')
+          if (data.nota.statusEntrada === 'entrada_consolidada') {
+            const resumo = data.estoqueResumo ?? data.nota.estoqueResumo ?? null
+            if (resumo) setEstoqueResumo(resumo)
+            setMensagem(`Contagem baixada e estoque consolidado.${sufixoContas}`)
+          } else {
+            setMensagem('Contagem baixada. A logística não pode mais alterar. Você pode bloquear o estoque ou voltar para contagem.')
+          }
+        } else if (path === '/voltar-para-contagem') {
+          setMensagem('Baixa cancelada. A logística pode contar de novo.')
+        } else if (path === '/desbloquear-estoque') {
+          setSenhaDivergencia('')
+          setExplicacaoDesbloqueio('')
+          setAnexoDivergenciaArquivo(null)
+          setMensagem('Estoque desbloqueado — disponível voltou a circular.')
+        } else if (path === '/aceitar-auditoria-chegada') {
+          setMensagem('Divergências conferidas. Você pode liberar para contagem.')
         } else if (path === '/liberar-para-contagem') {
           setMensagem(
-            `Liberada para contagem — a logística confere em Contagens de entrada.${sufixoContas}`
+            'Liberada para contagem — a logística confere em Contagens de entrada.'
           )
         } else if (data.nota.statusEntrada === 'aguardando_chegada') {
           setMensagem(
-            `Nota de revenda lançada — aguardando chegada física para liberar a contagem.${sufixoContas}`
+            'Nota de revenda lançada — aguardando chegada física para liberar a contagem.'
           )
         } else if (data.nota.origemLancamento === 'automatica') {
-          setMensagem(`Entrada automática concluída (Liberar para contagem — sem estoque).${sufixoContas}`)
+          setMensagem('Entrada automática concluída (Liberar para contagem — sem estoque).')
         } else if (notaLiberadaOuConsolidada(data.nota.statusEntrada)) {
           setMensagem(`Nota lançada: ${rotuloStatusEntrada(data.nota.statusEntrada)}.${sufixoContas}`)
         } else if (path === '/manifestar') {
@@ -2608,8 +2646,8 @@ function ConteudoDetalheEntrada() {
                 </Button>
               </div>
               <p className="mt-3 text-xs text-muted-foreground">
-                Ao liberar ou consolidar, o sistema gera automaticamente os títulos em Contas a Pagar
-                (mercadoria e frete, quando houver).
+                Os títulos em Contas a Pagar (mercadoria e frete, quando houver) são gerados ao
+                consolidar — Baixar contagem OK, Consolidar ou Bloquear estoque.
               </p>
             </CardPadrao>
           ) : (
@@ -2620,9 +2658,13 @@ function ConteudoDetalheEntrada() {
                   : nota.statusEntrada === 'entrada_consolidada'
                     ? 'Entrada consolidada'
                     : nota.statusEntrada === 'entrada_contagem_ok'
-                      ? 'Contagem OK — pronta para consolidar'
+                      ? nota.contagemBaixada
+                        ? 'Contagem baixada — pronta para consolidar'
+                        : 'Contagem OK — baixar para consolidar'
                       : nota.statusEntrada === 'entrada_contagem_divergente'
-                        ? 'Divergência na contagem'
+                        ? nota.contagemBaixada
+                          ? 'Contagem baixada — bloquear estoque'
+                          : 'Divergência na contagem — baixar antes de bloquear'
                         : nota.statusEntrada === 'entrada_contagem'
                           ? 'Liberada para contagem'
                           : nota.statusEntrada === 'aguardando_chegada'
@@ -2647,9 +2689,13 @@ function ConteudoDetalheEntrada() {
                         : nota.statusEntrada === 'entrada_contagem' && ehDocumental
                           ? ' Documental — pode consolidar sem contagem física.'
                           : nota.statusEntrada === 'entrada_contagem_ok'
-                            ? ' Contagem conferida. Informe a senha de gerente e consolide para gravar no estoque.'
+                            ? nota.contagemBaixada
+                              ? ' Contagem baixada. Informe a senha e consolide o estoque.'
+                              : ' Contagem conferida. Baixe a contagem (com senha) para gravar no estoque.'
                             : nota.statusEntrada === 'entrada_contagem_divergente'
-                              ? ' Contagem gravada com divergência — nota inteira retida. Só é liberada anexando a ressalva assinada e informando a senha de gerente.'
+                              ? nota.contagemBaixada
+                                ? ' Contagem baixada. Bloqueie o estoque com explicação e foto da negociação, ou volte para a logística contar de novo.'
+                                : ' Contagem gravada com divergência. Baixe a contagem para travar a logística; depois bloqueie o estoque.'
                               : nota.statusEntrada === 'entrada_consolidada' && !ehDocumental
                                 ? nota.estoqueLancado || estoqueResumo?.movimentou
                                   ? ' Estoque lançado (físico e fiscal). Veja o resumo abaixo.'
@@ -2660,9 +2706,33 @@ function ConteudoDetalheEntrada() {
               </p>
               {nota.statusEntrada === 'aguardando_chegada' && (
                 <div className="mt-4 space-y-3 rounded-md border border-border/80 bg-muted/20 p-3">
+                  {nota.auditoriaChegada && nota.auditoriaChegada.achados.length > 0 && (
+                    <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800/60 dark:bg-amber-950/30">
+                      <p className="font-medium text-amber-900 dark:text-amber-200">
+                        Conferência de preço e nome
+                      </p>
+                      <ul className="list-disc space-y-1 pl-4 text-amber-800 dark:text-amber-300">
+                        {nota.auditoriaChegada.achados.map((a) => (
+                          <li key={`${a.tipo}-${a.itemId}`}>{a.mensagem}</li>
+                        ))}
+                      </ul>
+                      {nota.auditoriaChegada.pendente ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={acao}
+                          onClick={() => postAcao('/aceitar-auditoria-chegada', {})}
+                        >
+                          Confirmei as divergências
+                        </Button>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Divergências confirmadas.</p>
+                      )}
+                    </div>
+                  )}
                   <p className="text-sm text-muted-foreground">
                     Nota de revenda vinculada a pedido de compra. Assim que a mercadoria chegar,
-                    libere para a logística iniciar a contagem em{' '}
+                    libere para a logística iniciar a conferência em{' '}
                     <Link href="/contagens" className="text-primary underline">
                       Contagens de entrada
                     </Link>
@@ -2670,7 +2740,7 @@ function ConteudoDetalheEntrada() {
                   </p>
                   <BotaoPrimario
                     type="button"
-                    disabled={acao}
+                    disabled={acao || Boolean(nota.auditoriaChegada?.pendente)}
                     onClick={() => postAcao('/liberar-para-contagem', {})}
                   >
                     Liberar para contagem
@@ -2696,8 +2766,8 @@ function ConteudoDetalheEntrada() {
                       <Link href="/contagens" className="text-primary underline">
                         Contagens de entrada
                       </Link>{' '}
-                      para a logística bipar os produtos. Só depois desta etapa o consolidar fica
-                      disponível.
+                      para a logística bipar os produtos. Só depois desta etapa o admin baixa a
+                      contagem.
                     </>
                   ) : (
                     <>
@@ -2720,18 +2790,24 @@ function ConteudoDetalheEntrada() {
                   <Link href="/estoque" className="text-primary underline">
                     Estoque
                   </Link>
+                  {' '}e o dossiê da NF em{' '}
+                  <Link href={`/auditoria-entradas/${nota.id}`} className="text-primary underline">
+                    Auditoria de entradas
+                  </Link>
                   .
                 </p>
               )}
               {nota.statusEntrada === 'entrada_consolidada' && nota.divergenciaDesfecho === 'bloqueio' && (
                 <div className="mt-3 space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300">
                   <p>
-                    <strong>Consolidada com divergência</strong> — itens bloqueados no estoque
-                    (disponível zerado) até desbloqueio manual.
+                    <strong>Consolidada com bloqueio</strong> — disponível zerado até desbloquear.
                     {nota.divergenciaResolvidaEm
-                      ? ` Resolvida em ${new Date(nota.divergenciaResolvidaEm).toLocaleString('pt-BR')}.`
+                      ? ` Bloqueada em ${new Date(nota.divergenciaResolvidaEm).toLocaleString('pt-BR')}.`
                       : ''}
                   </p>
+                  {nota.divergenciaGestao?.bloqueioExplicacao && (
+                    <p className="text-xs">Explicação: {nota.divergenciaGestao.bloqueioExplicacao}</p>
+                  )}
                   {nota.anexoDivergencia && (
                     <Button
                       type="button"
@@ -2741,104 +2817,272 @@ function ConteudoDetalheEntrada() {
                       onClick={() => void baixarAnexoDivergencia(nota.anexoDivergencia!.id, nota.anexoDivergencia!.nomeArquivo)}
                     >
                       <Download className="size-3.5" />
-                      Baixar ressalva assinada
+                      Baixar anexo da negociação
                     </Button>
+                  )}
+                  {nota.divergenciaGestao?.desbloqueioEm ? (
+                    <p className="text-xs">
+                      Desbloqueado em {new Date(nota.divergenciaGestao.desbloqueioEm).toLocaleString('pt-BR')}.
+                      {nota.divergenciaGestao.desbloqueioExplicacao
+                        ? ` ${nota.divergenciaGestao.desbloqueioExplicacao}`
+                        : ''}
+                    </p>
+                  ) : (
+                    <div className="space-y-2 border-t border-amber-200 pt-2 dark:border-amber-800/50">
+                      <Label htmlFor="explicacao-desbloqueio">Explicação do desbloqueio</Label>
+                      <textarea
+                        id="explicacao-desbloqueio"
+                        className="mt-1 block w-full max-w-md min-h-[72px] rounded-md border bg-background px-3 py-2 text-sm"
+                        value={explicacaoDesbloqueio}
+                        onChange={(e) => setExplicacaoDesbloqueio(e.target.value)}
+                      />
+                      <Label htmlFor="anexo-desbloqueio">Foto ou PDF da negociação (máx. 2 MB)</Label>
+                      <label
+                        htmlFor="anexo-desbloqueio"
+                        className="relative flex w-full max-w-md cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-background px-3 py-2 text-sm hover:border-muted-foreground/40"
+                      >
+                        <Paperclip className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                        <span className="min-w-0 flex-1 truncate">
+                          {anexoDivergenciaArquivo?.nomeArquivo ?? 'Clique para escolher o arquivo…'}
+                        </span>
+                        <input
+                          id="anexo-desbloqueio"
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp,application/pdf"
+                          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0] ?? null
+                            void aoEscolherArquivoDivergencia(file)
+                            e.target.value = ''
+                          }}
+                        />
+                      </label>
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div>
+                          <Label htmlFor="senha-desbloqueio">Senha gerente</Label>
+                          <input
+                            id="senha-desbloqueio"
+                            type="password"
+                            className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
+                            value={senhaDivergencia}
+                            onChange={(e) => setSenhaDivergencia(e.target.value)}
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          disabled={
+                            acao ||
+                            !senhaDivergencia.trim() ||
+                            !explicacaoDesbloqueio.trim() ||
+                            !anexoDivergenciaArquivo
+                          }
+                          onClick={() =>
+                            postAcao('/desbloquear-estoque', {
+                              senha: senhaDivergencia,
+                              explicacao: explicacaoDesbloqueio,
+                              anexo: anexoDivergenciaArquivo,
+                            })
+                          }
+                        >
+                          Desbloquear estoque
+                        </Button>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
               {nota.statusEntrada === 'entrada_contagem_divergente' && (
                 <div className="mt-4 space-y-3 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800/60 dark:bg-amber-950/30">
-                  <p className="text-sm text-amber-800 dark:text-amber-300">
-                    A nota inteira fica retida — todos os itens com produto entram bloqueados no
-                    estoque (físico e fiscal lançados, mas disponível zerado). Só é liberada
-                    anexando a foto/PDF da ressalva assinada pelo motorista e informando a senha de
-                    gerente.
-                  </p>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="anexo-divergencia">Ressalva assinada (PDF, JPG, PNG ou WEBP — máx. 2 MB)</Label>
-                    <label
-                      htmlFor="anexo-divergencia"
-                      className="relative flex w-full max-w-md cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-background px-3 py-2 text-sm hover:border-muted-foreground/40"
-                    >
-                      <Paperclip className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                      <span className="min-w-0 flex-1 truncate">
-                        {anexoDivergenciaArquivo?.nomeArquivo ?? 'Clique para escolher o arquivo…'}
-                      </span>
-                      <input
-                        id="anexo-divergencia"
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp,application/pdf"
-                        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0] ?? null
-                          void aoEscolherArquivoDivergencia(file)
-                          e.target.value = ''
-                        }}
-                      />
-                    </label>
-                    {infoAnexoDivergencia && (
-                      <p className="text-xs text-muted-foreground">{infoAnexoDivergencia}</p>
-                    )}
-                    {erroAnexoDivergencia && (
-                      <p className="text-xs text-destructive">{erroAnexoDivergencia}</p>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap items-end gap-3">
-                    <div>
-                      <Label htmlFor="senha-divergencia">Senha gerente</Label>
-                      <input
-                        id="senha-divergencia"
-                        type="password"
-                        className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
-                        value={senhaDivergencia}
-                        onChange={(e) => setSenhaDivergencia(e.target.value)}
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      disabled={acao || !senhaDivergencia.trim() || !anexoDivergenciaArquivo}
-                      onClick={() =>
-                        postAcao('/resolver-divergencia', {
-                          senha: senhaDivergencia,
-                          anexo: anexoDivergenciaArquivo,
-                        })
-                      }
-                    >
-                      Concluir entrada com bloqueio
-                    </Button>
-                  </div>
+                  {!nota.contagemBaixada ? (
+                    <>
+                      <p className="text-sm text-amber-800 dark:text-amber-300">
+                        Baixe a contagem para travar a logística. Depois você bloqueia o estoque
+                        ou volta para contar de novo.
+                      </p>
+                      <Button
+                        type="button"
+                        disabled={acao}
+                        onClick={() => postAcao('/baixar-contagem', {})}
+                      >
+                        Baixar contagem
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-amber-800 dark:text-amber-300">
+                        Contagem baixada. Bloqueie o estoque (explicação + foto da negociação + senha)
+                        ou volte para a logística contar de novo. Não há emissão de nota de devolução
+                        nesta etapa.
+                      </p>
+                      <div className="space-y-2">
+                        <Label htmlFor="explicacao-divergencia">Explicação da negociação</Label>
+                        <textarea
+                          id="explicacao-divergencia"
+                          className="mt-1 block w-full max-w-md min-h-[72px] rounded-md border bg-background px-3 py-2 text-sm"
+                          value={explicacaoDivergencia}
+                          onChange={(e) => setExplicacaoDivergencia(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="anexo-divergencia">Foto ou PDF da negociação (máx. 2 MB)</Label>
+                        <label
+                          htmlFor="anexo-divergencia"
+                          className="relative flex w-full max-w-md cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-background px-3 py-2 text-sm hover:border-muted-foreground/40"
+                        >
+                          <Paperclip className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                          <span className="min-w-0 flex-1 truncate">
+                            {anexoDivergenciaArquivo?.nomeArquivo ?? 'Clique para escolher o arquivo…'}
+                          </span>
+                          <input
+                            id="anexo-divergencia"
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp,application/pdf"
+                            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0] ?? null
+                              void aoEscolherArquivoDivergencia(file)
+                              e.target.value = ''
+                            }}
+                          />
+                        </label>
+                        {infoAnexoDivergencia && (
+                          <p className="text-xs text-muted-foreground">{infoAnexoDivergencia}</p>
+                        )}
+                        {erroAnexoDivergencia && (
+                          <p className="text-xs text-destructive">{erroAnexoDivergencia}</p>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div>
+                          <Label htmlFor="senha-divergencia">Senha gerente</Label>
+                          <input
+                            id="senha-divergencia"
+                            type="password"
+                            className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
+                            value={senhaDivergencia}
+                            onChange={(e) => setSenhaDivergencia(e.target.value)}
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          disabled={
+                            acao ||
+                            !senhaDivergencia.trim() ||
+                            !explicacaoDivergencia.trim() ||
+                            !anexoDivergenciaArquivo
+                          }
+                          onClick={() =>
+                            postAcao('/resolver-divergencia', {
+                              senha: senhaDivergencia,
+                              explicacao: explicacaoDivergencia,
+                              anexo: anexoDivergenciaArquivo,
+                            })
+                          }
+                        >
+                          Bloquear estoque
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={acao}
+                          onClick={() => postAcao('/voltar-para-contagem', {})}
+                        >
+                          Voltar para contagem
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
               {(nota.statusEntrada === 'entrada_contagem_ok' ||
                 (nota.statusEntrada === 'entrada_contagem' && ehDocumental)) && (
                 <div className="mt-4 space-y-3 rounded-md border border-border/80 bg-muted/20 p-3">
-                  <p className="text-sm text-muted-foreground">
-                    {ehDocumental
-                      ? 'Consolidar (documental) encerra a entrada sem movimentar estoque.'
-                      : 'Consolidar estoque grava físico e fiscal (quantidade × embalagem).'}
-                  </p>
-                  <div className="flex flex-wrap items-end gap-3">
-                    <div>
-                      <Label htmlFor="senha-consolidar-contagem">Senha gerente</Label>
-                      <input
-                        id="senha-consolidar-contagem"
-                        type="password"
-                        className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
-                        value={senha}
-                        onChange={(e) => setSenha(e.target.value)}
-                      />
-                    </div>
-                    <BotaoPrimario
-                      type="button"
-                      disabled={acao || !senha.trim()}
-                      onClick={() => postAcao('/lancar', { modo: 'consolidar', senha })}
-                    >
-                      {ehDocumental ? 'Consolidar (documental)' : 'Consolidar estoque'}
-                    </BotaoPrimario>
-                  </div>
+                  {ehDocumental ? (
+                    <>
+                      <p className="text-sm text-muted-foreground">
+                        Consolidar (documental) encerra a entrada sem movimentar estoque.
+                      </p>
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div>
+                          <Label htmlFor="senha-consolidar-contagem">Senha gerente</Label>
+                          <input
+                            id="senha-consolidar-contagem"
+                            type="password"
+                            className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
+                            value={senha}
+                            onChange={(e) => setSenha(e.target.value)}
+                          />
+                        </div>
+                        <BotaoPrimario
+                          type="button"
+                          disabled={acao || !senha.trim()}
+                          onClick={() => postAcao('/lancar', { modo: 'consolidar', senha })}
+                        >
+                          Consolidar (documental)
+                        </BotaoPrimario>
+                      </div>
+                    </>
+                  ) : !nota.contagemBaixada ? (
+                    <>
+                      <p className="text-sm text-muted-foreground">
+                        Baixar contagem trava a logística e, com a senha, consolida físico e fiscal.
+                      </p>
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div>
+                          <Label htmlFor="senha-baixar-ok">Senha gerente</Label>
+                          <input
+                            id="senha-baixar-ok"
+                            type="password"
+                            className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
+                            value={senha}
+                            onChange={(e) => setSenha(e.target.value)}
+                          />
+                        </div>
+                        <BotaoPrimario
+                          type="button"
+                          disabled={acao || !senha.trim()}
+                          onClick={() => postAcao('/baixar-contagem', { senha })}
+                        >
+                          Baixar contagem
+                        </BotaoPrimario>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-muted-foreground">
+                        Contagem já baixada. Se ainda não consolidou, use a senha para gravar no estoque
+                        ou volte para a logística.
+                      </p>
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div>
+                          <Label htmlFor="senha-consolidar-contagem">Senha gerente</Label>
+                          <input
+                            id="senha-consolidar-contagem"
+                            type="password"
+                            className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
+                            value={senha}
+                            onChange={(e) => setSenha(e.target.value)}
+                          />
+                        </div>
+                        <BotaoPrimario
+                          type="button"
+                          disabled={acao || !senha.trim()}
+                          onClick={() => postAcao('/lancar', { modo: 'consolidar', senha })}
+                        >
+                          Consolidar estoque
+                        </BotaoPrimario>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={acao}
+                          onClick={() => postAcao('/voltar-para-contagem', {})}
+                        >
+                          Voltar para contagem
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
               {nota.statusEntrada === 'cancelada' && nota.manifestacaoDestinatario && (

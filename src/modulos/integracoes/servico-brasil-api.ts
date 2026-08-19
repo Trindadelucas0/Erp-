@@ -2,6 +2,7 @@
  * Consulta CNPJ na BrasilAPI e normaliza para o shape usado pelo frontend.
  */
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
+import { decodificarEntidadesXml } from '../../compartilhado/normalizacao/entidades-xml.js'
 import { normalizarCnpj, validarCnpj } from '../../compartilhado/validacoes/documentos.js'
 
 const URL_BRASIL_API = 'https://brasilapi.com.br/api/cnpj/v1'
@@ -119,8 +120,8 @@ export function mapearRespostaBrasilApi(dados: RespostaBrasilApi): DadosCnpj {
   const cnaePrincipal = cnaes.find((c) => c.principal)?.codigo ?? ''
 
   return {
-    nome: dados.razao_social ?? '',
-    nomeFantasia: dados.nome_fantasia ?? '',
+    nome: decodificarEntidadesXml(dados.razao_social ?? ''),
+    nomeFantasia: decodificarEntidadesXml(dados.nome_fantasia ?? ''),
     cnae: cnaePrincipal,
     cnaes,
     dataFundacao: formatarData(dados.data_inicio_atividade),

@@ -12,7 +12,8 @@ const TITULOS_POR_ROTA: Record<string, string> = {
   '/cadastros': 'Cadastros',
   '/users': 'Usuários',
   '/papeis': 'Gerenciar papéis',
-  '/auditoria': 'Auditoria',
+    '/auditoria': 'Auditoria',
+    '/auditoria-entradas': 'Auditoria de entradas',
   '/configuracoes': 'Configurações',
   '/clientes': 'Clientes',
   '/clientes/aprovacao': 'Aprovação de clientes',
@@ -27,6 +28,7 @@ const TITULOS_POR_ROTA: Record<string, string> = {
 }
 
 const PREFIXOS_TITULO: { prefixo: string; titulo: string }[] = [
+  { prefixo: '/auditoria-entradas/', titulo: 'Auditoria de entradas' },
   { prefixo: '/pedidos-compra/', titulo: 'Pedido de compra' },
   { prefixo: '/entrada-notas/', titulo: 'Entrada de Notas' },
   { prefixo: '/contagens/', titulo: 'Contagem de entrada' },

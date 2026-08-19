@@ -56,6 +56,8 @@ type NotaPendente = {
   /** CT-e↔NF de mercadoria já vinculados */
   temVinculoFrete?: boolean
   chaveNfeReferenciada?: string | null
+  auditoriaChegadaPendente?: boolean
+  contagemBaixada?: boolean
 }
 
 type JobStatus = {
@@ -249,6 +251,9 @@ function ConteudoEntradaNotas() {
   const [xmlModal, setXmlModal] = useState<XmlVisualizacao | null>(null)
   const [xmlCarregandoId, setXmlCarregandoId] = useState<string | null>(null)
   const [liberandoId, setLiberandoId] = useState<string | null>(null)
+  const [baixandoId, setBaixandoId] = useState<string | null>(null)
+  const [senhaBaixar, setSenhaBaixar] = useState('')
+  const [modalBaixarId, setModalBaixarId] = useState<string | null>(null)
   const [downloadRotulo, setDownloadRotulo] = useState('')
   const [pagina, setPagina] = useState(1)
   const [itensPorPagina, setItensPorPagina] = useState<ItensPorPagina>(10)
@@ -732,6 +737,36 @@ function ConteudoEntradaNotas() {
     }
   }
 
+  async function baixarContagemLista(id: string, senha?: string) {
+    setBaixandoId(id)
+    setErro('')
+    try {
+      await clienteHttp.post(`/entrada-notas/${id}/baixar-contagem`, senha ? { senha } : {})
+      setMensagem('Contagem baixada.')
+      setModalBaixarId(null)
+      setSenhaBaixar('')
+      await carregar({ silencioso: true })
+    } catch (err) {
+      setErro(extrairMensagemApi(err, 'Não foi possível baixar a contagem.'))
+    } finally {
+      setBaixandoId(null)
+    }
+  }
+
+  async function voltarParaContagemLista(id: string) {
+    setBaixandoId(id)
+    setErro('')
+    try {
+      await clienteHttp.post(`/entrada-notas/${id}/voltar-para-contagem`)
+      setMensagem('Baixa cancelada — a logística pode contar de novo.')
+      await carregar({ silencioso: true })
+    } catch (err) {
+      setErro(extrairMensagemApi(err, 'Não foi possível voltar para contagem.'))
+    } finally {
+      setBaixandoId(null)
+    }
+  }
+
   async function importarUmXml(xmlBruto: string) {
     const xml = xmlBruto.replace(/^\uFEFF/, '').trim()
     const { data } = await clienteHttp.post<{ mensagem: string; chaveNfe: string }>(
@@ -1186,6 +1221,12 @@ function ConteudoEntradaNotas() {
                         {n.statusEntrada === 'com_problema' ? (
                           <BadgeStatus variante="reprovado">Com problema</BadgeStatus>
                         ) : null}
+                        {n.auditoriaChegadaPendente ? (
+                          <BadgeStatus variante="reprovado">Conferir</BadgeStatus>
+                        ) : null}
+                        {n.contagemBaixada && painel === 'contagem' ? (
+                          <BadgeStatus variante="info">Baixada</BadgeStatus>
+                        ) : null}
                       </div>
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -1194,7 +1235,12 @@ function ConteudoEntradaNotas() {
                           <Button
                             type="button"
                             size="sm"
-                            disabled={liberandoId === n.id || ocupado}
+                            disabled={liberandoId === n.id || ocupado || Boolean(n.auditoriaChegadaPendente)}
+                            title={
+                              n.auditoriaChegadaPendente
+                                ? 'Confirme as divergências de preço/nome no detalhe da nota'
+                                : undefined
+                            }
                             onClick={() => void liberarParaContagem(n.id)}
                           >
                             {liberandoId === n.id ? (
@@ -1202,9 +1248,42 @@ function ConteudoEntradaNotas() {
                                 <Loader2 className="mr-1 size-3.5 animate-spin" aria-hidden />
                                 Liberando…
                               </>
+                            ) : n.auditoriaChegadaPendente ? (
+                              'Conferir no detalhe'
                             ) : (
                               'Liberar para contagem'
                             )}
+                          </Button>
+                        )}
+                        {painel === 'contagem' &&
+                          (n.statusEntrada === 'entrada_contagem_ok' ||
+                            n.statusEntrada === 'entrada_contagem_divergente') &&
+                          !n.contagemBaixada && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={baixandoId === n.id || ocupado}
+                            onClick={() => {
+                              if (n.statusEntrada === 'entrada_contagem_ok') {
+                                setModalBaixarId(n.id)
+                                setSenhaBaixar('')
+                                return
+                              }
+                              void baixarContagemLista(n.id)
+                            }}
+                          >
+                            {baixandoId === n.id ? 'Baixando…' : 'Baixar contagem'}
+                          </Button>
+                        )}
+                        {painel === 'contagem' && n.contagemBaixada && n.statusEntrada !== 'entrada_consolidada' && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={baixandoId === n.id || ocupado}
+                            onClick={() => void voltarParaContagemLista(n.id)}
+                          >
+                            Voltar para contagem
                           </Button>
                         )}
                         {recursosDoc.verNota && (
@@ -1294,6 +1373,51 @@ function ConteudoEntradaNotas() {
           onItensPorPaginaChange={setItensPorPagina}
         />
       </CardPadrao>
+
+      <Modal
+        aberto={Boolean(modalBaixarId)}
+        aoFechar={() => {
+          setModalBaixarId(null)
+          setSenhaBaixar('')
+        }}
+        titulo="Baixar contagem"
+        descricao="Informe a senha para travar a logística e consolidar o estoque."
+        largura="sm"
+        rodape={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setModalBaixarId(null)
+                setSenhaBaixar('')
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={!senhaBaixar.trim() || !modalBaixarId || baixandoId === modalBaixarId}
+              onClick={() => {
+                if (modalBaixarId) void baixarContagemLista(modalBaixarId, senhaBaixar)
+              }}
+            >
+              Baixar e consolidar
+            </Button>
+          </div>
+        }
+      >
+        <div>
+          <Label htmlFor="senha-baixar-lista">Senha gerente</Label>
+          <input
+            id="senha-baixar-lista"
+            type="password"
+            className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm"
+            value={senhaBaixar}
+            onChange={(e) => setSenhaBaixar(e.target.value)}
+          />
+        </div>
+      </Modal>
 
       <Modal
         aberto={modalCotaAberto}

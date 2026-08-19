@@ -333,6 +333,17 @@ describe('parser XML NF-e', () => {
     expect(c.dataEmissao?.toISOString().startsWith('2024-03-15')).toBe(true)
   })
 
+  it('decodifica &amp; no xNome do emitente', () => {
+    const xml = `
+      <NFe><infNFe Id="NFe35200114200166000187550010000000011000000015">
+        <emit><CNPJ>01559338000140</CNPJ><xNome>POSTO &amp; MOTEL RODOBELO LTDA</xNome></emit>
+        <dest><CNPJ>29859815000102</CNPJ><xNome>EXITO</xNome></dest>
+      </infNFe></NFe>`
+    const c = extrairCamposResumoDoXml(xml)
+    expect(c.nomeEmitente).toBe('POSTO & MOTEL RODOBELO LTDA')
+    expect(c.documentoEmitente).toBe('01559338000140')
+  })
+
   it('extrai valor em formato brasileiro 1.500,50', () => {
     const xml = `
       <NFe><infNFe Id="NFe35200114200166000187550010000000011000000015">

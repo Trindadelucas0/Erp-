@@ -3,6 +3,7 @@
  */
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
+import { decodificarTextoXml } from '../../compartilhado/normalizacao/entidades-xml.js'
 import { normalizarDocumento } from '../../compartilhado/validacoes/documentos.js'
 import { servicoDeAutenticacao } from '../autenticacao/servico-autenticacao.js'
 import { repositorioFocusNfe } from '../focus-nfe/repositorio-focus-nfe.js'
@@ -26,6 +27,12 @@ import { analisarNegociacao } from './analise-negociacao/analisar-negociacao.js'
 import { repositorioEntradaNotas } from './repositorio-entrada-notas.js'
 import type { AnaliseJson, ResultadoEtapa } from './tipos-analise.js'
 import { etapaVazia } from './tipos-analise.js'
+import {
+  avaliarAuditoriaChegada,
+  lerChegadaDeAnalise,
+  pendenteLiberacaoChegada,
+  type AuditoriaChegadaJson,
+} from './auditoria-chegada/avaliar-auditoria-chegada.js'
 import type { RegrasFiscaisJson } from './analise-fiscal/analisar-fiscal-basico.js'
 import { cfopEhConhecimentoFrete } from '../cfops/classificacao-cfop.js'
 import {
@@ -43,6 +50,7 @@ import {
   STATUS_AGUARDANDO_CHEGADA,
   STATUS_AGUARDANDO_CONTAGEM,
   STATUS_CONTAGEM_DIVERGENTE,
+  STATUS_CONTAGEM_OK,
   STATUS_PAINEL_CONTAGEM,
 } from './status-entrada-contagem.js'
 import { gerarTitulosContasPagarDaEntrada } from '../contas-a-pagar/gerar-titulos-entrada.js'
@@ -57,6 +65,7 @@ import {
 } from '../estoque/servico-estoque.js'
 import { arredondarQtd } from '../estoque/tipos-estoque.js'
 import { obterPessoaIdsRedePorPessoaId } from '../fornecedores/vinculos-fornecedor.js'
+import { repositorioContagens } from '../contagens/repositorio-contagens.js'
 import { randomUUID } from 'crypto'
 import {
   caminhoAbsolutoAnexoEntradaNota,
@@ -67,6 +76,63 @@ type EtapaPipeline = 'cadastro' | 'fiscal' | 'negociacao' | 'frete'
 
 function asJson(valor: AnaliseJson): Prisma.InputJsonValue {
   return valor as unknown as Prisma.InputJsonValue
+}
+
+const MSG_AUDITORIA_CHEGADA_PENDENTE =
+  'Há divergências de preço ou nome para conferir. Confirme as divergências antes de liberar para contagem.'
+
+async function montarAvaliacaoChegada(
+  companyId: string,
+  nota: {
+    id: string
+    fornecedorPessoaId: string | null
+    itens: Array<{
+      id: string
+      nItem: number
+      produtoId: string | null
+      descricao: string | null
+      valorUnitario: unknown
+      produto?: {
+        nomeVenda?: string | null
+        fornecedores?: Array<{ fornecedorPessoaId: string; multiplicadorEntrada: unknown }>
+      } | null
+    }>
+  }
+): Promise<AuditoriaChegadaJson> {
+  const produtoIds = nota.itens.map((i) => i.produtoId).filter((id): id is string => Boolean(id))
+  const ultimaPorProduto = await repositorioEntradaNotas.buscarUltimoPrecoConsolidadoPorProduto(
+    companyId,
+    produtoIds,
+    nota.id
+  )
+  return avaliarAuditoriaChegada({
+    itens: nota.itens.map((i) => ({
+      id: i.id,
+      nItem: i.nItem,
+      produtoId: i.produtoId,
+      descricao: i.descricao,
+      valorUnitario: decimalNum(i.valorUnitario as never),
+      itensPorEmbalagem: resolverItensPorEmbalagem(i.produto?.fornecedores, nota.fornecedorPessoaId),
+      nomeSistema: i.produto?.nomeVenda ?? null,
+    })),
+    ultimaPorProduto,
+  })
+}
+
+function mesclarChegadaNaAnalise(
+  analise: AnaliseJson | null | undefined,
+  chegada: AuditoriaChegadaJson
+): AnaliseJson {
+  const base: AnaliseJson = analise
+    ? { ...analise }
+    : {
+        versao: 1,
+        atualizadoEm: new Date().toISOString(),
+        cadastro: etapaVazia('ok'),
+        fiscal: etapaVazia('ok'),
+        negociacao: etapaVazia('ok'),
+      }
+  return { ...base, chegada }
 }
 
 function decimalNum(v: { toNumber?: () => number } | number | null | undefined): number | null {
@@ -410,7 +476,7 @@ async function completarXmlNfeNaFocusSePreciso(
       companyId,
       chaveNfe: nota.chaveNfe,
       tipoDocumento: 'nfe55',
-      nomeEmitente: campos.nomeEmitente ?? nota.nomeEmitente,
+      nomeEmitente: decodificarTextoXml(campos.nomeEmitente ?? nota.nomeEmitente),
       documentoEmitente: campos.documentoEmitente ?? nota.documentoEmitente,
       cnpjDestinatario: campos.cnpjDestinatario ?? nota.cnpjDestinatario,
       dataEmissao: campos.dataEmissao ?? nota.dataEmissao,
@@ -1430,9 +1496,6 @@ async function analisarNota(
   analise.autoLancado = true
   analise.motivoParada = null
   await aplicarRateioEDespesasFrete(companyId, notaId)
-  const contasPagarResumo = await gerarTitulosContasPagarDaEntrada(companyId, notaId)
-  // `pedido.id` cobre o caso de auto-vínculo por grupo econômico nesta mesma análise
-  // (nota.pedidoCompraId local ainda não reflete o UPDATE feito acima).
   const statusDestino = await statusPosLancamento(
     { ...nota, pedidoCompraId: pedido?.id ?? nota.pedidoCompraId },
     pedido ? { tipoCompra: pedido.tipoCompra } : null
@@ -1446,10 +1509,8 @@ async function analisarNota(
     companyId,
     notaId,
     chave: nota.chaveNfe,
-    contasPagarGerados: contasPagarResumo.gerados,
   })
-  const detalhe = await obterDetalhe(companyId, notaId)
-  return { ...detalhe, contasPagarResumo }
+  return await obterDetalhe(companyId, notaId)
 }
 
 /**
@@ -1902,12 +1963,48 @@ async function obterDetalhe(
     nfeRecebidaId: c.nfeRecebidaId,
   }))
 
+  let auditoriaChegada: (AuditoriaChegadaJson & { pendente: boolean }) | null = null
+  if (nota.statusEntrada === STATUS_AGUARDANDO_CHEGADA) {
+    const avaliacao = await montarAvaliacaoChegada(companyId, nota)
+    const salvo = lerChegadaDeAnalise(nota.analiseJson)
+    const aceitoEm =
+      salvo?.fingerprint === avaliacao.fingerprint && salvo.aceitoEm ? salvo.aceitoEm : null
+    const chegada: AuditoriaChegadaJson = { ...avaliacao, aceitoEm }
+    const analiseAtual = (nota.analiseJson as AnaliseJson | null) ?? null
+    const precisaGravar =
+      salvo?.fingerprint !== chegada.fingerprint || (salvo?.aceitoEm ?? null) !== aceitoEm
+    if (precisaGravar) {
+      await repositorioEntradaNotas.atualizarNota(notaId, {
+        analiseJson: asJson(mesclarChegadaNaAnalise(analiseAtual, chegada)),
+      })
+    }
+    auditoriaChegada = {
+      ...chegada,
+      pendente: pendenteLiberacaoChegada(avaliacao, { ...chegada, aceitoEm }),
+    }
+  } else {
+    const salvo = lerChegadaDeAnalise(nota.analiseJson)
+    if (salvo) {
+      auditoriaChegada = { ...salvo, pendente: false }
+    }
+  }
+
+  let contagemBaixada = false
+  if (
+    nota.statusEntrada === STATUS_CONTAGEM_OK ||
+    nota.statusEntrada === STATUS_CONTAGEM_DIVERGENTE ||
+    nota.statusEntrada === 'entrada_consolidada'
+  ) {
+    const sessao = await repositorioContagens.buscarSessaoFinalizadaDaNota(companyId, notaId)
+    contagemBaixada = Boolean(sessao?.baixadaEm)
+  }
+
   return {
     nota: {
       id: nota.id,
       chaveNfe: nota.chaveNfe,
       tipoDocumento: tipoDoc,
-      nomeEmitente: nota.nomeEmitente,
+      nomeEmitente: decodificarTextoXml(nota.nomeEmitente),
       documentoEmitente: nota.documentoEmitente,
       valorTotal: decimalNum(nota.valorTotal),
       dataEmissao: nota.dataEmissao,
@@ -1925,9 +2022,25 @@ async function obterDetalhe(
       problemaResolvidoEm: nota.problemaResolvidoEm ?? null,
       divergenciaDesfecho: nota.divergenciaDesfecho ?? null,
       divergenciaResolvidaEm: nota.divergenciaResolvidaEm ?? null,
-      anexoDivergencia: nota.anexos?.[0]
-        ? { id: nota.anexos[0].id, nomeArquivo: nota.anexos[0].nomeArquivo }
+      auditoriaChegada,
+      contagemBaixada,
+      anexoDivergencia: (nota.anexos ?? []).find(
+        (a) => a.tipoAnexo === 'negociacao_bloqueio' || a.tipoAnexo === 'ressalva_divergencia'
+      )
+        ? (() => {
+            const a = (nota.anexos ?? []).find(
+              (x) => x.tipoAnexo === 'negociacao_bloqueio' || x.tipoAnexo === 'ressalva_divergencia'
+            )!
+            return { id: a.id, nomeArquivo: a.nomeArquivo, tipoAnexo: a.tipoAnexo }
+          })()
         : null,
+      anexos: (nota.anexos ?? []).map((a) => ({
+        id: a.id,
+        tipoAnexo: a.tipoAnexo,
+        nomeArquivo: a.nomeArquivo,
+        createdAt: a.createdAt,
+      })),
+      divergenciaGestao: (nota.analiseJson as AnaliseJson | null)?.divergenciaGestao ?? null,
       estoqueLancado,
       estoqueResumo,
       contasPagar,
@@ -2030,7 +2143,7 @@ async function obterDetalhe(
             ? {
                 id: cte.id,
                 chaveNfe: cte.chaveNfe,
-                nomeEmitente: cte.nomeEmitente,
+                nomeEmitente: decodificarTextoXml(cte.nomeEmitente),
                 documentoEmitente: cte.documentoEmitente,
                 valorTotal: decimalNum(cte.valorTotal),
                 dataEmissao: cte.dataEmissao,
@@ -2046,7 +2159,7 @@ async function obterDetalhe(
           ? {
               id: v.nfeRecebida.id,
               chaveNfe: v.nfeRecebida.chaveNfe,
-              nomeEmitente: v.nfeRecebida.nomeEmitente,
+              nomeEmitente: decodificarTextoXml(v.nfeRecebida.nomeEmitente),
               valorTotal: decimalNum(v.nfeRecebida.valorTotal),
               statusEntrada: v.nfeRecebida.statusEntrada,
             }
@@ -2830,6 +2943,15 @@ async function lancar(
     if (!podeConsolidarEstoque(nota.statusEntrada, { exigeContagemFisica })) {
       throw new ErroDaAplicacao(mensagemBloqueioConsolidar(nota.statusEntrada), 409)
     }
+    if (exigeContagemFisica && nota.statusEntrada === STATUS_CONTAGEM_OK) {
+      const sessao = await repositorioContagens.buscarSessaoFinalizadaDaNota(companyId, notaId)
+      if (!sessao?.baixadaEm) {
+        throw new ErroDaAplicacao(
+          'Baixe a contagem no administrativo antes de consolidar o estoque.',
+          409
+        )
+      }
+    }
     if (!senha) throw new ErroDaAplicacao('Senha de gerente obrigatória para consolidar estoque.', 400)
     const ok = await servicoDeAutenticacao.verificarSenhaDoUsuario(usuarioId, senha)
     if (!ok) throw new ErroDaAplicacao('Senha inválida.', 403)
@@ -2851,7 +2973,6 @@ async function lancar(
     }
   } else {
     await aplicarRateioEDespesasFrete(companyId, notaId)
-    contasPagarResumo = await gerarTitulosContasPagarDaEntrada(companyId, notaId)
     const statusDestino = await statusPosLancamento(nota)
     await lancarContagem(notaId, 'humana', statusDestino)
   }
@@ -2874,15 +2995,90 @@ async function liberarParaContagem(companyId: string, notaId: string) {
   if (!podeLiberarParaContagem(nota.statusEntrada)) {
     throw new ErroDaAplicacao('Nota não está aguardando chegada.', 409)
   }
+  const avaliacao = await montarAvaliacaoChegada(companyId, nota)
+  const salvo = lerChegadaDeAnalise(nota.analiseJson)
+  if (pendenteLiberacaoChegada(avaliacao, salvo)) {
+    await repositorioEntradaNotas.atualizarNota(notaId, {
+      analiseJson: asJson(
+        mesclarChegadaNaAnalise(nota.analiseJson as AnaliseJson | null, {
+          ...avaliacao,
+          aceitoEm: salvo?.fingerprint === avaliacao.fingerprint ? salvo.aceitoEm ?? null : null,
+        })
+      ),
+    })
+    throw new ErroDaAplicacao(MSG_AUDITORIA_CHEGADA_PENDENTE, 409)
+  }
   await repositorioEntradaNotas.atualizarNota(notaId, { statusEntrada: STATUS_AGUARDANDO_CONTAGEM })
+  return await obterDetalhe(companyId, notaId)
+}
+
+async function aceitarAuditoriaChegada(companyId: string, notaId: string) {
+  const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  if (!podeLiberarParaContagem(nota.statusEntrada)) {
+    throw new ErroDaAplicacao('Nota não está aguardando chegada.', 409)
+  }
+  const avaliacao = await montarAvaliacaoChegada(companyId, nota)
+  const chegada: AuditoriaChegadaJson = {
+    ...avaliacao,
+    aceitoEm: avaliacao.achados.length > 0 ? new Date().toISOString() : null,
+  }
+  await repositorioEntradaNotas.atualizarNota(notaId, {
+    analiseJson: asJson(mesclarChegadaNaAnalise(nota.analiseJson as AnaliseJson | null, chegada)),
+  })
+  return await obterDetalhe(companyId, notaId)
+}
+
+async function baixarContagem(
+  companyId: string,
+  notaId: string,
+  usuarioId: string,
+  senha?: string
+) {
+  const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  if (
+    nota.statusEntrada !== STATUS_CONTAGEM_OK &&
+    nota.statusEntrada !== STATUS_CONTAGEM_DIVERGENTE
+  ) {
+    throw new ErroDaAplicacao(
+      'Só é possível baixar contagem após gravar OK ou com divergência.',
+      409
+    )
+  }
+  const sessao = await repositorioContagens.buscarSessaoFinalizadaDaNota(companyId, notaId)
+  if (!sessao) {
+    throw new ErroDaAplicacao('Não há sessão de contagem finalizada para esta nota.', 409)
+  }
+  if (!sessao.baixadaEm) {
+    await repositorioContagens.marcarSessaoBaixada(sessao.id)
+  }
+  if (nota.statusEntrada === STATUS_CONTAGEM_DIVERGENTE) {
+    return await obterDetalhe(companyId, notaId)
+  }
+  return await lancar(companyId, notaId, usuarioId, 'consolidar', senha)
+}
+
+async function voltarParaContagem(companyId: string, notaId: string) {
+  const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  if (nota.statusEntrada === 'entrada_consolidada') {
+    throw new ErroDaAplicacao('Nota já consolidada — não é possível voltar para contagem.', 409)
+  }
+  const sessao = await repositorioContagens.buscarSessaoFinalizadaDaNota(companyId, notaId)
+  if (!sessao?.baixadaEm) {
+    throw new ErroDaAplicacao('A contagem ainda não foi baixada.', 409)
+  }
+  const nfeIds = sessao.notas.map((n) => n.nfeRecebidaId)
+  await repositorioContagens.reabrirSessaoAposBaixa({ sessaoId: sessao.id, nfeRecebidaIds: nfeIds })
   return await obterDetalhe(companyId, notaId)
 }
 
 /**
  * Resolução administrativa da divergência de contagem (§7.17): bloqueio de itens.
  * Nota inteira (todos os itens com produto) fica retida — devolução fiscal fica para fase
- * futura. Exige senha de gerente (fail-closed) e a ressalva assinada anexada (sem foto/PDF
- * não resolve, mesmo espírito da regra de vencimento obrigatório).
+ * futura. Exige senha de gerente (fail-closed), texto de explicação e foto/PDF da
+ * negociação. Sem isso não bloqueia. Desbloqueio posterior: `desbloquearEstoqueDivergencia`.
  */
 async function resolverDivergenciaContagem(
   companyId: string,
@@ -2890,6 +3086,7 @@ async function resolverDivergenciaContagem(
   usuarioId: string,
   dados: {
     senha: string
+    explicacao: string
     anexo: { mimeType: string; base64Arquivo: string; nomeArquivo: string }
   }
 ) {
@@ -2900,6 +3097,15 @@ async function resolverDivergenciaContagem(
       'Nota não está com contagem divergente pendente de correção.',
       409
     )
+  }
+  const sessao = await repositorioContagens.buscarSessaoFinalizadaDaNota(companyId, notaId)
+  if (!sessao?.baixadaEm) {
+    throw new ErroDaAplicacao('Baixe a contagem antes de bloquear o estoque.', 409)
+  }
+
+  const explicacao = dados.explicacao?.trim() ?? ''
+  if (!explicacao) {
+    throw new ErroDaAplicacao('Informe a explicação da negociação com o fornecedor.', 400)
   }
 
   if (!dados.senha?.trim()) {
@@ -2913,7 +3119,7 @@ async function resolverDivergenciaContagem(
 
   if (!dados.anexo?.base64Arquivo?.trim() || !dados.anexo?.mimeType?.trim()) {
     throw new ErroDaAplicacao(
-      'Anexo da ressalva assinada é obrigatório para resolver a divergência.',
+      'Foto ou PDF da negociação com o fornecedor é obrigatório para bloquear o estoque.',
       400
     )
   }
@@ -2923,22 +3129,26 @@ async function resolverDivergenciaContagem(
     dados.anexo.mimeType,
     dados.anexo.base64Arquivo
   )
-  await repositorioEntradaNotas.criarAnexoDivergencia({
+  await repositorioEntradaNotas.criarAnexoEntradaNota({
     companyId,
     nfeRecebidaId: notaId,
-    nomeArquivo: dados.anexo.nomeArquivo?.trim() || 'ressalva-divergencia',
+    tipoAnexo: 'negociacao_bloqueio',
+    nomeArquivo: dados.anexo.nomeArquivo?.trim() || 'negociacao-bloqueio',
     mimeType: dados.anexo.mimeType,
     caminhoArquivo,
     tamanhoBytes,
     usuarioId,
   })
 
-  // Mesmo passo do Consolidar normal: rateio de frete + lançamento físico/fiscal.
+  // Mesmo passo do Consolidar: rateio + títulos a pagar + lançamento físico/fiscal.
   await aplicarRateioEDespesasFrete(companyId, notaId)
+  const contasPagarResumo = await gerarTitulosContasPagarDaEntrada(companyId, notaId, {
+    exigirVencimentoMercadoria: false,
+  })
   const estoqueResumo = await lancarEstoqueAoConsolidar(companyId, notaId, usuarioId)
 
   // Bloqueio: cada item com produto e controle de estoque fica com a mesma quantidade
-  // da entrada bloqueada (disponível zerado) até desbloqueio manual futuro (backlog Estoque).
+  // da entrada bloqueada (disponível zerado) até desbloqueio (`desbloquearEstoqueDivergencia`).
   const notaParaBloqueio = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
   if (!notaParaBloqueio) throw new ErroDaAplicacao('Nota não encontrada', 404)
   const mapaControlaEstoque = new Map(
@@ -2956,17 +3166,32 @@ async function resolverDivergenciaContagem(
       origem: 'nfe_divergencia',
       origemId: notaId,
       chaveIdempotencia: `nfe:${notaId}:item:${linha.itemId}:bloqueio`,
-      observacao: 'Bloqueio por divergência na contagem — ressalva assinada anexada',
+      observacao: `Bloqueio por divergência na contagem — ${explicacao}`,
       usuarioId,
     })
   }
 
+  const analiseAtual = (nota.analiseJson as AnaliseJson | null) ?? {
+    versao: 1,
+    atualizadoEm: new Date().toISOString(),
+    cadastro: etapaVazia('ok'),
+    fiscal: etapaVazia('ok'),
+    negociacao: etapaVazia('ok'),
+  }
   await repositorioEntradaNotas.atualizarNota(notaId, {
     statusEntrada: 'entrada_consolidada',
     etapaAtual: 'lancamento',
     origemLancamento: 'humana',
     divergenciaDesfecho: 'bloqueio',
     divergenciaResolvidaEm: new Date(),
+    analiseJson: asJson({
+      ...analiseAtual,
+      divergenciaGestao: {
+        ...(analiseAtual.divergenciaGestao ?? {}),
+        bloqueioExplicacao: explicacao,
+        bloqueioEm: new Date().toISOString(),
+      },
+    }),
   })
 
   // Roda depois da nota virar entrada_consolidada (mesmo motivo do Consolidar normal).
@@ -2978,7 +3203,93 @@ async function resolverDivergenciaContagem(
   return {
     ...detalhe,
     ...(estoqueResumo != null ? { estoqueResumo } : {}),
+    ...(contasPagarResumo != null ? { contasPagarResumo } : {}),
   }
+}
+
+async function desbloquearEstoqueDivergencia(
+  companyId: string,
+  notaId: string,
+  usuarioId: string,
+  dados: {
+    senha: string
+    explicacao: string
+    anexo: { mimeType: string; base64Arquivo: string; nomeArquivo: string }
+  }
+) {
+  const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  if (nota.statusEntrada !== 'entrada_consolidada' || nota.divergenciaDesfecho !== 'bloqueio') {
+    throw new ErroDaAplicacao('Esta nota não está com estoque bloqueado por divergência.', 409)
+  }
+  const gestao = (nota.analiseJson as AnaliseJson | null)?.divergenciaGestao
+  if (gestao?.desbloqueioEm) {
+    throw new ErroDaAplicacao('Estoque já foi desbloqueado.', 409)
+  }
+  const explicacao = dados.explicacao?.trim() ?? ''
+  if (!explicacao) {
+    throw new ErroDaAplicacao('Informe a explicação do desbloqueio.', 400)
+  }
+  if (!dados.senha?.trim()) {
+    throw new ErroDaAplicacao('Senha de gerente obrigatória para desbloquear estoque.', 400)
+  }
+  const senhaOk = await servicoDeAutenticacao.verificarSenhaDoUsuario(usuarioId, dados.senha)
+  if (!senhaOk) throw new ErroDaAplicacao('Senha inválida.', 403)
+  if (!dados.anexo?.base64Arquivo?.trim() || !dados.anexo?.mimeType?.trim()) {
+    throw new ErroDaAplicacao('Foto ou PDF comprovando a negociação é obrigatório.', 400)
+  }
+
+  const { caminhoArquivo, tamanhoBytes } = await salvarAnexoEntradaNota(
+    notaId,
+    dados.anexo.mimeType,
+    dados.anexo.base64Arquivo
+  )
+  await repositorioEntradaNotas.criarAnexoEntradaNota({
+    companyId,
+    nfeRecebidaId: notaId,
+    tipoAnexo: 'negociacao_desbloqueio',
+    nomeArquivo: dados.anexo.nomeArquivo?.trim() || 'negociacao-desbloqueio',
+    mimeType: dados.anexo.mimeType,
+    caminhoArquivo,
+    tamanhoBytes,
+    usuarioId,
+  })
+
+  const linhasEntrada = montarLinhasEstoqueEntradaNf(nota)
+  for (const linha of linhasEntrada) {
+    if (nota.itens.find((i) => i.id === linha.itemId)?.produto?.controlaEstoque !== true) continue
+    await servicoDeEstoque.registrarMovimentoEstoque({
+      companyId,
+      produtoId: linha.produtoId,
+      dimensao: 'bloqueio',
+      tipoMovimento: 'desbloqueio',
+      quantidade: -linha.quantidadeEstoque,
+      origem: 'nfe_divergencia',
+      origemId: notaId,
+      chaveIdempotencia: `nfe:${notaId}:item:${linha.itemId}:desbloqueio`,
+      observacao: `Desbloqueio após divergência — ${explicacao}`,
+      usuarioId,
+    })
+  }
+
+  const analiseAtual = (nota.analiseJson as AnaliseJson | null) ?? {
+    versao: 1,
+    atualizadoEm: new Date().toISOString(),
+    cadastro: etapaVazia('ok'),
+    fiscal: etapaVazia('ok'),
+    negociacao: etapaVazia('ok'),
+  }
+  await repositorioEntradaNotas.atualizarNota(notaId, {
+    analiseJson: asJson({
+      ...analiseAtual,
+      divergenciaGestao: {
+        ...(analiseAtual.divergenciaGestao ?? {}),
+        desbloqueioExplicacao: explicacao,
+        desbloqueioEm: new Date().toISOString(),
+      },
+    }),
+  })
+  return await obterDetalhe(companyId, notaId)
 }
 
 async function baixarAnexoDivergencia(companyId: string, notaId: string, anexoId: string) {
@@ -3064,7 +3375,7 @@ async function desvincularCte(companyId: string, notaId: string, vinculoId: stri
 /**
  * Stub financeiro do frete (prévia contas a pagar): N duplicatas
  * (número, vencimento e valor) em DespesaEntradaDocumento.
- * ContaPagar é gerada no Liberar/Consolidar (`gerarTitulosContasPagarDaEntrada`).
+ * ContaPagar é gerada só na consolidação (Baixar OK / Consolidar / Bloquear).
  * Soma das parcelas deve bater com o Valor Frete (total do transporte).
  */
 const TOLERANCIA_PARCELAS_FRETE = 0.01
@@ -3438,7 +3749,11 @@ export const servicoEntradaNotas = {
   descancelar,
   lancar,
   liberarParaContagem,
+  aceitarAuditoriaChegada,
+  baixarContagem,
+  voltarParaContagem,
   resolverDivergenciaContagem,
+  desbloquearEstoqueDivergencia,
   baixarAnexoDivergencia,
   processarAposXml,
   sincronizarItensPendentesDoXml,

@@ -14,10 +14,20 @@ vi.mock('./repositorio-entrada-notas.js', () => ({
     buscarPedidoComItens: vi.fn(),
     buscarTipoCompraPedido: vi.fn(),
     somarConsolidadoPorProduto: vi.fn().mockResolvedValue(new Map()),
+    buscarUltimoPrecoConsolidadoPorProduto: vi.fn().mockResolvedValue(new Map()),
     atualizarStatusPedidoCompra: vi.fn(),
     mapaSugestaoCfopEntradaPorCodigo: vi.fn().mockResolvedValue(new Map()),
     mapaCodigoOriginalPorProduto: vi.fn().mockResolvedValue(new Map()),
     listarPedidosAbertosFornecedor: vi.fn().mockResolvedValue([]),
+  },
+}))
+
+vi.mock('../contagens/repositorio-contagens.js', () => ({
+  repositorioContagens: {
+    buscarSessaoFinalizadaDaNota: vi.fn().mockResolvedValue(null),
+    marcarSessaoBaixada: vi.fn(),
+    reabrirSessaoAposBaixa: vi.fn(),
+    mapaBaixadaPorNota: vi.fn().mockResolvedValue(new Map()),
   },
 }))
 
@@ -85,6 +95,7 @@ import { analisarCadastro } from './analise-cadastro/analisar-cadastro.js'
 import { analisarFiscalItens } from './analise-fiscal/analisar-fiscal-itens.js'
 import { analisarNegociacao } from './analise-negociacao/analisar-negociacao.js'
 import { servicoEntradaNotas } from './servico-pipeline-entrada.js'
+import { gerarTitulosContasPagarDaEntrada } from '../contas-a-pagar/gerar-titulos-entrada.js'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 
 function itemComProduto(produtoId: string, quantidade: number, overrides: Record<string, unknown> = {}) {
@@ -201,7 +212,7 @@ function notaLancada(overrides: Record<string, unknown> = {}) {
     analiseJson: null,
     xmlConteudo: xmlComDet,
     fornecedorPessoa: { papeis: [] },
-    itens: [itemComProduto('prod-a', 10)],
+    itens: [itemComProduto('prod-a', 10, { descricao: 'Produto prod-a' })],
     tratativas: [],
     vinculosComoNfe: [],
     vinculosComoCte: [],
@@ -313,6 +324,7 @@ describe('Status pós-lançamento — "Aguardando chegada" (revenda com pedido v
     expect(detalhe.nota.statusEntrada).toBe('entrada_contagem')
     expect(repositorioEntradaNotas.buscarPedidoComItens).not.toHaveBeenCalled()
     expect(repositorioEntradaNotas.buscarTipoCompraPedido).not.toHaveBeenCalled()
+    expect(gerarTitulosContasPagarDaEntrada).not.toHaveBeenCalled()
   })
 
   it('NFS-e (documental) sempre lança direto em entrada_contagem — nunca aguardando_chegada', async () => {
@@ -355,6 +367,7 @@ describe('Status pós-lançamento — "Aguardando chegada" (revenda com pedido v
 
     expect(fake.getEstado().statusEntrada).toBe('aguardando_chegada')
     expect(repositorioEntradaNotas.buscarTipoCompraPedido).toHaveBeenCalledWith('pedido-1')
+    expect(gerarTitulosContasPagarDaEntrada).not.toHaveBeenCalled()
   })
 
   it('lancar() bloqueia relançar "contagem" quando a nota já está aguardando_chegada', async () => {
@@ -381,6 +394,29 @@ describe('liberarParaContagem — sair de "Aguardando chegada"', () => {
     expect(detalhe.nota.statusEntrada).toBe('entrada_contagem')
     expect(repositorioEntradaNotas.atualizarNota).toHaveBeenCalledWith('nota-1', {
       statusEntrada: 'entrada_contagem',
+    })
+  })
+
+  it('bloqueia liberar quando há divergência de nome sem aceite (409)', async () => {
+    ligarRepositorioFake(
+      notaLancada({
+        itens: [itemComProduto('prod-a', 10, { descricao: 'Martelo', produto: {
+          nomeVenda: 'Foice',
+          ncm: '123',
+          codigoOrigem: '0',
+          sku: 'SKU',
+          codigoBarras: null,
+          marca: null,
+          unidade: 'UN',
+          pesoKg: null,
+          controlaEstoque: true,
+          fornecedores: [],
+        } })],
+      })
+    )
+
+    await expect(servicoEntradaNotas.liberarParaContagem('c1', 'nota-1')).rejects.toMatchObject({
+      statusCode: 409,
     })
   })
 

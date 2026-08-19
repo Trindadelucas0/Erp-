@@ -108,8 +108,9 @@ function mapearItemCego(item: {
   }
 }
 
-function sessaoEditavel(status: string): boolean {
-  return status === 'aberta' || status === 'em_andamento'
+function sessaoEditavel(sessao: { status: string; baixadaEm?: Date | null }): boolean {
+  if (sessao.baixadaEm) return false
+  return sessao.status === 'aberta' || sessao.status === 'em_andamento'
 }
 
 async function listarDisponiveis(companyId: string) {
@@ -246,6 +247,7 @@ function montarDetalheCego(sessao: Awaited<ReturnType<typeof repositorioContagen
     iniciadoEm: sessao.iniciadoEm,
     finalizadoEm: sessao.finalizadoEm,
     observacao: sessao.observacao,
+    baixadaEm: sessao.baixadaEm,
     entradas: sessao.notas.map((n) => mapearNotaCega(n.nfeRecebida)),
     itens: sessao.itens.map(mapearItemCego),
   }
@@ -306,7 +308,7 @@ function resolverBipNaSessao(
 async function bipar(companyId: string, sessaoId: string, codigoBarras: string) {
   const sessao = await repositorioContagens.buscarSessaoCompleta(companyId, sessaoId)
   if (!sessao) throw new ErroDaAplicacao('Contagem não encontrada', 404)
-  if (!sessaoEditavel(sessao.status)) {
+  if (!sessaoEditavel(sessao)) {
     throw new ErroDaAplicacao('Esta contagem já foi finalizada ou cancelada.', 409)
   }
 
@@ -342,7 +344,7 @@ async function atualizarQtdManual(
 ) {
   const sessao = await repositorioContagens.buscarSessaoCompleta(companyId, sessaoId)
   if (!sessao) throw new ErroDaAplicacao('Contagem não encontrada', 404)
-  if (!sessaoEditavel(sessao.status)) {
+  if (!sessaoEditavel(sessao)) {
     throw new ErroDaAplicacao('Esta contagem já foi finalizada ou cancelada.', 409)
   }
 
@@ -381,7 +383,7 @@ async function gravar(
 ) {
   const sessao = await repositorioContagens.buscarSessaoCompleta(companyId, sessaoId)
   if (!sessao) throw new ErroDaAplicacao('Contagem não encontrada', 404)
-  if (!sessaoEditavel(sessao.status)) {
+  if (!sessaoEditavel(sessao)) {
     throw new ErroDaAplicacao('Esta contagem já foi finalizada ou cancelada.', 409)
   }
 
@@ -433,7 +435,7 @@ async function gravar(
 async function cancelar(companyId: string, sessaoId: string) {
   const sessao = await repositorioContagens.buscarSessaoCompleta(companyId, sessaoId)
   if (!sessao) throw new ErroDaAplicacao('Contagem não encontrada', 404)
-  if (!sessaoEditavel(sessao.status)) {
+  if (!sessaoEditavel(sessao)) {
     throw new ErroDaAplicacao('Esta contagem já foi finalizada ou cancelada.', 409)
   }
 

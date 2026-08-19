@@ -2,6 +2,7 @@
  * Regras de negócio Focus NFe / Entrada de Notas (base).
  */
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
+import { decodificarTextoXml } from '../../compartilhado/normalizacao/entidades-xml.js'
 import { importarCtePorChave } from './importar-cte-por-chave.js'
 import { clienteFocusNfe, type NfeRecebidaResumoFocus, type NfseRecebidaResumoFocus, type CteRecebidaResumoFocus, type RespostaFocus } from './cliente-focus-nfe.js'
 import { tentarTravarFocus, liberarTravaFocus } from './fila-focus-nfe.js'
@@ -29,6 +30,7 @@ import type { DadosParaSalvarConfigFocus, DadosRegrasFiscais } from './esquema-f
 import { REGRAS_FISCAIS_PADRAO, sanitizarRegrasFiscais } from './esquema-focus-nfe.js'
 import { analisarFiscalBasico } from '../entrada-notas/analise-fiscal/analisar-fiscal-basico.js'
 import { servicoEntradaNotas } from '../entrada-notas/servico-pipeline-entrada.js'
+import { repositorioContagens } from '../contagens/repositorio-contagens.js'
 import { lerConfigCotaFocus, saldoCotaFocus, contarUsoMesFocus } from './cota-focus-nfe.js'
 import {
   obterRecursosEntradaNotas,
@@ -256,7 +258,7 @@ function mapearResumo(item: NfeRecebidaResumoFocus) {
   return {
     chaveNfe: item.chave_nfe,
     tipoDocumento: 'nfe55' as const,
-    nomeEmitente: item.nome_emitente ?? null,
+    nomeEmitente: decodificarTextoXml(item.nome_emitente),
     documentoEmitente: item.documento_emitente ?? null,
     cnpjDestinatario: item.cnpj_destinatario ?? null,
     valorTotal: Number.isFinite(valor) ? valor : null,
@@ -282,7 +284,7 @@ function mapearResumoNfse(item: NfseRecebidaResumoFocus) {
   return {
     chaveNfe: chave!,
     tipoDocumento: 'nfse' as const,
-    nomeEmitente: item.nome_prestador ?? null,
+    nomeEmitente: decodificarTextoXml(item.nome_prestador),
     documentoEmitente: item.documento_prestador ?? null,
     cnpjDestinatario: item.documento_tomador ?? item.cnpj_tomador ?? null,
     valorTotal: Number.isFinite(valor as number) ? (valor as number) : null,
@@ -1149,6 +1151,14 @@ async function listarPendentes(
     }),
   ])
 
+  const mapaBaixada =
+    painel === 'contagem' || painel === 'consolidada'
+      ? await repositorioContagens.mapaBaixadaPorNota(
+          companyId,
+          notasBrutas.map((n) => n.id)
+        )
+      : new Map<string, boolean>()
+
   const notas = notasBrutas.map((n) => {
     const dest = n.cnpjDestinatario ? normalizarCnpj(n.cnpjDestinatario) : ''
     let destinatarioValidacao: 'ok' | 'divergente' | 'pendente' = 'pendente'
@@ -1162,7 +1172,7 @@ async function listarPendentes(
       id: n.id,
       chaveNfe: n.chaveNfe,
       tipoDocumento: n.tipoDocumento ?? 'nfe55',
-      nomeEmitente: n.nomeEmitente,
+      nomeEmitente: decodificarTextoXml(n.nomeEmitente),
       documentoEmitente: n.documentoEmitente,
       cnpjDestinatario: n.cnpjDestinatario,
       tipoNfe: n.tipoNfe,
@@ -1184,6 +1194,16 @@ async function listarPendentes(
       /** CT-e↔NF já vinculados (frete). */
       temVinculoFrete,
       chaveNfeReferenciada: n.chaveNfeReferenciada ?? null,
+      auditoriaChegadaPendente: (() => {
+        if (n.statusEntrada !== 'aguardando_chegada') return false
+        const chegada = (n.analiseJson as { chegada?: { achados?: unknown[]; aceitoEm?: string | null } } | null)
+          ?.chegada
+        if (!chegada) return false
+        const achados = Array.isArray(chegada.achados) ? chegada.achados.length : 0
+        if (achados === 0) return false
+        return !chegada.aceitoEm
+      })(),
+      contagemBaixada: mapaBaixada.get(n.id) === true,
     }
   })
 
@@ -1330,7 +1350,7 @@ async function obterXmlNotaInterno(
 
   // Prefere dados já persistidos quando o parser do XML vier incompleto
   if (!visualizacao.emitente.nome && (atualizada?.nomeEmitente || nota.nomeEmitente)) {
-    visualizacao.emitente.nome = atualizada?.nomeEmitente ?? nota.nomeEmitente
+    visualizacao.emitente.nome = decodificarTextoXml(atualizada?.nomeEmitente ?? nota.nomeEmitente)
   }
   if (!visualizacao.emitente.documento && (atualizada?.documentoEmitente || nota.documentoEmitente)) {
     visualizacao.emitente.documento = atualizada?.documentoEmitente ?? nota.documentoEmitente
@@ -1358,7 +1378,7 @@ async function obterXmlNotaInterno(
     id: nota.id,
     chaveNfe: nota.chaveNfe,
     tipoDocumento: atualizada?.tipoDocumento ?? nota.tipoDocumento ?? 'nfe55',
-    nomeEmitente: atualizada?.nomeEmitente ?? nota.nomeEmitente,
+    nomeEmitente: decodificarTextoXml(atualizada?.nomeEmitente ?? nota.nomeEmitente),
     documentoEmitente: atualizada?.documentoEmitente ?? nota.documentoEmitente,
     valorTotal:
       atualizada?.valorTotal != null

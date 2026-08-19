@@ -63,6 +63,12 @@ export const PAGINAS_VINCULAVEIS: readonly PaginaDoSistema[] = [
     modulo: 'compras',
   },
   {
+    chave: 'auditoria-entradas',
+    caminho: '/auditoria-entradas',
+    rotulo: 'Auditoria de entradas',
+    modulo: 'compras',
+  },
+  {
     chave: 'estoque',
     caminho: '/estoque',
     rotulo: 'Estoque',

@@ -2,6 +2,7 @@
  * Persistência Focus NFe / NFe recebidas.
  */
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
+import { decodificarTextoXml } from '../../compartilhado/normalizacao/entidades-xml.js'
 import { normalizarDocumento } from '../../compartilhado/validacoes/documentos.js'
 import {
   STATUS_AGUARDANDO_CHEGADA,
@@ -344,7 +345,7 @@ async function upsertNfeRecebida(dados: {
         where: { id: existente.id },
         data: {
           tipoDocumento,
-          nomeEmitente: dados.nomeEmitente ?? existente.nomeEmitente,
+          nomeEmitente: decodificarTextoXml(dados.nomeEmitente ?? existente.nomeEmitente),
           documentoEmitente: dados.documentoEmitente ?? existente.documentoEmitente,
           cnpjDestinatario: dados.cnpjDestinatario ?? existente.cnpjDestinatario,
           valorTotal: dados.valorTotal ?? existente.valorTotal,
@@ -379,7 +380,7 @@ async function upsertNfeRecebida(dados: {
         companyId: dados.companyId,
         chaveNfe: dados.chaveNfe,
         tipoDocumento,
-        nomeEmitente: dados.nomeEmitente,
+        nomeEmitente: decodificarTextoXml(dados.nomeEmitente),
         documentoEmitente: dados.documentoEmitente,
         cnpjDestinatario: dados.cnpjDestinatario,
         valorTotal: dados.valorTotal,

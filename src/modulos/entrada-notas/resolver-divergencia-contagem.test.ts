@@ -7,8 +7,10 @@ vi.mock('./repositorio-entrada-notas.js', () => ({
     atualizarNota: vi.fn(),
     atualizarItem: vi.fn(),
     criarAnexoDivergencia: vi.fn(),
+    criarAnexoEntradaNota: vi.fn(),
     buscarAnexoEntradaNota: vi.fn(),
     somarConsolidadoPorProduto: vi.fn().mockResolvedValue(new Map()),
+    buscarUltimoPrecoConsolidadoPorProduto: vi.fn().mockResolvedValue(new Map()),
     atualizarStatusPedidoCompra: vi.fn(),
     buscarPedidoComItens: vi.fn(),
     listarPedidosAbertosFornecedor: vi.fn().mockResolvedValue([]),
@@ -68,17 +70,35 @@ vi.mock('./servico-vinculo-cte.js', () => ({
   },
 }))
 
+vi.mock('../contagens/repositorio-contagens.js', () => ({
+  repositorioContagens: {
+    buscarSessaoFinalizadaDaNota: vi.fn().mockResolvedValue({
+      id: 'sessao-1',
+      baixadaEm: new Date('2026-08-19'),
+      notas: [{ nfeRecebidaId: 'nota-1' }],
+    }),
+    marcarSessaoBaixada: vi.fn(),
+    reabrirSessaoAposBaixa: vi.fn(),
+  },
+}))
+
 vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({
   clientePrisma: {
     contaPagar: { findMany: vi.fn().mockResolvedValue([]) },
   },
 }))
 
+vi.mock('../contas-a-pagar/gerar-titulos-entrada.js', () => ({
+  gerarTitulosContasPagarDaEntrada: vi.fn().mockResolvedValue({ gerados: 0, contas: [] }),
+}))
+
 import { repositorioEntradaNotas } from './repositorio-entrada-notas.js'
+import { repositorioContagens } from '../contagens/repositorio-contagens.js'
 import { salvarAnexoEntradaNota } from './armazenamento-anexo-entrada-nota.js'
 import { servicoDeAutenticacao } from '../autenticacao/servico-autenticacao.js'
 import { servicoDeEstoque } from '../estoque/servico-estoque.js'
 import { servicoEntradaNotas } from './servico-pipeline-entrada.js'
+import { gerarTitulosContasPagarDaEntrada } from '../contas-a-pagar/gerar-titulos-entrada.js'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 
 function itemComProduto(overrides: Record<string, unknown> = {}) {
@@ -123,10 +143,11 @@ function notaDivergente(overrides: Record<string, unknown> = {}) {
 
 const anexoDados = {
   senha: 'senha-correta',
+  explicacao: 'Fornecedor reconheceu a falta e negociou bloqueio temporário.',
   anexo: {
     mimeType: 'application/pdf',
     base64Arquivo: 'data:application/pdf;base64,AAAA',
-    nomeArquivo: 'ressalva.pdf',
+    nomeArquivo: 'negociacao.pdf',
   },
 }
 
@@ -135,7 +156,7 @@ describe('resolverDivergenciaContagem', () => {
     vi.clearAllMocks()
     vi.mocked(repositorioEntradaNotas.atualizarNota).mockResolvedValue({} as never)
     vi.mocked(repositorioEntradaNotas.atualizarItem).mockResolvedValue(undefined as never)
-    vi.mocked(repositorioEntradaNotas.criarAnexoDivergencia).mockResolvedValue({
+    vi.mocked(repositorioEntradaNotas.criarAnexoEntradaNota).mockResolvedValue({
       id: 'anexo-1',
     } as never)
     vi.mocked(salvarAnexoEntradaNota).mockResolvedValue({
@@ -223,11 +244,12 @@ describe('resolverDivergenciaContagem', () => {
       'application/pdf',
       anexoDados.anexo.base64Arquivo
     )
-    expect(repositorioEntradaNotas.criarAnexoDivergencia).toHaveBeenCalledWith(
+    expect(repositorioEntradaNotas.criarAnexoEntradaNota).toHaveBeenCalledWith(
       expect.objectContaining({
         companyId: 'c1',
         nfeRecebidaId: 'nota-1',
-        nomeArquivo: 'ressalva.pdf',
+        tipoAnexo: 'negociacao_bloqueio',
+        nomeArquivo: 'negociacao.pdf',
         mimeType: 'application/pdf',
         caminhoArquivo: 'entrada-notas/nota-1/arquivo.pdf',
         tamanhoBytes: 1234,
@@ -263,6 +285,9 @@ describe('resolverDivergenciaContagem', () => {
     )
 
     expect(resultado.nota).toBeDefined()
+    expect(gerarTitulosContasPagarDaEntrada).toHaveBeenCalledWith('c1', 'nota-1', {
+      exigirVencimentoMercadoria: false,
+    })
   })
 
   it('não bloqueia itens sem controle de estoque', async () => {
@@ -299,6 +324,103 @@ describe('resolverDivergenciaContagem', () => {
     expect(repositorioEntradaNotas.atualizarStatusPedidoCompra).toHaveBeenCalledWith(
       'pedido-1',
       'recebido'
+    )
+  })
+
+  it('recusa bloquear (409) se a contagem ainda não foi baixada', async () => {
+    vi.mocked(repositorioEntradaNotas.buscarNotaCompleta).mockResolvedValue(
+      notaDivergente() as never
+    )
+    vi.mocked(repositorioContagens.buscarSessaoFinalizadaDaNota).mockResolvedValue({
+      id: 'sessao-1',
+      baixadaEm: null,
+      notas: [{ nfeRecebidaId: 'nota-1' }],
+    } as never)
+
+    await expect(
+      servicoEntradaNotas.resolverDivergenciaContagem('c1', 'nota-1', 'user-1', anexoDados)
+    ).rejects.toMatchObject({ statusCode: 409 })
+  })
+})
+
+describe('baixarContagem / voltarParaContagem / desbloquear', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(repositorioEntradaNotas.atualizarNota).mockResolvedValue({} as never)
+    vi.mocked(repositorioContagens.buscarSessaoFinalizadaDaNota).mockResolvedValue({
+      id: 'sessao-1',
+      baixadaEm: null,
+      notas: [{ nfeRecebidaId: 'nota-1' }],
+    } as never)
+    vi.mocked(repositorioContagens.marcarSessaoBaixada).mockResolvedValue({} as never)
+    vi.mocked(repositorioContagens.reabrirSessaoAposBaixa).mockResolvedValue(undefined as never)
+    vi.mocked(salvarAnexoEntradaNota).mockResolvedValue({
+      caminhoArquivo: 'entrada-notas/nota-1/arquivo.pdf',
+      tamanhoBytes: 10,
+    })
+    vi.mocked(repositorioEntradaNotas.criarAnexoEntradaNota).mockResolvedValue({
+      id: 'anexo-2',
+    } as never)
+    vi.mocked(servicoDeAutenticacao.verificarSenhaDoUsuario).mockResolvedValue(true)
+    vi.mocked(servicoDeEstoque.registrarMovimentoEstoque).mockResolvedValue(undefined as never)
+  })
+
+  it('baixa divergente sem consolidar', async () => {
+    const nota = notaDivergente()
+    vi.mocked(repositorioEntradaNotas.buscarNotaCompleta).mockResolvedValue(nota as never)
+
+    await servicoEntradaNotas.baixarContagem('c1', 'nota-1', 'user-1')
+
+    expect(repositorioContagens.marcarSessaoBaixada).toHaveBeenCalledWith('sessao-1')
+    expect(servicoDeEstoque.aplicarEntradaNotaFiscal).not.toHaveBeenCalled()
+  })
+
+  it('voltar para contagem reabre sessão baixada', async () => {
+    vi.mocked(repositorioEntradaNotas.buscarNotaCompleta).mockResolvedValue(
+      notaDivergente() as never
+    )
+    vi.mocked(repositorioContagens.buscarSessaoFinalizadaDaNota).mockResolvedValue({
+      id: 'sessao-1',
+      baixadaEm: new Date(),
+      notas: [{ nfeRecebidaId: 'nota-1' }],
+    } as never)
+
+    await servicoEntradaNotas.voltarParaContagem('c1', 'nota-1')
+
+    expect(repositorioContagens.reabrirSessaoAposBaixa).toHaveBeenCalledWith({
+      sessaoId: 'sessao-1',
+      nfeRecebidaIds: ['nota-1'],
+    })
+  })
+
+  it('não volta se já consolidou', async () => {
+    vi.mocked(repositorioEntradaNotas.buscarNotaCompleta).mockResolvedValue(
+      notaDivergente({ statusEntrada: 'entrada_consolidada' }) as never
+    )
+
+    await expect(servicoEntradaNotas.voltarParaContagem('c1', 'nota-1')).rejects.toMatchObject({
+      statusCode: 409,
+    })
+  })
+
+  it('desbloqueia estoque com movimento negativo', async () => {
+    const nota = notaDivergente({
+      statusEntrada: 'entrada_consolidada',
+      divergenciaDesfecho: 'bloqueio',
+    })
+    vi.mocked(repositorioEntradaNotas.buscarNotaCompleta).mockResolvedValue(nota as never)
+
+    await servicoEntradaNotas.desbloquearEstoqueDivergencia('c1', 'nota-1', 'user-1', anexoDados)
+
+    expect(servicoDeEstoque.registrarMovimentoEstoque).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dimensao: 'bloqueio',
+        tipoMovimento: 'desbloqueio',
+        quantidade: -10,
+      })
+    )
+    expect(repositorioEntradaNotas.criarAnexoEntradaNota).toHaveBeenCalledWith(
+      expect.objectContaining({ tipoAnexo: 'negociacao_desbloqueio' })
     )
   })
 })

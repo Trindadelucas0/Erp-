@@ -354,6 +354,72 @@ async function cancelarSessao(dados: {
   })
 }
 
+async function buscarSessaoFinalizadaDaNota(companyId: string, nfeRecebidaId: string) {
+  return clientePrisma.contagemEntrada.findFirst({
+    where: {
+      companyId,
+      status: { in: ['ok', 'divergente'] },
+      notas: { some: { nfeRecebidaId } },
+    },
+    include: {
+      notas: { select: { nfeRecebidaId: true } },
+    },
+    orderBy: { finalizadoEm: 'desc' },
+  })
+}
+
+async function marcarSessaoBaixada(sessaoId: string) {
+  return clientePrisma.contagemEntrada.update({
+    where: { id: sessaoId },
+    data: { baixadaEm: new Date() },
+  })
+}
+
+async function reabrirSessaoAposBaixa(dados: { sessaoId: string; nfeRecebidaIds: string[] }) {
+  return clientePrisma.$transaction(async (tx) => {
+    await tx.contagemEntrada.update({
+      where: { id: dados.sessaoId },
+      data: {
+        status: 'em_andamento',
+        baixadaEm: null,
+        finalizadoEm: null,
+      },
+    })
+    await tx.contagemEntradaItem.updateMany({
+      where: { contagemEntradaId: dados.sessaoId },
+      data: { statusItem: 'pendente' },
+    })
+    await tx.nfeRecebida.updateMany({
+      where: { id: { in: dados.nfeRecebidaIds } },
+      data: { statusEntrada: 'entrada_contagem' },
+    })
+  })
+}
+
+async function mapaBaixadaPorNota(companyId: string, nfeRecebidaIds: string[]) {
+  const ids = [...new Set(nfeRecebidaIds)]
+  const mapa = new Map<string, boolean>()
+  if (ids.length === 0) return mapa
+  const sessoes = await clientePrisma.contagemEntrada.findMany({
+    where: {
+      companyId,
+      status: { in: ['ok', 'divergente'] },
+      notas: { some: { nfeRecebidaId: { in: ids } } },
+    },
+    select: {
+      baixadaEm: true,
+      notas: { select: { nfeRecebidaId: true } },
+    },
+    orderBy: { finalizadoEm: 'asc' },
+  })
+  for (const s of sessoes) {
+    for (const n of s.notas) {
+      mapa.set(n.nfeRecebidaId, Boolean(s.baixadaEm))
+    }
+  }
+  return mapa
+}
+
 export const repositorioContagens = {
   listarNotasDisponiveis,
   listarSessoesAtivas,
@@ -365,4 +431,8 @@ export const repositorioContagens = {
   finalizarSessaoOk,
   finalizarSessaoDivergente,
   cancelarSessao,
+  buscarSessaoFinalizadaDaNota,
+  marcarSessaoBaixada,
+  reabrirSessaoAposBaixa,
+  mapaBaixadaPorNota,
 }

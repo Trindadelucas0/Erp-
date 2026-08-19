@@ -71,15 +71,22 @@ export const esquemaResolverProblema = z.object({
   desfecho: z.enum(['solucao']),
 })
 
-/** Resolver divergência de contagem — senha + ressalva assinada obrigatórios (§7.17). */
+/** Bloquear estoque após divergência — senha + explicação + foto da negociação (§7.17). */
 export const esquemaResolverDivergencia = z.object({
   senha: z.string().min(1, 'Senha de gerente obrigatória'),
+  explicacao: z.string().min(1, 'Informe a explicação da negociação com o fornecedor'),
   anexo: z.object({
     mimeType: z.string().min(1, 'Tipo do arquivo obrigatório'),
     base64Arquivo: z.string().min(1, 'Arquivo obrigatório'),
     nomeArquivo: z.string().min(1, 'Nome do arquivo obrigatório'),
   }),
 })
+
+export const esquemaBaixarContagem = z.object({
+  senha: z.string().optional(),
+})
+
+export const esquemaDesbloquearEstoque = esquemaResolverDivergencia
 
 export const esquemaLancar = z.object({
   modo: z.enum(['contagem', 'consolidar']),
@@ -107,7 +114,7 @@ export const esquemaParcelaFinanceiroFrete = z.object({
   valor: z.number().finite().nonnegative(),
 })
 
-/** Stub financeiro frete (prévia) — ContaPagar é gerada no liberar/consolidar. */
+/** Stub financeiro frete (prévia) — ContaPagar é gerada na consolidação. */
 export const esquemaFinanceiroFrete = z
   .object({
     cteId: z.string().uuid().optional(),
