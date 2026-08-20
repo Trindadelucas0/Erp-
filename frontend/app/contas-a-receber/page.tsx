@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
@@ -71,6 +71,8 @@ const FILTROS_VAZIOS: Filtros = {
   valorMax: '',
 }
 
+const DEBOUNCE_FILTRO_TEXTO_MS = 400
+
 function ConteudoContasAReceber() {
   const podeCriar = usePermissao('financeiro:create')
   const podeEditar = usePermissao('financeiro:edit')
@@ -83,6 +85,8 @@ function ConteudoContasAReceber() {
   const [filtros, setFiltros] = useState<Filtros>(FILTROS_VAZIOS)
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
+  const filtrosRef = useRef(filtros)
+  const debounceFiltroTextoRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [modalAberto, setModalAberto] = useState(false)
   const [editando, setEditando] = useState<ContaReceberLista | null>(null)
@@ -91,6 +95,8 @@ function ConteudoContasAReceber() {
   const [salvando, setSalvando] = useState(false)
   const [excluindo, setExcluindo] = useState(false)
   const [confirmExcluirAberto, setConfirmExcluirAberto] = useState(false)
+
+  filtrosRef.current = filtros
 
   const carregarCatalogos = useCallback(async () => {
     try {
@@ -148,11 +154,48 @@ function ConteudoContasAReceber() {
     }
   }, [filtros])
 
+  function cancelarDebounceFiltroTexto() {
+    if (debounceFiltroTextoRef.current) {
+      clearTimeout(debounceFiltroTextoRef.current)
+      debounceFiltroTextoRef.current = null
+    }
+  }
+
+  function atualizarFiltroLocal(patch: Partial<Filtros>) {
+    const proximo = { ...filtrosRef.current, ...patch }
+    filtrosRef.current = proximo
+    setFiltros(proximo)
+  }
+
   function aplicarFiltro(patch: Partial<Filtros>) {
-    const proximo = { ...filtros, ...patch }
+    cancelarDebounceFiltroTexto()
+    const proximo = { ...filtrosRef.current, ...patch }
+    filtrosRef.current = proximo
     setFiltros(proximo)
     void carregar(proximo)
   }
+
+  function agendarFiltroTexto(patch: Partial<Filtros>) {
+    const proximo = { ...filtrosRef.current, ...patch }
+    filtrosRef.current = proximo
+    setFiltros(proximo)
+    cancelarDebounceFiltroTexto()
+    debounceFiltroTextoRef.current = setTimeout(() => {
+      debounceFiltroTextoRef.current = null
+      void carregar(proximo)
+    }, DEBOUNCE_FILTRO_TEXTO_MS)
+  }
+
+  function limparFiltros() {
+    cancelarDebounceFiltroTexto()
+    filtrosRef.current = FILTROS_VAZIOS
+    setFiltros(FILTROS_VAZIOS)
+    void carregar(FILTROS_VAZIOS)
+  }
+
+  useEffect(() => {
+    return () => cancelarDebounceFiltroTexto()
+  }, [])
 
   useEffect(() => {
     void carregarCatalogos()
@@ -272,16 +315,13 @@ function ConteudoContasAReceber() {
           <TelaHistoricoBaixasContasAReceber recarregarToken={tokenHistorico} />
         ) : (
           <>
-            <div className="mb-3 flex flex-wrap gap-2">
-              <Button type="button" variant="outline" onClick={() => void carregar()} disabled={carregando}>
-                Atualizar
-              </Button>
-              {podeCriar && (
+            {podeCriar && (
+              <div className="mb-3 flex flex-wrap gap-2">
                 <Button type="button" onClick={abrirNovo}>
                   Novo título
                 </Button>
-              )}
-            </div>
+              </div>
+            )}
 
             <p className="mb-3 text-sm text-muted-foreground">
               Cadastro e visualização de títulos a receber (Duplicata ou Crédito). Use a aba{' '}
@@ -294,7 +334,7 @@ function ConteudoContasAReceber() {
               rotulo="Cliente"
               pessoas={clientes}
               valor={filtros.pessoaId}
-              aoMudar={(pessoaId) => setFiltros((f) => ({ ...f, pessoaId }))}
+              aoMudar={(pessoaId) => atualizarFiltroLocal({ pessoaId })}
               aoConfirmar={(pessoaId) => aplicarFiltro({ pessoaId })}
               permitirVazio
               rotuloVazio="Todos"
@@ -306,7 +346,7 @@ function ConteudoContasAReceber() {
               rotulo="Plano financeiro"
               planos={planos}
               valor={filtros.planoFinanceiroId}
-              aoMudar={(planoFinanceiroId) => setFiltros((f) => ({ ...f, planoFinanceiroId }))}
+              aoMudar={(planoFinanceiroId) => atualizarFiltroLocal({ planoFinanceiroId })}
               aoConfirmar={(planoFinanceiroId) => aplicarFiltro({ planoFinanceiroId })}
               permitirVazio
               rotuloVazio="Todos"
@@ -335,14 +375,14 @@ function ConteudoContasAReceber() {
             <InputPadrao
               rotulo="Código"
               value={filtros.codigo}
-              onChange={(e) => setFiltros((f) => ({ ...f, codigo: e.target.value }))}
+              onChange={(e) => agendarFiltroTexto({ codigo: e.target.value })}
             />
           </div>
           <div className="min-w-0">
             <InputPadrao
               rotulo="Documento"
               value={filtros.numeroDocumento}
-              onChange={(e) => setFiltros((f) => ({ ...f, numeroDocumento: e.target.value }))}
+              onChange={(e) => agendarFiltroTexto({ numeroDocumento: e.target.value })}
             />
           </div>
           <div className="min-w-0">
@@ -350,7 +390,7 @@ function ConteudoContasAReceber() {
               rotulo="Vencimento de"
               type="date"
               value={filtros.vencimentoDe}
-              onChange={(e) => setFiltros((f) => ({ ...f, vencimentoDe: e.target.value }))}
+              onChange={(e) => aplicarFiltro({ vencimentoDe: e.target.value })}
             />
           </div>
           <div className="min-w-0">
@@ -358,21 +398,11 @@ function ConteudoContasAReceber() {
               rotulo="Vencimento até"
               type="date"
               value={filtros.vencimentoAte}
-              onChange={(e) => setFiltros((f) => ({ ...f, vencimentoAte: e.target.value }))}
+              onChange={(e) => aplicarFiltro({ vencimentoAte: e.target.value })}
             />
           </div>
           <div className="flex min-w-0 flex-wrap items-end gap-2 sm:col-span-2 xl:col-span-3">
-            <Button type="button" onClick={() => void carregar(filtros)}>
-              Filtrar
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setFiltros(FILTROS_VAZIOS)
-                void carregar(FILTROS_VAZIOS)
-              }}
-            >
+            <Button type="button" variant="outline" onClick={limparFiltros}>
               Limpar
             </Button>
           </div>
