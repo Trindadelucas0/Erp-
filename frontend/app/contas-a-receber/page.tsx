@@ -295,6 +295,7 @@ function ConteudoContasAReceber() {
               pessoas={clientes}
               valor={filtros.pessoaId}
               aoMudar={(pessoaId) => setFiltros((f) => ({ ...f, pessoaId }))}
+              aoConfirmar={(pessoaId) => aplicarFiltro({ pessoaId })}
               permitirVazio
               rotuloVazio="Todos"
               placeholder="Digite para buscar..."
@@ -306,6 +307,7 @@ function ConteudoContasAReceber() {
               planos={planos}
               valor={filtros.planoFinanceiroId}
               aoMudar={(planoFinanceiroId) => setFiltros((f) => ({ ...f, planoFinanceiroId }))}
+              aoConfirmar={(planoFinanceiroId) => aplicarFiltro({ planoFinanceiroId })}
               permitirVazio
               rotuloVazio="Todos"
               placeholder="Digite código ou nome..."
@@ -315,7 +317,7 @@ function ConteudoContasAReceber() {
             <SelectPadrao
               rotulo="Tipo"
               valor={filtros.tipo}
-              aoMudar={(tipo) => setFiltros((f) => ({ ...f, tipo }))}
+              aoMudar={(tipo) => aplicarFiltro({ tipo })}
               opcoes={[{ value: '', label: 'Todos' }, ...OPCOES_TIPO_CONTA_RECEBER]}
               compacto
             />
@@ -324,7 +326,7 @@ function ConteudoContasAReceber() {
             <SelectPadrao
               rotulo="Status"
               valor={filtros.status}
-              aoMudar={(status) => setFiltros((f) => ({ ...f, status }))}
+              aoMudar={(status) => aplicarFiltro({ status })}
               opcoes={OPCOES_STATUS_CONTA_RECEBER}
               compacto
             />

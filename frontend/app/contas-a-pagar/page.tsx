@@ -316,6 +316,7 @@ function ConteudoContasAPagar() {
               pessoas={fornecedores}
               valor={filtros.pessoaId}
               aoMudar={(pessoaId) => setFiltros((f) => ({ ...f, pessoaId }))}
+              aoConfirmar={(pessoaId) => aplicarFiltro({ pessoaId })}
               permitirVazio
               rotuloVazio="Todos"
               placeholder="Digite para buscar..."
@@ -327,6 +328,7 @@ function ConteudoContasAPagar() {
               planos={planos}
               valor={filtros.planoFinanceiroId}
               aoMudar={(planoFinanceiroId) => setFiltros((f) => ({ ...f, planoFinanceiroId }))}
+              aoConfirmar={(planoFinanceiroId) => aplicarFiltro({ planoFinanceiroId })}
               permitirVazio
               rotuloVazio="Todos"
               placeholder="Digite código ou nome..."
@@ -336,7 +338,7 @@ function ConteudoContasAPagar() {
             <SelectPadrao
               rotulo="Tipo"
               valor={filtros.tipo}
-              aoMudar={(tipo) => setFiltros((f) => ({ ...f, tipo }))}
+              aoMudar={(tipo) => aplicarFiltro({ tipo })}
               opcoes={[{ value: '', label: 'Todos' }, ...OPCOES_TIPO_CONTA]}
               compacto
             />
@@ -345,7 +347,7 @@ function ConteudoContasAPagar() {
             <SelectPadrao
               rotulo="Origem"
               valor={filtros.origem}
-              aoMudar={(origem) => setFiltros((f) => ({ ...f, origem }))}
+              aoMudar={(origem) => aplicarFiltro({ origem })}
               opcoes={OPCOES_ORIGEM_CONTA}
               compacto
             />
@@ -354,7 +356,7 @@ function ConteudoContasAPagar() {
             <SelectPadrao
               rotulo="Status"
               valor={filtros.status}
-              aoMudar={(status) => setFiltros((f) => ({ ...f, status }))}
+              aoMudar={(status) => aplicarFiltro({ status })}
               opcoes={OPCOES_STATUS_CONTA}
               compacto
             />
