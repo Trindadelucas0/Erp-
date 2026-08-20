@@ -34,6 +34,7 @@ type Props = {
   pessoas: PessoaOpcao[]
   valor: string
   aoMudar: (pessoaId: string) => void
+  aoConfirmar?: (pessoaId: string) => void
   disabled?: boolean
   placeholder?: string
   obrigatorio?: boolean
@@ -54,6 +55,7 @@ export function ComboboxPessoa({
   pessoas,
   valor,
   aoMudar,
+  aoConfirmar,
   disabled,
   placeholder = 'Digite para buscar...',
   obrigatorio = false,
@@ -149,11 +151,13 @@ export function ComboboxPessoa({
 
   function selecionar(id: string) {
     aoMudar(id)
+    aoConfirmar?.(id)
     fechar()
   }
 
   function limpar() {
     aoMudar('')
+    aoConfirmar?.('')
     setBusca('')
   }
 

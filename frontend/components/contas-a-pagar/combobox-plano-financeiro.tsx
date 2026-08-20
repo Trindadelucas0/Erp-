@@ -29,6 +29,7 @@ type Props = {
   planos: PlanoFinanceiroOpcao[]
   valor: string
   aoMudar: (planoId: string) => void
+  aoConfirmar?: (planoId: string) => void
   disabled?: boolean
   placeholder?: string
   obrigatorio?: boolean
@@ -55,6 +56,7 @@ export function ComboboxPlanoFinanceiro({
   planos,
   valor,
   aoMudar,
+  aoConfirmar,
   disabled,
   placeholder = 'Digite código ou nome...',
   obrigatorio = false,
@@ -148,11 +150,13 @@ export function ComboboxPlanoFinanceiro({
 
   function selecionar(id: string) {
     aoMudar(id)
+    aoConfirmar?.(id)
     fechar()
   }
 
   function limpar() {
     aoMudar('')
+    aoConfirmar?.('')
     setBusca('')
   }
 

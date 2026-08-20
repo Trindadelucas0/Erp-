@@ -2,8 +2,9 @@
  * Agendador Focus: sync incremental a cada 2 min (NFe + NFS-e + CTe do DistDFe do CNPJ).
  * Ligado por padrão em `aplicacao.ts`. Desligar: `FOCUS_NFE_AGENDADOR=false`.
  * BUSCAR na Entrada de Notas continua disponível para sync sob demanda.
+ *
+ * Só enfileira o job `focus_sync`; quem executa é o worker (`JOBS_WORKER`).
  */
-import { empresaFocusEmAndamento } from './fila-focus-nfe.js'
 import { logFocus } from './logs-focus-nfe.js'
 import { repositorioFocusNfe } from './repositorio-focus-nfe.js'
 import { servicoFocusNfe } from './servico-focus-nfe.js'
@@ -19,7 +20,7 @@ async function tickAgendadorFocus() {
   try {
     const companyIds = await repositorioFocusNfe.listarCompanyIdsComFocusAtivo()
     for (const companyId of companyIds) {
-      if (empresaFocusEmAndamento(companyId)) continue
+      if (await servicoFocusNfe.syncEmAndamento(companyId)) continue
       try {
         if (await cotaEsgotadaParaAgendador(companyId)) {
           logFocus('info', 'agendador_sync_cota_esgotada', { companyId })

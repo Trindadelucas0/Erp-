@@ -3,6 +3,9 @@
  * (determinístico para Excel/CSV, IA para PDF), casa com os itens do pedido
  * e monta o relatório. Disparado só pelo botão "Conferir com IA" no painel
  * interno (compras:edit) — nunca automaticamente no upload do fornecedor.
+ *
+ * Executa dentro do job `ia_conferencia`; a trava de duplicidade por pedido é
+ * o dedupe da fila (`chaveDedupe`), não mais um Set em memória.
  */
 import { readFile } from 'node:fs/promises'
 import { ErroDaAplicacao } from '../../../compartilhado/erros/ErroDaAplicacao.js'
@@ -12,7 +15,6 @@ import { detectarTipoArquivo, extrairLinhasDeTabela, mapearLinhasParaItens } fro
 import { extrairItensComIa } from './extrair-itens-com-ia.js'
 import { compararItensPedidoComArquivo } from './matcher-itens.js'
 import { compararCabecalho } from './comparar-cabecalho.js'
-import { tentarTravarConferencia, liberarTravaConferencia } from './lock-conferencia.js'
 import { caminhoAbsolutoAnexo } from '../../portal-fornecedor/armazenamento-anexo-fornecedor.js'
 import { repositorioDePedidosCompra } from '../repositorio-pedidos-compra.js'
 import { urlPublicaFoto } from '../../produtos/armazenamento-foto-produto.js'
@@ -53,113 +55,114 @@ function itensPedidoParaMatch(pedido: PedidoCompraView, companyId: string): Item
   }))
 }
 
+/**
+ * Checagens baratas do anexo, usadas no enfileiramento (erro imediato na tela)
+ * e de novo na execução do job.
+ */
+export function validarAnexoConferivel(mimeType: string): 'excel' | 'csv' | 'pdf' {
+  const tipo = detectarTipoArquivo(mimeType)
+  if (tipo === 'desconhecido') {
+    throw new ErroDaAplicacao('Tipo de arquivo não suportado para conferência por IA.', 422)
+  }
+
+  if (tipo === 'pdf' && !iaConfigurada()) {
+    throw new ErroDaAplicacao(
+      'Conferência por IA não configurada. Defina IA_PROVIDER e IA_API_KEY no .env.',
+      503
+    )
+  }
+
+  return tipo
+}
+
 async function conferirAnexoComIa(
   pedidoCompraId: string,
   anexoId: string,
   companyId: string
 ): Promise<RelatorioConferenciaArquivo> {
-  const trocaLock = tentarTravarConferencia(pedidoCompraId)
-  if (!trocaLock) {
-    throw new ErroDaAplicacao('Já existe uma conferência por IA em andamento para este pedido.', 409)
+  const pedidoDb = await repositorioDePedidosCompra.buscarPorId(pedidoCompraId)
+  if (!pedidoDb || pedidoDb.companyId !== companyId) {
+    throw new ErroDaAplicacao('Pedido de compra não encontrado.', 404)
+  }
+  const pedido = repositorioDePedidosCompra.mapearPedido(pedidoDb)
+
+  const anexo = pedidoDb.anexosFornecedor.find((a) => a.id === anexoId)
+  if (!anexo) {
+    throw new ErroDaAplicacao('Anexo do fornecedor não encontrado neste pedido.', 404)
   }
 
-  try {
-    const pedidoDb = await repositorioDePedidosCompra.buscarPorId(pedidoCompraId)
-    if (!pedidoDb || pedidoDb.companyId !== companyId) {
-      throw new ErroDaAplicacao('Pedido de compra não encontrado.', 404)
-    }
-    const pedido = repositorioDePedidosCompra.mapearPedido(pedidoDb)
+  const tipo = validarAnexoConferivel(anexo.mimeType)
 
-    const anexo = pedidoDb.anexosFornecedor.find((a) => a.id === anexoId)
-    if (!anexo) {
-      throw new ErroDaAplicacao('Anexo do fornecedor não encontrado neste pedido.', 404)
-    }
+  const buffer = await readFile(caminhoAbsolutoAnexo(anexo.caminhoArquivo))
+  console.log(`[conferencia-ia] anexo lido: ${buffer.length} bytes (tipo=${tipo})`)
 
-    const tipo = detectarTipoArquivo(anexo.mimeType)
-    if (tipo === 'desconhecido') {
-      throw new ErroDaAplicacao('Tipo de arquivo não suportado para conferência por IA.', 422)
-    }
+  let cabecalho: CabecalhoExtraido = cabecalhoVazio()
+  let itensArquivo: ItemExtraido[] = []
+  let avisos: string[] = []
+  let provider = 'determinístico'
+  let modelo: string = tipo
 
-    if (tipo === 'pdf' && !iaConfigurada()) {
-      throw new ErroDaAplicacao(
-        'Conferência por IA não configurada. Defina IA_PROVIDER e IA_API_KEY no .env.',
-        503
-      )
-    }
-
-    const buffer = await readFile(caminhoAbsolutoAnexo(anexo.caminhoArquivo))
-    console.log(`[conferencia-ia] anexo lido: ${buffer.length} bytes (tipo=${tipo})`)
-
-    let cabecalho: CabecalhoExtraido = cabecalhoVazio()
-    let itensArquivo: ItemExtraido[] = []
-    let avisos: string[] = []
-    let provider = 'determinístico'
-    let modelo: string = tipo
-
-    if (tipo === 'excel' || tipo === 'csv') {
-      const linhas = await extrairLinhasDeTabela(buffer, tipo)
-      const resultado = mapearLinhasParaItens(linhas)
-      itensArquivo = resultado.itens
-      avisos = resultado.avisos
-    } else {
-      const texto = await extrairTextoDoPdf(buffer)
-      console.log(`[conferencia-ia] texto extraído do PDF: ${texto.length} caracteres`)
-      if (texto.trim().length < 20) {
-        return relatorioFalha('Não foi possível extrair texto do PDF (arquivo pode ser uma imagem escaneada).')
-      }
-
-      console.log('[conferencia-ia] chamando provedor de IA...')
-      const resultado = await extrairItensComIa(texto)
-      console.log(`[conferencia-ia] resposta da IA: sucesso=${resultado.sucesso}`)
-      if (!resultado.sucesso) {
-        return relatorioFalha(resultado.mensagem)
-      }
-
-      cabecalho = resultado.dados.cabecalho
-      itensArquivo = resultado.dados.itens
-      avisos = resultado.dados.avisos
-      provider = resultado.provider
-      modelo = resultado.modelo
+  if (tipo === 'excel' || tipo === 'csv') {
+    const linhas = await extrairLinhasDeTabela(buffer, tipo)
+    const resultado = mapearLinhasParaItens(linhas)
+    itensArquivo = resultado.itens
+    avisos = resultado.avisos
+  } else {
+    const texto = await extrairTextoDoPdf(buffer)
+    console.log(`[conferencia-ia] texto extraído do PDF: ${texto.length} caracteres`)
+    if (texto.trim().length < 20) {
+      return relatorioFalha('Não foi possível extrair texto do PDF (arquivo pode ser uma imagem escaneada).')
     }
 
-    const config = iaConfigurada() ? obterConfigIa() : null
-    const limiarNome = config?.limiarNome ?? 0.82
-    const toleranciaPreco = config?.toleranciaPreco ?? 0.01
-
-    const linhas = compararItensPedidoComArquivo(itensPedidoParaMatch(pedido, companyId), itensArquivo, {
-      limiarNome,
-      toleranciaPreco,
-    })
-
-    const divergenciasCabecalho = compararCabecalho(pedido, cabecalho)
-
-    const resumo = {
-      totalItensPedido: pedido.itens.length,
-      totalItensArquivo: itensArquivo.length,
-      ok: linhas.filter((l) => l.status === 'ok').length,
-      divergentes: linhas.filter((l) => l.status === 'divergente').length,
-      semMatch: linhas.filter((l) => l.status === 'sem_match_pedido').length,
-      sobrasArquivo: linhas.filter((l) => l.status === 'sobra_arquivo').length,
+    console.log('[conferencia-ia] chamando provedor de IA...')
+    const resultado = await extrairItensComIa(texto)
+    console.log(`[conferencia-ia] resposta da IA: sucesso=${resultado.sucesso}`)
+    if (!resultado.sucesso) {
+      return relatorioFalha(resultado.mensagem)
     }
 
-    const statusGeral =
-      divergenciasCabecalho.length > 0 || resumo.divergentes > 0 || resumo.semMatch > 0
-        ? 'divergencias'
-        : 'ok'
+    cabecalho = resultado.dados.cabecalho
+    itensArquivo = resultado.dados.itens
+    avisos = resultado.dados.avisos
+    provider = resultado.provider
+    modelo = resultado.modelo
+  }
 
-    console.log(`[conferencia-ia] relatório montado: statusGeral=${statusGeral}`)
+  const config = iaConfigurada() ? obterConfigIa() : null
+  const limiarNome = config?.limiarNome ?? 0.82
+  const toleranciaPreco = config?.toleranciaPreco ?? 0.01
 
-    return {
-      statusGeral,
-      provider,
-      modelo,
-      resumo,
-      cabecalho: { divergencias: divergenciasCabecalho },
-      linhas,
-      avisos,
-    }
-  } finally {
-    liberarTravaConferencia(pedidoCompraId)
+  const linhas = compararItensPedidoComArquivo(itensPedidoParaMatch(pedido, companyId), itensArquivo, {
+    limiarNome,
+    toleranciaPreco,
+  })
+
+  const divergenciasCabecalho = compararCabecalho(pedido, cabecalho)
+
+  const resumo = {
+    totalItensPedido: pedido.itens.length,
+    totalItensArquivo: itensArquivo.length,
+    ok: linhas.filter((l) => l.status === 'ok').length,
+    divergentes: linhas.filter((l) => l.status === 'divergente').length,
+    semMatch: linhas.filter((l) => l.status === 'sem_match_pedido').length,
+    sobrasArquivo: linhas.filter((l) => l.status === 'sobra_arquivo').length,
+  }
+
+  const statusGeral =
+    divergenciasCabecalho.length > 0 || resumo.divergentes > 0 || resumo.semMatch > 0
+      ? 'divergencias'
+      : 'ok'
+
+  console.log(`[conferencia-ia] relatório montado: statusGeral=${statusGeral}`)
+
+  return {
+    statusGeral,
+    provider,
+    modelo,
+    resumo,
+    cabecalho: { divergencias: divergenciasCabecalho },
+    linhas,
+    avisos,
   }
 }
 

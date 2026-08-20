@@ -1,7 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useCallback, useEffect, useState } from 'react'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
@@ -14,36 +13,35 @@ import { Modal } from '@/components/ui/modal'
 import { Abas } from '@/components/ui/abas'
 import { LinhasSkeletonTabela } from '@/components/ui/linhas-skeleton-tabela'
 import { ComboboxPlanoFinanceiro } from '@/components/contas-a-pagar/combobox-plano-financeiro'
-import { FormularioContaPagar } from '@/components/contas-a-pagar/formulario-conta-pagar'
+import { FormularioContaReceber } from '@/components/contas-a-receber/formulario-conta-receber'
 import { ComboboxPessoa } from '@/components/pedidos-compra/combobox-pessoa'
-import { TelaBaixasContasAPagar } from '@/components/contas-a-pagar/tela-baixas-contas-a-pagar'
-import { TelaHistoricoBaixasContasAPagar } from '@/components/contas-a-pagar/tela-historico-baixas-contas-a-pagar'
+import { TelaBaixasContasAReceber } from '@/components/contas-a-receber/tela-baixas-contas-a-receber'
+import { TelaHistoricoBaixasContasAReceber } from '@/components/contas-a-receber/tela-historico-baixas-contas-a-receber'
 import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import {
-  BadgeOrigemContaPagar,
-  BadgeStatusContaPagar,
-  BadgeTipoContaPagar,
-  CelulaVencimentoContaPagar,
-} from '@/components/contas-a-pagar/badges-conta-pagar'
+  BadgeOrigemContaReceber,
+  BadgeStatusContaReceber,
+  BadgeTipoContaReceber,
+  CelulaVencimentoContaReceber,
+} from '@/components/contas-a-receber/badges-conta-receber'
 import {
-  ContaPagarLista,
-  FormContaPagar,
-  OPCOES_ORIGEM_CONTA,
-  OPCOES_STATUS_CONTA,
-  OPCOES_TIPO_CONTA,
-  classeLinhaStatusContaPagar,
+  ContaReceberLista,
+  FormContaReceber,
+  OPCOES_STATUS_CONTA_RECEBER,
+  OPCOES_TIPO_CONTA_RECEBER,
+  classeLinhaStatusContaReceber,
   contaParaForm,
   diasAteVencimento,
-  formContaPagarVazio,
+  formContaReceberVazio,
   formParaPayload,
-  formatarCodigoContaPagar,
+  formatarCodigoContaReceber,
   formatarDataBr,
   formatarMoedaBr,
-  rotuloStatusContaPagar,
+  rotuloStatusContaReceber,
   tituloVencido,
-  validarFormContaPagar,
-} from '@/lib/contas-a-pagar'
+  validarFormContaReceber,
+} from '@/lib/contas-a-receber'
 
 type Opcao = { id: string; nome: string; codigo?: string }
 
@@ -51,8 +49,6 @@ type Filtros = {
   pessoaId: string
   planoFinanceiroId: string
   tipo: string
-  origem: string
-  nfeRecebidaId: string
   status: string
   codigo: string
   numeroDocumento: string
@@ -66,8 +62,6 @@ const FILTROS_VAZIOS: Filtros = {
   pessoaId: '',
   planoFinanceiroId: '',
   tipo: '',
-  origem: '',
-  nfeRecebidaId: '',
   status: '',
   codigo: '',
   numeroDocumento: '',
@@ -77,23 +71,22 @@ const FILTROS_VAZIOS: Filtros = {
   valorMax: '',
 }
 
-function ConteudoContasAPagar() {
+function ConteudoContasAReceber() {
   const podeCriar = usePermissao('financeiro:create')
   const podeEditar = usePermissao('financeiro:edit')
   const { perfil } = useSessaoDoUsuario()
   const ehAdmin = perfil?.ehAdmin === true
-  const searchParams = useSearchParams()
 
-  const [contas, setContas] = useState<ContaPagarLista[]>([])
-  const [fornecedores, setFornecedores] = useState<Opcao[]>([])
+  const [contas, setContas] = useState<ContaReceberLista[]>([])
+  const [clientes, setClientes] = useState<Opcao[]>([])
   const [planos, setPlanos] = useState<Opcao[]>([])
   const [filtros, setFiltros] = useState<Filtros>(FILTROS_VAZIOS)
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
 
   const [modalAberto, setModalAberto] = useState(false)
-  const [editando, setEditando] = useState<ContaPagarLista | null>(null)
-  const [form, setForm] = useState<FormContaPagar>(formContaPagarVazio())
+  const [editando, setEditando] = useState<ContaReceberLista | null>(null)
+  const [form, setForm] = useState<FormContaReceber>(formContaReceberVazio())
   const [erroForm, setErroForm] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
   const [excluindo, setExcluindo] = useState(false)
@@ -101,16 +94,16 @@ function ConteudoContasAPagar() {
 
   const carregarCatalogos = useCallback(async () => {
     try {
-      const [resForn, resPlanos] = await Promise.all([
-        clienteHttp.get('/fornecedores'),
+      const [resCli, resPlanos] = await Promise.all([
+        clienteHttp.get('/clientes'),
         clienteHttp.get('/planos-financeiros', {
-          params: { tipo: 'despesa', somenteSubgrupo: 'true' },
+          params: { tipo: 'receita', somenteSubgrupo: 'true' },
         }),
       ])
-      setFornecedores(
-        (resForn.data.fornecedores ?? [])
-          .filter((f: { ativo: boolean }) => f.ativo)
-          .map((f: { id: string; nome: string }) => ({ id: f.id, nome: f.nome }))
+      setClientes(
+        (resCli.data.clientes ?? [])
+          .filter((c: { ativo: boolean }) => c.ativo)
+          .map((c: { id: string; nome: string }) => ({ id: c.id, nome: c.nome }))
       )
       const listaPlanos = resPlanos.data.planos ?? resPlanos.data ?? []
       setPlanos(
@@ -135,8 +128,6 @@ function ConteudoContasAPagar() {
       if (f.pessoaId) params.pessoaId = f.pessoaId
       if (f.planoFinanceiroId) params.planoFinanceiroId = f.planoFinanceiroId
       if (f.tipo) params.tipo = f.tipo
-      if (f.origem) params.origem = f.origem
-      if (f.nfeRecebidaId) params.nfeRecebidaId = f.nfeRecebidaId
       if (f.status) params.status = f.status
       if (f.codigo.trim()) params.codigo = f.codigo.trim()
       if (f.numeroDocumento.trim()) params.numeroDocumento = f.numeroDocumento.trim()
@@ -145,12 +136,13 @@ function ConteudoContasAPagar() {
       if (f.valorMin.trim()) params.valorMin = f.valorMin.trim().replace(',', '.')
       if (f.valorMax.trim()) params.valorMax = f.valorMax.trim().replace(',', '.')
 
-      const { data } = await clienteHttp.get<{ contas: ContaPagarLista[] }>('/contas-a-pagar', {
-        params,
-      })
+      const { data } = await clienteHttp.get<{ contas: ContaReceberLista[] }>(
+        '/contas-a-receber',
+        { params }
+      )
       setContas(data.contas ?? [])
     } catch (e) {
-      setErro(extrairMensagemApi(e, 'Falha ao listar contas a pagar.'))
+      setErro(extrairMensagemApi(e, 'Falha ao listar contas a receber.'))
     } finally {
       setCarregando(false)
     }
@@ -164,25 +156,18 @@ function ConteudoContasAPagar() {
 
   useEffect(() => {
     void carregarCatalogos()
-    const nfeRecebidaId = searchParams.get('nfeRecebidaId')?.trim() || ''
-    const origem = searchParams.get('origem')?.trim() || ''
-    const iniciais =
-      nfeRecebidaId || origem
-        ? { ...FILTROS_VAZIOS, nfeRecebidaId, origem }
-        : FILTROS_VAZIOS
-    setFiltros(iniciais)
-    void carregar(iniciais)
+    void carregar(FILTROS_VAZIOS)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [carregarCatalogos, searchParams])
+  }, [carregarCatalogos])
 
   function abrirNovo() {
     setEditando(null)
-    setForm(formContaPagarVazio())
+    setForm(formContaReceberVazio())
     setErroForm(null)
     setModalAberto(true)
   }
 
-  function abrirEdicao(conta: ContaPagarLista) {
+  function abrirEdicao(conta: ContaReceberLista) {
     setEditando(conta)
     setForm(contaParaForm(conta))
     setErroForm(null)
@@ -198,7 +183,7 @@ function ConteudoContasAPagar() {
   }
 
   async function gravar() {
-    const msg = validarFormContaPagar(form)
+    const msg = validarFormContaReceber(form)
     if (msg) {
       setErroForm(msg)
       return
@@ -208,14 +193,13 @@ function ConteudoContasAPagar() {
     try {
       const payload = formParaPayload(form)
       if (editando) {
-        await clienteHttp.put(`/contas-a-pagar/${editando.id}`, payload)
+        await clienteHttp.put(`/contas-a-receber/${editando.id}`, payload)
         setModalAberto(false)
         setEditando(null)
         await carregar()
       } else {
-        // Mantém o modal aberto com o id gerado para liberar anexos na hora
-        const { data } = await clienteHttp.post<{ conta: ContaPagarLista }>(
-          '/contas-a-pagar',
+        const { data } = await clienteHttp.post<{ conta: ContaReceberLista }>(
+          '/contas-a-receber',
           payload
         )
         const criada = data.conta
@@ -224,7 +208,7 @@ function ConteudoContasAPagar() {
         await carregar()
       }
     } catch (e) {
-      setErroForm(extrairMensagemApi(e, 'Não foi possível gravar a conta a pagar.'))
+      setErroForm(extrairMensagemApi(e, 'Não foi possível gravar a conta a receber.'))
     } finally {
       setSalvando(false)
     }
@@ -236,7 +220,7 @@ function ConteudoContasAPagar() {
     setExcluindo(true)
     setErroForm(null)
     try {
-      await clienteHttp.delete(`/contas-a-pagar/${editando.id}`)
+      await clienteHttp.delete(`/contas-a-receber/${editando.id}`)
       setModalAberto(false)
       setEditando(null)
       await carregar()
@@ -263,7 +247,7 @@ function ConteudoContasAPagar() {
 
   return (
     <div className="min-w-0 space-y-4">
-      <CardPadrao titulo="Contas a Pagar" className="min-w-0">
+      <CardPadrao titulo="Contas a Receber" className="min-w-0">
         <Abas
           className="mb-4"
           abaAtiva={aba}
@@ -271,21 +255,21 @@ function ConteudoContasAPagar() {
           abas={[
             { id: 'titulos', rotulo: 'Títulos' },
             { id: 'baixas', rotulo: 'Baixas' },
-            { id: 'pagamentos', rotulo: 'Pagamentos' },
+            { id: 'recebimentos', rotulo: 'Recebimentos' },
           ]}
         />
 
         {aba === 'baixas' ? (
-          <TelaBaixasContasAPagar
-            fornecedores={fornecedores}
+          <TelaBaixasContasAReceber
+            clientes={clientes}
             planos={planos}
             aoBaixar={() => {
               void carregar(filtros)
               setTokenHistorico((t) => t + 1)
             }}
           />
-        ) : aba === 'pagamentos' ? (
-          <TelaHistoricoBaixasContasAPagar recarregarToken={tokenHistorico} />
+        ) : aba === 'recebimentos' ? (
+          <TelaHistoricoBaixasContasAReceber recarregarToken={tokenHistorico} />
         ) : (
           <>
             <div className="mb-3 flex flex-wrap gap-2">
@@ -300,20 +284,15 @@ function ConteudoContasAPagar() {
             </div>
 
             <p className="mb-3 text-sm text-muted-foreground">
-              Cadastro e visualização de títulos (manual ou gerados pela Entrada de Notas). Use a aba{' '}
-              <strong>Baixas</strong> para pagar um ou vários de uma vez.
+              Cadastro e visualização de títulos a receber (Duplicata ou Crédito). Use a aba{' '}
+              <strong>Baixas</strong> para receber um ou vários de uma vez.
             </p>
-            {filtros.nfeRecebidaId ? (
-              <p className="mb-3 text-sm text-sky-800">
-                Filtrando títulos da nota de entrada. Use Limpar para ver todos.
-              </p>
-            ) : null}
 
         <div className="mb-4 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <div className="min-w-0">
             <ComboboxPessoa
-              rotulo="Fornecedor"
-              pessoas={fornecedores}
+              rotulo="Cliente"
+              pessoas={clientes}
               valor={filtros.pessoaId}
               aoMudar={(pessoaId) => setFiltros((f) => ({ ...f, pessoaId }))}
               permitirVazio
@@ -337,16 +316,7 @@ function ConteudoContasAPagar() {
               rotulo="Tipo"
               valor={filtros.tipo}
               aoMudar={(tipo) => setFiltros((f) => ({ ...f, tipo }))}
-              opcoes={[{ value: '', label: 'Todos' }, ...OPCOES_TIPO_CONTA]}
-              compacto
-            />
-          </div>
-          <div className="min-w-0">
-            <SelectPadrao
-              rotulo="Origem"
-              valor={filtros.origem}
-              aoMudar={(origem) => setFiltros((f) => ({ ...f, origem }))}
-              opcoes={OPCOES_ORIGEM_CONTA}
+              opcoes={[{ value: '', label: 'Todos' }, ...OPCOES_TIPO_CONTA_RECEBER]}
               compacto
             />
           </div>
@@ -355,7 +325,7 @@ function ConteudoContasAPagar() {
               rotulo="Status"
               valor={filtros.status}
               aoMudar={(status) => setFiltros((f) => ({ ...f, status }))}
-              opcoes={OPCOES_STATUS_CONTA}
+              opcoes={OPCOES_STATUS_CONTA_RECEBER}
               compacto
             />
           </div>
@@ -419,7 +389,7 @@ function ConteudoContasAPagar() {
                 <th className="px-3 py-2 font-medium">Código</th>
                 <th className="px-3 py-2 font-medium">Emissão</th>
                 <th className="px-3 py-2 font-medium">Vencimento</th>
-                <th className="px-3 py-2 font-medium">Fornecedor</th>
+                <th className="px-3 py-2 font-medium">Cliente</th>
                 <th className="px-3 py-2 font-medium">Documento</th>
                 <th className="px-3 py-2 font-medium">Valor</th>
                 <th className="px-3 py-2 font-medium">Saldo</th>
@@ -446,15 +416,15 @@ function ConteudoContasAPagar() {
                   return (
                   <tr
                     key={conta.id}
-                    className={`cursor-pointer border-t ${classeLinhaStatusContaPagar(conta.status, vencido)}`}
+                    className={`cursor-pointer border-t ${classeLinhaStatusContaReceber(conta.status, vencido)}`}
                     onClick={() => abrirEdicao(conta)}
                   >
                     <td className="px-3 py-2 font-medium">
-                      {conta.codigoExibicao ?? formatarCodigoContaPagar(conta.codigo)}
+                      {conta.codigoExibicao ?? formatarCodigoContaReceber(conta.codigo)}
                     </td>
                     <td className="px-3 py-2">{formatarDataBr(conta.dataEmissao)}</td>
                     <td className="px-3 py-2">
-                      <CelulaVencimentoContaPagar
+                      <CelulaVencimentoContaReceber
                         status={conta.status}
                         vencimento={conta.vencimento}
                         dataFormatada={formatarDataBr(conta.vencimento)}
@@ -470,13 +440,13 @@ function ConteudoContasAPagar() {
                       </span>
                     </td>
                     <td className="px-3 py-2">
-                      <BadgeTipoContaPagar tipo={conta.tipo} />
+                      <BadgeTipoContaReceber tipo={conta.tipo} />
                     </td>
                     <td className="px-3 py-2">
-                      <BadgeOrigemContaPagar origem={conta.origem} />
+                      <BadgeOrigemContaReceber origem={conta.origem} />
                     </td>
                     <td className="px-3 py-2">
-                      <BadgeStatusContaPagar status={conta.status} />
+                      <BadgeStatusContaReceber status={conta.status} />
                     </td>
                     <td className="px-3 py-2">{formatarDataBr(conta.dataCadastro)}</td>
                   </tr>
@@ -493,10 +463,10 @@ function ConteudoContasAPagar() {
       <Modal
         aberto={modalAberto}
         aoFechar={fecharModal}
-        titulo={editando ? `Título ${formatarCodigoContaPagar(editando.codigo)}` : 'Novo título'}
+        titulo={editando ? `Título ${formatarCodigoContaReceber(editando.codigo)}` : 'Novo título'}
         descricao={
           editando
-            ? `${rotuloStatusContaPagar(editando.status)}${
+            ? `${rotuloStatusContaReceber(editando.status)}${
                 somenteLeitura ? ' — somente leitura' : ''
               }`
             : 'Preencha os dados e grave. O código do sistema é gerado automaticamente.'
@@ -504,9 +474,9 @@ function ConteudoContasAPagar() {
         cabecalhoExtra={
           editando ? (
             <div className="mt-2 flex flex-wrap gap-2">
-              <BadgeStatusContaPagar status={editando.status} />
-              <BadgeTipoContaPagar tipo={editando.tipo} />
-              <BadgeOrigemContaPagar origem={editando.origem} />
+              <BadgeStatusContaReceber status={editando.status} />
+              <BadgeTipoContaReceber tipo={editando.tipo} />
+              <BadgeOrigemContaReceber origem={editando.origem} />
             </div>
           ) : undefined
         }
@@ -539,14 +509,14 @@ function ConteudoContasAPagar() {
           </div>
         }
       >
-        <FormularioContaPagar
+        <FormularioContaReceber
           form={form}
           aoMudar={setForm}
-          fornecedores={fornecedores}
+          clientes={clientes}
           planos={planos}
           codigoExibicao={
             editando
-              ? editando.codigoExibicao ?? formatarCodigoContaPagar(editando.codigo)
+              ? editando.codigoExibicao ?? formatarCodigoContaReceber(editando.codigo)
               : null
           }
           somenteLeitura={somenteLeitura || (!podeEditar && Boolean(editando))}
@@ -564,7 +534,7 @@ function ConteudoContasAPagar() {
         mensagem={
           editando
             ? `Tem certeza que deseja excluir o título ${
-                editando.codigoExibicao ?? formatarCodigoContaPagar(editando.codigo)
+                editando.codigoExibicao ?? formatarCodigoContaReceber(editando.codigo)
               }?\n\nEsta ação não pode ser desfeita.`
             : 'Tem certeza que deseja excluir este título?'
         }
@@ -581,12 +551,10 @@ function ConteudoContasAPagar() {
   )
 }
 
-export default function PaginaContasAPagar() {
+export default function PaginaContasAReceber() {
   return (
-    <ProtegerRota chaveDaPagina="contas-a-pagar">
-      <Suspense fallback={<p className="text-sm text-muted-foreground">Carregando…</p>}>
-        <ConteudoContasAPagar />
-      </Suspense>
+    <ProtegerRota chaveDaPagina="contas-a-receber">
+      <ConteudoContasAReceber />
     </ProtegerRota>
   )
 }

@@ -5,7 +5,9 @@ import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { decodificarTextoXml } from '../../compartilhado/normalizacao/entidades-xml.js'
 import { importarCtePorChave } from './importar-cte-por-chave.js'
 import { clienteFocusNfe, type NfeRecebidaResumoFocus, type NfseRecebidaResumoFocus, type CteRecebidaResumoFocus, type RespostaFocus } from './cliente-focus-nfe.js'
-import { tentarTravarFocus, liberarTravaFocus } from './fila-focus-nfe.js'
+import { registrarHandlerJob } from '../../compartilhado/jobs/registro-handlers-job.js'
+import { servicoJobs } from '../../compartilhado/jobs/servico-jobs.js'
+import type { ContextoJob } from '../../compartilhado/jobs/tipos-job.js'
 import { logFocus } from './logs-focus-nfe.js'
 import {
   mascararCnpj,
@@ -36,6 +38,9 @@ import {
   obterRecursosEntradaNotas,
   type RecursosEntradaNotas,
 } from './config-recursos-entrada-notas.js'
+/** Tipo do job de sincronização Focus na fila (`Job.tipo`). */
+const TIPO_JOB_FOCUS_SYNC = 'focus_sync'
+
 function mascararToken(token: string): string {
   if (token.length <= 8) return '****'
   return `${token.slice(0, 4)}${'*'.repeat(token.length - 8)}${token.slice(-4)}`
@@ -335,24 +340,17 @@ export function decisaoAvancoCursorCteAposXml(res: ResultadoXml): 'avancar' | 'p
   return 'retry'
 }
 
-async function executarSync(companyId: string, jobId: string) {
-  const linhasLog: string[] = []
-  const pushLog = (msg: string) => {
-    linhasLog.push(msg)
-    if (linhasLog.length > 40) linhasLog.shift()
-  }
+/**
+ * Corpo do job `focus_sync`. Progresso, log e status ficam a cargo do worker
+ * (`src/compartilhado/jobs/`) — aqui só a sincronização em lote.
+ */
+async function executarSync(companyId: string, contexto: ContextoJob) {
+  const pushLog = (msg: string) => contexto.log(msg)
 
   try {
-    await repositorioFocusNfe.atualizarJob(jobId, {
-      status: 'rodando',
-      iniciadoEm: new Date(),
-      progresso: 5,
-      mensagem: 'Iniciando sincronização em lote…',
-    })
-    logFocus('info', 'job_inicio', { id: jobId, tipo: 'sync', companyId })
+    await contexto.progresso(5, 'Iniciando sincronização em lote…')
 
-    const jobAtual = await repositorioFocusNfe.buscarJob(jobId, companyId)
-    const payloadJob = (jobAtual?.payloadJson ?? {}) as {
+    const payloadJob = contexto.payload as {
       completo?: boolean
       liberarExtras?: boolean
     }
@@ -362,6 +360,13 @@ async function executarSync(companyId: string, jobId: string) {
     const cotaMensal = configCota.cota
     let usadosNoMes = cotaHabilitada ? await contarUsoMesFocus(companyId) : 0
     let cotaEsgotadaNoLote = false
+
+    // Reset do cursor dentro do job: garante que "sync completo" só zere a
+    // versão quando o job realmente for executado (e não em um 409 de dedupe).
+    if (payloadJob.completo === true) {
+      await repositorioFocusNfe.resetarUltimaVersao(companyId)
+      logFocus('info', 'sync_reset_versao', { companyId })
+    }
 
     const credenciais = await obterCredenciais(companyId)
     const empresa = await repositorioFocusNfe.buscarEmpresaCnpj(companyId)
@@ -501,11 +506,10 @@ async function executarSync(companyId: string, jobId: string) {
             }
             atualizadas += 1
             processados += 1
-            await repositorioFocusNfe.atualizarJob(jobId, {
-              progresso: Math.min(85, 10 + processados * 7),
-              mensagem: `Lote: ${processados}/${LIMITE_LOTE_SYNC} — NFe +${novas}/~${atualizadas}`,
-              logResumo: linhasLog.join('\n'),
-            })
+            await contexto.progresso(
+              Math.min(85, 10 + processados * 7),
+              `Lote: ${processados}/${LIMITE_LOTE_SYNC} — NFe +${novas}/~${atualizadas}`
+            )
             continue
           }
 
@@ -541,11 +545,10 @@ async function executarSync(companyId: string, jobId: string) {
           }
 
           processados += 1
-          await repositorioFocusNfe.atualizarJob(jobId, {
-            progresso: Math.min(85, 10 + processados * 7),
-            mensagem: `Lote: ${processados}/${LIMITE_LOTE_SYNC} — NFe +${novas}/~${atualizadas}`,
-            logResumo: linhasLog.join('\n'),
-          })
+          await contexto.progresso(
+            Math.min(85, 10 + processados * 7),
+            `Lote: ${processados}/${LIMITE_LOTE_SYNC} — NFe +${novas}/~${atualizadas}`
+          )
         }
 
         // Nunca usar x-max-version para avançar cursor: a Focus pagina ~100 e o lote
@@ -624,11 +627,10 @@ async function executarSync(companyId: string, jobId: string) {
             }
             atualizadasNfse += 1
             processados += 1
-            await repositorioFocusNfe.atualizarJob(jobId, {
-              progresso: Math.min(95, 40 + processados * 5),
-              mensagem: `Lote: ${processados}/${LIMITE_LOTE_SYNC} — NFS-e +${novasNfse}/~${atualizadasNfse}`,
-              logResumo: linhasLog.join('\n'),
-            })
+            await contexto.progresso(
+              Math.min(95, 40 + processados * 5),
+              `Lote: ${processados}/${LIMITE_LOTE_SYNC} — NFS-e +${novasNfse}/~${atualizadasNfse}`
+            )
             continue
           }
 
@@ -665,11 +667,10 @@ async function executarSync(companyId: string, jobId: string) {
           }
 
           processados += 1
-          await repositorioFocusNfe.atualizarJob(jobId, {
-            progresso: Math.min(95, 40 + processados * 5),
-            mensagem: `Lote: ${processados}/${LIMITE_LOTE_SYNC} — NFS-e +${novasNfse}/~${atualizadasNfse}`,
-            logResumo: linhasLog.join('\n'),
-          })
+          await contexto.progresso(
+            Math.min(95, 40 + processados * 5),
+            `Lote: ${processados}/${LIMITE_LOTE_SYNC} — NFS-e +${novasNfse}/~${atualizadasNfse}`
+          )
         }
 
         // Não avançar com x-max-version (mesmo motivo do sync NFe).
@@ -823,11 +824,10 @@ async function executarSync(companyId: string, jobId: string) {
             versaoItem
           )
           processados += 1
-          await repositorioFocusNfe.atualizarJob(jobId, {
-            progresso: Math.min(95, 50 + processados * 4),
-            mensagem: `Lote: ${processados}/${LIMITE_LOTE_SYNC} — CTe +${novasCte}/~${atualizadasCte}`,
-            logResumo: linhasLog.join('\n'),
-          })
+          await contexto.progresso(
+            Math.min(95, 50 + processados * 4),
+            `Lote: ${processados}/${LIMITE_LOTE_SYNC} — CTe +${novasCte}/~${atualizadasCte}`
+          )
         }
 
         // Não avançar com x-max-version (mesmo motivo do sync NFe).
@@ -903,26 +903,12 @@ async function executarSync(companyId: string, jobId: string) {
       mensagemFim = `Sync OK: NFe ${novas} novas / ${atualizadas} atualizadas; NFS-e ${novasNfse} novas / ${atualizadasNfse} atualizadas; CTe ${novasCte} novas / ${atualizadasCte} atualizadas.`
     }
 
-    await repositorioFocusNfe.atualizarJob(jobId, {
-      status: 'ok',
-      progresso: 100,
-      mensagem: mensagemFim,
-      logResumo: linhasLog.join('\n'),
-      finalizadoEm: new Date(),
-    })
-    logFocus('info', 'job_fim', { id: jobId, status: 'ok', companyId })
+    return { mensagem: mensagemFim }
   } catch (erro) {
     const mensagem = erro instanceof ErroDaAplicacao ? erro.message : (erro as Error).message
     pushLog(`erro: ${mensagem}`)
-    await repositorioFocusNfe.atualizarJob(jobId, {
-      status: 'erro',
-      mensagem,
-      logResumo: linhasLog.join('\n'),
-      finalizadoEm: new Date(),
-    })
-    logFocus('error', 'job_fim', { id: jobId, status: 'erro', companyId, mensagem })
-  } finally {
-    liberarTravaFocus(companyId)
+    logFocus('error', 'sync_falhou', { companyId, mensagem })
+    throw erro
   }
 }
 
@@ -1041,64 +1027,61 @@ async function completarXmlDaFocus(
   return { ok: xmlCompleto, rateLimit: false }
 }
 
+/**
+ * Valida credenciais e cota (erro imediato na tela) e coloca a sync na fila.
+ * O dedupe por empresa é do banco: segunda chamada com job ativo devolve 409.
+ */
 async function enfileirarSync(
   companyId: string,
   opcoes?: { completo?: boolean; liberarExtras?: boolean }
 ) {
-  if (!tentarTravarFocus(companyId)) {
-    logFocus('warn', 'job_recusado_409', { companyId, motivo: 'ja_em_andamento' })
-    throw new ErroDaAplicacao('Já existe uma sincronização Focus em andamento para esta empresa.', 409)
+  await obterCredenciais(companyId)
+  const saldo = await saldoCotaFocus(companyId)
+  if (saldo.habilitada && saldo.restantes <= 0 && !opcoes?.liberarExtras) {
+    throw new ErroDaAplicacao(
+      `Cota mensal de ${saldo.cota} notas Focus esgotada (${saldo.usados} usadas em ${saldo.mesReferencia}). Confirme a liberação de extras para continuar.`,
+      402,
+      {
+        codigo: 'COTA_ESGOTADA',
+        detalhes: {
+          usados: saldo.usados,
+          cota: saldo.cota,
+          custoExtraCentavos: saldo.custoExtraCentavos,
+          mesReferencia: saldo.mesReferencia,
+        },
+      }
+    )
   }
 
   try {
-    await obterCredenciais(companyId)
-    const saldo = await saldoCotaFocus(companyId)
-    if (saldo.habilitada && saldo.restantes <= 0 && !opcoes?.liberarExtras) {
-      throw new ErroDaAplicacao(
-        `Cota mensal de ${saldo.cota} notas Focus esgotada (${saldo.usados} usadas em ${saldo.mesReferencia}). Confirme a liberação de extras para continuar.`,
-        402,
-        {
-          codigo: 'COTA_ESGOTADA',
-          detalhes: {
-            usados: saldo.usados,
-            cota: saldo.cota,
-            custoExtraCentavos: saldo.custoExtraCentavos,
-            mesReferencia: saldo.mesReferencia,
-          },
-        }
-      )
+    const job = await servicoJobs.enfileirar({
+      companyId,
+      tipo: TIPO_JOB_FOCUS_SYNC,
+      chaveDedupe: 'sync',
+      payload: {
+        completo: opcoes?.completo === true,
+        liberarExtras: opcoes?.liberarExtras === true,
+      },
+      mensagemConflito: 'Já existe uma sincronização Focus em andamento para esta empresa.',
+    })
+    logFocus('info', 'job_criado', {
+      id: job.jobId,
+      tipo: TIPO_JOB_FOCUS_SYNC,
+      companyId,
+      completo: !!opcoes?.completo,
+      liberarExtras: !!opcoes?.liberarExtras,
+    })
+    return job
+  } catch (erro) {
+    if (erro instanceof ErroDaAplicacao && erro.codigoHttp === 409) {
+      logFocus('warn', 'job_recusado_409', { companyId, motivo: 'ja_em_andamento' })
     }
-  } catch (e) {
-    liberarTravaFocus(companyId)
-    throw e
+    throw erro
   }
+}
 
-  if (opcoes?.completo) {
-    await repositorioFocusNfe.resetarUltimaVersao(companyId)
-    logFocus('info', 'sync_reset_versao', { companyId })
-  }
-
-  const job = await repositorioFocusNfe.criarJob({
-    companyId,
-    tipo: 'sync',
-    payloadJson: {
-      completo: opcoes?.completo === true,
-      liberarExtras: opcoes?.liberarExtras === true,
-    },
-  })
-  logFocus('info', 'job_criado', {
-    id: job.id,
-    tipo: 'sync',
-    companyId,
-    completo: !!opcoes?.completo,
-    liberarExtras: !!opcoes?.liberarExtras,
-  })
-
-  setImmediate(() => {
-    void executarSync(companyId, job.id)
-  })
-
-  return { jobId: job.id, status: job.status }
+async function syncEmAndamento(companyId: string) {
+  return servicoJobs.existeJobAtivo(companyId, TIPO_JOB_FOCUS_SYNC)
 }
 
 async function buscarCota(companyId: string) {
@@ -1106,18 +1089,7 @@ async function buscarCota(companyId: string) {
 }
 
 async function statusJob(companyId: string, jobId: string) {
-  const job = await repositorioFocusNfe.buscarJob(jobId, companyId)
-  if (!job) throw new ErroDaAplicacao('Job não encontrado', 404)
-  return {
-    id: job.id,
-    tipo: job.tipo,
-    status: job.status,
-    progresso: job.progresso,
-    mensagem: job.mensagem,
-    logResumo: job.logResumo,
-    iniciadoEm: job.iniciadoEm,
-    finalizadoEm: job.finalizadoEm,
-  }
+  return servicoJobs.statusJob(companyId, jobId)
 }
 
 async function listarPendentes(
@@ -1853,12 +1825,17 @@ async function previewAnaliseFiscal(companyId: string) {
   return resultado
 }
 
+registrarHandlerJob(TIPO_JOB_FOCUS_SYNC, (contexto) =>
+  executarSync(contexto.companyId, contexto)
+)
+
 export const servicoFocusNfe = {
   buscarConfig,
   salvarConfig,
   salvarRegrasFiscais,
   testarConexao,
   enfileirarSync,
+  syncEmAndamento,
   buscarCota,
   buscarRecursosDocumento,
   statusJob,

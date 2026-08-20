@@ -308,13 +308,13 @@ async function conferirAnexoComIa(requisicao: FastifyRequest, resposta: FastifyR
   const { id, anexoId } = requisicao.params as { id: string; anexoId: string }
   const companyId = requisicao.empresaAtivaId || ''
   try {
-    const relatorio = await servicoDePedidosCompra.conferirAnexoComIa(
+    const job = await servicoDePedidosCompra.enfileirarConferenciaAnexoComIa(
       id,
       anexoId,
       companyId,
       requisicao.idDoUsuario!
     )
-    return resposta.send({ relatorio })
+    return resposta.status(202).send(job)
   } catch (erro) {
     if (erro instanceof ErroDaAplicacao) {
       return resposta.status(erro.codigoHttp).send({ mensagem: erro.message })

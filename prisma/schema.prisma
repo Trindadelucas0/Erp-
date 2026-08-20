@@ -52,7 +52,51 @@ model Company {
   contaPagarCodigoSeq         ContaPagarCodigoSeq?
   contasPagarBaixas           ContaPagarBaixa[]
   contasPagarAnexos           ContaPagarAnexo[]
+  contasReceber               ContaReceber[]
+  contaReceberCodigoSeq       ContaReceberCodigoSeq?
+  contasReceberBaixas         ContaReceberBaixa[]
+  contasReceberAnexos         ContaReceberAnexo[]
+  jobs                        Job[]
   createdAt                   DateTime                     @default(now())
+}
+
+// ─── Jobs — fila durável do worker ───────────────────────────────────────────
+
+/// Fila de operações demoradas executadas fora do request HTTP.
+/// Enfileirada pela API, consumida pelo worker (`src/compartilhado/jobs/`).
+model Job {
+  id            String    @id @default(uuid())
+  companyId     String
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// focus_sync | ia_conferencia
+  tipo          String
+  /// pendente | rodando | ok | erro
+  status        String    @default("pendente")
+  /// Impede dois jobs ativos do mesmo alvo (ex.: `pedido:<id>`). Null = sem dedupe.
+  chaveDedupe   String?
+  payloadJson   Json?
+  /// Retorno do handler exposto no GET /jobs/:id (ex.: relatório da conferência).
+  resultadoJson Json?
+  progresso     Int       @default(0)
+  mensagem      String?
+  logResumo     String?
+  /// Execuções já iniciadas; incrementado no claim.
+  tentativas    Int       @default(0)
+  maxTentativas Int       @default(1)
+  /// Reexecuções após queda da API (não consomem `tentativas`).
+  recuperacoes  Int       @default(0)
+  /// Só pode ser reivindicado a partir deste instante (backoff / agendamento).
+  agendadoPara  DateTime  @default(now())
+  lockedAt      DateTime?
+  lockedPor     String?
+  iniciadoEm    DateTime?
+  finalizadoEm  DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status, agendadoPara])
+  @@index([companyId, tipo, status])
+  @@index([companyId, createdAt])
 }
 
 // ─── ZapSign — Assinatura Digital ────────────────────────────────────────────
@@ -108,6 +152,7 @@ model ConfiguracaoFocusNfe {
   updatedAt                DateTime @updatedAt
 }
 
+/// Legado: histórico de syncs anteriores ao worker. Novos jobs vão para `Job`.
 model FocusNfeJob {
   id          String    @id @default(uuid())
   companyId   String
@@ -401,6 +446,110 @@ model ContaPagarBaixa {
   @@index([companyId, pagoEm])
 }
 
+model ContaReceberCodigoSeq {
+  companyId String  @id
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  proximo   Int     @default(1)
+}
+
+model ContaReceber {
+  id                String   @id @default(uuid())
+  companyId         String
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// Código interno sequencial por empresa (exibição estilo 451.113)
+  codigo            String
+  /// duplicata | credito
+  tipo              String
+  pessoaId          String?
+  pessoa            Pessoa?  @relation(fields: [pessoaId], references: [id], onDelete: SetNull)
+  planoFinanceiroId String?
+  planoFinanceiro   PlanoFinanceiro? @relation(fields: [planoFinanceiroId], references: [id], onDelete: SetNull)
+  /// manual
+  origem            String   @default("manual")
+  numeroDocumento   String?
+  dataEmissao       DateTime?
+  /// aberto | parcial | pago | cancelado
+  status            String   @default("aberto")
+  valorTotal        Decimal  @db.Decimal(18, 2)
+  valorDesconto     Decimal  @default(0) @db.Decimal(18, 2)
+  valorJuros        Decimal  @default(0) @db.Decimal(18, 2)
+  valorMulta        Decimal  @default(0) @db.Decimal(18, 2)
+  valorComissao     Decimal  @default(0) @db.Decimal(18, 2)
+  observacao        String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  parcelas ContaReceberParcela[]
+  anexos   ContaReceberAnexo[]
+
+  @@unique([companyId, codigo])
+  @@index([companyId, status])
+  @@index([companyId, tipo])
+  @@index([pessoaId])
+  @@index([planoFinanceiroId])
+}
+
+/// Anexo de documento do título (PDF/imagem), máx. 2 MB.
+model ContaReceberAnexo {
+  id             String        @id @default(uuid())
+  companyId      String
+  company        Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contaReceberId String
+  contaReceber   ContaReceber  @relation(fields: [contaReceberId], references: [id], onDelete: Cascade)
+  nomeArquivo    String
+  mimeType       String
+  caminhoArquivo String
+  tamanhoBytes   Int
+  usuarioId      String?
+  usuario        User?         @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  createdAt      DateTime      @default(now())
+
+  @@index([contaReceberId])
+  @@index([companyId])
+}
+
+model ContaReceberParcela {
+  id              String        @id @default(uuid())
+  contaReceberId  String
+  contaReceber    ContaReceber  @relation(fields: [contaReceberId], references: [id], onDelete: Cascade)
+  numeroParcela   Int
+  numeroDocumento String?
+  vencimento      DateTime
+  valor           Decimal       @db.Decimal(18, 2)
+  valorPago       Decimal       @default(0) @db.Decimal(18, 2)
+  /// aberta | parcial | paga | cancelada
+  status          String        @default("aberta")
+  pagoEm          DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  baixas          ContaReceberBaixa[]
+
+  @@unique([contaReceberId, numeroParcela])
+  @@index([vencimento])
+  @@index([status])
+}
+
+/// Evento de recebimento (baixa total ou parcial) de uma parcela.
+model ContaReceberBaixa {
+  id                   String              @id @default(uuid())
+  contaReceberParcelaId String
+  parcela              ContaReceberParcela @relation(fields: [contaReceberParcelaId], references: [id], onDelete: Cascade)
+  companyId            String
+  company              Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  pagoEm               DateTime
+  valorPrincipal       Decimal             @db.Decimal(18, 2)
+  valorJuros           Decimal             @default(0) @db.Decimal(18, 2)
+  valorMulta           Decimal             @default(0) @db.Decimal(18, 2)
+  valorDesconto        Decimal             @default(0) @db.Decimal(18, 2)
+  usuarioId            String?
+  usuario              User?               @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  observacao           String?
+  createdAt            DateTime            @default(now())
+
+  @@index([contaReceberParcelaId])
+  @@index([companyId, pagoEm])
+}
+
 model NfeRecebidaItem {
   id                 String      @id @default(uuid())
   nfeRecebidaId      String
@@ -487,6 +636,7 @@ model Pessoa {
   nfesRecebidasComoFornecedor NfeRecebida[]
   despesasEntradaDocumento    DespesaEntradaDocumento[]
   contasPagar                 ContaPagar[]
+  contasReceber               ContaReceber[]
   estoqueMovimentosComoParceiro EstoqueMovimento[]
 
   createdAt DateTime @default(now())
@@ -696,6 +846,7 @@ model PlanoFinanceiro {
   paresPlanoCfop          FornecedorParPlanoCfopPadrao[]
   despesasEntrada         DespesaEntradaDocumento[]
   contasPagar             ContaPagar[]
+  contasReceber           ContaReceber[]
   cfopsComPlanoPadrao     Cfop[]                         @relation("CfopPlanoFinanceiroPadrao")
   createdAt               DateTime                       @default(now())
 
@@ -769,6 +920,8 @@ model User {
   contagensEntrada  ContagemEntrada[]
   contasPagarBaixas ContaPagarBaixa[]
   contasPagarAnexos ContaPagarAnexo[]
+  contasReceberBaixas ContaReceberBaixa[]
+  contasReceberAnexos ContaReceberAnexo[]
   nfesRecebidasAnexos NfeRecebidaAnexo[]
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt

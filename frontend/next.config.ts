@@ -37,10 +37,9 @@ if (
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: diretorioFrontend,
-  // Default do proxy interno do Next é 30s (hardcoded) — insuficiente para a
-  // conferência por IA, que pode levar bem mais que isso com retry + fallback
-  // de modelo (ver src/compartilhado/ia/provedor-resiliente.ts). Pior caso hoje:
-  // 2x timeout de 60s no modelo principal + 1x timeout de 60s no fallback = ~182s.
+  // Default do proxy interno do Next é 30s (hardcoded). As operações longas
+  // (sync Focus, conferência por IA) já respondem 202 e são acompanhadas por
+  // poll em /jobs/:id, mas a margem cobre uploads grandes e relatórios em PDF.
   experimental: {
     proxyTimeout: 200_000,
   },

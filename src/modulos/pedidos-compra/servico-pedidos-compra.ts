@@ -11,7 +11,12 @@ import { compararPedidoComPdf } from './comparador-pdf-pedido.js'
 import { baixarReservaPedido } from './servico-movimentacao-credito.js'
 import { servicoDoPortalFornecedor } from '../portal-fornecedor/servico-portal-fornecedor.js'
 import { caminhoAbsolutoAnexo, salvarBufferAnexoFornecedor } from '../portal-fornecedor/armazenamento-anexo-fornecedor.js'
-import { servicoDeConferenciaArquivo } from './conferencia-arquivo/servico-conferencia-arquivo.js'
+import {
+  servicoDeConferenciaArquivo,
+  validarAnexoConferivel,
+} from './conferencia-arquivo/servico-conferencia-arquivo.js'
+import { registrarHandlerJob } from '../../compartilhado/jobs/registro-handlers-job.js'
+import { servicoJobs } from '../../compartilhado/jobs/servico-jobs.js'
 import { gerarPdfRelatorioConferencia } from './conferencia-arquivo/gerador-pdf-relatorio-conferencia.js'
 import { nomeArquivoCopiaConferenciaIa } from './conferencia-arquivo/nome-arquivo-copia-conferencia-ia.js'
 import {
@@ -31,6 +36,9 @@ import type {
 } from './esquema-pedidos-compra.js'
 import type { RelatorioConferenciaArquivo } from './conferencia-arquivo/tipos-conferencia.js'
 import type { DadosUploadPortalFornecedor } from '../portal-fornecedor/esquema-portal-fornecedor.js'
+
+/** Tipo do job de conferência por IA na fila (`Job.tipo`). */
+const TIPO_JOB_IA_CONFERENCIA = 'ia_conferencia'
 
 async function validarFornecedor(fornecedorPessoaId: string, companyId: string) {
   const pessoa = await clientePrisma.pessoa.findFirst({
@@ -650,7 +658,29 @@ async function baixarRelatorioConferenciaAnexo(id: string, anexoId: string, comp
   return { buffer, nomeArquivo: `relatorio-conferencia-pedido-${pedido.numero}.pdf` }
 }
 
-async function conferirAnexoComIa(id: string, anexoId: string, companyId: string, idDoAutor: string) {
+/**
+ * Valida o anexo (erro imediato na tela) e coloca a conferência na fila.
+ * Extração de PDF + chamada à IA levam minutos: rodam no worker, não no request.
+ */
+async function enfileirarConferenciaAnexoComIa(
+  id: string,
+  anexoId: string,
+  companyId: string,
+  idDoAutor: string
+) {
+  const { anexo } = await validarPedidoEAnexoParaConferencia(id, anexoId, companyId)
+  validarAnexoConferivel(anexo.mimeType)
+
+  return servicoJobs.enfileirar({
+    companyId,
+    tipo: TIPO_JOB_IA_CONFERENCIA,
+    chaveDedupe: `pedido:${id}`,
+    payload: { pedidoCompraId: id, anexoId, idDoAutor },
+    mensagemConflito: 'Já existe uma conferência por IA em andamento para este pedido.',
+  })
+}
+
+async function validarPedidoEAnexoParaConferencia(id: string, anexoId: string, companyId: string) {
   const pedido = await repositorioDePedidosCompra.buscarPorId(id)
   if (!pedido || pedido.companyId !== companyId) {
     throw new ErroDaAplicacao('Pedido de compra não encontrado', 404)
@@ -663,6 +693,12 @@ async function conferirAnexoComIa(id: string, anexoId: string, companyId: string
   if (anexo.tipoAnexo === 'relatorio_conferencia_ia') {
     throw new ErroDaAplicacao('Relatórios de conferência não podem ser conferidos com a IA.', 422)
   }
+
+  return { pedido, anexo }
+}
+
+async function conferirAnexoComIa(id: string, anexoId: string, companyId: string, idDoAutor: string) {
+  const { pedido, anexo } = await validarPedidoEAnexoParaConferencia(id, anexoId, companyId)
 
   const relatorio = await servicoDeConferenciaArquivo.conferirAnexoComIa(id, anexoId, companyId)
   const conferidoEm = new Date()
@@ -710,6 +746,30 @@ async function baixarCreditoNaEntrada(pedidoCompraId: string, companyId: string)
   })
 }
 
+registrarHandlerJob(TIPO_JOB_IA_CONFERENCIA, async (contexto) => {
+  const { pedidoCompraId, anexoId, idDoAutor } = contexto.payload as {
+    pedidoCompraId: string
+    anexoId: string
+    idDoAutor: string
+  }
+
+  await contexto.progresso(10, 'Lendo o documento do fornecedor…')
+  const relatorio = await conferirAnexoComIa(
+    pedidoCompraId,
+    anexoId,
+    contexto.companyId,
+    idDoAutor
+  )
+
+  return {
+    mensagem:
+      relatorio.statusGeral === 'falha_extracao'
+        ? (relatorio.avisos[0] ?? 'Não foi possível extrair os dados do documento.')
+        : 'Conferência concluída.',
+    resultado: relatorio,
+  }
+})
+
 export const servicoDePedidosCompra = {
   listarPedidosCompra,
   buscarPedidoCompra,
@@ -732,5 +792,5 @@ export const servicoDePedidosCompra = {
   solicitarAjusteAnexoFornecedor,
   baixarAnexoFornecedor,
   baixarRelatorioConferenciaAnexo,
-  conferirAnexoComIa,
+  enfileirarConferenciaAnexoComIa,
 }

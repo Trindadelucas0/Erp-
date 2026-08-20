@@ -81,6 +81,12 @@ export const PAGINAS_VINCULAVEIS: readonly PaginaDoSistema[] = [
     modulo: 'financeiro',
   },
   {
+    chave: 'contas-a-receber',
+    caminho: '/contas-a-receber',
+    rotulo: 'Contas a Receber',
+    modulo: 'financeiro',
+  },
+  {
     chave: 'configuracoes',
     caminho: '/configuracoes',
     rotulo: 'Configurações',

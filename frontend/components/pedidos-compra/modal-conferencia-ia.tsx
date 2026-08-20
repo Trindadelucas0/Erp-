@@ -45,6 +45,16 @@ const ROTULO_STATUS_DECISAO: Record<
   ajuste_solicitado: { texto: 'Ajuste solicitado', variante: 'reprovado' },
 }
 
+const INTERVALO_POLL_JOB_MS = 1500
+/** Pior caso do retry + fallback de modelo da IA (~182s) com folga. */
+const ESPERA_MAXIMA_JOB_MS = 300_000
+
+type JobConferencia = {
+  status: string
+  mensagem: string | null
+  resultado: RelatorioConferencia | null
+}
+
 const ETAPAS_CONFERENCIA_IA = [
   { limite: 25, texto: 'Lendo o documento...' },
   { limite: 55, texto: 'Enviando para a IA...' },
@@ -109,6 +119,27 @@ export function ModalConferenciaIa({
     aoFechar()
   }
 
+  /** Acompanha o job até `ok`/`erro`; a IA roda no worker, não no request. */
+  async function aguardarJobConferencia(jobId: string): Promise<RelatorioConferencia> {
+    const limite = Date.now() + ESPERA_MAXIMA_JOB_MS
+    while (Date.now() < limite) {
+      await new Promise((resolve) => setTimeout(resolve, INTERVALO_POLL_JOB_MS))
+      const { data } = await clienteHttp.get<{ job: JobConferencia }>(`/jobs/${jobId}`)
+      if (data.job.status === 'erro') {
+        throw new Error(data.job.mensagem ?? 'Erro ao conferir o documento com a IA.')
+      }
+      if (data.job.status === 'ok') {
+        if (!data.job.resultado) {
+          throw new Error('Conferência concluída sem relatório.')
+        }
+        return data.job.resultado
+      }
+    }
+    throw new Error(
+      'A conferência ainda está em processamento. Reabra o anexo em instantes para ver o relatório.'
+    )
+  }
+
   async function conferir() {
     if (carregando) return
     setCarregando(true)
@@ -116,14 +147,12 @@ export function ModalConferenciaIa({
     setErro('')
     setRelatorio(null)
     try {
-      const { data } = await clienteHttp.post(
-        `/pedidos-compra/${pedidoId}/anexos-fornecedor/${anexoId}/conferir-ia`,
-        undefined,
-        // Pior caso do retry+fallback da IA (2x timeout de 60s + 1x fallback): ~182s.
-        { timeout: 210000 }
+      const { data } = await clienteHttp.post<{ jobId: string }>(
+        `/pedidos-compra/${pedidoId}/anexos-fornecedor/${anexoId}/conferir-ia`
       )
+      const relatorioDoJob = await aguardarJobConferencia(data.jobId)
       setProgresso(100)
-      setRelatorio(data.relatorio)
+      setRelatorio(relatorioDoJob)
       aoConferirConcluida()
     } catch (e: unknown) {
       setProgresso(100)
