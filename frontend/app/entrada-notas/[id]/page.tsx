@@ -323,6 +323,16 @@ type DetalheNota = {
   estoqueLancado?: boolean
   /** Resumo persistente dos movimentos (reabre no detalhe consolidado). */
   estoqueResumo?: EstoqueResumoLancamento | null
+  /** Itens retidos por Bloquear estoque (§7.17) — situação atual no ledger. */
+  itensBloqueados?: {
+    itens: Array<{
+      produtoId: string
+      nomeVenda: string
+      quantidadeBloqueada: number
+      status: 'bloqueado' | 'desbloqueado'
+    }>
+    totais: { itens: number; aindaBloqueados: number; desbloqueados: number }
+  } | null
   /** Títulos gerados em Contas a Pagar (mercadoria + frete). */
   contasPagar?: Array<{
     id: string
@@ -2823,22 +2833,30 @@ function ConteudoDetalheEntrada() {
               )}
               {nota.statusEntrada === 'entrada_consolidada' && nota.divergenciaDesfecho === 'bloqueio' && (
                 <div className="mt-3 space-y-3 rounded-md border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
-                  {nota.divergenciaGestao?.desbloqueioEm ? (
-                    <p>
-                      <strong>Estoque foi bloqueado</strong> por contagem divergente
-                      {nota.divergenciaResolvidaEm
-                        ? ` em ${new Date(nota.divergenciaResolvidaEm).toLocaleString('pt-BR')}`
-                        : ''}
-                      . Já desbloqueado em{' '}
-                      {new Date(nota.divergenciaGestao.desbloqueioEm).toLocaleString('pt-BR')}.
-                    </p>
-                  ) : (
+                  {(nota.itensBloqueados
+                    ? nota.itensBloqueados.totais.aindaBloqueados > 0
+                    : !nota.divergenciaGestao?.desbloqueioEm) ? (
                     <p>
                       <strong>Estoque bloqueado</strong> — as peças desta NF não circulam no
                       disponível até o desbloqueio.
                       {nota.divergenciaResolvidaEm
                         ? ` Bloqueada em ${new Date(nota.divergenciaResolvidaEm).toLocaleString('pt-BR')}.`
                         : ''}
+                      {nota.divergenciaGestao?.desbloqueioEm
+                        ? ' Há quantidade ainda retida — complete o desbloqueio abaixo.'
+                        : ''}
+                    </p>
+                  ) : (
+                    <p>
+                      <strong>Estoque foi bloqueado</strong> por contagem divergente
+                      {nota.divergenciaResolvidaEm
+                        ? ` em ${new Date(nota.divergenciaResolvidaEm).toLocaleString('pt-BR')}`
+                        : ''}
+                      . Já desbloqueado
+                      {nota.divergenciaGestao?.desbloqueioEm
+                        ? ` em ${new Date(nota.divergenciaGestao.desbloqueioEm).toLocaleString('pt-BR')}`
+                        : ''}
+                      .
                     </p>
                   )}
                   <div className="rounded-md border border-amber-300/80 bg-background/70 p-2.5 dark:border-amber-800/50">
@@ -2862,16 +2880,9 @@ function ConteudoDetalheEntrada() {
                       Baixar anexo da negociação
                     </Button>
                   )}
-                  {nota.divergenciaGestao?.desbloqueioEm ? (
-                    <div className="rounded-md border border-border/60 bg-muted/30 p-2.5">
-                      <p className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-                        Motivo do desbloqueio
-                      </p>
-                      <p className="mt-1 text-sm whitespace-pre-wrap text-foreground">
-                        {nota.divergenciaGestao.desbloqueioExplicacao?.trim() || '—'}
-                      </p>
-                    </div>
-                  ) : (
+                  {(nota.itensBloqueados
+                    ? nota.itensBloqueados.totais.aindaBloqueados > 0
+                    : !nota.divergenciaGestao?.desbloqueioEm) ? (
                     <div className="space-y-2 border-t border-amber-200 pt-2 dark:border-amber-800/50">
                       <Label htmlFor="explicacao-desbloqueio">Explicação do desbloqueio</Label>
                       <textarea
@@ -2921,7 +2932,7 @@ function ConteudoDetalheEntrada() {
                             !anexoDivergenciaArquivo
                           }
                           onClick={() =>
-                            postAcao('/desbloquear-estoque', {
+                            void postAcao('/desbloquear-estoque', {
                               senha: senhaDivergencia,
                               explicacao: explicacaoDesbloqueio,
                               anexo: anexoDivergenciaArquivo,
@@ -2932,7 +2943,16 @@ function ConteudoDetalheEntrada() {
                         </Button>
                       </div>
                     </div>
-                  )}
+                  ) : nota.divergenciaGestao?.desbloqueioEm ? (
+                    <div className="rounded-md border border-border/60 bg-muted/30 p-2.5">
+                      <p className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                        Motivo do desbloqueio
+                      </p>
+                      <p className="mt-1 text-sm whitespace-pre-wrap text-foreground">
+                        {nota.divergenciaGestao.desbloqueioExplicacao?.trim() || '—'}
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
               )}
               {nota.statusEntrada === 'entrada_contagem_divergente' && (

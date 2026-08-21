@@ -272,6 +272,93 @@ function motivoDeObservacaoBloqueio(observacao: string | null | undefined): stri
   return obs
 }
 
+/** Extrai o itemId da chave `nfe:{notaId}:item:{itemId}:bloqueio`. */
+function extrairItemIdChaveBloqueio(chaveIdempotencia: string): string | null {
+  const m = /^nfe:[^:]+:item:([^:]+):bloqueio$/.exec(chaveIdempotencia.trim())
+  return m?.[1] ?? null
+}
+
+/**
+ * Desfaz os movimentos de bloqueio reais da nota (quantidade espelhada).
+ * Se já houver desbloqueio parcial (chave idempotente), lança só o residual.
+ */
+async function desbloquearMovimentosDivergenciaNota(entrada: {
+  companyId: string
+  notaId: string
+  usuarioId: string
+  observacao: string
+}): Promise<{ movimentos: number }> {
+  const movimentos = await repositorioDeEstoque.listarMovimentosPorOrigem(
+    entrada.companyId,
+    'nfe_divergencia',
+    entrada.notaId
+  )
+  const bloqueios = movimentos.filter(
+    (m) => m.dimensao === 'bloqueio' && m.tipoMovimento === 'bloqueio'
+  )
+  if (bloqueios.length === 0) {
+    throw new ErroDaAplicacao(
+      'Não há estoque bloqueado nesta nota para desbloquear.',
+      409
+    )
+  }
+
+  const desbloqueiosPorItem = new Map<string, number>()
+  for (const mov of movimentos) {
+    if (mov.dimensao !== 'bloqueio' || mov.tipoMovimento !== 'desbloqueio') continue
+    const itemId =
+      extrairItemIdChaveDesbloqueio(mov.chaveIdempotencia) ?? mov.produtoId
+    const qtd = Math.abs(arredondarQtd(decimalParaNumero(mov.quantidade)))
+    desbloqueiosPorItem.set(
+      itemId,
+      arredondarQtd((desbloqueiosPorItem.get(itemId) ?? 0) + qtd)
+    )
+  }
+
+  let gravados = 0
+  for (const mov of bloqueios) {
+    const qtdBloqueio = Math.abs(arredondarQtd(decimalParaNumero(mov.quantidade)))
+    if (qtdBloqueio <= 0) continue
+    const itemId = extrairItemIdChaveBloqueio(mov.chaveIdempotencia) ?? mov.produtoId
+    const jaLiberado = desbloqueiosPorItem.get(itemId) ?? 0
+    const residual = arredondarQtd(qtdBloqueio - jaLiberado)
+    if (residual <= 0) continue
+
+    const chaveIdempotencia =
+      jaLiberado > 0
+        ? `nfe:${entrada.notaId}:item:${itemId}:desbloqueio:resto`
+        : `nfe:${entrada.notaId}:item:${itemId}:desbloqueio`
+
+    await registrarMovimentoEstoque({
+      companyId: entrada.companyId,
+      produtoId: mov.produtoId,
+      dimensao: 'bloqueio',
+      tipoMovimento: 'desbloqueio',
+      quantidade: -residual,
+      origem: 'nfe_divergencia',
+      origemId: entrada.notaId,
+      chaveIdempotencia,
+      observacao: entrada.observacao,
+      usuarioId: entrada.usuarioId,
+    })
+    desbloqueiosPorItem.set(itemId, arredondarQtd(jaLiberado + residual))
+    gravados += 1
+  }
+
+  if (gravados === 0) {
+    throw new ErroDaAplicacao('Estoque já foi desbloqueado.', 409)
+  }
+  return { movimentos: gravados }
+}
+
+/** Extrai itemId de `nfe:{notaId}:item:{itemId}:desbloqueio` ou `...:desbloqueio:resto`. */
+function extrairItemIdChaveDesbloqueio(chaveIdempotencia: string): string | null {
+  const m = /^nfe:[^:]+:item:([^:]+):desbloqueio(?::resto)?$/.exec(
+    chaveIdempotencia.trim()
+  )
+  return m?.[1] ?? null
+}
+
 /** Bloqueios ainda ativos do produto (qtdBloqueada > 0) — para aviso no Kardex. */
 async function montarBloqueioAtivoProduto(
   companyId: string,
@@ -314,15 +401,15 @@ async function montarBloqueioAtivoProduto(
       }
       if (mov.observacao?.trim()) acc.observacao = mov.observacao.trim()
     } else if (mov.tipoMovimento === 'desbloqueio') {
+      acc.quantidade = arredondarQtd(acc.quantidade - qtdAbs)
       if (!acc.desbloqueadoEm || mov.createdAt > acc.desbloqueadoEm) {
         acc.desbloqueadoEm = mov.createdAt
       }
     }
   }
 
-  const ativos = [...mapa.values()].filter(
-    (a) => a.quantidade > 0 && !a.desbloqueadoEm
-  )
+  // Quantidade líquida > 0 = ainda retido (desbloqueio parcial ou falho não zera).
+  const ativos = [...mapa.values()].filter((a) => a.quantidade > 0)
   if (ativos.length === 0) {
     return {
       qtdBloqueada: arredondarQtd(qtdBloqueada),
@@ -901,7 +988,8 @@ export type ItemBloqueadoDivergencia = {
 /** Itens retidos por Bloquear estoque após divergência de contagem (§7.17). */
 async function obterItensBloqueadosDivergencia(
   companyId: string,
-  notaId: string
+  notaId: string,
+  opts?: { desbloqueioEmNota?: string | null }
 ): Promise<{
   itens: ItemBloqueadoDivergencia[]
   totais: { itens: number; aindaBloqueados: number; desbloqueados: number }
@@ -917,6 +1005,7 @@ async function obterItensBloqueadosDivergencia(
     nomeVenda: string
     unidade: string | null
     quantidadeBloqueada: number
+    quantidadeLiquida: number
     bloqueadoEm: Date | null
     desbloqueadoEm: Date | null
   }
@@ -933,6 +1022,7 @@ async function obterItensBloqueadosDivergencia(
         nomeVenda: mov.produto?.nomeVenda?.trim() || mov.produtoId,
         unidade: mov.produto?.unidade?.trim() || null,
         quantidadeBloqueada: 0,
+        quantidadeLiquida: 0,
         bloqueadoEm: null,
         desbloqueadoEm: null,
       }
@@ -940,28 +1030,38 @@ async function obterItensBloqueadosDivergencia(
     }
     if (mov.tipoMovimento === 'bloqueio') {
       acc.quantidadeBloqueada = arredondarQtd(acc.quantidadeBloqueada + qtdAbs)
+      acc.quantidadeLiquida = arredondarQtd(acc.quantidadeLiquida + qtdAbs)
       if (!acc.bloqueadoEm || mov.createdAt < acc.bloqueadoEm) {
         acc.bloqueadoEm = mov.createdAt
       }
     } else if (mov.tipoMovimento === 'desbloqueio') {
+      acc.quantidadeLiquida = arredondarQtd(acc.quantidadeLiquida - qtdAbs)
       if (!acc.desbloqueadoEm || mov.createdAt > acc.desbloqueadoEm) {
         acc.desbloqueadoEm = mov.createdAt
       }
     }
   }
 
+  const desbloqueioNotaIso = opts?.desbloqueioEmNota?.trim() || null
+
   const itens: ItemBloqueadoDivergencia[] = [...mapa.values()]
     .filter((a) => a.quantidadeBloqueada > 0)
-    .map((a) => ({
-      produtoId: a.produtoId,
-      sku: a.sku,
-      nomeVenda: a.nomeVenda,
-      unidade: a.unidade,
-      quantidadeBloqueada: a.quantidadeBloqueada,
-      status: a.desbloqueadoEm ? ('desbloqueado' as const) : ('bloqueado' as const),
-      bloqueadoEm: a.bloqueadoEm?.toISOString() ?? null,
-      desbloqueadoEm: a.desbloqueadoEm?.toISOString() ?? null,
-    }))
+    .map((a) => {
+      const desbloqueadoEm =
+        a.desbloqueadoEm?.toISOString() ?? desbloqueioNotaIso
+      const liberado =
+        Boolean(desbloqueadoEm) && a.quantidadeLiquida <= 0
+      return {
+        produtoId: a.produtoId,
+        sku: a.sku,
+        nomeVenda: a.nomeVenda,
+        unidade: a.unidade,
+        quantidadeBloqueada: a.quantidadeBloqueada,
+        status: liberado ? ('desbloqueado' as const) : ('bloqueado' as const),
+        bloqueadoEm: a.bloqueadoEm?.toISOString() ?? null,
+        desbloqueadoEm: liberado ? desbloqueadoEm : a.desbloqueadoEm?.toISOString() ?? null,
+      }
+    })
     .sort((a, b) => a.nomeVenda.localeCompare(b.nomeVenda, 'pt-BR'))
 
   return {
@@ -984,6 +1084,7 @@ export const servicoDeEstoque = {
   existeMovimentoOrigemNfe,
   obterResumoEntradaNotaFiscal,
   obterItensBloqueadosDivergencia,
+  desbloquearMovimentosDivergenciaNota,
 }
 
 export const _testesEstoque = {

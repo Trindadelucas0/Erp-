@@ -1938,9 +1938,12 @@ async function obterDetalhe(
     ? await servicoDeEstoque.obterResumoEntradaNotaFiscal(companyId, notaId)
     : null
   const estoqueLancado = Boolean(estoqueResumo?.movimentou)
+  const gestaoDivergencia = (nota.analiseJson as AnaliseJson | null)?.divergenciaGestao
   const itensBloqueadosResumo =
     nota.statusEntrada === 'entrada_consolidada'
-      ? await servicoDeEstoque.obterItensBloqueadosDivergencia(companyId, notaId)
+      ? await servicoDeEstoque.obterItensBloqueadosDivergencia(companyId, notaId, {
+          desbloqueioEmNota: gestaoDivergencia?.desbloqueioEm ?? null,
+        })
       : { itens: [], totais: { itens: 0, aindaBloqueados: 0, desbloqueados: 0 } }
   const itensBloqueados =
     itensBloqueadosResumo.itens.length > 0 ? itensBloqueadosResumo : null
@@ -3296,7 +3299,15 @@ async function desbloquearEstoqueDivergencia(
   }
   const gestao = (nota.analiseJson as AnaliseJson | null)?.divergenciaGestao
   if (gestao?.desbloqueioEm) {
-    throw new ErroDaAplicacao('Estoque já foi desbloqueado.', 409)
+    const resumoAtual = await servicoDeEstoque.obterItensBloqueadosDivergencia(
+      companyId,
+      notaId,
+      { desbloqueioEmNota: gestao.desbloqueioEm }
+    )
+    if (resumoAtual.totais.aindaBloqueados === 0) {
+      throw new ErroDaAplicacao('Estoque já foi desbloqueado.', 409)
+    }
+    // Residual de qtd bloqueada (desbloqueio incompleto): permite reprocessar — chaves idempotentes.
   }
   const explicacao = dados.explicacao?.trim() ?? ''
   if (!explicacao) {
@@ -3327,22 +3338,12 @@ async function desbloquearEstoqueDivergencia(
     usuarioId,
   })
 
-  const linhasEntrada = montarLinhasEstoqueEntradaNf(nota)
-  for (const linha of linhasEntrada) {
-    if (nota.itens.find((i) => i.id === linha.itemId)?.produto?.controlaEstoque !== true) continue
-    await servicoDeEstoque.registrarMovimentoEstoque({
-      companyId,
-      produtoId: linha.produtoId,
-      dimensao: 'bloqueio',
-      tipoMovimento: 'desbloqueio',
-      quantidade: -linha.quantidadeEstoque,
-      origem: 'nfe_divergencia',
-      origemId: notaId,
-      chaveIdempotencia: `nfe:${notaId}:item:${linha.itemId}:desbloqueio`,
-      observacao: `Desbloqueio após divergência — ${explicacao}`,
-      usuarioId,
-    })
-  }
+  await servicoDeEstoque.desbloquearMovimentosDivergenciaNota({
+    companyId,
+    notaId,
+    usuarioId,
+    observacao: `Desbloqueio após divergência — ${explicacao}`,
+  })
 
   const analiseAtual = (nota.analiseJson as AnaliseJson | null) ?? {
     versao: 1,

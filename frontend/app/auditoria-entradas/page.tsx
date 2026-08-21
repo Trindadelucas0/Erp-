@@ -22,6 +22,7 @@ type NotaAuditoria = {
   dataEmissao: string | null
   statusEntrada: string
   divergenciaDesfecho?: string | null
+  divergenciaDesbloqueioEm?: string | null
 }
 
 function formatarData(iso: string | null): string {
@@ -33,9 +34,12 @@ function formatarData(iso: string | null): string {
 
 function sinalAuditoria(nota: NotaAuditoria): {
   rotulo: string
-  variante: 'sucesso' | 'reprovado'
+  variante: 'sucesso' | 'reprovado' | 'info'
 } {
   if (nota.divergenciaDesfecho === 'bloqueio') {
+    if (nota.divergenciaDesbloqueioEm) {
+      return { rotulo: 'Desbloqueado', variante: 'info' }
+    }
     return { rotulo: 'Bloqueio', variante: 'reprovado' }
   }
   return { rotulo: 'OK', variante: 'sucesso' }

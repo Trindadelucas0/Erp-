@@ -34,6 +34,11 @@ vi.mock('../estoque/servico-estoque.js', () => ({
     obterResumoEntradaNotaFiscal: vi.fn(),
     aplicarEntradaNotaFiscal: vi.fn(),
     registrarMovimentoEstoque: vi.fn(),
+    obterItensBloqueadosDivergencia: vi.fn().mockResolvedValue({
+      itens: [],
+      totais: { itens: 0, aindaBloqueados: 0, desbloqueados: 0 },
+    }),
+    desbloquearMovimentosDivergenciaNota: vi.fn().mockResolvedValue({ movimentos: 1 }),
   },
 }))
 
@@ -412,11 +417,12 @@ describe('baixarContagem / voltarParaContagem / desbloquear', () => {
 
     await servicoEntradaNotas.desbloquearEstoqueDivergencia('c1', 'nota-1', 'user-1', anexoDados)
 
-    expect(servicoDeEstoque.registrarMovimentoEstoque).toHaveBeenCalledWith(
+    expect(servicoDeEstoque.desbloquearMovimentosDivergenciaNota).toHaveBeenCalledWith(
       expect.objectContaining({
-        dimensao: 'bloqueio',
-        tipoMovimento: 'desbloqueio',
-        quantidade: -10,
+        companyId: 'c1',
+        notaId: 'nota-1',
+        usuarioId: 'user-1',
+        observacao: expect.stringContaining('Desbloqueio após divergência'),
       })
     )
     expect(repositorioEntradaNotas.criarAnexoEntradaNota).toHaveBeenCalledWith(

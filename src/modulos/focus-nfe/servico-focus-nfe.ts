@@ -1180,6 +1180,16 @@ async function listarPendentes(
       contagemBaixada: mapaBaixada.get(n.id) === true,
       contagemEmAndamento: mapaEmAndamento.get(n.id) === true,
       divergenciaDesfecho: n.divergenciaDesfecho ?? null,
+      /** ISO do desbloqueio (§7.17) — null = ainda retido no estoque. */
+      divergenciaDesbloqueioEm: (() => {
+        if (n.divergenciaDesfecho !== 'bloqueio') return null
+        const gestao = (
+          n.analiseJson as {
+            divergenciaGestao?: { desbloqueioEm?: string }
+          } | null
+        )?.divergenciaGestao
+        return gestao?.desbloqueioEm?.trim() || null
+      })(),
     }
   })
 

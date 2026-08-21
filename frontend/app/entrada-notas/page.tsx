@@ -62,6 +62,8 @@ type NotaPendente = {
   contagemEmAndamento?: boolean
   /** Desfecho de divergência de contagem (§7.17) — ex.: `bloqueio`. */
   divergenciaDesfecho?: string | null
+  /** Preenchido após desbloquear estoque — badge deixa de dizer "Estoque bloqueado". */
+  divergenciaDesbloqueioEm?: string | null
 }
 
 type JobStatus = {
@@ -968,7 +970,7 @@ function ConteudoEntradaNotas() {
             : painel === 'aguardando_chegada'
               ? 'Nota de revenda lançada — aguardando chegada física da mercadoria. Libere para a logística iniciar a contagem.'
               : painel === 'consolidada'
-                ? 'Notas com entrada consolidada. NFe com estoque lançado (físico + fiscal). Badge Estoque bloqueado = consolidada por divergência (§7.17). NFS-e/CTe documentais não movimentam estoque.'
+                ? 'Notas com entrada consolidada. NFe com estoque lançado (físico + fiscal). Badge Estoque bloqueado = divergência ainda retida; Desbloqueado = já liberou o disponível (§7.17). NFS-e/CTe documentais não movimentam estoque.'
                 : painel === 'contagem'
                   ? 'Liberadas para contagem — logística confere em Contagens; consolidar só após contagem OK (NFe produto)'
                   : 'Lista do banco local — use Filtrar para atualizar'
@@ -1250,7 +1252,14 @@ function ConteudoEntradaNotas() {
                         {n.auditoriaChegadaPendente ? (
                           <BadgeStatus variante="reprovado">Conferir</BadgeStatus>
                         ) : null}
-                        {painel === 'consolidada' && n.divergenciaDesfecho === 'bloqueio' ? (
+                        {painel === 'consolidada' &&
+                        n.divergenciaDesfecho === 'bloqueio' &&
+                        n.divergenciaDesbloqueioEm ? (
+                          <BadgeStatus variante="sucesso">Desbloqueado</BadgeStatus>
+                        ) : null}
+                        {painel === 'consolidada' &&
+                        n.divergenciaDesfecho === 'bloqueio' &&
+                        !n.divergenciaDesbloqueioEm ? (
                           <BadgeStatus variante="pendente">Estoque bloqueado</BadgeStatus>
                         ) : null}
                       </div>
