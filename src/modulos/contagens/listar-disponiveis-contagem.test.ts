@@ -32,25 +32,61 @@ describe('listarDisponiveis — sessão ativa oculta nota mas expõe retomada', 
       { nfeRecebidaId: 'nota-1' },
     ] as never)
     vi.mocked(clientePrisma.nfeRecebida.findMany).mockResolvedValue([notaBase] as never)
-    vi.mocked(clientePrisma.contagemEntrada.findMany).mockResolvedValue([
-      {
-        id: 'sessao-1',
-        status: 'em_andamento',
-        iniciadoEm: new Date('2026-08-12T10:00:00'),
-        notas: [
+    vi.mocked(clientePrisma.contagemEntrada.findMany).mockImplementation(async (args) => {
+      const statusIn = (args as { where?: { status?: { in?: string[] } } })?.where?.status?.in ?? []
+      if (statusIn.includes('em_andamento') || statusIn.includes('aberta')) {
+        return [
           {
-            nfeRecebida: {
-              id: 'nota-1',
-              chaveNfe: notaBase.chaveNfe,
-              nomeEmitente: notaBase.nomeEmitente,
-              documentoEmitente: notaBase.documentoEmitente,
-              dataEmissao: notaBase.dataEmissao,
-              statusEntrada: 'entrada_contagem',
-            },
+            id: 'sessao-1',
+            status: 'em_andamento',
+            iniciadoEm: new Date('2026-08-12T10:00:00'),
+            finalizadoEm: null,
+            usuario: { id: 'user-1', name: 'Operador Logística' },
+            notas: [
+              {
+                nfeRecebida: {
+                  id: 'nota-1',
+                  chaveNfe: notaBase.chaveNfe,
+                  nomeEmitente: notaBase.nomeEmitente,
+                  documentoEmitente: notaBase.documentoEmitente,
+                  dataEmissao: notaBase.dataEmissao,
+                  statusEntrada: 'entrada_contagem',
+                },
+              },
+            ],
           },
-        ],
-      },
-    ] as never)
+        ] as never
+      }
+      return [
+        {
+          id: 'sessao-hist-1',
+          status: 'ok',
+          iniciadoEm: new Date('2026-08-11T09:00:00'),
+          finalizadoEm: new Date('2026-08-11T09:30:00'),
+          usuario: { id: 'user-2', name: 'Maria Contagem' },
+          notas: [
+            {
+              nfeRecebida: {
+                id: 'nota-2',
+                chaveNfe: '35260812345678000190550010002651131234567891',
+                nomeEmitente: 'Outro Fornecedor',
+                documentoEmitente: '99888777000166',
+                dataEmissao: new Date('2026-08-10'),
+                statusEntrada: 'entrada_contagem_ok',
+              },
+            },
+          ],
+        },
+        {
+          id: 'sessao-hist-2',
+          status: 'divergente',
+          iniciadoEm: new Date('2026-08-10T14:00:00'),
+          finalizadoEm: new Date('2026-08-10T14:20:00'),
+          usuario: null,
+          notas: [],
+        },
+      ] as never
+    })
   })
 
   it('nota em sessão ativa não aparece em notas, mas aparece em sessoesAtivas', async () => {
@@ -60,7 +96,38 @@ describe('listarDisponiveis — sessão ativa oculta nota mas expõe retomada', 
     expect(resultado.sessoesAtivas).toHaveLength(1)
     expect(resultado.sessoesAtivas[0]?.id).toBe('sessao-1')
     expect(resultado.sessoesAtivas[0]?.entradas[0]?.id).toBe('nota-1')
+    expect(resultado.sessoesAtivas[0]?.operadorNome).toBe('Operador Logística')
     expect(resultado.ignoradas.some((n) => n.id === 'nota-1')).toBe(true)
+  })
+
+  it('historicoRecente lista só finalizadas com operador e finalizadoEm', async () => {
+    const resultado = await servicoContagens.listarDisponiveis('company-1')
+
+    expect(resultado.historicoRecente).toHaveLength(2)
+    expect(resultado.historicoRecente[0]).toMatchObject({
+      id: 'sessao-hist-1',
+      status: 'ok',
+      operadorNome: 'Maria Contagem',
+    })
+    expect(resultado.historicoRecente[0]?.finalizadoEm).toEqual(new Date('2026-08-11T09:30:00'))
+    expect(resultado.historicoRecente[0]?.entradas[0]?.nomeEmitente).toBe('Outro Fornecedor')
+    expect(resultado.historicoRecente[1]?.operadorNome).toBe('—')
+    expect(resultado.historicoRecente.every((s) => ['ok', 'divergente', 'cancelada'].includes(s.status))).toBe(
+      true
+    )
+
+    const chamadaHistorico = vi
+      .mocked(clientePrisma.contagemEntrada.findMany)
+      .mock.calls.find((call) => {
+        const statusIn =
+          (call[0] as { where?: { status?: { in?: string[] } } })?.where?.status?.in ?? []
+        return statusIn.includes('ok')
+      })
+    expect(chamadaHistorico?.[0]).toMatchObject({
+      where: { companyId: 'company-1', status: { in: ['ok', 'divergente', 'cancelada'] } },
+      orderBy: [{ finalizadoEm: 'desc' }, { createdAt: 'desc' }],
+      take: 20,
+    })
   })
 })
 

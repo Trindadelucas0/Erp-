@@ -9,6 +9,7 @@ import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { LinhasSkeletonTabela } from '@/components/ui/linhas-skeleton-tabela'
+import { BadgeStatus } from '@/components/ui/badge-status'
 import { rotuloTipoDocumentoCurto } from '@/lib/tipo-documento-entrada'
 
 type NotaAuditoria = {
@@ -28,6 +29,16 @@ function formatarData(iso: string | null): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
   return d.toLocaleDateString('pt-BR')
+}
+
+function sinalAuditoria(nota: NotaAuditoria): {
+  rotulo: string
+  variante: 'sucesso' | 'reprovado'
+} {
+  if (nota.divergenciaDesfecho === 'bloqueio') {
+    return { rotulo: 'Bloqueio', variante: 'reprovado' }
+  }
+  return { rotulo: 'OK', variante: 'sucesso' }
 }
 
 function ConteudoAuditoriaEntradas() {
@@ -70,7 +81,7 @@ function ConteudoAuditoriaEntradas() {
       )}
       <CardPadrao titulo="Entradas consolidadas">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left text-sm">
+          <table className="w-full min-w-[720px] text-left text-sm">
             <thead>
               <tr className="border-b text-xs text-muted-foreground">
                 <th className="px-3 py-2 font-medium">Emissão</th>
@@ -78,35 +89,45 @@ function ConteudoAuditoriaEntradas() {
                 <th className="px-3 py-2 font-medium">Fornecedor</th>
                 <th className="px-3 py-2 font-medium">Chave</th>
                 <th className="px-3 py-2 font-medium">Valor</th>
+                <th className="px-3 py-2 font-medium">Sinal</th>
               </tr>
             </thead>
             <tbody>
               {carregando ? (
-                <LinhasSkeletonTabela colunas={5} linhas={6} />
+                <LinhasSkeletonTabela colunas={6} linhas={6} />
               ) : notas.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-6 text-muted-foreground">
+                  <td colSpan={6} className="px-3 py-6 text-muted-foreground">
                     Nenhuma NFe consolidada neste filtro.
                   </td>
                 </tr>
               ) : (
-                notas.map((n) => (
-                  <tr
-                    key={n.id}
-                    className="cursor-pointer border-b hover:bg-muted/40"
-                    onClick={() => router.push(`/auditoria-entradas/${n.id}`)}
-                  >
-                    <td className="px-3 py-2">{formatarData(n.dataEmissao)}</td>
-                    <td className="px-3 py-2">{rotuloTipoDocumentoCurto(n.tipoDocumento)}</td>
-                    <td className="px-3 py-2">{n.nomeEmitente || '—'}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{n.chaveNfe}</td>
-                    <td className="px-3 py-2">
-                      {n.valorTotal != null
-                        ? n.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-                        : '—'}
-                    </td>
-                  </tr>
-                ))
+                notas.map((n) => {
+                  const sinal = sinalAuditoria(n)
+                  return (
+                    <tr
+                      key={n.id}
+                      className="cursor-pointer border-b hover:bg-muted/40"
+                      onClick={() => router.push(`/auditoria-entradas/${n.id}`)}
+                    >
+                      <td className="px-3 py-2">{formatarData(n.dataEmissao)}</td>
+                      <td className="px-3 py-2">{rotuloTipoDocumentoCurto(n.tipoDocumento)}</td>
+                      <td className="px-3 py-2">{n.nomeEmitente || '—'}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{n.chaveNfe}</td>
+                      <td className="px-3 py-2 tabular-nums">
+                        {n.valorTotal != null
+                          ? n.valorTotal.toLocaleString('pt-BR', {
+                              style: 'currency',
+                              currency: 'BRL',
+                            })
+                          : '—'}
+                      </td>
+                      <td className="px-3 py-2">
+                        <BadgeStatus variante={sinal.variante}>{sinal.rotulo}</BadgeStatus>
+                      </td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
           </table>

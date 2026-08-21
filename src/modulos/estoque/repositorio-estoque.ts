@@ -300,7 +300,29 @@ async function listarMovimentosPorOrigem(
   return clientePrisma.estoqueMovimento.findMany({
     where: { companyId, origem, origemId },
     include: {
-      produto: { select: { id: true, nomeVenda: true } },
+      produto: { select: { id: true, nomeVenda: true, sku: true, unidade: true } },
+    },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  })
+}
+
+/** Movimentos de bloqueio/desbloqueio de divergência para um produto. */
+async function listarMovimentosBloqueioPorProduto(companyId: string, produtoId: string) {
+  return clientePrisma.estoqueMovimento.findMany({
+    where: {
+      companyId,
+      produtoId,
+      origem: 'nfe_divergencia',
+      dimensao: 'bloqueio',
+      tipoMovimento: { in: ['bloqueio', 'desbloqueio'] },
+    },
+    select: {
+      id: true,
+      origemId: true,
+      tipoMovimento: true,
+      quantidade: true,
+      observacao: true,
+      createdAt: true,
     },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
   })
@@ -321,5 +343,6 @@ export const repositorioDeEstoque = {
   fornecedorVinculadoAoProduto,
   existeMovimentoPorOrigem,
   listarMovimentosPorOrigem,
+  listarMovimentosBloqueioPorProduto,
   clientePrisma,
 }

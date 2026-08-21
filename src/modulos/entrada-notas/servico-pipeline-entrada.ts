@@ -1938,6 +1938,12 @@ async function obterDetalhe(
     ? await servicoDeEstoque.obterResumoEntradaNotaFiscal(companyId, notaId)
     : null
   const estoqueLancado = Boolean(estoqueResumo?.movimentou)
+  const itensBloqueadosResumo =
+    nota.statusEntrada === 'entrada_consolidada'
+      ? await servicoDeEstoque.obterItensBloqueadosDivergencia(companyId, notaId)
+      : { itens: [], totais: { itens: 0, aindaBloqueados: 0, desbloqueados: 0 } }
+  const itensBloqueados =
+    itensBloqueadosResumo.itens.length > 0 ? itensBloqueadosResumo : null
 
   const contasPagarRows = await clientePrisma.contaPagar.findMany({
     where: {
@@ -1990,6 +1996,28 @@ async function obterDetalhe(
   }
 
   let contagemBaixada = false
+  let resultadoContagem: {
+    sessaoId: string
+    status: string
+    iniciadoEm: Date | null
+    finalizadoEm: Date | null
+    baixadaEm: Date | null
+    observacao: string | null
+    multiNota: boolean
+    qtdNotasSessao: number
+    totais: { itens: number; ok: number; divergente: number }
+    itens: Array<{
+      id: string
+      produtoId: string
+      sku: string | null
+      nomeExibicao: string
+      unidade: string | null
+      qtdEsperada: number
+      qtdContada: number
+      diferenca: number
+      statusItem: string
+    }>
+  } | null = null
   if (
     nota.statusEntrada === STATUS_CONTAGEM_OK ||
     nota.statusEntrada === STATUS_CONTAGEM_DIVERGENTE ||
@@ -1997,6 +2025,48 @@ async function obterDetalhe(
   ) {
     const sessao = await repositorioContagens.buscarSessaoFinalizadaDaNota(companyId, notaId)
     contagemBaixada = Boolean(sessao?.baixadaEm)
+    if (sessao) {
+      const itens = (sessao.itens ?? []).map((item) => {
+        const qtdEsperada = decimalNum(item.qtdEsperada) ?? 0
+        const qtdContada = decimalNum(item.qtdContada) ?? 0
+        const sku = item.produto?.sku?.trim() || null
+        let nomeExibicao = item.nomeExibicao
+        if (sku) {
+          const sufixo = ` (${sku})`
+          if (nomeExibicao.endsWith(sufixo)) {
+            nomeExibicao = nomeExibicao.slice(0, -sufixo.length).trimEnd()
+          }
+        }
+        return {
+          id: item.id,
+          produtoId: item.produtoId,
+          sku,
+          nomeExibicao,
+          unidade: item.unidade,
+          qtdEsperada,
+          qtdContada,
+          diferenca: arredondarQtd(qtdContada - qtdEsperada),
+          statusItem: item.statusItem,
+        }
+      })
+      const qtdNotasSessao = sessao.notas.length
+      resultadoContagem = {
+        sessaoId: sessao.id,
+        status: sessao.status,
+        iniciadoEm: sessao.iniciadoEm,
+        finalizadoEm: sessao.finalizadoEm,
+        baixadaEm: sessao.baixadaEm,
+        observacao: sessao.observacao,
+        multiNota: qtdNotasSessao > 1,
+        qtdNotasSessao,
+        totais: {
+          itens: itens.length,
+          ok: itens.filter((i) => i.statusItem === 'ok').length,
+          divergente: itens.filter((i) => i.statusItem === 'divergente').length,
+        },
+        itens,
+      }
+    }
   }
 
   return {
@@ -2024,6 +2094,8 @@ async function obterDetalhe(
       divergenciaResolvidaEm: nota.divergenciaResolvidaEm ?? null,
       auditoriaChegada,
       contagemBaixada,
+      resultadoContagem,
+      itensBloqueados,
       anexoDivergencia: (nota.anexos ?? []).find(
         (a) => a.tipoAnexo === 'negociacao_bloqueio' || a.tipoAnexo === 'ressalva_divergencia'
       )

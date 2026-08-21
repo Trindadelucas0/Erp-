@@ -84,32 +84,50 @@ async function listarNotasDisponiveis(companyId: string) {
   return { notas, ignoradas }
 }
 
+const selectNotaCegaSessao = {
+  id: true,
+  chaveNfe: true,
+  nomeEmitente: true,
+  documentoEmitente: true,
+  dataEmissao: true,
+  statusEntrada: true,
+} as const
+
+const selectSessaoComOperadorENotas = {
+  id: true,
+  status: true,
+  iniciadoEm: true,
+  finalizadoEm: true,
+  usuario: { select: { id: true, name: true } },
+  notas: {
+    include: {
+      nfeRecebida: { select: selectNotaCegaSessao },
+    },
+  },
+} as const
+
 async function listarSessoesAtivas(companyId: string) {
   return clientePrisma.contagemEntrada.findMany({
     where: {
       companyId,
       status: { in: [...STATUS_SESSAO_CONTAGEM_ATIVA] },
     },
-    select: {
-      id: true,
-      status: true,
-      iniciadoEm: true,
-      notas: {
-        include: {
-          nfeRecebida: {
-            select: {
-              id: true,
-              chaveNfe: true,
-              nomeEmitente: true,
-              documentoEmitente: true,
-              dataEmissao: true,
-              statusEntrada: true,
-            },
-          },
-        },
-      },
-    },
+    select: selectSessaoComOperadorENotas,
     orderBy: [{ iniciadoEm: 'desc' }, { createdAt: 'desc' }],
+  })
+}
+
+const STATUS_SESSAO_FINALIZADA = ['ok', 'divergente', 'cancelada'] as const
+
+async function listarHistoricoRecente(companyId: string, limite = 20) {
+  return clientePrisma.contagemEntrada.findMany({
+    where: {
+      companyId,
+      status: { in: [...STATUS_SESSAO_FINALIZADA] },
+    },
+    select: selectSessaoComOperadorENotas,
+    orderBy: [{ finalizadoEm: 'desc' }, { createdAt: 'desc' }],
+    take: limite,
   })
 }
 
@@ -363,6 +381,12 @@ async function buscarSessaoFinalizadaDaNota(companyId: string, nfeRecebidaId: st
     },
     include: {
       notas: { select: { nfeRecebidaId: true } },
+      itens: {
+        orderBy: { nomeExibicao: 'asc' },
+        include: {
+          produto: { select: { id: true, sku: true } },
+        },
+      },
     },
     orderBy: { finalizadoEm: 'desc' },
   })
@@ -435,6 +459,7 @@ async function mapaEmAndamentoPorNota(companyId: string, nfeRecebidaIds: string[
 export const repositorioContagens = {
   listarNotasDisponiveis,
   listarSessoesAtivas,
+  listarHistoricoRecente,
   buscarNotasParaSessao,
   notasEmSessaoAtiva,
   criarSessao,

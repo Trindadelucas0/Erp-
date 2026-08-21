@@ -1179,6 +1179,7 @@ async function listarPendentes(
       })(),
       contagemBaixada: mapaBaixada.get(n.id) === true,
       contagemEmAndamento: mapaEmAndamento.get(n.id) === true,
+      divergenciaDesfecho: n.divergenciaDesfecho ?? null,
     }
   })
 

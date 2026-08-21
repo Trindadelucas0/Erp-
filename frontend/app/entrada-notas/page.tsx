@@ -60,6 +60,8 @@ type NotaPendente = {
   contagemBaixada?: boolean
   /** Sessão de contagem `aberta` / `em_andamento` (só painel contagem). */
   contagemEmAndamento?: boolean
+  /** Desfecho de divergência de contagem (§7.17) — ex.: `bloqueio`. */
+  divergenciaDesfecho?: string | null
 }
 
 type JobStatus = {
@@ -966,7 +968,7 @@ function ConteudoEntradaNotas() {
             : painel === 'aguardando_chegada'
               ? 'Nota de revenda lançada — aguardando chegada física da mercadoria. Libere para a logística iniciar a contagem.'
               : painel === 'consolidada'
-                ? 'Notas com entrada consolidada. NFe com estoque lançado (físico + fiscal). NFS-e/CTe documentais não movimentam estoque.'
+                ? 'Notas com entrada consolidada. NFe com estoque lançado (físico + fiscal). Badge Estoque bloqueado = consolidada por divergência (§7.17). NFS-e/CTe documentais não movimentam estoque.'
                 : painel === 'contagem'
                   ? 'Liberadas para contagem — logística confere em Contagens; consolidar só após contagem OK (NFe produto)'
                   : 'Lista do banco local — use Filtrar para atualizar'
@@ -1247,6 +1249,9 @@ function ConteudoEntradaNotas() {
                         ) : null}
                         {n.auditoriaChegadaPendente ? (
                           <BadgeStatus variante="reprovado">Conferir</BadgeStatus>
+                        ) : null}
+                        {painel === 'consolidada' && n.divergenciaDesfecho === 'bloqueio' ? (
+                          <BadgeStatus variante="pendente">Estoque bloqueado</BadgeStatus>
                         ) : null}
                       </div>
                     </td>

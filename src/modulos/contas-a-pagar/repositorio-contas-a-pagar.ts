@@ -166,17 +166,22 @@ export function mapearContaPagar(
   }
 }
 
-async function alocarProximoCodigo(
-  tx: Prisma.TransactionClient,
-  companyId: string
-): Promise<string> {
-  const row = await tx.contaPagarCodigoSeq.upsert({
+/**
+ * Reserva o próximo código fora da transação de create.
+ * O upsert na mesma tx do create segura o lock de ContaPagarCodigoSeq até o
+ * commit (include + parcelas) e estoura o timeout interativo padrão (5s) sob
+ * contenção — ex.: gerar títulos NFe+CT-e na consolidação / resolver divergência.
+ */
+async function alocarProximoCodigo(companyId: string): Promise<string> {
+  const row = await clientePrisma.contaPagarCodigoSeq.upsert({
     where: { companyId },
     create: { companyId, proximo: 2 },
     update: { proximo: { increment: 1 } },
   })
   return formatarCodigoArmazenado(row.proximo - 1)
 }
+
+const OPCOES_TX_CONTA_PAGAR = { maxWait: 15_000, timeout: 20_000 } as const
 
 function montarWhere(
   companyId: string,
@@ -361,8 +366,8 @@ export const repositorioDeContasAPagar = {
       vencimento: Date
     }
   ) {
+    const codigo = await alocarProximoCodigo(companyId)
     const row = await clientePrisma.$transaction(async (tx) => {
-      const codigo = await alocarProximoCodigo(tx, companyId)
       return tx.contaPagar.create({
         data: {
           companyId,
@@ -397,7 +402,7 @@ export const repositorioDeContasAPagar = {
         },
         include: includeDetalhe,
       })
-    })
+    }, OPCOES_TX_CONTA_PAGAR)
     return mapearContaPagar(row)
   },
 
@@ -464,61 +469,84 @@ export const repositorioDeContasAPagar = {
     const valorTotal =
       Math.round(dados.parcelas.reduce((acc, p) => acc + p.valor, 0) * 100) / 100
 
-    const row = await clientePrisma.$transaction(async (tx) => {
-      if (dados.despesaEntradaId) {
-        const ja = await tx.contaPagar.findFirst({
-          where: { despesaEntradaId: dados.despesaEntradaId },
-          include: includeDetalhe,
-        })
-        if (ja) return { row: ja, criado: false as const }
-      }
-      if (dados.nfeRecebidaId && dados.origem === 'nfe') {
-        const ja = await tx.contaPagar.findFirst({
-          where: { companyId, nfeRecebidaId: dados.nfeRecebidaId, origem: 'nfe' },
-          include: includeDetalhe,
-        })
-        if (ja) return { row: ja, criado: false as const }
-      }
+    const codigo = await alocarProximoCodigo(companyId)
 
-      const codigo = await alocarProximoCodigo(tx, companyId)
-      const criado = await tx.contaPagar.create({
-        data: {
-          companyId,
-          codigo,
-          tipo: dados.tipo ?? 'duplicata',
-          tipoTributo: null,
-          codigoReceita: null,
-          numeroReferencia: null,
-          pessoaId: dados.pessoaId,
-          planoFinanceiroId: dados.planoFinanceiroId,
-          origem: dados.origem,
-          nfeRecebidaId: dados.nfeRecebidaId,
-          despesaEntradaId: dados.despesaEntradaId,
-          numeroDocumento: dados.numeroDocumento,
-          dataEmissao: dados.dataEmissao,
-          status: 'aberto',
-          valorTotal,
-          valorDesconto: 0,
-          valorJuros: 0,
-          valorMulta: 0,
-          valorImpostoRetido: 0,
-          observacao: dados.observacao,
-          parcelas: {
-            create: dados.parcelas.map((p, idx) => ({
-              numeroParcela: idx + 1,
-              numeroDocumento: p.numeroDocumento,
-              vencimento: p.vencimento,
-              valor: p.valor,
-              status: 'aberta',
-            })),
+    try {
+      const row = await clientePrisma.$transaction(async (tx) => {
+        if (dados.despesaEntradaId) {
+          const ja = await tx.contaPagar.findFirst({
+            where: { despesaEntradaId: dados.despesaEntradaId },
+            include: includeDetalhe,
+          })
+          if (ja) return { row: ja, criado: false as const }
+        }
+        if (dados.nfeRecebidaId && dados.origem === 'nfe') {
+          const ja = await tx.contaPagar.findFirst({
+            where: { companyId, nfeRecebidaId: dados.nfeRecebidaId, origem: 'nfe' },
+            include: includeDetalhe,
+          })
+          if (ja) return { row: ja, criado: false as const }
+        }
+
+        const criado = await tx.contaPagar.create({
+          data: {
+            companyId,
+            codigo,
+            tipo: dados.tipo ?? 'duplicata',
+            tipoTributo: null,
+            codigoReceita: null,
+            numeroReferencia: null,
+            pessoaId: dados.pessoaId,
+            planoFinanceiroId: dados.planoFinanceiroId,
+            origem: dados.origem,
+            nfeRecebidaId: dados.nfeRecebidaId,
+            despesaEntradaId: dados.despesaEntradaId,
+            numeroDocumento: dados.numeroDocumento,
+            dataEmissao: dados.dataEmissao,
+            status: 'aberto',
+            valorTotal,
+            valorDesconto: 0,
+            valorJuros: 0,
+            valorMulta: 0,
+            valorImpostoRetido: 0,
+            observacao: dados.observacao,
+            parcelas: {
+              create: dados.parcelas.map((p, idx) => ({
+                numeroParcela: idx + 1,
+                numeroDocumento: p.numeroDocumento,
+                vencimento: p.vencimento,
+                valor: p.valor,
+                status: 'aberta',
+              })),
+            },
           },
-        },
-        include: includeDetalhe,
-      })
-      return { row: criado, criado: true as const }
-    })
+          include: includeDetalhe,
+        })
+        return { row: criado, criado: true as const }
+      }, OPCOES_TX_CONTA_PAGAR)
 
-    return { conta: mapearContaPagar(row.row), criado: row.criado }
+      return { conta: mapearContaPagar(row.row), criado: row.criado }
+    } catch (e) {
+      // Corrida: outro request criou o mesmo título — devolve o existente.
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002' &&
+        dados.despesaEntradaId
+      ) {
+        const existente = await this.buscarPorDespesaEntradaId(companyId, dados.despesaEntradaId)
+        if (existente) return { conta: existente, criado: false as const }
+      }
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002' &&
+        dados.nfeRecebidaId &&
+        dados.origem === 'nfe'
+      ) {
+        const existente = await this.buscarPorNfeOrigem(companyId, dados.nfeRecebidaId, 'nfe')
+        if (existente) return { conta: existente, criado: false as const }
+      }
+      throw e
+    }
   },
 
   async atualizar(

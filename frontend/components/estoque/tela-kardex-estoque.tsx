@@ -1,11 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Package, RefreshCw } from 'lucide-react'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
+import { ModalCiencia } from '@/components/compartilhado/modal-ciencia'
 import { usePermissao } from '@/hooks/use-permissao'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { InputPadrao } from '@/components/ui/input-padrao'
@@ -18,6 +20,7 @@ import {
   inicioDoMesIso,
   ROTULO_TIPO_ESTOQUE,
   tipoEstoqueVisaoValido,
+  type BloqueioAtivoKardex,
   type RespostaKardex,
   type TipoEstoqueVisao,
 } from '@/lib/estoque'
@@ -68,6 +71,18 @@ export function TelaKardexEstoque() {
   const [mensagem, setMensagem] = useState('')
   const [modalInventario, setModalInventario] = useState(false)
   const [hidratandoDeepLink, setHidratandoDeepLink] = useState(Boolean(produtoIdQuery?.trim()))
+  const [modalBloqueio, setModalBloqueio] = useState<{
+    aberto: boolean
+    bloqueio: BloqueioAtivoKardex | null
+  }>({ aberto: false, bloqueio: null })
+  const ultimoProdutoAvisoBloqueio = useRef<string | null>(null)
+
+  function tentarAvisarBloqueio(produtoId: string, bloqueio: BloqueioAtivoKardex | null | undefined) {
+    if (!bloqueio || bloqueio.qtdBloqueada <= 0) return
+    if (ultimoProdutoAvisoBloqueio.current === produtoId) return
+    ultimoProdutoAvisoBloqueio.current = produtoId
+    setModalBloqueio({ aberto: true, bloqueio })
+  }
 
   useEffect(() => {
     if (tipoEstoqueVisaoValido(tipoQuery)) {
@@ -92,6 +107,7 @@ export function TelaKardexEstoque() {
             nomeVenda: string
             unidade: string
           }
+          bloqueioAtivo?: BloqueioAtivoKardex | null
         }>(`/estoque/${id}/saldos`)
         if (cancelado) return
         setProduto({
@@ -100,6 +116,7 @@ export function TelaKardexEstoque() {
           nomeVenda: data.produto.nomeVenda,
           unidade: data.produto.unidade,
         })
+        tentarAvisarBloqueio(data.produto.id, data.bloqueioAtivo)
       } catch (e) {
         if (!cancelado) {
           setErro(extrairMensagemApi(e, 'Não foi possível abrir o produto da URL'))
@@ -130,6 +147,7 @@ export function TelaKardexEstoque() {
         },
       })
       setKardex(data)
+      tentarAvisarBloqueio(produto.id, data.bloqueioAtivo)
     } catch (e) {
       setKardex(null)
       setErro(extrairMensagemApi(e, 'Não foi possível carregar o kardex'))
@@ -147,11 +165,14 @@ export function TelaKardexEstoque() {
   const unidade =
     kardex?.produto.unidade ?? produto?.unidade ?? 'Unidades'
 
+  const bloqueio = modalBloqueio.bloqueio
+
   return (
     <div className="space-y-4">
       <CardPadrao
         titulo="Kardex de Estoque"
         descricao="Extrato de movimentos por produto e tipo de estoque"
+        permitirOverflow
         acoes={
           <div className="flex flex-wrap gap-2">
             <Button
@@ -204,7 +225,12 @@ export function TelaKardexEstoque() {
           <div className="md:col-span-2">
             <BuscaProdutoEstoque
               valor={produto}
-              aoSelecionar={setProduto}
+              aoSelecionar={(p) => {
+                if (!p || p.id !== produto?.id) {
+                  ultimoProdutoAvisoBloqueio.current = null
+                }
+                setProduto(p)
+              }}
               disabled={hidratandoDeepLink}
             />
           </div>
@@ -318,6 +344,68 @@ export function TelaKardexEstoque() {
           }}
         />
       )}
+
+      <ModalCiencia
+        aberto={modalBloqueio.aberto}
+        titulo="Estoque bloqueado"
+        textoConfirmar="Entendi"
+        aoConfirmar={() => setModalBloqueio({ aberto: false, bloqueio: null })}
+      >
+        {bloqueio && (
+          <div className="space-y-3">
+            <p>
+              Este produto tem{' '}
+              <strong className="tabular-nums text-foreground">
+                {formatarQtdEstoque(bloqueio.qtdBloqueada)}
+              </strong>{' '}
+              {unidade} bloqueada(s). Essa quantidade <strong>não circula no disponível</strong>{' '}
+              até o desbloqueio na Entrada de Notas.
+            </p>
+            {bloqueio.itens.length === 0 ? (
+              <p>Confira os movimentos de Bloqueio no extrato abaixo para o detalhe.</p>
+            ) : (
+              <ul className="space-y-3">
+                {bloqueio.itens.map((item) => (
+                  <li
+                    key={item.nfeRecebidaId}
+                    className="rounded-md border border-amber-300/60 bg-amber-50/50 px-3 py-2 dark:border-amber-800/40 dark:bg-amber-950/20"
+                  >
+                    <p className="font-medium text-foreground">
+                      {item.nomeEmitente || 'Fornecedor'} ·{' '}
+                      <span className="tabular-nums">
+                        {formatarQtdEstoque(item.quantidade)}
+                      </span>{' '}
+                      {unidade}
+                    </p>
+                    <p className="mt-1 text-xs">
+                      Motivo: <span className="text-foreground">{item.motivo}</span>
+                    </p>
+                    <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">
+                      Chave: {item.chaveNfe}
+                    </p>
+                    <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                      <Link
+                        href={`/entrada-notas/${item.nfeRecebidaId}`}
+                        className="text-primary underline"
+                        onClick={() => setModalBloqueio({ aberto: false, bloqueio: null })}
+                      >
+                        Abrir na Entrada de Notas
+                      </Link>
+                      <Link
+                        href={`/auditoria-entradas/${item.nfeRecebidaId}`}
+                        className="text-primary underline"
+                        onClick={() => setModalBloqueio({ aberto: false, bloqueio: null })}
+                      >
+                        Auditoria de entradas
+                      </Link>
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </ModalCiencia>
     </div>
   )
 }

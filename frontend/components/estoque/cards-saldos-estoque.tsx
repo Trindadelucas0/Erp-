@@ -18,6 +18,7 @@ function CardSaldo({
   unidade,
   destaque,
   detalhe,
+  detalheDestaque,
 }: {
   titulo: string
   icone: typeof Package
@@ -25,6 +26,7 @@ function CardSaldo({
   unidade: string
   destaque?: boolean
   detalhe?: string
+  detalheDestaque?: boolean
 }) {
   return (
     <div
@@ -47,7 +49,16 @@ function CardSaldo({
           )}
         </p>
         {detalhe && (
-          <p className="mt-1 text-[11px] text-muted-foreground">{detalhe}</p>
+          <p
+            className={cn(
+              'mt-1 text-[11px]',
+              detalheDestaque
+                ? 'font-medium text-amber-800 dark:text-amber-300'
+                : 'text-muted-foreground',
+            )}
+          >
+            {detalhe}
+          </p>
         )}
       </div>
     </div>
@@ -60,36 +71,58 @@ export function CardsSaldosEstoque({
   tipoAtivo,
   className,
 }: Props) {
+  const temBloqueio = (saldos?.qtdBloqueada ?? 0) > 0
   const detalheDisponivel =
     saldos == null
       ? undefined
-      : `Reservado ${formatarQtdEstoque(saldos.qtdReservada)} · Bloqueado ${formatarQtdEstoque(saldos.qtdBloqueada)}`
+      : temBloqueio
+        ? `Reservado ${formatarQtdEstoque(saldos.qtdReservada)} · Bloqueado ${formatarQtdEstoque(saldos.qtdBloqueada)} (não circula no disponível)`
+        : `Reservado ${formatarQtdEstoque(saldos.qtdReservada)} · Bloqueado ${formatarQtdEstoque(saldos.qtdBloqueada)}`
 
   return (
-    <div className={cn('grid gap-3 sm:grid-cols-3', className)}>
-      <CardSaldo
-        titulo="Estoque disponível"
-        icone={Package}
-        valor={saldos?.qtdDisponivel ?? null}
-        unidade={unidade}
-        destaque={tipoAtivo === 'disponivel'}
-        detalhe={detalheDisponivel}
-      />
-      <CardSaldo
-        titulo="Estoque físico"
-        icone={ClipboardList}
-        valor={saldos?.qtdFisica ?? null}
-        unidade={unidade}
-        destaque={tipoAtivo === 'fisico'}
-      />
-      <CardSaldo
-        titulo="Estoque fiscal"
-        icone={FileText}
-        valor={saldos?.qtdFiscal ?? null}
-        unidade={unidade}
-        destaque={tipoAtivo === 'fiscal'}
-        detalhe="Só muda com NF (ainda não automático)"
-      />
+    <div className={cn('space-y-3', className)}>
+      {temBloqueio && (
+        <div
+          role="status"
+          className="rounded-md border border-amber-400 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200"
+        >
+          <p className="font-semibold">Peça com estoque bloqueado</p>
+          <p className="mt-1 text-[13px] leading-snug">
+            Quantidade bloqueada:{' '}
+            <strong className="tabular-nums">
+              {formatarQtdEstoque(saldos!.qtdBloqueada)}
+            </strong>{' '}
+            {unidade}. Esse saldo não entra no disponível. O motivo está nos movimentos{' '}
+            <strong>Bloqueio</strong> do extrato abaixo (observação do lançamento).
+          </p>
+        </div>
+      )}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <CardSaldo
+          titulo="Estoque disponível"
+          icone={Package}
+          valor={saldos?.qtdDisponivel ?? null}
+          unidade={unidade}
+          destaque={tipoAtivo === 'disponivel'}
+          detalhe={detalheDisponivel}
+          detalheDestaque={temBloqueio}
+        />
+        <CardSaldo
+          titulo="Estoque físico"
+          icone={ClipboardList}
+          valor={saldos?.qtdFisica ?? null}
+          unidade={unidade}
+          destaque={tipoAtivo === 'fisico'}
+        />
+        <CardSaldo
+          titulo="Estoque fiscal"
+          icone={FileText}
+          valor={saldos?.qtdFiscal ?? null}
+          unidade={unidade}
+          destaque={tipoAtivo === 'fiscal'}
+          detalhe="Só muda com NF (ainda não automático)"
+        />
+      </div>
     </div>
   )
 }

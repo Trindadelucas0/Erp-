@@ -113,10 +113,32 @@ function sessaoEditavel(sessao: { status: string; baixadaEm?: Date | null }): bo
   return sessao.status === 'aberta' || sessao.status === 'em_andamento'
 }
 
+function mapearSessaoLista(
+  sessao: {
+    id: string
+    status: string
+    iniciadoEm: Date | null
+    finalizadoEm?: Date | null
+    usuario?: { id: string; name: string } | null
+    notas: Array<{ nfeRecebida: Parameters<typeof mapearNotaCega>[0] }>
+  },
+  comFinalizado: boolean
+) {
+  return {
+    id: sessao.id,
+    status: sessao.status,
+    iniciadoEm: sessao.iniciadoEm,
+    ...(comFinalizado ? { finalizadoEm: sessao.finalizadoEm ?? null } : {}),
+    operadorNome: sessao.usuario?.name?.trim() || '—',
+    entradas: sessao.notas.map((n) => mapearNotaCega(n.nfeRecebida)),
+  }
+}
+
 async function listarDisponiveis(companyId: string) {
-  const [{ notas, ignoradas }, sessoesBrutas] = await Promise.all([
+  const [{ notas, ignoradas }, sessoesBrutas, historicoBruto] = await Promise.all([
     repositorioContagens.listarNotasDisponiveis(companyId),
     repositorioContagens.listarSessoesAtivas(companyId),
+    repositorioContagens.listarHistoricoRecente(companyId, 20),
   ])
   return {
     notas: notas.map(mapearNotaCega),
@@ -124,12 +146,8 @@ async function listarDisponiveis(companyId: string) {
       ...mapearNotaCega(n),
       motivo: n.motivo,
     })),
-    sessoesAtivas: sessoesBrutas.map((sessao) => ({
-      id: sessao.id,
-      status: sessao.status,
-      iniciadoEm: sessao.iniciadoEm,
-      entradas: sessao.notas.map((n) => mapearNotaCega(n.nfeRecebida)),
-    })),
+    sessoesAtivas: sessoesBrutas.map((sessao) => mapearSessaoLista(sessao, false)),
+    historicoRecente: historicoBruto.map((sessao) => mapearSessaoLista(sessao, true)),
   }
 }
 

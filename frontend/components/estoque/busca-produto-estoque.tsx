@@ -126,7 +126,7 @@ export function BuscaProdutoEstoque({ valor, aoSelecionar, disabled }: Props) {
         )}
       </div>
       {aberto && opcoes.length > 0 && (
-        <div className="absolute z-40 mt-1 max-h-60 w-full overflow-hidden rounded-md border bg-popover text-sm shadow-md">
+        <div className="absolute z-50 mt-1 max-h-60 w-full overflow-hidden rounded-md border bg-popover text-sm shadow-md">
           <CabecalhoOpcaoProduto />
           <ul className="max-h-52 overflow-auto py-1">
             {opcoes.map((p) => (

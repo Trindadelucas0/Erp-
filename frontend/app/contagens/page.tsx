@@ -26,7 +26,12 @@ type SessaoAtiva = {
   id: string
   status: string
   iniciadoEm: string | null
+  operadorNome: string
   entradas: NotaDisponivel[]
+}
+
+type SessaoHistorico = SessaoAtiva & {
+  finalizadoEm: string | null
 }
 
 function formatarData(iso: string | null): string {
@@ -36,11 +41,45 @@ function formatarData(iso: string | null): string {
   return d.toLocaleDateString('pt-BR')
 }
 
+function formatarDataHora(iso: string | null): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function rotuloStatusSessao(status: string): string {
+  if (status === 'ok') return 'OK'
+  if (status === 'divergente') return 'Divergente'
+  if (status === 'cancelada') return 'Cancelada'
+  if (status === 'em_andamento') return 'Em andamento'
+  if (status === 'aberta') return 'Aberta'
+  return status
+}
+
+function resumoEntradas(entradas: NotaDisponivel[]): string {
+  if (entradas.length === 0) return '—'
+  return entradas
+    .map((e) => {
+      const nf = e.numero ?? '—'
+      const serie = e.serie ? ` · Série ${e.serie}` : ''
+      return `${e.nomeEmitente || '—'} · NF ${nf}${serie}`
+    })
+    .join('; ')
+}
+
 function ConteudoListaContagens() {
   const router = useRouter()
   const [notas, setNotas] = useState<NotaDisponivel[]>([])
   const [ignoradas, setIgnoradas] = useState<NotaIgnorada[]>([])
   const [sessoesAtivas, setSessoesAtivas] = useState<SessaoAtiva[]>([])
+  const [historicoRecente, setHistoricoRecente] = useState<SessaoHistorico[]>([])
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set())
   const [carregando, setCarregando] = useState(true)
   const [iniciando, setIniciando] = useState(false)
@@ -54,10 +93,12 @@ function ConteudoListaContagens() {
         notas: NotaDisponivel[]
         ignoradas?: NotaIgnorada[]
         sessoesAtivas?: SessaoAtiva[]
+        historicoRecente?: SessaoHistorico[]
       }>('/contagens/disponiveis')
       setNotas(data.notas ?? [])
       setIgnoradas(data.ignoradas ?? [])
       setSessoesAtivas(data.sessoesAtivas ?? [])
+      setHistoricoRecente(data.historicoRecente ?? [])
       setSelecionadas(new Set())
     } catch (e) {
       setErro(extrairMensagemApi(e, 'Falha ao listar entradas liberadas.'))
@@ -118,7 +159,8 @@ function ConteudoListaContagens() {
               >
                 <div className="min-w-0 space-y-1">
                   <p className="font-medium">
-                    Iniciada em {formatarData(sessao.iniciadoEm)} · status {sessao.status}
+                    Iniciada em {formatarDataHora(sessao.iniciadoEm)} ·{' '}
+                    {rotuloStatusSessao(sessao.status)} · Operador {sessao.operadorNome}
                   </p>
                   <ul className="text-muted-foreground">
                     {sessao.entradas.map((e) => (
@@ -260,6 +302,63 @@ function ConteudoListaContagens() {
               </li>
             ))}
           </ul>
+        </CardPadrao>
+      )}
+
+      {!carregando && historicoRecente.length > 0 && (
+        <CardPadrao titulo="Histórico recente">
+          <p className="mb-3 text-sm text-muted-foreground">
+            Últimas contagens finalizadas (OK, divergente ou cancelada). A quantidade esperada da
+            nota continua oculta.
+          </p>
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead className="border-b bg-muted/40">
+                <tr>
+                  <th className="px-3 py-2 font-medium" scope="col">
+                    Finalizado
+                  </th>
+                  <th className="px-3 py-2 font-medium" scope="col">
+                    Status
+                  </th>
+                  <th className="px-3 py-2 font-medium" scope="col">
+                    Operador
+                  </th>
+                  <th className="px-3 py-2 font-medium" scope="col">
+                    Início
+                  </th>
+                  <th className="px-3 py-2 font-medium" scope="col">
+                    Entradas
+                  </th>
+                  <th className="px-3 py-2 font-medium" scope="col">
+                    <span className="sr-only">Ações</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {historicoRecente.map((sessao) => (
+                  <tr key={sessao.id} className="border-b last:border-0">
+                    <td className="px-3 py-2 whitespace-nowrap tabular-nums">
+                      {formatarDataHora(sessao.finalizadoEm)}
+                    </td>
+                    <td className="px-3 py-2">{rotuloStatusSessao(sessao.status)}</td>
+                    <td className="px-3 py-2">{sessao.operadorNome}</td>
+                    <td className="px-3 py-2 whitespace-nowrap tabular-nums">
+                      {formatarDataHora(sessao.iniciadoEm)}
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {resumoEntradas(sessao.entradas)}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <Button type="button" variant="outline" size="sm" asChild>
+                        <Link href={`/contagens/${sessao.id}`}>Ver</Link>
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </CardPadrao>
       )}
     </div>

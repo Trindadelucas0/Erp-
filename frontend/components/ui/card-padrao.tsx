@@ -13,7 +13,7 @@ type Props = {
   acoes?: React.ReactNode
   children: React.ReactNode
   className?: string
-  /** Permite menus/dropdowns absolutos no header sem serem cortados pelo card */
+  /** Permite menus/dropdowns/sugestões absolutas sem serem cortados pelo card */
   permitirOverflow?: boolean
   /** Padding interno reduzido (spacing 4 em vez de 6) */
   compacto?: boolean

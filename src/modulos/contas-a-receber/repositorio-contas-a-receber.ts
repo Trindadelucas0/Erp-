@@ -159,17 +159,20 @@ export function mapearContaReceber(
   }
 }
 
-async function alocarProximoCodigo(
-  tx: Prisma.TransactionClient,
-  companyId: string
-): Promise<string> {
-  const row = await tx.contaReceberCodigoSeq.upsert({
+/**
+ * Reserva o próximo código fora da transação de create (evita lock longo no
+ * ContaReceberCodigoSeq + timeout interativo padrão de 5s).
+ */
+async function alocarProximoCodigo(companyId: string): Promise<string> {
+  const row = await clientePrisma.contaReceberCodigoSeq.upsert({
     where: { companyId },
     create: { companyId, proximo: 2 },
     update: { proximo: { increment: 1 } },
   })
   return formatarCodigoArmazenado(row.proximo - 1)
 }
+
+const OPCOES_TX_CONTA_RECEBER = { maxWait: 15_000, timeout: 20_000 } as const
 
 function montarWhere(
   companyId: string,
@@ -350,8 +353,8 @@ export const repositorioDeContasAReceber = {
       vencimento: Date
     }
   ) {
+    const codigo = await alocarProximoCodigo(companyId)
     const row = await clientePrisma.$transaction(async (tx) => {
-      const codigo = await alocarProximoCodigo(tx, companyId)
       return tx.contaReceber.create({
         data: {
           companyId,
@@ -383,7 +386,7 @@ export const repositorioDeContasAReceber = {
         },
         include: includeDetalhe,
       })
-    })
+    }, OPCOES_TX_CONTA_RECEBER)
     return mapearContaReceber(row)
   },
 

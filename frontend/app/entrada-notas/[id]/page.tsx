@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/ui/modal'
 import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
+import { ModalCiencia } from '@/components/compartilhado/modal-ciencia'
 import { Abas } from '@/components/ui/abas'
 import {
   ConteudoVisualizacaoNota,
@@ -875,6 +876,10 @@ function ConteudoDetalheEntrada() {
   const [downloadRotulo, setDownloadRotulo] = useState('')
   const [xmlModal, setXmlModal] = useState<{ visualizacao: VisualizacaoNota } | null>(null)
   const [modalMarcarProblema, setModalMarcarProblema] = useState(false)
+  const [modalEstoqueBloqueado, setModalEstoqueBloqueado] = useState<{
+    aberto: boolean
+    motivo: string
+  }>({ aberto: false, motivo: '' })
   const [danfeBloqueado, setDanfeBloqueado] = useState(false)
   const [recursosDoc, setRecursosDoc] = useState({
     verNota: true,
@@ -1141,6 +1146,10 @@ function ConteudoDetalheEntrada() {
             )
           }
         } else if (path === '/resolver-divergencia') {
+          const motivoBloqueio =
+            data.nota.divergenciaGestao?.bloqueioExplicacao?.trim() ||
+            (typeof body?.explicacao === 'string' ? body.explicacao.trim() : '') ||
+            'Negociação com o fornecedor após contagem divergente.'
           setSenhaDivergencia('')
           setExplicacaoDivergencia('')
           setAnexoDivergenciaArquivo(null)
@@ -1148,6 +1157,7 @@ function ConteudoDetalheEntrada() {
           setMensagem(
             `Estoque bloqueado após divergência. A nota foi para Entradas consolidadas.${sufixoContas}`
           )
+          setModalEstoqueBloqueado({ aberto: true, motivo: motivoBloqueio })
         } else if (path === '/baixar-contagem') {
           setSenha('')
           if (data.nota.statusEntrada === 'entrada_consolidada') {
@@ -1683,6 +1693,20 @@ function ConteudoDetalheEntrada() {
         textoCancelar="Cancelar"
         aoConfirmar={() => void marcarComProblema()}
         aoCancelar={() => !acao && setModalMarcarProblema(false)}
+      />
+
+      <ModalCiencia
+        aberto={modalEstoqueBloqueado.aberto}
+        titulo="Estoque bloqueado"
+        mensagem={[
+          'O estoque desta nota foi bloqueado por contagem divergente.',
+          '',
+          `Motivo do bloqueio: ${modalEstoqueBloqueado.motivo}`,
+          '',
+          'As peças desta NF não circulam no disponível até o desbloqueio. A nota está em Entradas consolidadas — o motivo permanece visível nesta tela e no extrato do Estoque (movimentos de bloqueio).',
+        ].join('\n')}
+        textoConfirmar="Entendi"
+        aoConfirmar={() => setModalEstoqueBloqueado({ aberto: false, motivo: '' })}
       />
 
       <Modal
@@ -2798,16 +2822,34 @@ function ConteudoDetalheEntrada() {
                 </p>
               )}
               {nota.statusEntrada === 'entrada_consolidada' && nota.divergenciaDesfecho === 'bloqueio' && (
-                <div className="mt-3 space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300">
-                  <p>
-                    <strong>Consolidada com bloqueio</strong> — disponível zerado até desbloquear.
-                    {nota.divergenciaResolvidaEm
-                      ? ` Bloqueada em ${new Date(nota.divergenciaResolvidaEm).toLocaleString('pt-BR')}.`
-                      : ''}
-                  </p>
-                  {nota.divergenciaGestao?.bloqueioExplicacao && (
-                    <p className="text-xs">Explicação: {nota.divergenciaGestao.bloqueioExplicacao}</p>
+                <div className="mt-3 space-y-3 rounded-md border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
+                  {nota.divergenciaGestao?.desbloqueioEm ? (
+                    <p>
+                      <strong>Estoque foi bloqueado</strong> por contagem divergente
+                      {nota.divergenciaResolvidaEm
+                        ? ` em ${new Date(nota.divergenciaResolvidaEm).toLocaleString('pt-BR')}`
+                        : ''}
+                      . Já desbloqueado em{' '}
+                      {new Date(nota.divergenciaGestao.desbloqueioEm).toLocaleString('pt-BR')}.
+                    </p>
+                  ) : (
+                    <p>
+                      <strong>Estoque bloqueado</strong> — as peças desta NF não circulam no
+                      disponível até o desbloqueio.
+                      {nota.divergenciaResolvidaEm
+                        ? ` Bloqueada em ${new Date(nota.divergenciaResolvidaEm).toLocaleString('pt-BR')}.`
+                        : ''}
+                    </p>
                   )}
+                  <div className="rounded-md border border-amber-300/80 bg-background/70 p-2.5 dark:border-amber-800/50">
+                    <p className="text-[11px] font-semibold tracking-wide text-amber-800 uppercase dark:text-amber-300">
+                      Motivo do bloqueio
+                    </p>
+                    <p className="mt-1 text-sm whitespace-pre-wrap">
+                      {nota.divergenciaGestao?.bloqueioExplicacao?.trim() ||
+                        'Contagem divergente — negociado com o fornecedor (sem texto adicional).'}
+                    </p>
+                  </div>
                   {nota.anexoDivergencia && (
                     <Button
                       type="button"
@@ -2821,12 +2863,14 @@ function ConteudoDetalheEntrada() {
                     </Button>
                   )}
                   {nota.divergenciaGestao?.desbloqueioEm ? (
-                    <p className="text-xs">
-                      Desbloqueado em {new Date(nota.divergenciaGestao.desbloqueioEm).toLocaleString('pt-BR')}.
-                      {nota.divergenciaGestao.desbloqueioExplicacao
-                        ? ` ${nota.divergenciaGestao.desbloqueioExplicacao}`
-                        : ''}
-                    </p>
+                    <div className="rounded-md border border-border/60 bg-muted/30 p-2.5">
+                      <p className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                        Motivo do desbloqueio
+                      </p>
+                      <p className="mt-1 text-sm whitespace-pre-wrap text-foreground">
+                        {nota.divergenciaGestao.desbloqueioExplicacao?.trim() || '—'}
+                      </p>
+                    </div>
                   ) : (
                     <div className="space-y-2 border-t border-amber-200 pt-2 dark:border-amber-800/50">
                       <Label htmlFor="explicacao-desbloqueio">Explicação do desbloqueio</Label>

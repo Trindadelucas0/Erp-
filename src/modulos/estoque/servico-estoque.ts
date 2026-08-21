@@ -246,6 +246,129 @@ async function registrarMovimentoEstoque(entrada: EntradaRegistrarMovimento) {
   })
 }
 
+export type ItemBloqueioAtivoProduto = {
+  nfeRecebidaId: string
+  chaveNfe: string
+  nomeEmitente: string | null
+  quantidade: number
+  motivo: string
+  bloqueadoEm: string
+}
+
+export type BloqueioAtivoProduto = {
+  qtdBloqueada: number
+  itens: ItemBloqueioAtivoProduto[]
+}
+
+const PREFIXO_OBS_BLOQUEIO = 'Bloqueio por divergência na contagem — '
+
+function motivoDeObservacaoBloqueio(observacao: string | null | undefined): string | null {
+  const obs = observacao?.trim()
+  if (!obs) return null
+  if (obs.startsWith(PREFIXO_OBS_BLOQUEIO)) {
+    const resto = obs.slice(PREFIXO_OBS_BLOQUEIO.length).trim()
+    return resto || obs
+  }
+  return obs
+}
+
+/** Bloqueios ainda ativos do produto (qtdBloqueada > 0) — para aviso no Kardex. */
+async function montarBloqueioAtivoProduto(
+  companyId: string,
+  produtoId: string,
+  qtdBloqueada: number
+): Promise<BloqueioAtivoProduto | null> {
+  if (qtdBloqueada <= 0) return null
+
+  const movimentos = await repositorioDeEstoque.listarMovimentosBloqueioPorProduto(
+    companyId,
+    produtoId
+  )
+  type Acc = {
+    origemId: string
+    quantidade: number
+    bloqueadoEm: Date | null
+    desbloqueadoEm: Date | null
+    observacao: string | null
+  }
+  const mapa = new Map<string, Acc>()
+
+  for (const mov of movimentos) {
+    if (!mov.origemId) continue
+    let acc = mapa.get(mov.origemId)
+    if (!acc) {
+      acc = {
+        origemId: mov.origemId,
+        quantidade: 0,
+        bloqueadoEm: null,
+        desbloqueadoEm: null,
+        observacao: null,
+      }
+      mapa.set(mov.origemId, acc)
+    }
+    const qtdAbs = Math.abs(arredondarQtd(decimalParaNumero(mov.quantidade)))
+    if (mov.tipoMovimento === 'bloqueio') {
+      acc.quantidade = arredondarQtd(acc.quantidade + qtdAbs)
+      if (!acc.bloqueadoEm || mov.createdAt < acc.bloqueadoEm) {
+        acc.bloqueadoEm = mov.createdAt
+      }
+      if (mov.observacao?.trim()) acc.observacao = mov.observacao.trim()
+    } else if (mov.tipoMovimento === 'desbloqueio') {
+      if (!acc.desbloqueadoEm || mov.createdAt > acc.desbloqueadoEm) {
+        acc.desbloqueadoEm = mov.createdAt
+      }
+    }
+  }
+
+  const ativos = [...mapa.values()].filter(
+    (a) => a.quantidade > 0 && !a.desbloqueadoEm
+  )
+  if (ativos.length === 0) {
+    return {
+      qtdBloqueada: arredondarQtd(qtdBloqueada),
+      itens: [],
+    }
+  }
+
+  const ids = ativos.map((a) => a.origemId)
+  const notas = await repositorioDeEstoque.clientePrisma.nfeRecebida.findMany({
+    where: { companyId, id: { in: ids } },
+    select: {
+      id: true,
+      chaveNfe: true,
+      nomeEmitente: true,
+      analiseJson: true,
+    },
+  })
+  const mapaNota = new Map(notas.map((n) => [n.id, n]))
+
+  const itens: ItemBloqueioAtivoProduto[] = ativos.map((a) => {
+    const nota = mapaNota.get(a.origemId)
+    const gestao = (nota?.analiseJson as {
+      divergenciaGestao?: { bloqueioExplicacao?: string }
+    } | null)?.divergenciaGestao
+    const motivo =
+      gestao?.bloqueioExplicacao?.trim() ||
+      motivoDeObservacaoBloqueio(a.observacao) ||
+      'Bloqueio por divergência na contagem.'
+    return {
+      nfeRecebidaId: a.origemId,
+      chaveNfe: nota?.chaveNfe ?? '—',
+      nomeEmitente: nota?.nomeEmitente ?? null,
+      quantidade: a.quantidade,
+      motivo,
+      bloqueadoEm: a.bloqueadoEm?.toISOString() ?? new Date().toISOString(),
+    }
+  })
+
+  itens.sort((x, y) => y.bloqueadoEm.localeCompare(x.bloqueadoEm))
+
+  return {
+    qtdBloqueada: arredondarQtd(qtdBloqueada),
+    itens,
+  }
+}
+
 async function obterSaldosAtuais(companyId: string, produtoId: string) {
   const produto = await repositorioDeEstoque.buscarProdutoEstoque(companyId, produtoId)
   if (!produto) throw new ErroDaAplicacao('Produto não encontrado', 404)
@@ -263,6 +386,7 @@ async function obterSaldosAtuais(companyId: string, produtoId: string) {
         qtdBloqueada: 0,
         qtdFiscal: 0,
       }),
+      bloqueioAtivo: null as BloqueioAtivoProduto | null,
     }
   }
 
@@ -271,10 +395,18 @@ async function obterSaldosAtuais(companyId: string, produtoId: string) {
     saldo = await repositorioDeEstoque.garantirSaldoZero(companyId, produtoId)
   }
 
+  const saldos = saldosComDisponivel(repositorioDeEstoque.mapearSaldos(saldo))
+  const bloqueioAtivo = await montarBloqueioAtivoProduto(
+    companyId,
+    produtoId,
+    saldos.qtdBloqueada
+  )
+
   return {
     produto: produtoDto,
     fornecedores,
-    saldos: saldosComDisponivel(repositorioDeEstoque.mapearSaldos(saldo)),
+    saldos,
+    bloqueioAtivo,
   }
 }
 
@@ -450,6 +582,7 @@ async function obterKardex(dados: {
     tipoEstoque: dados.tipoEstoque,
     periodo: { de: dados.de.toISOString(), ate: dados.ate.toISOString() },
     saldos: atuais.saldos,
+    bloqueioAtivo: atuais.bloqueioAtivo,
     saldoInicial,
     saldoFinal,
     totais: { entrada: totalEntrada, saida: totalSaida },
@@ -754,6 +887,93 @@ async function obterResumoEntradaNotaFiscal(
   }
 }
 
+export type ItemBloqueadoDivergencia = {
+  produtoId: string
+  sku: string | null
+  nomeVenda: string
+  unidade: string | null
+  quantidadeBloqueada: number
+  status: 'bloqueado' | 'desbloqueado'
+  bloqueadoEm: string | null
+  desbloqueadoEm: string | null
+}
+
+/** Itens retidos por Bloquear estoque após divergência de contagem (§7.17). */
+async function obterItensBloqueadosDivergencia(
+  companyId: string,
+  notaId: string
+): Promise<{
+  itens: ItemBloqueadoDivergencia[]
+  totais: { itens: number; aindaBloqueados: number; desbloqueados: number }
+}> {
+  const movimentos = await repositorioDeEstoque.listarMovimentosPorOrigem(
+    companyId,
+    'nfe_divergencia',
+    notaId
+  )
+  type Acc = {
+    produtoId: string
+    sku: string | null
+    nomeVenda: string
+    unidade: string | null
+    quantidadeBloqueada: number
+    bloqueadoEm: Date | null
+    desbloqueadoEm: Date | null
+  }
+  const mapa = new Map<string, Acc>()
+
+  for (const mov of movimentos) {
+    if (mov.dimensao !== 'bloqueio') continue
+    const qtdAbs = Math.abs(arredondarQtd(decimalParaNumero(mov.quantidade)))
+    let acc = mapa.get(mov.produtoId)
+    if (!acc) {
+      acc = {
+        produtoId: mov.produtoId,
+        sku: mov.produto?.sku?.trim() || null,
+        nomeVenda: mov.produto?.nomeVenda?.trim() || mov.produtoId,
+        unidade: mov.produto?.unidade?.trim() || null,
+        quantidadeBloqueada: 0,
+        bloqueadoEm: null,
+        desbloqueadoEm: null,
+      }
+      mapa.set(mov.produtoId, acc)
+    }
+    if (mov.tipoMovimento === 'bloqueio') {
+      acc.quantidadeBloqueada = arredondarQtd(acc.quantidadeBloqueada + qtdAbs)
+      if (!acc.bloqueadoEm || mov.createdAt < acc.bloqueadoEm) {
+        acc.bloqueadoEm = mov.createdAt
+      }
+    } else if (mov.tipoMovimento === 'desbloqueio') {
+      if (!acc.desbloqueadoEm || mov.createdAt > acc.desbloqueadoEm) {
+        acc.desbloqueadoEm = mov.createdAt
+      }
+    }
+  }
+
+  const itens: ItemBloqueadoDivergencia[] = [...mapa.values()]
+    .filter((a) => a.quantidadeBloqueada > 0)
+    .map((a) => ({
+      produtoId: a.produtoId,
+      sku: a.sku,
+      nomeVenda: a.nomeVenda,
+      unidade: a.unidade,
+      quantidadeBloqueada: a.quantidadeBloqueada,
+      status: a.desbloqueadoEm ? ('desbloqueado' as const) : ('bloqueado' as const),
+      bloqueadoEm: a.bloqueadoEm?.toISOString() ?? null,
+      desbloqueadoEm: a.desbloqueadoEm?.toISOString() ?? null,
+    }))
+    .sort((a, b) => a.nomeVenda.localeCompare(b.nomeVenda, 'pt-BR'))
+
+  return {
+    itens,
+    totais: {
+      itens: itens.length,
+      aindaBloqueados: itens.filter((i) => i.status === 'bloqueado').length,
+      desbloqueados: itens.filter((i) => i.status === 'desbloqueado').length,
+    },
+  }
+}
+
 export const servicoDeEstoque = {
   registrarMovimentoEstoque,
   obterSaldosAtuais,
@@ -763,6 +983,7 @@ export const servicoDeEstoque = {
   aplicarEntradaNotaFiscal,
   existeMovimentoOrigemNfe,
   obterResumoEntradaNotaFiscal,
+  obterItensBloqueadosDivergencia,
 }
 
 export const _testesEstoque = {

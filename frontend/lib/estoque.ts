@@ -73,12 +73,27 @@ export type ResumoTipoKardex = {
   saldo: number
 }
 
+export type ItemBloqueioAtivoKardex = {
+  nfeRecebidaId: string
+  chaveNfe: string
+  nomeEmitente: string | null
+  quantidade: number
+  motivo: string
+  bloqueadoEm: string
+}
+
+export type BloqueioAtivoKardex = {
+  qtdBloqueada: number
+  itens: ItemBloqueioAtivoKardex[]
+}
+
 export type RespostaKardex = {
   produto: ProdutoKardex
   fornecedores: FornecedorVinculoKardex[]
   tipoEstoque: TipoEstoqueVisao
   periodo: { de: string; ate: string }
   saldos: SaldosKardex
+  bloqueioAtivo?: BloqueioAtivoKardex | null
   saldoInicial: number
   saldoFinal: number
   totais: { entrada: number; saida: number }
