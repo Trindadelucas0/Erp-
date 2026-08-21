@@ -420,6 +420,18 @@ async function mapaBaixadaPorNota(companyId: string, nfeRecebidaIds: string[]) {
   return mapa
 }
 
+/** Notas com sessão de contagem `aberta` / `em_andamento` (para rótulo "Em contagem" na lista). */
+async function mapaEmAndamentoPorNota(companyId: string, nfeRecebidaIds: string[]) {
+  const ids = [...new Set(nfeRecebidaIds)]
+  const mapa = new Map<string, boolean>()
+  if (ids.length === 0) return mapa
+  const vinculos = await notasEmSessaoAtiva(companyId, ids)
+  for (const v of vinculos) {
+    mapa.set(v.nfeRecebidaId, true)
+  }
+  return mapa
+}
+
 export const repositorioContagens = {
   listarNotasDisponiveis,
   listarSessoesAtivas,
@@ -435,4 +447,5 @@ export const repositorioContagens = {
   marcarSessaoBaixada,
   reabrirSessaoAposBaixa,
   mapaBaixadaPorNota,
+  mapaEmAndamentoPorNota,
 }

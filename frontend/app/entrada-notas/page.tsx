@@ -58,6 +58,8 @@ type NotaPendente = {
   chaveNfeReferenciada?: string | null
   auditoriaChegadaPendente?: boolean
   contagemBaixada?: boolean
+  /** Sessão de contagem `aberta` / `em_andamento` (só painel contagem). */
+  contagemEmAndamento?: boolean
 }
 
 type JobStatus = {
@@ -224,6 +226,28 @@ function rotuloOrigem(origem: string): string {
   return origem || '—'
 }
 
+/** Coluna Etapa: no painel contagem mostra o ciclo logístico; nos demais, etapaAtual do pipeline. */
+function rotuloEtapaLista(
+  n: Pick<
+    NotaPendente,
+    'etapaAtual' | 'statusEntrada' | 'contagemBaixada' | 'contagemEmAndamento'
+  >,
+  painel: PainelEntrada
+): string {
+  if (painel !== 'contagem') return n.etapaAtual
+  if (n.contagemBaixada) return 'Contagem baixada'
+  if (
+    n.statusEntrada === 'entrada_contagem_ok' ||
+    n.statusEntrada === 'entrada_contagem_divergente'
+  ) {
+    return 'Contagem finalizada'
+  }
+  if (n.statusEntrada === 'entrada_contagem' && n.contagemEmAndamento) {
+    return 'Em contagem'
+  }
+  return 'Liberada para Contagem'
+}
+
 function tituloPainel(painel: PainelEntrada): string {
   return PAINEIS.find((p) => p.id === painel)?.rotulo ?? 'Notas'
 }
@@ -337,10 +361,10 @@ function ConteudoEntradaNotas() {
           case 'origem':
             return rotuloOrigem(n.origem)
           case 'etapa':
-            return n.etapaAtual
+            return rotuloEtapaLista(n, painel)
         }
       }),
-    [notas, ordenacao]
+    [notas, ordenacao, painel]
   )
 
   const totalPaginas = Math.max(1, Math.ceil(notasOrdenadas.length / itensPorPagina))
@@ -1214,7 +1238,7 @@ function ConteudoEntradaNotas() {
                     </td>
                     <td className="hidden px-4 py-3 md:table-cell">
                       <div className="flex flex-wrap items-center gap-1">
-                        <BadgeStatus variante="info">{n.etapaAtual}</BadgeStatus>
+                        <BadgeStatus variante="info">{rotuloEtapaLista(n, painel)}</BadgeStatus>
                         {n.statusEntrada === 'problema_resolvido' ? (
                           <BadgeStatus variante="sucesso">Resolvida</BadgeStatus>
                         ) : null}
@@ -1223,9 +1247,6 @@ function ConteudoEntradaNotas() {
                         ) : null}
                         {n.auditoriaChegadaPendente ? (
                           <BadgeStatus variante="reprovado">Conferir</BadgeStatus>
-                        ) : null}
-                        {n.contagemBaixada && painel === 'contagem' ? (
-                          <BadgeStatus variante="info">Baixada</BadgeStatus>
                         ) : null}
                       </div>
                     </td>
@@ -1286,7 +1307,7 @@ function ConteudoEntradaNotas() {
                             Voltar para contagem
                           </Button>
                         )}
-                        {recursosDoc.verNota && (
+                        {painel !== 'contagem' && recursosDoc.verNota && (
                         <Button
                           type="button"
                           variant="outline"
@@ -1304,7 +1325,7 @@ function ConteudoEntradaNotas() {
                           )}
                         </Button>
                         )}
-                        {recursosDoc.baixarXml && (
+                        {painel !== 'contagem' && recursosDoc.baixarXml && (
                         <Button
                           type="button"
                           variant="ghost"
@@ -1322,7 +1343,7 @@ function ConteudoEntradaNotas() {
                           )}
                         </Button>
                         )}
-                        {recursosDoc.baixarPdfFocus && (
+                        {painel !== 'contagem' && recursosDoc.baixarPdfFocus && (
                         <Button
                           type="button"
                           variant="ghost"

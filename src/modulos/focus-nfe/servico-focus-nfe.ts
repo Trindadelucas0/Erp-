@@ -1123,12 +1123,14 @@ async function listarPendentes(
     }),
   ])
 
+  const idsNotas = notasBrutas.map((n) => n.id)
   const mapaBaixada =
     painel === 'contagem' || painel === 'consolidada'
-      ? await repositorioContagens.mapaBaixadaPorNota(
-          companyId,
-          notasBrutas.map((n) => n.id)
-        )
+      ? await repositorioContagens.mapaBaixadaPorNota(companyId, idsNotas)
+      : new Map<string, boolean>()
+  const mapaEmAndamento =
+    painel === 'contagem'
+      ? await repositorioContagens.mapaEmAndamentoPorNota(companyId, idsNotas)
       : new Map<string, boolean>()
 
   const notas = notasBrutas.map((n) => {
@@ -1176,6 +1178,7 @@ async function listarPendentes(
         return !chegada.aceitoEm
       })(),
       contagemBaixada: mapaBaixada.get(n.id) === true,
+      contagemEmAndamento: mapaEmAndamento.get(n.id) === true,
     }
   })
 
