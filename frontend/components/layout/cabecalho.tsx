@@ -5,6 +5,7 @@ import { Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SeletorDeEmpresa } from '@/components/layout/seletor-de-empresa'
 import { AlternadorDeTema } from '@/components/layout/alternador-de-tema'
+import { textoVersaoSistema } from '@/lib/versao-sistema'
 
 const TITULOS_POR_ROTA: Record<string, string> = {
   '/login': 'Login',
@@ -77,6 +78,12 @@ export function Cabecalho({ titulo, acoes, aoAbrirMenuMobile }: Props) {
         </h2>
       </div>
       <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+        <span
+          className="hidden max-w-[11rem] truncate text-[11px] text-muted-foreground sm:inline lg:max-w-none"
+          title={textoVersaoSistema()}
+        >
+          {textoVersaoSistema()}
+        </span>
         <AlternadorDeTema />
         <SeletorDeEmpresa />
         {acoes && <div className="flex items-center gap-2">{acoes}</div>}

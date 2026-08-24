@@ -13,6 +13,7 @@ import { CardPadrao } from '@/components/ui/card-padrao'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { limparSessaoLocal, salvarTokenNaSessao } from '@/lib/sessao-local'
+import { textoVersaoSistema } from '@/lib/versao-sistema'
 
 function extrairMensagemDeErro(erro: unknown, padrao: string): string {
   const resposta = (erro as {
@@ -131,6 +132,10 @@ export default function PaginaDeLogin() {
           </p>
         </form>
       </CardPadrao>
+
+      <p className="mt-6 text-center text-xs text-muted-foreground">
+        {textoVersaoSistema()}
+      </p>
     </div>
   )
 }

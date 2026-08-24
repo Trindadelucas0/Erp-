@@ -23,14 +23,16 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@versao-sistema": ["../versao-sistema.json"]
     }
   },
   "include": [
     "**/*.ts",
     "**/*.tsx",
     "next-env.d.ts",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    "../versao-sistema.json"
   ],
   "exclude": [
     "node_modules"

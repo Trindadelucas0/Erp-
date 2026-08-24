@@ -49,6 +49,13 @@ const nextConfig: NextConfig = {
       combinedEnv.NEXT_PUBLIC_APP_URL?.trim() ||
       process.env.NEXT_PUBLIC_APP_URL,
   },
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@versao-sistema': path.join(diretorioRaiz, 'versao-sistema.json'),
+    }
+    return config
+  },
   async rewrites() {
     return [
       {
