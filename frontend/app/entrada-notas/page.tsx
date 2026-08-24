@@ -27,7 +27,7 @@ import { BarraCarregamentoDownload } from '@/components/entrada-notas/barra-carr
 import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { classesCampoLista, classesCampoBase } from '@/components/ui/classes-campo'
 import { cn } from '@/lib/utils'
-import { CheckCircle2, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 
 import { mascaraCnpj, mascaraCpf } from '@/lib/documentos'
 import {
@@ -230,15 +230,23 @@ function rotuloOrigem(origem: string): string {
   return origem || '—'
 }
 
-/** Coluna Etapa: no painel contagem mostra o ciclo logístico; nos demais, etapaAtual do pipeline. */
+/** Coluna Etapa: no painel contagem mostra o ciclo logístico; CT-e vinculado = "Vinculado"; demais, etapaAtual. */
 function rotuloEtapaLista(
   n: Pick<
     NotaPendente,
-    'etapaAtual' | 'statusEntrada' | 'contagemBaixada' | 'contagemEmAndamento'
+    | 'etapaAtual'
+    | 'statusEntrada'
+    | 'contagemBaixada'
+    | 'contagemEmAndamento'
+    | 'tipoDocumento'
+    | 'temVinculoFrete'
   >,
   painel: PainelEntrada
 ): string {
-  if (painel !== 'contagem') return n.etapaAtual
+  if (painel !== 'contagem') {
+    if (n.tipoDocumento === 'cte' && n.temVinculoFrete) return 'Vinculado'
+    return n.etapaAtual
+  }
   if (n.contagemBaixada) return 'Contagem baixada'
   if (
     n.statusEntrada === 'entrada_contagem_ok' ||
@@ -1199,12 +1207,9 @@ function ConteudoEntradaNotas() {
                           {rotuloTipoDocumentoCurto(n.tipoDocumento)}
                         </BadgeStatus>
                         {n.temVinculoFrete ? (
-                          <span
-                            title="CT-e e NF de mercadoria vinculados"
-                            className="inline-flex text-emerald-600 dark:text-emerald-400"
-                          >
-                            <CheckCircle2 className="size-4" aria-label="Vinculado" />
-                          </span>
+                          <BadgeStatus variante="sucesso" title="CT-e e NF de mercadoria vinculados">
+                            Vinculado
+                          </BadgeStatus>
                         ) : null}
                       </div>
                     </td>

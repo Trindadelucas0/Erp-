@@ -452,7 +452,7 @@ function mensagemAposAnalisar(nota: DetalheNota): string | null {
     const vinculos = nota.nfesVinculadas ?? []
     if (vinculos.length > 0) {
       const chave = vinculos[0]?.nfe?.chaveNfe
-      return `CT-e vinculado à NF …${chave?.slice(-8) ?? ''}. Custo entra na análise da mercadoria.`
+      return `CT-e vinculado à NF …${chave?.slice(-8) ?? ''}. Custo e título a pagar saem na NF de mercadoria — abra a NF (aba Frete/CT-e).`
     }
     if (motivo === 'vinculo_nfe') {
       const bloqueio = nota.analise?.negociacao?.bloqueios?.[0]
@@ -464,7 +464,9 @@ function mensagemAposAnalisar(nota: DetalheNota): string | null {
     }
     if (motivo === 'cadastro') {
       const b = nota.analise?.cadastro?.bloqueios?.[0]
-      return b ? `Parou em cadastro: ${b}` : 'Parou em cadastro: cadastre a transportadora.'
+      return b
+        ? `Parou em cadastro: ${b}`
+        : 'Parou em cadastro: cadastre a transportadora (ou fornecedor) do emitente.'
     }
     return 'CT-e reanalisado.'
   }
@@ -1766,10 +1768,13 @@ function ConteudoDetalheEntrada() {
           </p>
           <p>
             <span className="text-muted-foreground">Status:</span>{' '}
-            {rotuloStatusEntrada(nota.statusEntrada)}
+            {ehCte && (nota.nfesVinculadas?.length ?? 0) > 0
+              ? 'Vinculado (custo na NF)'
+              : rotuloStatusEntrada(nota.statusEntrada)}
           </p>
           <p>
-            <span className="text-muted-foreground">Etapa:</span> {nota.etapaAtual}
+            <span className="text-muted-foreground">Etapa:</span>{' '}
+            {ehCte && (nota.nfesVinculadas?.length ?? 0) > 0 ? 'Vinculado' : nota.etapaAtual}
           </p>
           {ehNfe55 && (
             <p>
@@ -1811,21 +1816,50 @@ function ConteudoDetalheEntrada() {
           <CardPadrao titulo="Análise de cadastro">
             <CadastroResumo etapa={nota.analise?.cadastro} itens={nota.itens ?? []} />
             {cadastroBloqueante && !nota.fornecedor && nota.documentoEmitente ? (
-              <div className="mt-3">
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => {
-                    gravarDeepLinkFornecedor({
-                      documento: nota.documentoEmitente!,
-                      nome: nota.nomeEmitente ?? undefined,
-                      retorno: `/entrada-notas/${nota.id}`,
-                    })
-                    router.push('/fornecedores')
-                  }}
-                >
-                  Cadastrar fornecedor
-                </Button>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {ehCte ? (
+                  <>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => {
+                        router.push('/transportadoras')
+                      }}
+                    >
+                      Abrir transportadoras
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        gravarDeepLinkFornecedor({
+                          documento: nota.documentoEmitente!,
+                          nome: nota.nomeEmitente ?? undefined,
+                          retorno: `/entrada-notas/${nota.id}`,
+                        })
+                        router.push('/fornecedores')
+                      }}
+                    >
+                      Cadastrar como fornecedor
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => {
+                      gravarDeepLinkFornecedor({
+                        documento: nota.documentoEmitente!,
+                        nome: nota.nomeEmitente ?? undefined,
+                        retorno: `/entrada-notas/${nota.id}`,
+                      })
+                      router.push('/fornecedores')
+                    }}
+                  >
+                    Cadastrar fornecedor
+                  </Button>
+                )}
               </div>
             ) : null}
             {ehNfe55 &&
@@ -1851,7 +1885,7 @@ function ConteudoDetalheEntrada() {
             {ehDocumental ? (
               <p className="text-sm text-muted-foreground">
                 {ehCte
-                  ? 'CTe: cadastre a transportadora (emitente) como fornecedor. O vínculo com a NF de mercadoria fica na aba Vínculo NF / Frete.'
+                  ? 'CTe: o emitente pode ser Transportadora ou Fornecedor (mesmo CNPJ). O vínculo com a NF de mercadoria fica na aba Vínculo NF.'
                   : 'NFS-e: cadastre o prestador como fornecedor. Sem itens de produto.'}
               </p>
             ) : (
@@ -2304,15 +2338,28 @@ function ConteudoDetalheEntrada() {
                 Chave no XML: {nota.chaveNfeReferenciada ?? 'não encontrada'}
               </p>
               {(nota.nfesVinculadas ?? []).length > 0 ? (
-                <ul className="mt-2 space-y-1 text-sm">
-                  {nota.nfesVinculadas!.map((v) => (
-                    <li key={v.id}>
-                      <Link className="underline" href={`/entrada-notas/${v.nfe?.id}?aba=frete`}>
-                        NF …{v.nfe?.chaveNfe?.slice(-8)} — {v.nfe?.nomeEmitente}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
+                <div className="mt-3 space-y-3 rounded-md border border-emerald-300/60 bg-emerald-50/60 p-3 dark:border-emerald-800/50 dark:bg-emerald-950/20">
+                  <p className="text-sm font-medium text-emerald-900 dark:text-emerald-200">
+                    Vinculado — custo e título a pagar saem na NF de mercadoria (não é preciso
+                    lançar este CT-e à parte).
+                  </p>
+                  <ul className="space-y-2 text-sm">
+                    {nota.nfesVinculadas!.map((v) => (
+                      <li key={v.id} className="flex flex-wrap items-center gap-2">
+                        <span>
+                          NF …{v.nfe?.chaveNfe?.slice(-8)} — {v.nfe?.nomeEmitente}
+                        </span>
+                        {v.nfe?.id && (
+                          <Button asChild size="sm" variant="outline">
+                            <Link href={`/entrada-notas/${v.nfe.id}?aba=frete`}>
+                              Abrir NF (Frete/CT-e)
+                            </Link>
+                          </Button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ) : (
                 <div className="mt-3 space-y-2">
                   <p className="text-sm text-muted-foreground">
@@ -2640,7 +2687,31 @@ function ConteudoDetalheEntrada() {
 
       {abaAtiva === 'lancamento' && (
         <div className="space-y-4">
-          {!pipelineBloqueado ? (
+          {ehCte && (nota.nfesVinculadas ?? []).length > 0 ? (
+            <CardPadrao titulo="CT-e vinculado — sem lançamento à parte">
+              <p className="mb-3 text-sm text-muted-foreground">
+                Este CT-e já está ligado à NF de mercadoria. O frete (CFOP, prévia financeira e
+                contas a pagar) é tratado na aba <strong>Frete / CT-e</strong> da NF. Não use
+                Liberar para contagem neste documento.
+              </p>
+              <ul className="space-y-2 text-sm">
+                {nota.nfesVinculadas!.map((v) => (
+                  <li key={v.id} className="flex flex-wrap items-center gap-2">
+                    <span>
+                      NF …{v.nfe?.chaveNfe?.slice(-8)} — {v.nfe?.nomeEmitente ?? '—'}
+                    </span>
+                    {v.nfe?.id && (
+                      <Button asChild size="sm">
+                        <Link href={`/entrada-notas/${v.nfe.id}?aba=frete`}>
+                          Ir para NF (Frete/CT-e)
+                        </Link>
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </CardPadrao>
+          ) : !pipelineBloqueado ? (
             <CardPadrao titulo="Lançamento">
               <p className="mb-3 text-sm text-muted-foreground">
                 {ehDocumental

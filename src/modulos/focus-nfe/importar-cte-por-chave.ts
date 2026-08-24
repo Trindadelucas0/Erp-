@@ -155,6 +155,16 @@ export async function importarCtePorChave(
 
   const existente = await repositorioFocusNfe.buscarPorChave(companyId, chave)
   if (existente?.xmlConteudo && existente.nfeCompleta) {
+    // Focus legado: não tratar como sucesso se tomador ≠ empresa (reparo cancela).
+    // Import XML manual (origem=xml) permanece permitido sem filtro.
+    if (existente.origem === 'focus') {
+      const rejeitado = await rejeitarSeTomadorNaoEmpresa(
+        companyId,
+        chave,
+        existente.xmlConteudo
+      )
+      if (rejeitado) return rejeitado
+    }
     return { ok: true, cteId: existente.id, jaExistia: true, criado: false }
   }
 

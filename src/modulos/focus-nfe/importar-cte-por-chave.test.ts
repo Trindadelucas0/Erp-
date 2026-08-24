@@ -106,4 +106,36 @@ describe('importarCtePorChave — filtro tomador', () => {
     }
     expect(upsertNfeRecebida).toHaveBeenCalled()
   })
+
+  it('CT-e Focus já completo com tomador ≠ empresa não retorna ok', async () => {
+    buscarPorChave.mockResolvedValue({
+      id: 'cte-legado',
+      xmlConteudo: xmlCteTomadorRemetente(),
+      nfeCompleta: true,
+      origem: 'focus',
+    })
+
+    const r = await importarCtePorChave('emp-1', CHAVE_CTE)
+
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.motivo).toBe('tomador_nao_empresa')
+    expect(upsertNfeRecebida).not.toHaveBeenCalled()
+  })
+
+  it('CT-e origem=xml já completo com tomador ≠ empresa continua ok (emergência)', async () => {
+    buscarPorChave.mockResolvedValue({
+      id: 'cte-xml',
+      xmlConteudo: xmlCteTomadorRemetente(),
+      nfeCompleta: true,
+      origem: 'xml',
+    })
+
+    const r = await importarCtePorChave('emp-1', CHAVE_CTE)
+
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.cteId).toBe('cte-xml')
+      expect(r.jaExistia).toBe(true)
+    }
+  })
 })

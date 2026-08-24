@@ -931,6 +931,7 @@ async function analisarNotaDocumental(
     fornecedorPessoaId: nota.fornecedorPessoaId,
     itens: [],
     exigirItens: false,
+    aceitarTransportadoraComoEmitente: tipo === 'cte',
   })
 
   await repositorioEntradaNotas.atualizarNota(notaId, {
@@ -1001,10 +1002,11 @@ async function analisarNotaDocumental(
     }
 
     // CT-e vinculado: não lança sozinho — despesa/rateio na NF de mercadoria
+    const chaveNfVinculada = vinculos[0]?.nfeRecebida?.chaveNfe
     analise.negociacao = {
       status: 'ok',
       avisos: [
-        `CTe vinculado à NF ${vinculos[0]?.nfeRecebida?.chaveNfe?.slice(-8) ?? ''}… — custo entra na análise da mercadoria.`,
+        `CTe vinculado à NF ${chaveNfVinculada?.slice(-8) ?? ''}… — custo e título a pagar saem na NF de mercadoria (aba Frete/CT-e). Não é necessário lançar este CT-e à parte.`,
       ],
       bloqueios: [],
     }
@@ -3744,20 +3746,25 @@ async function reanalisarNotasPendentesPorDocumento(companyId: string, documento
  */
 async function vincularFornecedoresNasNotasPendentes(companyId: string) {
   const notas = await repositorioEntradaNotas.listarNotasPendentesSemFornecedor(companyId)
-  const porDoc = new Map<string, string[]>()
+  /** chave = doc + flag CT-e → ids */
+  const porChave = new Map<string, { doc: string; aceitarTransportadora: boolean; ids: string[] }>()
   for (const nota of notas) {
     const doc = normalizarDocumento(nota.documentoEmitente ?? '')
     if (!doc) continue
-    const ids = porDoc.get(doc) ?? []
-    ids.push(nota.id)
-    porDoc.set(doc, ids)
+    const aceitarTransportadora = nota.tipoDocumento === 'cte'
+    const chave = `${doc}|${aceitarTransportadora ? 't' : 'f'}`
+    const atual = porChave.get(chave) ?? { doc, aceitarTransportadora, ids: [] }
+    atual.ids.push(nota.id)
+    porChave.set(chave, atual)
   }
 
   let vinculadas = 0
-  for (const [doc, ids] of porDoc) {
-    const fornecedor = await repositorioEntradaNotas.buscarFornecedorPorCnpj(companyId, doc)
+  for (const grupo of porChave.values()) {
+    const fornecedor = await repositorioEntradaNotas.buscarFornecedorPorCnpj(companyId, grupo.doc, {
+      aceitarTransportadora: grupo.aceitarTransportadora,
+    })
     if (!fornecedor) continue
-    for (const id of ids) {
+    for (const id of grupo.ids) {
       try {
         await analisarNota(companyId, id)
         vinculadas += 1

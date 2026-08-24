@@ -44,6 +44,11 @@ export async function analisarCadastro(params: {
    * não bloqueia por item sem produto (entrada documental).
    */
   modoDocumental?: boolean
+  /**
+   * CT-e: aceita Pessoa com papel transportadora (além de fornecedor)
+   * para não exigir cadastro duplicado do emitente do frete.
+   */
+  aceitarTransportadoraComoEmitente?: boolean
 }): Promise<{
   resultado: ResultadoEtapa
   fornecedorPessoaId: string | null
@@ -59,6 +64,7 @@ export async function analisarCadastro(params: {
   const achados: AchadoCadastro[] = []
   const exigirItens = params.exigirItens !== false
   const modoDocumental = params.modoDocumental === true
+  const aceitarTransportadora = params.aceitarTransportadoraComoEmitente === true
 
   function pushAchado(achado: AchadoCadastro) {
     achados.push(achado)
@@ -70,7 +76,8 @@ export async function analisarCadastro(params: {
   if (!fornecedorPessoaId && params.documentoEmitente) {
     const fornecedor = await repositorioEntradaNotas.buscarFornecedorPorCnpj(
       params.companyId,
-      params.documentoEmitente
+      params.documentoEmitente,
+      { aceitarTransportadora }
     )
     if (fornecedor) {
       fornecedorPessoaId = fornecedor.id
@@ -78,14 +85,18 @@ export async function analisarCadastro(params: {
       pushAchado({
         categoria: 'fornecedor',
         severidade: 'bloqueio',
-        mensagem: `Fornecedor com documento ${params.documentoEmitente} não cadastrado. Cadastre o fornecedor e rode a análise de novo.`,
+        mensagem: aceitarTransportadora
+          ? `Emitente do CT-e com documento ${params.documentoEmitente} não cadastrado. Cadastre em Transportadoras ou Fornecedores e rode a análise de novo.`
+          : `Fornecedor com documento ${params.documentoEmitente} não cadastrado. Cadastre o fornecedor e rode a análise de novo.`,
       })
     }
   } else if (!params.documentoEmitente) {
     pushAchado({
       categoria: 'fornecedor',
       severidade: 'bloqueio',
-      mensagem: 'XML sem CNPJ/CPF do emitente — não é possível vincular fornecedor.',
+      mensagem: aceitarTransportadora
+        ? 'XML sem CNPJ/CPF do emitente — não é possível vincular a transportadora.'
+        : 'XML sem CNPJ/CPF do emitente — não é possível vincular fornecedor.',
     })
   }
 

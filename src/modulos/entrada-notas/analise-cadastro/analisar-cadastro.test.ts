@@ -164,4 +164,44 @@ describe('analisarCadastro — auto-match de itens', () => {
     expect(resultado.resultado.bloqueios).toHaveLength(0)
     expect(resultado.itensAtualizados[0].criticaCadastro).toBe(false)
   })
+
+  it('CT-e: aceitarTransportadoraComoEmitente busca com flag e mensagem específica', async () => {
+    vi.mocked(repositorioEntradaNotas.buscarFornecedorPorCnpj).mockResolvedValue(null as never)
+
+    const resultado = await analisarCadastro({
+      companyId: 'empresa-1',
+      documentoEmitente: '11222333000181',
+      fornecedorPessoaId: null,
+      itens: [],
+      exigirItens: false,
+      aceitarTransportadoraComoEmitente: true,
+    })
+
+    expect(repositorioEntradaNotas.buscarFornecedorPorCnpj).toHaveBeenCalledWith(
+      'empresa-1',
+      '11222333000181',
+      { aceitarTransportadora: true }
+    )
+    expect(resultado.resultado.status).toBe('bloqueante')
+    expect(resultado.resultado.bloqueios[0]).toContain('Transportadoras ou Fornecedores')
+  })
+
+  it('CT-e: vincula emitente encontrado só como transportadora', async () => {
+    vi.mocked(repositorioEntradaNotas.buscarFornecedorPorCnpj).mockResolvedValue({
+      id: 'transp-1',
+      nome: 'Transportadora X',
+    } as never)
+
+    const resultado = await analisarCadastro({
+      companyId: 'empresa-1',
+      documentoEmitente: '11222333000181',
+      fornecedorPessoaId: null,
+      itens: [],
+      exigirItens: false,
+      aceitarTransportadoraComoEmitente: true,
+    })
+
+    expect(resultado.fornecedorPessoaId).toBe('transp-1')
+    expect(resultado.resultado.status).toBe('ok')
+  })
 })

@@ -372,14 +372,26 @@ async function atualizarItem(
   return clientePrisma.nfeRecebidaItem.update({ where: { id }, data })
 }
 
-async function buscarFornecedorPorCnpj(companyId: string, documento: string) {
+/**
+ * Resolve emitente da nota pelo CNPJ/CPF.
+ * NFe/NFS-e: só papel fornecedor.
+ * CT-e: fornecedor **ou** transportadora (mesmo Pessoa — evita cadastro duplicado).
+ */
+async function buscarFornecedorPorCnpj(
+  companyId: string,
+  documento: string,
+  opcoes?: { aceitarTransportadora?: boolean }
+) {
   const limpo = normalizarDocumento(documento)
   if (!limpo) return null
+  const papeis = opcoes?.aceitarTransportadora
+    ? ['fornecedor', 'transportadora']
+    : ['fornecedor']
   return clientePrisma.pessoa.findFirst({
     where: {
       companyId,
       OR: [{ cnpj: limpo }, { cpf: limpo }],
-      papeis: { some: { papel: 'fornecedor', ativo: true } },
+      papeis: { some: { papel: { in: papeis }, ativo: true } },
     },
     select: { id: true, nome: true, cnpj: true, cpf: true, nomeFantasia: true },
   })
@@ -733,7 +745,7 @@ async function listarNotasPendentesSemFornecedor(companyId: string) {
       fornecedorPessoaId: null,
       documentoEmitente: { not: null },
     },
-    select: { id: true, documentoEmitente: true },
+    select: { id: true, documentoEmitente: true, tipoDocumento: true },
     orderBy: { createdAt: 'asc' },
   })
 }
