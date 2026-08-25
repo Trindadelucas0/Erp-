@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, LogOut } from 'lucide-react'
+import { LayoutDashboard, LogOut, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { ResumoDoPerfil } from '@/components/layout/resumo-do-perfil'
@@ -26,14 +26,28 @@ export function BarraLateral({ aoFecharMenuMobile, className }: Props) {
         className
       )}
     >
-      <div className="border-b border-border px-6 py-5 pr-12">
-        <h1 className="text-lg font-bold tracking-tight text-primary">
-          ERP
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">Sistema de Gestão</p>
+      <div className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-4 py-4">
+        <div className="min-w-0 pl-2">
+          <h1 className="text-lg font-bold tracking-tight text-primary">
+            ERP
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">Sistema de Gestão</p>
+        </div>
+        {aoFecharMenuMobile && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+            onClick={aoFecharMenuMobile}
+            aria-label="Fechar menu"
+          >
+            <X className="size-4" />
+          </Button>
+        )}
       </div>
 
-      <nav className="flex-1 space-y-1 px-3 py-4">
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-4">
         {!estaAutenticado && (
           <Link
             href="/login"
@@ -77,7 +91,7 @@ export function BarraLateral({ aoFecharMenuMobile, className }: Props) {
           })}
       </nav>
 
-      <div className="border-t border-border px-6 py-4 space-y-3">
+      <div className="shrink-0 border-t border-border px-6 py-4 space-y-3">
         {estaAutenticado && perfil && <ResumoDoPerfil perfil={perfil} />}
         {estaAutenticado && (
           <Button

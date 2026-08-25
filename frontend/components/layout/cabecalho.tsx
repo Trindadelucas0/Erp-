@@ -67,7 +67,7 @@ export function Cabecalho({ titulo, acoes, aoAbrirMenuMobile }: Props) {
           type="button"
           variant="ghost"
           size="icon"
-          className="shrink-0 md:hidden"
+          className="shrink-0"
           onClick={aoAbrirMenuMobile}
           aria-label="Abrir menu"
         >

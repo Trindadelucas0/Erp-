@@ -15,27 +15,27 @@ type Props = {
 }
 
 export function LayoutPrincipal({ children }: Props) {
-  const [menuMobileAberto, setMenuMobileAberto] = useState(false)
+  const [menuAberto, setMenuAberto] = useState(false)
 
   return (
     <ProvedorDeAtalhos>
     <div className="flex min-h-screen min-w-0 overflow-x-hidden bg-background">
-      <div className="hidden md:flex">
-        <BarraLateral className="fixed inset-y-0 left-0 z-30" />
-      </div>
-
-      <Sheet open={menuMobileAberto} onOpenChange={setMenuMobileAberto}>
-        <SheetContent side="left" className="h-full w-64 max-w-[85vw] p-0 sm:max-w-sm">
+      <Sheet open={menuAberto} onOpenChange={setMenuAberto}>
+        <SheetContent
+          side="left"
+          showCloseButton={false}
+          className="h-full w-64 max-w-[85vw] gap-0 p-0 sm:max-w-sm"
+        >
           <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
           <BarraLateral
-            className="h-full"
-            aoFecharMenuMobile={() => setMenuMobileAberto(false)}
+            className="h-full border-r-0"
+            aoFecharMenuMobile={() => setMenuAberto(false)}
           />
         </SheetContent>
       </Sheet>
 
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col overflow-x-hidden md:pl-64">
-        <Cabecalho aoAbrirMenuMobile={() => setMenuMobileAberto(true)} />
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col overflow-x-hidden">
+        <Cabecalho aoAbrirMenuMobile={() => setMenuAberto(true)} />
         <main className="min-w-0 flex-1 p-3 md:p-4">
           <div className="mx-auto w-full min-w-0 max-w-7xl">{children}</div>
         </main>
