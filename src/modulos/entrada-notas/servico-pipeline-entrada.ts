@@ -732,27 +732,18 @@ async function lancarContagem(
 }
 
 /**
- * Status pós-lançamento: NFe 55 de revenda com pedido vinculado (`tipoCompra='revenda'`)
- * fica em `aguardando_chegada` até liberar manualmente para a logística; demais casos
- * (sem pedido, bonificação/uso e consumo, ou documental) seguem direto para a contagem,
- * como sempre — regra permanente, DOCUMENTACAO-SISTEMA.md §7.
+ * Status pós-lançamento: NFe 55 com item de produto (contagem física) fica em
+ * `aguardando_chegada` até liberar manualmente para a logística — com ou sem pedido,
+ * qualquer tipoCompra. Documental (NFS-e/CT-e / sem produto) segue direto para
+ * `entrada_contagem` — regra permanente, DOCUMENTACAO-SISTEMA.md §7.19.
  */
-async function statusPosLancamento(
-  nota: {
-    tipoDocumento: string | null
-    itens: { produtoId: string | null }[]
-    pedidoCompraId: string | null
-  },
-  pedidoJaCarregado?: { tipoCompra: string } | null
-): Promise<string> {
+async function statusPosLancamento(nota: {
+  tipoDocumento: string | null
+  itens: { produtoId: string | null }[]
+}): Promise<string> {
   const exigeContagemFisica =
     (nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento) && nota.itens.some((i) => i.produtoId)
-  if (!exigeContagemFisica || !nota.pedidoCompraId) return STATUS_AGUARDANDO_CONTAGEM
-  const pedido =
-    pedidoJaCarregado !== undefined
-      ? pedidoJaCarregado
-      : await repositorioEntradaNotas.buscarTipoCompraPedido(nota.pedidoCompraId)
-  return pedido?.tipoCompra === 'revenda' ? STATUS_AGUARDANDO_CHEGADA : STATUS_AGUARDANDO_CONTAGEM
+  return exigeContagemFisica ? STATUS_AGUARDANDO_CHEGADA : STATUS_AGUARDANDO_CONTAGEM
 }
 
 const ORDEM_ETAPAS: EtapaPipeline[] = ['frete', 'cadastro', 'fiscal', 'negociacao']
@@ -1498,10 +1489,7 @@ async function analisarNota(
   analise.autoLancado = true
   analise.motivoParada = null
   await aplicarRateioEDespesasFrete(companyId, notaId)
-  const statusDestino = await statusPosLancamento(
-    { ...nota, pedidoCompraId: pedido?.id ?? nota.pedidoCompraId },
-    pedido ? { tipoCompra: pedido.tipoCompra } : null
-  )
+  const statusDestino = await statusPosLancamento(nota)
   await lancarContagem(notaId, 'automatica', statusDestino)
   await repositorioEntradaNotas.atualizarNota(notaId, {
     analiseJson: asJson(analise),
@@ -2977,7 +2965,7 @@ async function lancar(
   }
   if (modo === 'contagem' && nota.statusEntrada === STATUS_AGUARDANDO_CHEGADA) {
     throw new ErroDaAplicacao(
-      'Nota de revenda aguardando chegada — use "Liberar para contagem" antes de lançar novamente.',
+      'Nota aguardando chegada — use "Liberar para contagem" antes de lançar novamente.',
       409
     )
   }
@@ -3063,7 +3051,7 @@ async function lancar(
 }
 
 /**
- * Libera manualmente uma NF "aguardando chegada" (revenda com pedido vinculado) para o
+ * Libera manualmente uma NF "aguardando chegada" (NFe 55 com produto) para o
  * painel de contagem — única ação de saída desse status (uma nota por vez, sem lote).
  */
 async function liberarParaContagem(companyId: string, notaId: string) {

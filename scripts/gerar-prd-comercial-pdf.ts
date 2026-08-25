@@ -470,7 +470,7 @@ function gerarConteudo(pdf: PrdPdf): void {
     'Pipeline por etapas: cadastro (vínculo NF × produto do sistema) → fiscal (NCM, origem, CFOP de entrada obrigatório em cada item) → negociação com o pedido → frete/CT-e e rateio → lançamento.',
     'Travas reais: sem CFOP de entrada não avança (nem com senha). Frete do destinatário exige CT-e, rateio, valor e financeiro com vencimento.',
     'Manifestação do destinatário. Visualização da DANFE. Liberação responsável só em pontos previstos (ex.: NCM/origem, negociação) — nunca no CFOP.',
-    'Nota de revenda com pedido vinculado fica em "Aguardando chegada"; conferência de preço/nome se o unitário variar 30% ou mais ou o nome divergir.',
+    'NFe 55 com produto fica em "Aguardando chegada" após o lançamento; conferência de preço/nome se o unitário variar 30% ou mais ou o nome divergir.',
     'Painel Entradas consolidadas e tela Auditoria de entradas (dossiê: veredito, esperado × contado, itens bloqueados, anexos).',
   ])
 

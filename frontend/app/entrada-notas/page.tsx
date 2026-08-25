@@ -35,6 +35,7 @@ import {
   rotuloTipoDocumentoCurto,
   varianteBadgeTipo,
 } from '@/lib/tipo-documento-entrada'
+import { extrairSerieNumeroChave } from '@/lib/chave-acesso-nfe'
 
 type NotaPendente = {
   id: string
@@ -127,6 +128,17 @@ function formatarCustoExtraCentavos(centavos: number): string {
     style: 'currency',
     currency: 'BRL',
   })
+}
+
+function CelulaNumeroNota({ chave }: { chave: string }) {
+  const { numero, serie } = extrairSerieNumeroChave(chave)
+  if (!numero) return '—'
+  return (
+    <>
+      <div>{numero}</div>
+      {serie ? <div className="text-xs text-muted-foreground">Série {serie}</div> : null}
+    </>
+  )
 }
 
 type PainelEntrada =
@@ -298,7 +310,7 @@ function ConteudoEntradaNotas() {
   const [modalCotaAberto, setModalCotaAberto] = useState(false)
   const [detalhesCotaModal, setDetalhesCotaModal] = useState<DetalhesCotaEsgotada | null>(null)
   const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<
-    'emissao' | 'tipo' | 'fornecedor' | 'chave' | 'valor' | 'origem' | 'etapa'
+    'emissao' | 'tipo' | 'fornecedor' | 'numero' | 'chave' | 'valor' | 'origem' | 'etapa'
   >()
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const inputArquivosRef = useRef<HTMLInputElement | null>(null)
@@ -366,6 +378,10 @@ function ConteudoEntradaNotas() {
             return n.tipoDocumento ?? ''
           case 'fornecedor':
             return n.nomeEmitente ?? ''
+          case 'numero': {
+            const { numero } = extrairSerieNumeroChave(n.chaveNfe)
+            return numero ? Number(numero) : 0
+          }
           case 'chave':
             return n.chaveNfe
           case 'valor':
@@ -976,7 +992,7 @@ function ConteudoEntradaNotas() {
           painelAnalise
             ? 'Sync automático ~2 min; BUSCAR força agora (Focus + completar + lista)'
             : painel === 'aguardando_chegada'
-              ? 'Nota de revenda lançada — aguardando chegada física da mercadoria. Libere para a logística iniciar a contagem.'
+              ? 'Nota lançada — aguardando chegada física da mercadoria. Libere para a logística iniciar a contagem.'
               : painel === 'consolidada'
                 ? 'Notas com entrada consolidada. NFe com estoque lançado (físico + fiscal). Badge Estoque bloqueado = divergência ainda retida; Desbloqueado = já liberou o disponível (§7.17). NFS-e/CTe documentais não movimentam estoque.'
                 : painel === 'contagem'
@@ -1137,6 +1153,13 @@ function ConteudoEntradaNotas() {
                   onOrdenar={alternarOrdenacao}
                 />
                 <CabecalhoColunaOrdenavel
+                  className="px-4 py-3"
+                  rotulo="Nº"
+                  coluna="numero"
+                  ordenacao={ordenacao}
+                  onOrdenar={alternarOrdenacao}
+                />
+                <CabecalhoColunaOrdenavel
                   className="hidden px-4 py-3 lg:table-cell"
                   rotulo="Chave"
                   coluna="chave"
@@ -1170,10 +1193,10 @@ function ConteudoEntradaNotas() {
             </thead>
             <tbody>
               {carregando ? (
-                <LinhasSkeletonTabela linhas={5} colunas={8} />
+                <LinhasSkeletonTabela linhas={5} colunas={9} />
               ) : notas.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
                     {painelAnalise
                       ? 'Nenhuma nota neste painel (filtro de datas/busca ativo). Use BUSCAR, Ver todas (sem data) ou importe XML.'
                       : 'Nenhuma nota neste painel.'}
@@ -1223,6 +1246,9 @@ function ConteudoEntradaNotas() {
                       <div className="truncate text-xs text-muted-foreground">
                         {formatarDocCurto(n.documentoEmitente)}
                       </div>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 tabular-nums">
+                      <CelulaNumeroNota chave={n.chaveNfe} />
                     </td>
                     <td className="hidden px-4 py-3 lg:table-cell">
                       <Link

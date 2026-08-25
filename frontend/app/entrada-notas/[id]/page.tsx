@@ -41,6 +41,7 @@ import {
   prefixoPdfDocumento,
   rotuloTipoDocumentoLongo,
 } from '@/lib/tipo-documento-entrada'
+import { extrairSerieNumeroChave, tituloAnaliseEntrada } from '@/lib/chave-acesso-nfe'
 import { gravarDeepLinkFornecedor } from '@/lib/fornecedor-deep-link'
 import { prepararImagemAteBytes } from '@/lib/comprimir-imagem-ate-bytes'
 import type { StatusDaAba } from '@/hooks/use-validacao-de-abas'
@@ -1194,7 +1195,7 @@ function ConteudoDetalheEntrada() {
           )
         } else if (data.nota.statusEntrada === 'aguardando_chegada') {
           setMensagem(
-            'Nota de revenda lançada — aguardando chegada física para liberar a contagem.'
+            'Nota lançada — aguardando chegada física para liberar a contagem.'
           )
         } else if (data.nota.origemLancamento === 'automatica') {
           setMensagem('Entrada automática concluída (Liberar para contagem — sem estoque).')
@@ -1473,6 +1474,7 @@ function ConteudoDetalheEntrada() {
   const ehNfse = nota?.tipoDocumento === 'nfse'
   const ehCte = nota?.tipoDocumento === 'cte'
   const ehNfe55 = !ehDocumental
+  const serieNumero = nota ? extrairSerieNumeroChave(nota.chaveNfe) : { serie: null, numero: null }
   /** Frete remetente: aba só leitura (sem exigir/preencher CT-e, CFOP, financeiro). */
   const freteConsultivo = ehNfe55 && Boolean(nota) && !nota!.exigeCte
   const freteEditavel = !finalizada && !pipelineBloqueado && !freteConsultivo
@@ -1602,8 +1604,15 @@ function ConteudoDetalheEntrada() {
           <Button asChild variant="ghost" size="sm">
             <Link href="/entrada-notas">← Lista</Link>
           </Button>
-          <TituloPagina subtitulo={<span className="font-mono text-xs">{nota.chaveNfe}</span>}>
-            Análise de entrada
+          <TituloPagina
+            subtitulo={
+              <div>
+                {serieNumero.serie ? <p>Série {serieNumero.serie}</p> : null}
+                <span className="font-mono text-xs">{nota.chaveNfe}</span>
+              </div>
+            }
+          >
+            {tituloAnaliseEntrada(nota.tipoDocumento, serieNumero.numero)}
           </TituloPagina>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -2788,7 +2797,7 @@ function ConteudoDetalheEntrada() {
                   : problemaResolvido
                     ? ' Problema resolvido — nota fora do fluxo de entrada.'
                     : nota.statusEntrada === 'aguardando_chegada'
-                      ? ' Nota de revenda lançada — aguardando chegada física da mercadoria. Libere para a logística iniciar a contagem.'
+                      ? ' Nota lançada — aguardando chegada física da mercadoria. Libere para a logística iniciar a contagem.'
                       : nota.statusEntrada === 'entrada_contagem' && !ehDocumental
                         ? ' Aguardando contagem cega da logística.'
                         : nota.statusEntrada === 'entrada_contagem' && ehDocumental
@@ -2836,8 +2845,7 @@ function ConteudoDetalheEntrada() {
                     </div>
                   )}
                   <p className="text-sm text-muted-foreground">
-                    Nota de revenda vinculada a pedido de compra. Assim que a mercadoria chegar,
-                    libere para a logística iniciar a conferência em{' '}
+                    Assim que a mercadoria chegar, libere para a logística iniciar a conferência em{' '}
                     <Link href="/contagens" className="text-primary underline">
                       Contagens de entrada
                     </Link>

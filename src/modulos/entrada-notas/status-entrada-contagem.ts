@@ -9,9 +9,8 @@ export const STATUS_CONTAGEM_DIVERGENTE = 'entrada_contagem_divergente' as const
 export const STATUS_CONSOLIDADA = 'entrada_consolidada' as const
 
 /**
- * Status pós-lançamento exclusivo de NFe 55 de revenda com pedido de compra vinculado
- * (`PedidoCompra.tipoCompra === 'revenda'`) — retém a nota antes da contagem física até o
- * operador clicar "Liberar para contagem" (§7 DOCUMENTACAO-SISTEMA.md).
+ * Status pós-lançamento de NFe 55 com item de produto (contagem física) — retém a nota
+ * antes da contagem até o operador clicar "Liberar para contagem" (§7.19 DOCUMENTACAO-SISTEMA.md).
  */
 export const STATUS_AGUARDANDO_CHEGADA = 'aguardando_chegada' as const
 

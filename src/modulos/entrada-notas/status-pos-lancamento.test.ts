@@ -258,7 +258,7 @@ function ligarAnaliseSempreOk() {
   } as never)
 }
 
-describe('Status pós-lançamento — "Aguardando chegada" (revenda com pedido vinculado)', () => {
+describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -287,7 +287,7 @@ describe('Status pós-lançamento — "Aguardando chegada" (revenda com pedido v
     expect(detalhe.nota.statusEntrada).toBe('aguardando_chegada')
   })
 
-  it('NF de mercadoria com pedido tipoCompra="bonificacao" cai em entrada_contagem (sem mudança)', async () => {
+  it('NF de mercadoria com pedido tipoCompra="bonificacao" cai em aguardando_chegada', async () => {
     ligarAnaliseSempreOk()
     const fake = ligarRepositorioFake(notaEmAnalise({ pedidoCompraId: 'pedido-2' }))
     vi.mocked(repositorioEntradaNotas.buscarPedidoComItens).mockResolvedValue({
@@ -307,12 +307,12 @@ describe('Status pós-lançamento — "Aguardando chegada" (revenda com pedido v
       importarFocusSeAusente: false,
     })
 
-    expect(fake.getEstado().statusEntrada).toBe('entrada_contagem')
-    expect(detalhe.nota.statusEntrada).toBe('entrada_contagem')
+    expect(fake.getEstado().statusEntrada).toBe('aguardando_chegada')
+    expect(detalhe.nota.statusEntrada).toBe('aguardando_chegada')
     expect(repositorioEntradaNotas.buscarTipoCompraPedido).not.toHaveBeenCalled()
   })
 
-  it('NF de mercadoria sem pedido vinculado cai em entrada_contagem (sem mudança)', async () => {
+  it('NF de mercadoria sem pedido vinculado cai em aguardando_chegada', async () => {
     ligarAnaliseSempreOk()
     const fake = ligarRepositorioFake(notaEmAnalise({ pedidoCompraId: null }))
 
@@ -320,8 +320,8 @@ describe('Status pós-lançamento — "Aguardando chegada" (revenda com pedido v
       importarFocusSeAusente: false,
     })
 
-    expect(fake.getEstado().statusEntrada).toBe('entrada_contagem')
-    expect(detalhe.nota.statusEntrada).toBe('entrada_contagem')
+    expect(fake.getEstado().statusEntrada).toBe('aguardando_chegada')
+    expect(detalhe.nota.statusEntrada).toBe('aguardando_chegada')
     expect(repositorioEntradaNotas.buscarPedidoComItens).not.toHaveBeenCalled()
     expect(repositorioEntradaNotas.buscarTipoCompraPedido).not.toHaveBeenCalled()
     expect(gerarTitulosContasPagarDaEntrada).not.toHaveBeenCalled()
@@ -344,7 +344,7 @@ describe('Status pós-lançamento — "Aguardando chegada" (revenda com pedido v
     expect(detalhe.nota.statusEntrada).toBe('entrada_contagem')
   })
 
-  it('lancar() manual: revenda com pedido vinculado também cai em aguardando_chegada', async () => {
+  it('lancar() manual: NFe 55 com produto cai em aguardando_chegada (com ou sem pedido)', async () => {
     const fake = ligarRepositorioFake(
       notaLancada({
         statusEntrada: 'em_analise',
@@ -359,14 +359,11 @@ describe('Status pós-lançamento — "Aguardando chegada" (revenda com pedido v
         },
       })
     )
-    vi.mocked(repositorioEntradaNotas.buscarTipoCompraPedido).mockResolvedValue({
-      tipoCompra: 'revenda',
-    } as never)
 
     await servicoEntradaNotas.lancar('c1', 'nota-1', 'user-1', 'contagem')
 
     expect(fake.getEstado().statusEntrada).toBe('aguardando_chegada')
-    expect(repositorioEntradaNotas.buscarTipoCompraPedido).toHaveBeenCalledWith('pedido-1')
+    expect(repositorioEntradaNotas.buscarTipoCompraPedido).not.toHaveBeenCalled()
     expect(gerarTitulosContasPagarDaEntrada).not.toHaveBeenCalled()
   })
 
