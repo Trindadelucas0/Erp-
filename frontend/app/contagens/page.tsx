@@ -206,9 +206,9 @@ function ConteudoListaContagens() {
             {erro}
           </p>
         )}
-        <div className="overflow-x-auto rounded-md border">
+        <div className="overflow-x-auto rounded-md border-2 border-border">
           <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="border-b bg-muted/40">
+            <thead className="border-b-2 border-border bg-muted/40">
               <tr>
                 <th className="w-10 px-3 py-2" scope="col">
                   <span className="sr-only">Selecionar</span>
@@ -247,7 +247,7 @@ function ConteudoListaContagens() {
                   return (
                     <tr
                       key={n.id}
-                      className={`border-b last:border-0 ${marcada ? 'bg-primary/5' : ''}`}
+                      className={`border-b border-border last:border-0 ${marcada ? 'bg-primary/5' : ''}`}
                     >
                       <td className="px-3 py-2">
                         <input
@@ -311,9 +311,9 @@ function ConteudoListaContagens() {
             Últimas contagens finalizadas (OK, divergente ou cancelada). A quantidade esperada da
             nota continua oculta.
           </p>
-          <div className="overflow-x-auto rounded-md border">
+          <div className="overflow-x-auto rounded-md border-2 border-border">
             <table className="w-full min-w-[720px] text-left text-sm">
-              <thead className="border-b bg-muted/40">
+              <thead className="border-b-2 border-border bg-muted/40">
                 <tr>
                   <th className="px-3 py-2 font-medium" scope="col">
                     Finalizado
@@ -337,7 +337,7 @@ function ConteudoListaContagens() {
               </thead>
               <tbody>
                 {historicoRecente.map((sessao) => (
-                  <tr key={sessao.id} className="border-b last:border-0">
+                  <tr key={sessao.id} className="border-b border-border last:border-0">
                     <td className="px-3 py-2 whitespace-nowrap tabular-nums">
                       {formatarDataHora(sessao.finalizadoEm)}
                     </td>
