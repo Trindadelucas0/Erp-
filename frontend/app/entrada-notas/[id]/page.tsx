@@ -1763,6 +1763,12 @@ function ConteudoDetalheEntrada() {
               </span>
             )}
           </p>
+          <p className="tabular-nums">
+            <span className="text-muted-foreground">Nº:</span>{' '}
+            {serieNumero.numero
+              ? `${serieNumero.numero}${serieNumero.serie ? ` · Série ${serieNumero.serie}` : ''}`
+              : '—'}
+          </p>
           <p>
             <span className="text-muted-foreground">Emitente:</span> {nota.nomeEmitente ?? '—'} (
             {nota.documentoEmitente ?? '—'})
@@ -3039,16 +3045,26 @@ function ConteudoDetalheEntrada() {
                   {!nota.contagemBaixada ? (
                     <>
                       <p className="text-sm text-amber-800 dark:text-amber-300">
-                        Baixe a contagem para travar a logística. Depois você bloqueia o estoque
-                        ou volta para contar de novo.
+                        Contagem finalizada com divergência. Baixe para travar a logística e depois
+                        bloquear o estoque, ou volte para a logística contar de novo.
                       </p>
-                      <Button
-                        type="button"
-                        disabled={acao}
-                        onClick={() => postAcao('/baixar-contagem', {})}
-                      >
-                        Baixar contagem
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          disabled={acao}
+                          onClick={() => postAcao('/baixar-contagem', {})}
+                        >
+                          Baixar contagem
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={acao}
+                          onClick={() => postAcao('/voltar-para-contagem', {})}
+                        >
+                          Voltar para contagem
+                        </Button>
+                      </div>
                     </>
                   ) : (
                     <>
@@ -3169,7 +3185,8 @@ function ConteudoDetalheEntrada() {
                   ) : !nota.contagemBaixada ? (
                     <>
                       <p className="text-sm text-muted-foreground">
-                        Baixar contagem trava a logística e, com a senha, consolida físico e fiscal.
+                        Contagem finalizada (OK). Baixar trava a logística e, com a senha, consolida
+                        físico e fiscal. Ou volte para a logística editar de novo.
                       </p>
                       <div className="flex flex-wrap items-end gap-3">
                         <div>
@@ -3189,6 +3206,14 @@ function ConteudoDetalheEntrada() {
                         >
                           Baixar contagem
                         </BotaoPrimario>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={acao}
+                          onClick={() => postAcao('/voltar-para-contagem', {})}
+                        >
+                          Voltar para contagem
+                        </Button>
                       </div>
                     </>
                   ) : (

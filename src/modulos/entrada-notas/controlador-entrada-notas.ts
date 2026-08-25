@@ -305,7 +305,8 @@ async function baixarContagem(requisicao: FastifyRequest, resposta: FastifyReply
 async function voltarParaContagem(requisicao: FastifyRequest, resposta: FastifyReply) {
   const dados = await servicoEntradaNotas.voltarParaContagem(
     companyIdDe(requisicao),
-    notaIdDe(requisicao)
+    notaIdDe(requisicao),
+    usuarioIdDe(requisicao)
   )
   return resposta.send(dados)
 }

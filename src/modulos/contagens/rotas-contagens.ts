@@ -24,5 +24,6 @@ export async function rotasContagens(aplicacao: FastifyInstance): Promise<void> 
     controladorContagens.atualizarItem
   )
   aplicacao.post('/:id/gravar', { preHandler: autenticado }, controladorContagens.gravar)
+  aplicacao.post('/:id/finalizar', { preHandler: autenticado }, controladorContagens.finalizar)
   aplicacao.post('/:id/cancelar', { preHandler: autenticado }, controladorContagens.cancelar)
 }

@@ -1341,7 +1341,10 @@ function ConteudoEntradaNotas() {
                             {baixandoId === n.id ? 'Baixando…' : 'Baixar contagem'}
                           </Button>
                         )}
-                        {painel === 'contagem' && n.contagemBaixada && n.statusEntrada !== 'entrada_consolidada' && (
+                        {painel === 'contagem' &&
+                          (n.statusEntrada === 'entrada_contagem_ok' ||
+                            n.statusEntrada === 'entrada_contagem_divergente') &&
+                          n.statusEntrada !== 'entrada_consolidada' && (
                           <Button
                             type="button"
                             size="sm"

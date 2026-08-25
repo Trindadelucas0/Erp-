@@ -3,12 +3,16 @@
  * qtdEsperada nunca vai para a API de leitura/bip.
  */
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
+import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-auditoria.js'
 import {
   normalizarCodigoBarrasGtin,
   variantesCodigoBarrasParaBusca,
 } from '../../compartilhado/validacoes/codigo-barras-gtin.js'
 import { podeIniciarContagemLogistica } from '../entrada-notas/status-entrada-contagem.js'
-import { repositorioContagens } from './repositorio-contagens.js'
+import {
+  repositorioContagens,
+  type ItemRevisaoCega,
+} from './repositorio-contagens.js'
 
 function decimalNum(valor: unknown): number | null {
   if (valor == null) return null
@@ -134,6 +138,46 @@ function mapearSessaoLista(
   }
 }
 
+function montarSnapshotItens(
+  itens: Array<{
+    produtoId: string
+    nomeExibicao: string
+    qtdContada: unknown
+    statusItem: string
+    produto?: { sku?: string | null } | null
+  }>
+): ItemRevisaoCega[] {
+  return itens.map((item) => {
+    const sku = item.produto?.sku?.trim() || null
+    return {
+      produtoId: item.produtoId,
+      nomeExibicao: limparNomeExibicaoLegado(item.nomeExibicao, sku),
+      sku,
+      qtdContada: decimalNum(item.qtdContada) ?? 0,
+      statusItem: item.statusItem,
+    }
+  })
+}
+
+function mapearRevisao(rev: {
+  id: string
+  acao: string
+  observacao: string | null
+  itensJson: unknown
+  criadoEm: Date
+  usuario: { id: string; name: string }
+}) {
+  const itens = Array.isArray(rev.itensJson) ? rev.itensJson : []
+  return {
+    id: rev.id,
+    acao: rev.acao,
+    observacao: rev.observacao,
+    criadoEm: rev.criadoEm,
+    operadorNome: rev.usuario.name?.trim() || '—',
+    itens: itens as ItemRevisaoCega[],
+  }
+}
+
 async function listarDisponiveis(companyId: string) {
   const [{ notas, ignoradas }, sessoesBrutas, historicoBruto] = await Promise.all([
     repositorioContagens.listarNotasDisponiveis(companyId),
@@ -254,6 +298,14 @@ async function criar(companyId: string, usuarioId: string, nfeRecebidaIds: strin
     itens,
   })
 
+  await registrarAuditoria({
+    usuarioId,
+    acao: 'criar',
+    entidade: 'contagem_entrada',
+    entidadeId: sessao.id,
+    valoresDepois: { nfeRecebidaIds: idsUnicos, qtdItens: itens.length },
+  })
+
   return obterDetalhe(companyId, sessao.id)
 }
 
@@ -266,8 +318,10 @@ function montarDetalheCego(sessao: Awaited<ReturnType<typeof repositorioContagen
     finalizadoEm: sessao.finalizadoEm,
     observacao: sessao.observacao,
     baixadaEm: sessao.baixadaEm,
+    versao: sessao.versao,
     entradas: sessao.notas.map((n) => mapearNotaCega(n.nfeRecebida)),
     itens: sessao.itens.map(mapearItemCego),
+    revisoes: (sessao.revisoes ?? []).map(mapearRevisao),
   }
 }
 
@@ -323,7 +377,20 @@ function resolverBipNaSessao(
   return null
 }
 
-async function bipar(companyId: string, sessaoId: string, codigoBarras: string) {
+function exigirVersao(versao: number | undefined): number {
+  if (versao == null || !Number.isInteger(versao) || versao < 1) {
+    throw new ErroDaAplicacao('Informe a versão atual da contagem.', 400)
+  }
+  return versao
+}
+
+async function bipar(
+  companyId: string,
+  sessaoId: string,
+  codigoBarras: string,
+  versao: number
+) {
+  const versaoEsperada = exigirVersao(versao)
   const sessao = await repositorioContagens.buscarSessaoCompleta(companyId, sessaoId)
   if (!sessao) throw new ErroDaAplicacao('Contagem não encontrada', 404)
   if (!sessaoEditavel(sessao)) {
@@ -343,7 +410,15 @@ async function bipar(companyId: string, sessaoId: string, codigoBarras: string) 
 
   const atual = decimalNum(item.qtdContada) ?? 0
   const nova = arredondarQtd(atual + match.incremento)
-  await repositorioContagens.atualizarQtdContada(item.id, nova)
+  const r = await repositorioContagens.atualizarQtdContadaComVersao({
+    sessaoId,
+    itemId: item.id,
+    qtdContada: nova,
+    versaoEsperada,
+  })
+  if (!r.ok) {
+    throw new ErroDaAplicacao(repositorioContagens.MSG_CONCORRENCIA, 409)
+  }
 
   return {
     item: {
@@ -351,6 +426,7 @@ async function bipar(companyId: string, sessaoId: string, codigoBarras: string) 
     },
     incremento: match.incremento,
     tipoBip: match.tipo,
+    versao: versaoEsperada + 1,
   }
 }
 
@@ -358,8 +434,10 @@ async function atualizarQtdManual(
   companyId: string,
   sessaoId: string,
   itemId: string,
-  qtdContada: number
+  qtdContada: number,
+  versao: number
 ) {
+  const versaoEsperada = exigirVersao(versao)
   const sessao = await repositorioContagens.buscarSessaoCompleta(companyId, sessaoId)
   if (!sessao) throw new ErroDaAplicacao('Contagem não encontrada', 404)
   if (!sessaoEditavel(sessao)) {
@@ -370,10 +448,19 @@ async function atualizarQtdManual(
   if (!item) throw new ErroDaAplicacao('Item não encontrado nesta contagem', 404)
 
   const nova = arredondarQtd(qtdContada)
-  await repositorioContagens.atualizarQtdContada(item.id, nova)
+  const r = await repositorioContagens.atualizarQtdContadaComVersao({
+    sessaoId,
+    itemId: item.id,
+    qtdContada: nova,
+    versaoEsperada,
+  })
+  if (!r.ok) {
+    throw new ErroDaAplicacao(repositorioContagens.MSG_CONCORRENCIA, 409)
+  }
 
   return {
     item: mapearItemCego({ ...item, qtdContada: nova, statusItem: 'pendente' }),
+    versao: versaoEsperada + 1,
   }
 }
 
@@ -394,32 +481,159 @@ function compararItens(
   return { divergentes, updates }
 }
 
+/**
+ * Gravar rascunho: persiste observação + cópia; sessão continua editável.
+ * Opcionalmente compara e avisa divergentes sem finalizar.
+ */
 async function gravar(
   companyId: string,
   sessaoId: string,
-  opcoes: { confirmarDivergencia?: boolean; observacao?: string | null }
+  usuarioId: string,
+  opcoes: {
+    observacao?: string | null
+    versao: number
+    /** Quantidades da tela (flush antes de gravar) — se informado, aplica no mesmo ato */
+    itensQtd?: Array<{ itemId: string; qtdContada: number }>
+  }
 ) {
+  const versaoEsperada = exigirVersao(opcoes.versao)
   const sessao = await repositorioContagens.buscarSessaoCompleta(companyId, sessaoId)
   if (!sessao) throw new ErroDaAplicacao('Contagem não encontrada', 404)
   if (!sessaoEditavel(sessao)) {
     throw new ErroDaAplicacao('Esta contagem já foi finalizada ou cancelada.', 409)
   }
 
-  const { divergentes, updates } = compararItens(sessao.itens)
+  const qtdPorItem = new Map(
+    (opcoes.itensQtd ?? []).map((l) => [l.itemId, arredondarQtd(l.qtdContada)])
+  )
+  const itensParaComparar = sessao.itens.map((item) => ({
+    ...item,
+    qtdContada: qtdPorItem.has(item.id)
+      ? qtdPorItem.get(item.id)!
+      : item.qtdContada,
+  }))
+
+  const { divergentes, updates } = compararItens(itensParaComparar)
+  const snapshot = montarSnapshotItens(
+    itensParaComparar.map((item) => {
+      const st = updates.find((u) => u.id === item.id)?.statusItem ?? item.statusItem
+      return { ...item, statusItem: st }
+    })
+  )
+
+  const itensQtdNorm =
+    opcoes.itensQtd?.map((l) => ({
+      itemId: l.itemId,
+      qtdContada: arredondarQtd(l.qtdContada),
+    })) ?? undefined
+
+  const r = await repositorioContagens.gravarRascunho({
+    sessaoId,
+    versaoEsperada,
+    observacao: opcoes.observacao,
+    usuarioId,
+    itensSnapshot: snapshot,
+    itensQtd: itensQtdNorm,
+  })
+  if (!r.ok) {
+    throw new ErroDaAplicacao(repositorioContagens.MSG_CONCORRENCIA, 409)
+  }
+
+  await registrarAuditoria({
+    usuarioId,
+    acao: 'gravar',
+    entidade: 'contagem_entrada',
+    entidadeId: sessaoId,
+    valoresDepois: {
+      observacao: opcoes.observacao ?? null,
+      divergentes,
+      qtdItens: snapshot.length,
+    },
+  })
+
+  const detalhe = await obterDetalhe(companyId, sessaoId)
+  return {
+    ok: divergentes.length === 0,
+    divergentes,
+    mensagem:
+      divergentes.length === 0
+        ? 'Contagem gravada. Você pode continuar editando ou Finalizar quando terminar.'
+        : 'Contagem gravada com itens divergentes (sem revelar quantidade). Reconte ou Finalizar com divergência quando concluir.',
+    sessao: detalhe,
+  }
+}
+
+/**
+ * Finalizar: o que o antigo Gravar fazia — trava logística e libera Baixar no admin.
+ */
+async function finalizar(
+  companyId: string,
+  sessaoId: string,
+  usuarioId: string,
+  opcoes: {
+    confirmarDivergencia?: boolean
+    observacao?: string | null
+    versao: number
+    itensQtd?: Array<{ itemId: string; qtdContada: number }>
+  }
+) {
+  const versaoEsperada = exigirVersao(opcoes.versao)
+  const sessao = await repositorioContagens.buscarSessaoCompleta(companyId, sessaoId)
+  if (!sessao) throw new ErroDaAplicacao('Contagem não encontrada', 404)
+  if (!sessaoEditavel(sessao)) {
+    throw new ErroDaAplicacao('Esta contagem já foi finalizada ou cancelada.', 409)
+  }
+
+  const qtdPorItem = new Map(
+    (opcoes.itensQtd ?? []).map((l) => [l.itemId, arredondarQtd(l.qtdContada)])
+  )
+  const itensParaComparar = sessao.itens.map((item) => ({
+    ...item,
+    qtdContada: qtdPorItem.has(item.id)
+      ? qtdPorItem.get(item.id)!
+      : item.qtdContada,
+  }))
+
+  const { divergentes, updates } = compararItens(itensParaComparar)
   const nfeIds = sessao.notas.map((n) => n.nfeRecebidaId)
+  const snapshot = montarSnapshotItens(
+    itensParaComparar.map((item) => {
+      const st = updates.find((u) => u.id === item.id)?.statusItem ?? item.statusItem
+      return { ...item, statusItem: st }
+    })
+  )
+  const itensQtdNorm =
+    opcoes.itensQtd?.map((l) => ({
+      itemId: l.itemId,
+      qtdContada: arredondarQtd(l.qtdContada),
+    })) ?? undefined
 
   if (divergentes.length === 0) {
-    await repositorioContagens.finalizarSessaoOk({
+    const r = await repositorioContagens.finalizarSessaoOk({
       sessaoId,
       nfeRecebidaIds: nfeIds,
       itemUpdates: updates,
       observacao: opcoes.observacao,
+      versaoEsperada,
+      usuarioId,
+      itensSnapshot: snapshot,
+      itensQtd: itensQtdNorm,
+    })
+    if (!r.ok) {
+      throw new ErroDaAplicacao(repositorioContagens.MSG_CONCORRENCIA, 409)
+    }
+    await registrarAuditoria({
+      usuarioId,
+      acao: 'finalizar',
+      entidade: 'contagem_entrada',
+      entidadeId: sessaoId,
+      valoresDepois: { status: 'ok' },
     })
     const detalhe = await obterDetalhe(companyId, sessaoId)
     return {
       ok: true as const,
       divergentes: [] as string[],
-      mensagem: 'Contagem conferida. Entradas liberadas para consolidar estoque.',
+      mensagem: 'Contagem finalizada. Entradas liberadas para baixar / consolidar estoque.',
       sessao: detalhe,
     }
   }
@@ -429,28 +643,49 @@ async function gravar(
       ok: false as const,
       divergentes,
       mensagem:
-        'Contagem divergente nos itens listados. Reconte sem revelar a quantidade da nota. Se persistir, grave com confirmação para deixar pendente no administrativo.',
+        'Contagem divergente nos itens listados. Reconte sem revelar a quantidade da nota. Se persistir, finalize com confirmação para deixar pendente no administrativo.',
       sessao: await obterDetalhe(companyId, sessaoId),
     }
   }
 
-  await repositorioContagens.finalizarSessaoDivergente({
+  const r = await repositorioContagens.finalizarSessaoDivergente({
     sessaoId,
     nfeRecebidaIds: nfeIds,
     itemUpdates: updates,
     observacao: opcoes.observacao,
+    versaoEsperada,
+    usuarioId,
+    itensSnapshot: snapshot,
+    itensQtd: itensQtdNorm,
+  })
+  if (!r.ok) {
+    throw new ErroDaAplicacao(repositorioContagens.MSG_CONCORRENCIA, 409)
+  }
+
+  await registrarAuditoria({
+    usuarioId,
+    acao: 'finalizar',
+    entidade: 'contagem_entrada',
+    entidadeId: sessaoId,
+    valoresDepois: { status: 'divergente', divergentes },
   })
 
   return {
     ok: false as const,
     divergentes,
     mensagem:
-      'Contagem gravada com divergência. Entradas ficaram pendentes para correção administrativa. Consolidar estoque permanece bloqueado.',
+      'Contagem finalizada com divergência. Entradas ficaram pendentes para correção administrativa. Consolidar estoque permanece bloqueado.',
     sessao: await obterDetalhe(companyId, sessaoId),
   }
 }
 
-async function cancelar(companyId: string, sessaoId: string) {
+async function cancelar(
+  companyId: string,
+  sessaoId: string,
+  usuarioId: string,
+  versao: number
+) {
+  const versaoEsperada = exigirVersao(versao)
   const sessao = await repositorioContagens.buscarSessaoCompleta(companyId, sessaoId)
   if (!sessao) throw new ErroDaAplicacao('Contagem não encontrada', 404)
   if (!sessaoEditavel(sessao)) {
@@ -458,7 +693,26 @@ async function cancelar(companyId: string, sessaoId: string) {
   }
 
   const nfeIds = sessao.notas.map((n) => n.nfeRecebidaId)
-  await repositorioContagens.cancelarSessao({ sessaoId, nfeRecebidaIds: nfeIds })
+  const snapshot = montarSnapshotItens(sessao.itens)
+  const r = await repositorioContagens.cancelarSessao({
+    sessaoId,
+    nfeRecebidaIds: nfeIds,
+    versaoEsperada,
+    usuarioId,
+    itensSnapshot: snapshot,
+    observacao: sessao.observacao,
+  })
+  if (!r.ok) {
+    throw new ErroDaAplicacao(repositorioContagens.MSG_CONCORRENCIA, 409)
+  }
+
+  await registrarAuditoria({
+    usuarioId,
+    acao: 'cancelar',
+    entidade: 'contagem_entrada',
+    entidadeId: sessaoId,
+  })
+
   return { ok: true, mensagem: 'Contagem cancelada. Entradas voltaram para Liberadas p/ contagem.' }
 }
 
@@ -469,6 +723,7 @@ export const contagemCegaInterno = {
   compararItens,
   arredondarQtd,
   extrairSerieNumeroChave,
+  montarSnapshotItens,
 }
 
 export const servicoContagens = {
@@ -478,5 +733,6 @@ export const servicoContagens = {
   bipar,
   atualizarQtdManual,
   gravar,
+  finalizar,
   cancelar,
 }

@@ -5,6 +5,17 @@ import { Prisma } from '@prisma/client'
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import { STATUS_SESSAO_CONTAGEM_ATIVA } from '../entrada-notas/status-entrada-contagem.js'
 
+export type ItemRevisaoCega = {
+  produtoId: string
+  nomeExibicao: string
+  sku: string | null
+  qtdContada: number
+  statusItem: string
+}
+
+const MSG_CONCORRENCIA =
+  'Outro operador alterou esta contagem. Recarregue.' as const
+
 async function listarNotasDisponiveis(companyId: string) {
   const emSessaoAtiva = await clientePrisma.contagemEntradaNota.findMany({
     where: {
@@ -204,6 +215,7 @@ async function criarSessao(dados: {
         usuarioId: dados.usuarioId,
         status: 'em_andamento',
         iniciadoEm: new Date(),
+        versao: 1,
         notas: {
           create: dados.nfeRecebidaIds.map((nfeRecebidaId) => ({ nfeRecebidaId })),
         },
@@ -280,17 +292,110 @@ async function buscarSessaoCompleta(companyId: string, id: string) {
           },
         },
       },
+      revisoes: {
+        orderBy: { criadoEm: 'desc' },
+        include: {
+          usuario: { select: { id: true, name: true } },
+        },
+      },
     },
   })
 }
 
-async function atualizarQtdContada(itemId: string, qtdContada: number) {
-  return clientePrisma.contagemEntradaItem.update({
-    where: { id: itemId },
+/**
+ * Incrementa versão se bater; retorna false se concorrência.
+ * Usar dentro de transação quando possível.
+ */
+async function incrementarVersaoSeBater(
+  tx: Prisma.TransactionClient,
+  sessaoId: string,
+  versaoEsperada: number,
+  extras?: Prisma.ContagemEntradaUpdateManyMutationInput
+): Promise<boolean> {
+  const r = await tx.contagemEntrada.updateMany({
+    where: { id: sessaoId, versao: versaoEsperada },
     data: {
-      qtdContada: new Prisma.Decimal(qtdContada),
-      statusItem: 'pendente',
+      versao: { increment: 1 },
+      ...extras,
     },
+  })
+  return r.count === 1
+}
+
+async function atualizarQtdContadaComVersao(dados: {
+  sessaoId: string
+  itemId: string
+  qtdContada: number
+  versaoEsperada: number
+}): Promise<{ ok: true } | { ok: false; motivo: 'concorrencia' }> {
+  return clientePrisma.$transaction(async (tx) => {
+    const bateu = await incrementarVersaoSeBater(tx, dados.sessaoId, dados.versaoEsperada)
+    if (!bateu) return { ok: false as const, motivo: 'concorrencia' as const }
+    await tx.contagemEntradaItem.update({
+      where: { id: dados.itemId },
+      data: {
+        qtdContada: new Prisma.Decimal(dados.qtdContada),
+        statusItem: 'pendente',
+      },
+    })
+    return { ok: true as const }
+  })
+}
+
+async function criarRevisao(
+  tx: Prisma.TransactionClient,
+  dados: {
+    contagemEntradaId: string
+    usuarioId: string
+    acao: string
+    observacao?: string | null
+    itens: ItemRevisaoCega[]
+  }
+) {
+  return tx.contagemEntradaRevisao.create({
+    data: {
+      contagemEntradaId: dados.contagemEntradaId,
+      usuarioId: dados.usuarioId,
+      acao: dados.acao,
+      observacao: dados.observacao ?? null,
+      itensJson: dados.itens as unknown as Prisma.InputJsonValue,
+    },
+  })
+}
+
+async function gravarRascunho(dados: {
+  sessaoId: string
+  versaoEsperada: number
+  observacao?: string | null
+  usuarioId: string
+  itensSnapshot: ItemRevisaoCega[]
+  itensQtd?: Array<{ itemId: string; qtdContada: number }>
+}): Promise<{ ok: true } | { ok: false; motivo: 'concorrencia' }> {
+  return clientePrisma.$transaction(async (tx) => {
+    const bateu = await incrementarVersaoSeBater(tx, dados.sessaoId, dados.versaoEsperada, {
+      observacao: dados.observacao ?? null,
+      status: 'em_andamento',
+    })
+    if (!bateu) return { ok: false as const, motivo: 'concorrencia' as const }
+    if (dados.itensQtd?.length) {
+      for (const linha of dados.itensQtd) {
+        await tx.contagemEntradaItem.update({
+          where: { id: linha.itemId },
+          data: {
+            qtdContada: new Prisma.Decimal(linha.qtdContada),
+            statusItem: 'pendente',
+          },
+        })
+      }
+    }
+    await criarRevisao(tx, {
+      contagemEntradaId: dados.sessaoId,
+      usuarioId: dados.usuarioId,
+      acao: 'gravar',
+      observacao: dados.observacao,
+      itens: dados.itensSnapshot,
+    })
+    return { ok: true as const }
   })
 }
 
@@ -299,16 +404,28 @@ async function finalizarSessaoOk(dados: {
   nfeRecebidaIds: string[]
   itemUpdates: Array<{ id: string; statusItem: string }>
   observacao?: string | null
-}) {
+  versaoEsperada: number
+  usuarioId: string
+  itensSnapshot: ItemRevisaoCega[]
+  itensQtd?: Array<{ itemId: string; qtdContada: number }>
+}): Promise<{ ok: true } | { ok: false; motivo: 'concorrencia' }> {
   return clientePrisma.$transaction(async (tx) => {
-    await tx.contagemEntrada.update({
-      where: { id: dados.sessaoId },
-      data: {
-        status: 'ok',
-        finalizadoEm: new Date(),
-        observacao: dados.observacao ?? null,
-      },
+    const bateu = await incrementarVersaoSeBater(tx, dados.sessaoId, dados.versaoEsperada, {
+      status: 'ok',
+      finalizadoEm: new Date(),
+      observacao: dados.observacao ?? null,
     })
+    if (!bateu) return { ok: false as const, motivo: 'concorrencia' as const }
+    if (dados.itensQtd?.length) {
+      for (const linha of dados.itensQtd) {
+        await tx.contagemEntradaItem.update({
+          where: { id: linha.itemId },
+          data: {
+            qtdContada: new Prisma.Decimal(linha.qtdContada),
+          },
+        })
+      }
+    }
     for (const item of dados.itemUpdates) {
       await tx.contagemEntradaItem.update({
         where: { id: item.id },
@@ -319,6 +436,14 @@ async function finalizarSessaoOk(dados: {
       where: { id: { in: dados.nfeRecebidaIds } },
       data: { statusEntrada: 'entrada_contagem_ok' },
     })
+    await criarRevisao(tx, {
+      contagemEntradaId: dados.sessaoId,
+      usuarioId: dados.usuarioId,
+      acao: 'finalizar',
+      observacao: dados.observacao,
+      itens: dados.itensSnapshot,
+    })
+    return { ok: true as const }
   })
 }
 
@@ -327,16 +452,28 @@ async function finalizarSessaoDivergente(dados: {
   nfeRecebidaIds: string[]
   itemUpdates: Array<{ id: string; statusItem: string }>
   observacao?: string | null
-}) {
+  versaoEsperada: number
+  usuarioId: string
+  itensSnapshot: ItemRevisaoCega[]
+  itensQtd?: Array<{ itemId: string; qtdContada: number }>
+}): Promise<{ ok: true } | { ok: false; motivo: 'concorrencia' }> {
   return clientePrisma.$transaction(async (tx) => {
-    await tx.contagemEntrada.update({
-      where: { id: dados.sessaoId },
-      data: {
-        status: 'divergente',
-        finalizadoEm: new Date(),
-        observacao: dados.observacao ?? null,
-      },
+    const bateu = await incrementarVersaoSeBater(tx, dados.sessaoId, dados.versaoEsperada, {
+      status: 'divergente',
+      finalizadoEm: new Date(),
+      observacao: dados.observacao ?? null,
     })
+    if (!bateu) return { ok: false as const, motivo: 'concorrencia' as const }
+    if (dados.itensQtd?.length) {
+      for (const linha of dados.itensQtd) {
+        await tx.contagemEntradaItem.update({
+          where: { id: linha.itemId },
+          data: {
+            qtdContada: new Prisma.Decimal(linha.qtdContada),
+          },
+        })
+      }
+    }
     for (const item of dados.itemUpdates) {
       await tx.contagemEntradaItem.update({
         where: { id: item.id },
@@ -347,28 +484,48 @@ async function finalizarSessaoDivergente(dados: {
       where: { id: { in: dados.nfeRecebidaIds } },
       data: { statusEntrada: 'entrada_contagem_divergente' },
     })
+    await criarRevisao(tx, {
+      contagemEntradaId: dados.sessaoId,
+      usuarioId: dados.usuarioId,
+      acao: 'finalizar',
+      observacao: dados.observacao,
+      itens: dados.itensSnapshot,
+    })
+    return { ok: true as const }
   })
 }
 
 async function cancelarSessao(dados: {
   sessaoId: string
   nfeRecebidaIds: string[]
-}) {
+  versaoEsperada: number
+  usuarioId: string
+  itensSnapshot: ItemRevisaoCega[]
+  observacao?: string | null
+}): Promise<{ ok: true } | { ok: false; motivo: 'concorrencia' }> {
   return clientePrisma.$transaction(async (tx) => {
-    await tx.contagemEntrada.update({
-      where: { id: dados.sessaoId },
-      data: {
-        status: 'cancelada',
-        finalizadoEm: new Date(),
-      },
+    const bateu = await incrementarVersaoSeBater(tx, dados.sessaoId, dados.versaoEsperada, {
+      status: 'cancelada',
+      finalizadoEm: new Date(),
     })
+    if (!bateu) return { ok: false as const, motivo: 'concorrencia' as const }
     await tx.nfeRecebida.updateMany({
       where: {
         id: { in: dados.nfeRecebidaIds },
-        statusEntrada: { in: ['entrada_contagem', 'entrada_contagem_ok', 'entrada_contagem_divergente'] },
+        statusEntrada: {
+          in: ['entrada_contagem', 'entrada_contagem_ok', 'entrada_contagem_divergente'],
+        },
       },
       data: { statusEntrada: 'entrada_contagem' },
     })
+    await criarRevisao(tx, {
+      contagemEntradaId: dados.sessaoId,
+      usuarioId: dados.usuarioId,
+      acao: 'cancelar',
+      observacao: dados.observacao,
+      itens: dados.itensSnapshot,
+    })
+    return { ok: true as const }
   })
 }
 
@@ -399,7 +556,13 @@ async function marcarSessaoBaixada(sessaoId: string) {
   })
 }
 
-async function reabrirSessaoAposBaixa(dados: { sessaoId: string; nfeRecebidaIds: string[] }) {
+async function reabrirSessaoAposBaixa(dados: {
+  sessaoId: string
+  nfeRecebidaIds: string[]
+  usuarioId: string
+  itensSnapshot: ItemRevisaoCega[]
+  observacao?: string | null
+}) {
   return clientePrisma.$transaction(async (tx) => {
     await tx.contagemEntrada.update({
       where: { id: dados.sessaoId },
@@ -407,6 +570,7 @@ async function reabrirSessaoAposBaixa(dados: { sessaoId: string; nfeRecebidaIds:
         status: 'em_andamento',
         baixadaEm: null,
         finalizadoEm: null,
+        versao: { increment: 1 },
       },
     })
     await tx.contagemEntradaItem.updateMany({
@@ -416,6 +580,13 @@ async function reabrirSessaoAposBaixa(dados: { sessaoId: string; nfeRecebidaIds:
     await tx.nfeRecebida.updateMany({
       where: { id: { in: dados.nfeRecebidaIds } },
       data: { statusEntrada: 'entrada_contagem' },
+    })
+    await criarRevisao(tx, {
+      contagemEntradaId: dados.sessaoId,
+      usuarioId: dados.usuarioId,
+      acao: 'voltar_admin',
+      observacao: dados.observacao,
+      itens: dados.itensSnapshot,
     })
   })
 }
@@ -457,6 +628,7 @@ async function mapaEmAndamentoPorNota(companyId: string, nfeRecebidaIds: string[
 }
 
 export const repositorioContagens = {
+  MSG_CONCORRENCIA,
   listarNotasDisponiveis,
   listarSessoesAtivas,
   listarHistoricoRecente,
@@ -464,7 +636,8 @@ export const repositorioContagens = {
   notasEmSessaoAtiva,
   criarSessao,
   buscarSessaoCompleta,
-  atualizarQtdContada,
+  atualizarQtdContadaComVersao,
+  gravarRascunho,
   finalizarSessaoOk,
   finalizarSessaoDivergente,
   cancelarSessao,

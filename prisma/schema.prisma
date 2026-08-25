@@ -918,6 +918,7 @@ model User {
   tratativasNfe     NfeRecebidaTratativa[]
   estoqueMovimentos EstoqueMovimento[]
   contagensEntrada  ContagemEntrada[]
+  contagensEntradaRevisoes ContagemEntradaRevisao[]
   contasPagarBaixas ContaPagarBaixa[]
   contasPagarAnexos ContaPagarAnexo[]
   contasReceberBaixas ContaReceberBaixa[]
@@ -1118,14 +1119,35 @@ model ContagemEntrada {
   /// Admin baixou a contagem (trava logística até Voltar, se ainda não consolidou)
   baixadaEm    DateTime?
   observacao   String?
+  /// Concorrência otimista — bip/patch/gravar/finalizar/cancelar incrementam
+  versao       Int      @default(1)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  notas ContagemEntradaNota[]
-  itens ContagemEntradaItem[]
+  notas    ContagemEntradaNota[]
+  itens    ContagemEntradaItem[]
+  revisoes ContagemEntradaRevisao[]
 
   @@index([companyId, status])
   @@index([companyId, createdAt])
+}
+
+/// Cópia cega da sessão em Gravar / Finalizar / Voltar admin / Cancelar (sem qtdEsperada)
+model ContagemEntradaRevisao {
+  id                String          @id @default(uuid())
+  contagemEntradaId String
+  contagemEntrada   ContagemEntrada @relation(fields: [contagemEntradaId], references: [id], onDelete: Cascade)
+  usuarioId         String
+  usuario           User            @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  /// gravar | finalizar | voltar_admin | cancelar
+  acao              String
+  observacao        String?
+  /// [{ produtoId, nomeExibicao, sku, qtdContada, statusItem }]
+  itensJson         Json
+  criadoEm          DateTime        @default(now())
+
+  @@index([contagemEntradaId, criadoEm])
+  @@index([usuarioId])
 }
 
 model ContagemEntradaNota {

@@ -387,15 +387,50 @@ describe('baixarContagem / voltarParaContagem / desbloquear', () => {
     vi.mocked(repositorioContagens.buscarSessaoFinalizadaDaNota).mockResolvedValue({
       id: 'sessao-1',
       baixadaEm: new Date(),
+      observacao: null,
       notas: [{ nfeRecebidaId: 'nota-1' }],
+      itens: [
+        {
+          produtoId: 'p1',
+          nomeExibicao: 'Produto',
+          qtdContada: 10,
+          statusItem: 'divergente',
+          produto: { sku: 'SKU1' },
+        },
+      ],
     } as never)
 
-    await servicoEntradaNotas.voltarParaContagem('c1', 'nota-1')
+    await servicoEntradaNotas.voltarParaContagem('c1', 'nota-1', 'user-1')
 
-    expect(repositorioContagens.reabrirSessaoAposBaixa).toHaveBeenCalledWith({
-      sessaoId: 'sessao-1',
-      nfeRecebidaIds: ['nota-1'],
-    })
+    expect(repositorioContagens.reabrirSessaoAposBaixa).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessaoId: 'sessao-1',
+        nfeRecebidaIds: ['nota-1'],
+        usuarioId: 'user-1',
+      })
+    )
+  })
+
+  it('voltar para contagem funciona sem baixa (após Finalizar)', async () => {
+    vi.mocked(repositorioEntradaNotas.buscarNotaCompleta).mockResolvedValue(
+      notaDivergente() as never
+    )
+    vi.mocked(repositorioContagens.buscarSessaoFinalizadaDaNota).mockResolvedValue({
+      id: 'sessao-1',
+      baixadaEm: null,
+      observacao: null,
+      notas: [{ nfeRecebidaId: 'nota-1' }],
+      itens: [],
+    } as never)
+
+    await servicoEntradaNotas.voltarParaContagem('c1', 'nota-1', 'admin-1')
+
+    expect(repositorioContagens.reabrirSessaoAposBaixa).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessaoId: 'sessao-1',
+        usuarioId: 'admin-1',
+      })
+    )
   })
 
   it('não volta se já consolidou', async () => {
@@ -403,7 +438,9 @@ describe('baixarContagem / voltarParaContagem / desbloquear', () => {
       notaDivergente({ statusEntrada: 'entrada_consolidada' }) as never
     )
 
-    await expect(servicoEntradaNotas.voltarParaContagem('c1', 'nota-1')).rejects.toMatchObject({
+    await expect(
+      servicoEntradaNotas.voltarParaContagem('c1', 'nota-1', 'user-1')
+    ).rejects.toMatchObject({
       statusCode: 409,
     })
   })

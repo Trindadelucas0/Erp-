@@ -3107,7 +3107,7 @@ async function baixarContagem(
     nota.statusEntrada !== STATUS_CONTAGEM_DIVERGENTE
   ) {
     throw new ErroDaAplicacao(
-      'Só é possível baixar contagem após gravar OK ou com divergência.',
+      'Só é possível baixar contagem após Finalizar OK ou com divergência.',
       409
     )
   }
@@ -3124,18 +3124,45 @@ async function baixarContagem(
   return await lancar(companyId, notaId, usuarioId, 'consolidar', senha)
 }
 
-async function voltarParaContagem(companyId: string, notaId: string) {
+async function voltarParaContagem(companyId: string, notaId: string, usuarioId: string) {
   const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
   if (nota.statusEntrada === 'entrada_consolidada') {
     throw new ErroDaAplicacao('Nota já consolidada — não é possível voltar para contagem.', 409)
   }
+  if (
+    nota.statusEntrada !== STATUS_CONTAGEM_OK &&
+    nota.statusEntrada !== STATUS_CONTAGEM_DIVERGENTE
+  ) {
+    throw new ErroDaAplicacao(
+      'Só é possível voltar para contagem após Finalizar OK ou com divergência.',
+      409
+    )
+  }
   const sessao = await repositorioContagens.buscarSessaoFinalizadaDaNota(companyId, notaId)
-  if (!sessao?.baixadaEm) {
-    throw new ErroDaAplicacao('A contagem ainda não foi baixada.', 409)
+  if (!sessao) {
+    throw new ErroDaAplicacao('Não há sessão de contagem finalizada para esta nota.', 409)
   }
   const nfeIds = sessao.notas.map((n) => n.nfeRecebidaId)
-  await repositorioContagens.reabrirSessaoAposBaixa({ sessaoId: sessao.id, nfeRecebidaIds: nfeIds })
+  const itensSnapshot = sessao.itens.map((item) => ({
+    produtoId: item.produtoId,
+    nomeExibicao: item.nomeExibicao,
+    sku: item.produto?.sku?.trim() || null,
+    qtdContada:
+      typeof item.qtdContada === 'object' &&
+      item.qtdContada !== null &&
+      'toNumber' in item.qtdContada
+        ? (item.qtdContada as { toNumber: () => number }).toNumber()
+        : Number(item.qtdContada) || 0,
+    statusItem: item.statusItem,
+  }))
+  await repositorioContagens.reabrirSessaoAposBaixa({
+    sessaoId: sessao.id,
+    nfeRecebidaIds: nfeIds,
+    usuarioId,
+    itensSnapshot,
+    observacao: sessao.observacao,
+  })
   return await obterDetalhe(companyId, notaId)
 }
 

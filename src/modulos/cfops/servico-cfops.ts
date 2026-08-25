@@ -50,9 +50,9 @@ async function validarPlanoFinanceiroPadrao(
 ): Promise<string | null> {
   const id = planoFinanceiroPadraoId ?? null
   const classificacao = inferirCfopDoCodigo(codigo)
-  if (classificacao.tipo === 'saida') {
+  if (classificacao.tipo !== 'saida') {
     if (id) {
-      throw new ErroDaAplicacao('Plano financeiro padrão só se aplica a CFOP de entrada', 400)
+      throw new ErroDaAplicacao('Plano financeiro padrão só se aplica a CFOP de saída', 400)
     }
     return null
   }

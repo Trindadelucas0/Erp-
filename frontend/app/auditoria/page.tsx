@@ -55,6 +55,9 @@ function rotuloDaAcao(acao: string) {
     ativar: 'Ativou',
     resetar_senha: 'Redefiniu senha',
     excluir: 'Excluiu',
+    gravar: 'Gravou',
+    finalizar: 'Finalizou',
+    cancelar: 'Cancelou',
   }
   return mapa[acao] ?? acao
 }

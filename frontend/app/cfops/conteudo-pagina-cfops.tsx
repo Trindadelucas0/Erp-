@@ -211,7 +211,7 @@ export function ConteudoDaPaginaCfops() {
         subtipoCfop: form.subtipoCfop,
         aproveitarCreditoIcms: form.aproveitarCreditoIcms,
         cfopSugestaoEntradaId: cfopEhSaida ? form.cfopSugestaoEntrada?.id ?? null : null,
-        planoFinanceiroPadraoId: !cfopEhSaida ? form.planoFinanceiroPadraoId || null : null,
+        planoFinanceiroPadraoId: cfopEhSaida ? form.planoFinanceiroPadraoId || null : null,
       }
 
       if (modoEdicao) {
@@ -388,7 +388,7 @@ export function ConteudoDaPaginaCfops() {
                 cfopSugestaoEntrada:
                   classificacao?.tipo === 'saida' ? f.cfopSugestaoEntrada : null,
                 planoFinanceiroPadraoId:
-                  classificacao?.tipo === 'saida' ? '' : f.planoFinanceiroPadraoId,
+                  classificacao?.tipo === 'saida' ? f.planoFinanceiroPadraoId : '',
               }))
             }}
             aoMudarNome={(v) => setForm((f) => ({ ...f, nome: v }))}
@@ -440,11 +440,11 @@ export function ConteudoDaPaginaCfops() {
                 />
               )}
 
-              {!cfopEhSaida && classificacaoAtual ? (
+              {cfopEhSaida ? (
                 <SecaoFormularioErp titulo="Financeiro">
                   <p className="mb-3 text-xs text-muted-foreground">
-                    Plano aplicado automaticamente ao gerar Contas a Pagar na Entrada de Notas,
-                    conforme o CFOP de entrada prevalente dos itens (maior valor na NF).
+                    Plano financeiro padrão associado a este CFOP de saída. O campo só aparece
+                    para códigos de saída (5, 6 ou 7).
                   </p>
                   <ComboboxPlanoFinanceiro
                     rotulo="Plano financeiro padrão"

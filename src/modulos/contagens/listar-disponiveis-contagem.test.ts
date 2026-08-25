@@ -136,35 +136,42 @@ describe('cancelarSessao — libera nota para nova contagem', () => {
     vi.clearAllMocks()
     vi.mocked(clientePrisma.$transaction).mockImplementation(async (fn) => {
       const tx = {
-        contagemEntrada: { update: vi.fn() },
+        contagemEntrada: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
         nfeRecebida: { updateMany: vi.fn() },
+        contagemEntradaRevisao: { create: vi.fn() },
       }
       return fn(tx as never)
     })
   })
 
   it('restaura statusEntrada para entrada_contagem', async () => {
-    await repositorioContagens.cancelarSessao({
+    const resultado = await repositorioContagens.cancelarSessao({
       sessaoId: 'sessao-1',
       nfeRecebidaIds: ['nota-1'],
+      versaoEsperada: 1,
+      usuarioId: 'user-1',
+      itensSnapshot: [],
     })
+    expect(resultado).toEqual({ ok: true })
 
     const txFn = vi.mocked(clientePrisma.$transaction).mock.calls[0]?.[0] as (
       tx: {
-        contagemEntrada: { update: ReturnType<typeof vi.fn> }
+        contagemEntrada: { updateMany: ReturnType<typeof vi.fn> }
         nfeRecebida: { updateMany: ReturnType<typeof vi.fn> }
+        contagemEntradaRevisao: { create: ReturnType<typeof vi.fn> }
       }
     ) => Promise<unknown>
 
     const tx = {
-      contagemEntrada: { update: vi.fn() },
+      contagemEntrada: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       nfeRecebida: { updateMany: vi.fn() },
+      contagemEntradaRevisao: { create: vi.fn() },
     }
     await txFn(tx)
 
-    expect(tx.contagemEntrada.update).toHaveBeenCalledWith(
+    expect(tx.contagemEntrada.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'sessao-1' },
+        where: { id: 'sessao-1', versao: 1 },
         data: expect.objectContaining({ status: 'cancelada' }),
       })
     )
@@ -177,6 +184,11 @@ describe('cancelarSessao — libera nota para nova contagem', () => {
       },
       data: { statusEntrada: 'entrada_contagem' },
     })
+    expect(tx.contagemEntradaRevisao.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ acao: 'cancelar', usuarioId: 'user-1' }),
+      })
+    )
   })
 })
 
