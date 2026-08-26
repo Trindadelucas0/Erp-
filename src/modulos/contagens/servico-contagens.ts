@@ -558,7 +558,7 @@ async function gravar(
     mensagem:
       divergentes.length === 0
         ? 'Contagem gravada. Você pode continuar editando ou Finalizar quando terminar.'
-        : 'Contagem gravada com itens divergentes (sem revelar quantidade). Reconte ou Finalizar com divergência quando concluir.',
+        : 'Contagem gravada com itens divergentes (sem revelar quantidade). Reconte ou use Finalizar quando concluir.',
     sessao: detalhe,
   }
 }

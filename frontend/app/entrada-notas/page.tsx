@@ -1343,8 +1343,7 @@ function ConteudoEntradaNotas() {
                         )}
                         {painel === 'contagem' &&
                           (n.statusEntrada === 'entrada_contagem_ok' ||
-                            n.statusEntrada === 'entrada_contagem_divergente') &&
-                          n.statusEntrada !== 'entrada_consolidada' && (
+                            n.statusEntrada === 'entrada_contagem_divergente') && (
                           <Button
                             type="button"
                             size="sm"

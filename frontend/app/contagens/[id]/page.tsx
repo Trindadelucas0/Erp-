@@ -111,6 +111,9 @@ function ConteudoSessaoContagem() {
   const [observacao, setObservacao] = useState('')
   const [confirmacaoSair, setConfirmacaoSair] = useState(false)
   const [confirmacaoCancelar, setConfirmacaoCancelar] = useState(false)
+  const [confirmacaoFinalizarOk, setConfirmacaoFinalizarOk] = useState(false)
+  const [confirmacaoFinalizarDivergencia, setConfirmacaoFinalizarDivergencia] =
+    useState(false)
   const [revisaoExpandida, setRevisaoExpandida] = useState<string | null>(null)
 
   const editavel =
@@ -265,8 +268,19 @@ function ConteudoSessaoContagem() {
     }
   }
 
+  function solicitarFinalizar() {
+    if (acao || !editavel || !sessao) return
+    if (divergentes.length > 0) {
+      setConfirmacaoFinalizarDivergencia(true)
+      return
+    }
+    setConfirmacaoFinalizarOk(true)
+  }
+
   async function finalizar(confirmarDivergencia: boolean) {
     if (!id || !editavel || !sessao) return
+    setConfirmacaoFinalizarOk(false)
+    setConfirmacaoFinalizarDivergencia(false)
     setAcao(true)
     setErro(null)
     setMensagem(null)
@@ -283,10 +297,17 @@ function ConteudoSessaoContagem() {
         itensQtd: montarItensQtdFlush(),
       })
       setSessao(data.sessao)
-      setDivergentes(data.divergentes ?? [])
+      const nomesDivergentes = data.divergentes ?? []
+      setDivergentes(nomesDivergentes)
       setMensagem(data.mensagem)
-      if (data.ok || data.sessao.status === 'ok' || data.sessao.status === 'divergente') {
+      const encerrada =
+        data.ok || data.sessao.status === 'ok' || data.sessao.status === 'divergente'
+      if (encerrada) {
         setTimeout(() => router.push('/contagens'), 1200)
+        return
+      }
+      if (!confirmarDivergencia && nomesDivergentes.length > 0) {
+        setConfirmacaoFinalizarDivergencia(true)
       }
     } catch (e) {
       if (!(await tratarConcorrencia(e))) {
@@ -352,20 +373,10 @@ function ConteudoSessaoContagem() {
         <Button
           type="button"
           disabled={acao || !editavel}
-          onClick={() => void finalizar(false)}
+          onClick={solicitarFinalizar}
         >
           Finalizar
         </Button>
-        {divergentes.length > 0 && editavel && (
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={acao}
-            onClick={() => void finalizar(true)}
-          >
-            Finalizar com divergência
-          </Button>
-        )}
         <Button
           type="button"
           variant="outline"
@@ -420,8 +431,8 @@ function ConteudoSessaoContagem() {
             {editavel ? (
               <p className="mt-2 text-muted-foreground">
                 Reconte e use <strong>Gravar</strong> para salvar o progresso, ou{' '}
-                <strong>Finalizar</strong> quando terminar. Se persistir, use &quot;Finalizar com
-                divergência&quot;.
+                <strong>Finalizar</strong> quando terminar — se a divergência persistir, o sistema
+                pergunta se deseja finalizar com divergência.
               </p>
             ) : sessao.status === 'divergente' ? (
               <p className="mt-2 text-muted-foreground">
@@ -647,6 +658,30 @@ function ConteudoSessaoContagem() {
         textoCancelar="Voltar"
         aoConfirmar={() => void executarCancelar()}
         aoCancelar={() => setConfirmacaoCancelar(false)}
+      />
+
+      <ModalConfirmacao
+        aberto={confirmacaoFinalizarOk}
+        titulo="Finalizar contagem?"
+        mensagem="A logística será travada e o administrativo poderá baixar a contagem. Confirma o encerramento?"
+        textoConfirmar="Finalizar"
+        textoCancelar="Continuar contagem"
+        aoConfirmar={() => void finalizar(false)}
+        aoCancelar={() => setConfirmacaoFinalizarOk(false)}
+      />
+
+      <ModalConfirmacao
+        aberto={confirmacaoFinalizarDivergencia}
+        titulo="Há divergência na contagem"
+        mensagem={
+          divergentes.length > 0
+            ? `Itens divergentes (sem revelar quantidade):\n${divergentes.map((n) => `• ${n}`).join('\n')}\n\nReconte para corrigir ou finalize com divergência para deixar pendente no administrativo.`
+            : 'Há itens divergentes da nota. Reconte para corrigir ou finalize com divergência para deixar pendente no administrativo.'
+        }
+        textoConfirmar="Finalizar com divergência"
+        textoCancelar="Recontar"
+        aoConfirmar={() => void finalizar(true)}
+        aoCancelar={() => setConfirmacaoFinalizarDivergencia(false)}
       />
     </div>
   )
