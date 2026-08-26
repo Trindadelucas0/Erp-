@@ -55,6 +55,43 @@ describe('esquemaDeCriacaoDeProduto', () => {
     expect(r.success).toBe(true)
   })
 
+  it('não preenche multiploEntrada a partir de multiplicadorEntrada quando múltiplo omisso', () => {
+    const r = esquemaDeCriacaoDeProduto.safeParse({
+      ...payloadMinimo,
+      fornecedores: [
+        {
+          fornecedorPessoaId: '550e8400-e29b-41d4-a716-446655440000',
+          multiplicadorEntrada: 6,
+          unidadeEntrada: 'CX',
+        },
+      ],
+    })
+    expect(r.success).toBe(true)
+    if (r.success) {
+      expect(r.data.fornecedores[0]?.multiplicadorEntrada).toBe(6)
+      expect(r.data.fornecedores[0]?.multiploEntrada).toBeUndefined()
+    }
+  })
+
+  it('mantém multiploEntrada e multiplicadorEntrada independentes quando ambos informados', () => {
+    const r = esquemaDeCriacaoDeProduto.safeParse({
+      ...payloadMinimo,
+      fornecedores: [
+        {
+          fornecedorPessoaId: '550e8400-e29b-41d4-a716-446655440000',
+          multiploEntrada: 1,
+          multiplicadorEntrada: 6,
+          unidadeEntrada: 'CX',
+        },
+      ],
+    })
+    expect(r.success).toBe(true)
+    if (r.success) {
+      expect(r.data.fornecedores[0]?.multiplicadorEntrada).toBe(6)
+      expect(r.data.fornecedores[0]?.multiploEntrada).toBe(1)
+    }
+  })
+
   it('rejeita multiplicadorEntrada diferente de 1 quando unidades iguais', () => {
     const r = esquemaDeCriacaoDeProduto.safeParse({
       ...payloadMinimo,
