@@ -59,6 +59,7 @@ import {
   resolverModoDocumentalEntrada,
   type FlagsFornecedorEntrada,
 } from './resolver-modo-documental-entrada.js'
+import { avaliarRecorrenciaNoPipeline } from './avaliar-recorrencia-pipeline.js'
 import {
   servicoDeEstoque,
   type ResultadoEntradaNotaFiscal,
@@ -732,6 +733,27 @@ async function lancarContagem(
 }
 
 /**
+ * Consolida entrada documental por recorrência (sem senha de gerente — origem sistema).
+ * Gera Contas a Pagar e marca entrada_consolidada. Sem movimento de estoque.
+ */
+async function consolidarDocumentalPorRecorrencia(companyId: string, notaId: string) {
+  const contasPagarResumo = await gerarTitulosContasPagarDaEntrada(companyId, notaId, {
+    exigirVencimentoMercadoria: true,
+  })
+  await repositorioEntradaNotas.atualizarNota(notaId, {
+    statusEntrada: 'entrada_consolidada',
+    etapaAtual: 'lancamento',
+    origemLancamento: 'automatica',
+  })
+  logFocus('info', 'entrada_recorrencia_consolidada', {
+    companyId,
+    notaId,
+    titulos: contasPagarResumo.gerados,
+  })
+  return contasPagarResumo
+}
+
+/**
  * Status pós-lançamento: NFe 55 com item de produto (contagem física) fica em
  * `aguardando_chegada` até liberar manualmente para a logística — com ou sem pedido,
  * qualquer tipoCompra. Documental (NFS-e/CT-e / sem produto) segue direto para
@@ -1022,6 +1044,59 @@ async function analisarNotaDocumental(
     analiseJson: asJson(analise),
     etapaAtual: 'servico',
   })
+
+  // Gate de recorrência (NFS-e): valor deve bater com regra ativa; senão para em análise.
+  const decisaoRec = await avaliarRecorrenciaNoPipeline({
+    companyId,
+    fornecedorPessoaId: nota.fornecedorPessoaId ?? cadastro.fornecedorPessoaId,
+    valorTotal: nota.valorTotal,
+    dataEmissao: nota.dataEmissao,
+    xmlConteudo: nota.xmlConteudo,
+    prazoPagamentoXml: nota.prazoPagamentoXml,
+    prazoPagamentoTexto: nota.prazoPagamentoTexto,
+    documental: true,
+  })
+
+  if (decisaoRec.acao === 'bloquear') {
+    analise.autoLancado = false
+    analise.motivoParada = 'negociacao'
+    analise.negociacao = {
+      status: 'bloqueante',
+      avisos: [],
+      bloqueios: [decisaoRec.mensagem],
+    }
+    await repositorioEntradaNotas.atualizarNota(notaId, {
+      analiseJson: asJson(analise),
+      etapaAtual: 'servico',
+      statusEntrada: 'em_analise',
+      recorrenciaFinanceiraId: null,
+    })
+    return await obterDetalhe(companyId, notaId)
+  }
+
+  if (decisaoRec.acao === 'casou') {
+    await repositorioEntradaNotas.atualizarNota(notaId, {
+      recorrenciaFinanceiraId: decisaoRec.recorrenciaId,
+    })
+    await lancarContagem(notaId, 'automatica')
+    await consolidarDocumentalPorRecorrencia(companyId, notaId)
+    analise.motivoParada = null
+    analise.negociacao = {
+      status: 'ok',
+      avisos: [
+        decisaoRec.produtoNome
+          ? `Recorrência casada (${decisaoRec.produtoNome}) — entrada consolidada e título gerado.`
+          : 'Recorrência casada — entrada consolidada e título gerado.',
+      ],
+      bloqueios: [],
+    }
+    await repositorioEntradaNotas.atualizarNota(notaId, {
+      analiseJson: asJson(analise),
+      etapaAtual: 'lancamento',
+    })
+    return await obterDetalhe(companyId, notaId)
+  }
+
   await lancarContagem(notaId, 'automatica')
   return await obterDetalhe(companyId, notaId)
 }
@@ -1486,11 +1561,62 @@ async function analisarNota(
     return await obterDetalhe(companyId, notaId)
   }
 
+  // Gate de recorrência: se o fornecedor tem regra ativa, o valor precisa bater.
+  // Documental (consumo/prestador) → auto-consolida; com produto → só lança (aguardando chegada).
+  const decisaoRecNfe = await avaliarRecorrenciaNoPipeline({
+    companyId,
+    fornecedorPessoaId: nota.fornecedorPessoaId,
+    valorTotal: nota.valorTotal,
+    dataEmissao: nota.dataEmissao,
+    xmlConteudo: nota.xmlConteudo,
+    prazoPagamentoXml: nota.prazoPagamentoXml,
+    prazoPagamentoTexto: nota.prazoPagamentoTexto,
+    documental: modoDocumental,
+  })
+
+  if (decisaoRecNfe.acao === 'bloquear') {
+    analise.autoLancado = false
+    analise.motivoParada = 'negociacao'
+    analise.negociacao = {
+      status: 'bloqueante',
+      avisos: analise.negociacao?.avisos ?? [],
+      bloqueios: [...(analise.negociacao?.bloqueios ?? []), decisaoRecNfe.mensagem],
+    }
+    await repositorioEntradaNotas.atualizarNota(notaId, {
+      analiseJson: asJson(analise),
+      etapaAtual: 'negociacao',
+      statusEntrada: 'em_analise',
+      recorrenciaFinanceiraId: null,
+    })
+    return await obterDetalhe(companyId, notaId)
+  }
+
+  if (decisaoRecNfe.acao === 'casou') {
+    await repositorioEntradaNotas.atualizarNota(notaId, {
+      recorrenciaFinanceiraId: decisaoRecNfe.recorrenciaId,
+    })
+  }
+
   analise.autoLancado = true
   analise.motivoParada = null
   await aplicarRateioEDespesasFrete(companyId, notaId)
   const statusDestino = await statusPosLancamento(nota)
   await lancarContagem(notaId, 'automatica', statusDestino)
+
+  if (decisaoRecNfe.acao === 'casou' && decisaoRecNfe.autoConsolidar) {
+    await consolidarDocumentalPorRecorrencia(companyId, notaId)
+    analise.negociacao = {
+      status: 'ok',
+      avisos: [
+        ...(analise.negociacao?.avisos ?? []),
+        decisaoRecNfe.produtoNome
+          ? `Recorrência casada (${decisaoRecNfe.produtoNome}) — entrada consolidada e título gerado.`
+          : 'Recorrência casada — entrada consolidada e título gerado.',
+      ],
+      bloqueios: [],
+    }
+  }
+
   await repositorioEntradaNotas.atualizarNota(notaId, {
     analiseJson: asJson(analise),
     etapaAtual: 'lancamento',

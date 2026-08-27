@@ -57,6 +57,7 @@ model Company {
   contasReceberBaixas         ContaReceberBaixa[]
   contasReceberAnexos         ContaReceberAnexo[]
   jobs                        Job[]
+  recorrenciasFinanceiras     RecorrenciaFinanceira[]
   createdAt                   DateTime                     @default(now())
 }
 
@@ -229,6 +230,9 @@ model NfeRecebida {
   /// bloqueio | null (devolução fica para fase futura)
   divergenciaDesfecho      String?
   divergenciaResolvidaEm   DateTime?
+  /// Recorrência financeira que casou (fornecedor + valor) na Entrada
+  recorrenciaFinanceiraId  String?
+  recorrenciaFinanceira    RecorrenciaFinanceira? @relation(fields: [recorrenciaFinanceiraId], references: [id], onDelete: SetNull)
   itens                    NfeRecebidaItem[]
   tratativas               NfeRecebidaTratativa[]
   vinculosComoNfe          NfeCteVinculo[]          @relation("VinculoNfeMercadoria")
@@ -247,6 +251,7 @@ model NfeRecebida {
   @@index([companyId, tipoDocumento])
   @@index([companyId, chaveNfeReferenciada])
   @@index([cfopEntradaId])
+  @@index([recorrenciaFinanceiraId])
 }
 
 /// Anexo da NfeRecebida (hoje só a ressalva assinada da divergência de contagem).
@@ -638,6 +643,7 @@ model Pessoa {
   contasPagar                 ContaPagar[]
   contasReceber               ContaReceber[]
   estoqueMovimentosComoParceiro EstoqueMovimento[]
+  recorrenciasFinanceiras     RecorrenciaFinanceira[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1095,6 +1101,7 @@ model Produto {
   estoqueSaldo         EstoqueSaldo?
   estoqueMovimentos    EstoqueMovimento[]
   contagensEntradaItens ContagemEntradaItem[]
+  recorrenciasFinanceiras RecorrenciaFinanceira[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1102,6 +1109,27 @@ model Produto {
   @@unique([sku, companyId])
   @@index([companyId, ativo])
   @@index([companyId, nomeVenda])
+}
+
+/// Regra de recorrência: fornecedor + produto/serviço + valor esperado.
+/// Quando a NFS-e/NFe documental chega com o mesmo emitente e valor, a Entrada auto-consolida.
+model RecorrenciaFinanceira {
+  id                  String   @id @default(uuid())
+  companyId           String
+  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fornecedorPessoaId  String
+  fornecedorPessoa    Pessoa   @relation(fields: [fornecedorPessoaId], references: [id], onDelete: Restrict)
+  produtoId           String
+  produto             Produto  @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  valor               Decimal  @db.Decimal(18, 2)
+  ativo               Boolean  @default(true)
+  nfesRecebidas       NfeRecebida[]
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([companyId, fornecedorPessoaId, ativo])
+  @@index([companyId, ativo])
+  @@index([produtoId])
 }
 
 // ─── Contagem de entrada cega (logística) ─────────────────────────────────────

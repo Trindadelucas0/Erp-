@@ -11,6 +11,7 @@ import {
   primeiroPlanoLiberadoFornecedor,
   resolverPlanoFinanceiroMercadoriaNfe,
 } from './resolver-plano-financeiro-entrada.js'
+import { resolverParcelasRecorrencia } from './resolver-parcelas-recorrencia.js'
 
 function decimalNum(v: unknown): number {
   if (v == null) return 0
@@ -153,33 +154,79 @@ async function gerarTituloMercadoriaNfe(
       chaveNfe: true,
       prazoPagamentoXml: true,
       prazoPagamentoTexto: true,
+      recorrenciaFinanceiraId: true,
+      recorrenciaFinanceira: {
+        select: {
+          id: true,
+          produto: { select: { nomeVenda: true } },
+        },
+      },
     },
   })
   if (!nota) return null
-  if (nota.tipoDocumento && nota.tipoDocumento !== 'nfe55') return null
+
+  const tipo = nota.tipoDocumento || 'nfe55'
+  const porRecorrencia = Boolean(nota.recorrenciaFinanceiraId)
+  const ehNfse = tipo === 'nfse'
+  const ehNfe55 = tipo === 'nfe55'
+
+  // Título de mercadoria: NFe 55 sempre; NFS-e só quando casou recorrência.
+  if (ehNfse && !porRecorrencia) return null
+  if (!ehNfe55 && !ehNfse) return null
 
   const existente = await repositorioDeContasAPagar.buscarPorNfeOrigem(companyId, notaId, 'nfe')
   if (existente) return { conta: existente, criado: false as const }
 
-  const xml = nota.xmlConteudo ? normalizarXmlNfe(nota.xmlConteudo) : ''
-  const dupsXml = xml ? extrairDuplicatasCobrancaDoXml(xml) : []
   const valorTotal = decimalNum(nota.valorTotal)
-  const montagem = montarParcelasContaPagarDaNfe({
-    duplicatasXml: dupsXml,
-    valorTotalNf: valorTotal,
-    prazoPagamentoXml: nota.prazoPagamentoXml,
-    prazoPagamentoTexto: nota.prazoPagamentoTexto,
-  })
-  if (!montagem.ok) {
-    if (opcoes?.exigirVencimento === false) return null
-    throw new ErroDaAplicacao(montagem.mensagem, 400)
-  }
+  const planoFinanceiroId = ehNfe55
+    ? await resolverPlanoFinanceiroMercadoriaNfe(companyId, {
+        notaId,
+        fornecedorPessoaId: nota.fornecedorPessoaId,
+      })
+    : await primeiroPlanoLiberadoFornecedor(companyId, nota.fornecedorPessoaId)
 
-  const nNF = xml ? extrairCampoXml(xml, 'nNF') : null
-  const planoFinanceiroId = await resolverPlanoFinanceiroMercadoriaNfe(companyId, {
-    notaId,
-    fornecedorPessoaId: nota.fornecedorPessoaId,
-  })
+  let parcelas: Array<{ numeroDocumento: string | null; vencimento: Date; valor: number }>
+  let observacao: string
+  let numeroDocumento: string | null
+
+  if (porRecorrencia || ehNfse) {
+    const montagem = await resolverParcelasRecorrencia({
+      companyId,
+      fornecedorPessoaId: nota.fornecedorPessoaId,
+      valorTotal,
+      dataEmissao: nota.dataEmissao,
+      xmlConteudo: nota.xmlConteudo,
+      prazoPagamentoXml: nota.prazoPagamentoXml,
+      prazoPagamentoTexto: nota.prazoPagamentoTexto,
+    })
+    if (!montagem.ok) {
+      if (opcoes?.exigirVencimento === false) return null
+      throw new ErroDaAplicacao(montagem.mensagem, 400)
+    }
+    parcelas = montagem.parcelas
+    const nomeProduto = nota.recorrenciaFinanceira?.produto?.nomeVenda?.trim()
+    observacao = nomeProduto
+      ? `Recorrência: ${nomeProduto}`
+      : 'Gerado automaticamente por recorrência na Entrada de Notas'
+    numeroDocumento = nota.chaveNfe ? nota.chaveNfe.slice(-9) : null
+  } else {
+    const xml = nota.xmlConteudo ? normalizarXmlNfe(nota.xmlConteudo) : ''
+    const dupsXml = xml ? extrairDuplicatasCobrancaDoXml(xml) : []
+    const montagem = montarParcelasContaPagarDaNfe({
+      duplicatasXml: dupsXml,
+      valorTotalNf: valorTotal,
+      prazoPagamentoXml: nota.prazoPagamentoXml,
+      prazoPagamentoTexto: nota.prazoPagamentoTexto,
+    })
+    if (!montagem.ok) {
+      if (opcoes?.exigirVencimento === false) return null
+      throw new ErroDaAplicacao(montagem.mensagem, 400)
+    }
+    parcelas = montagem.parcelas
+    const nNF = xml ? extrairCampoXml(xml, 'nNF') : null
+    numeroDocumento = nNF ?? (nota.chaveNfe ? nota.chaveNfe.slice(-9) : null)
+    observacao = 'Gerado automaticamente na Entrada de Notas'
+  }
 
   try {
     return await repositorioDeContasAPagar.criarDeEntrada(companyId, {
@@ -188,10 +235,10 @@ async function gerarTituloMercadoriaNfe(
       planoFinanceiroId,
       nfeRecebidaId: notaId,
       despesaEntradaId: null,
-      numeroDocumento: nNF ?? (nota.chaveNfe ? nota.chaveNfe.slice(-9) : null),
+      numeroDocumento,
       dataEmissao: nota.dataEmissao,
-      observacao: 'Gerado automaticamente na Entrada de Notas',
-      parcelas: montagem.parcelas,
+      observacao,
+      parcelas,
     })
   } catch (e) {
     if (e instanceof ErroBaixa) {
@@ -202,7 +249,7 @@ async function gerarTituloMercadoriaNfe(
 }
 
 /**
- * Gera Contas a Pagar da mercadoria (NFe) e promove stubs de frete (CT-e).
+ * Gera Contas a Pagar da mercadoria (NFe / NFS-e por recorrência) e promove stubs de frete (CT-e).
  * Idempotente — seguro chamar em Liberar contagem e Consolidar.
  */
 export async function gerarTitulosContasPagarDaEntrada(

@@ -188,6 +188,7 @@ async function atualizarNota(
     cfopEntradaId?: string | null
     divergenciaDesfecho?: string | null
     divergenciaResolvidaEm?: Date | null
+    recorrenciaFinanceiraId?: string | null
   }
 ) {
   return clientePrisma.nfeRecebida.update({

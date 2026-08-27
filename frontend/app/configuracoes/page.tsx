@@ -14,6 +14,7 @@ import { PainelConfiguracaoFocusNfe } from '@/components/focus-nfe/painel-config
 import { PainelUnidadesMedida } from '@/components/configuracoes/painel-unidades-medida'
 import { ConteudoDaPaginaCfops } from '@/app/cfops/conteudo-pagina-cfops'
 import { ConteudoDaPaginaPlanosFinanceiros } from '@/app/planos-financeiros/conteudo-pagina-planos-financeiros'
+import { PainelRecorrenciasFinanceiras } from '@/components/recorrencias-financeiras/painel-recorrencias-financeiras'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { Abas } from '@/components/ui/abas'
@@ -36,6 +37,7 @@ import type { AtalhoConfigurado, ChaveDaAcao } from '@/lib/atalhos/tipos'
 
 type AbaConfig = 'geral' | 'vendas' | 'logistica' | 'financeiro' | 'fiscal'
 type SecaoFiscal = 'cfop' | 'buscador'
+type SecaoFinanceiro = 'planos' | 'recorrencia'
 
 const ABAS_ASSINATURA = [
   { id: 'configuracao', rotulo: 'Configuração' },
@@ -45,6 +47,11 @@ const ABAS_ASSINATURA = [
 const ABAS_FISCAL = [
   { id: 'cfop', rotulo: 'CFOP' },
   { id: 'buscador', rotulo: 'Buscador de NF' },
+]
+
+const ABAS_FINANCEIRO = [
+  { id: 'planos', rotulo: 'Planos Financeiros' },
+  { id: 'recorrencia', rotulo: 'Recorrência' },
 ]
 
 function extrairMensagemDeErro(erro: unknown, mensagemPadrao: string): string {
@@ -384,7 +391,7 @@ function ConteudoDaPaginaDeConfiguracoes() {
   ])
 
   const abaParam = searchParams.get('aba') as AbaConfig | null
-  const secaoParam = searchParams.get('secao') as SecaoFiscal | null
+  const secaoParam = searchParams.get('secao') as SecaoFiscal | SecaoFinanceiro | null
 
   const abaAtiva: AbaConfig = useMemo(() => {
     if (abaParam && abasDisponiveis.some((a) => a.id === abaParam)) return abaParam
@@ -400,19 +407,40 @@ function ConteudoDaPaginaDeConfiguracoes() {
   }, [podeFiscalCfop, podeBuscadorNf])
 
   const secaoFiscal: SecaoFiscal = useMemo(() => {
-    if (secaoParam && secoesFiscal.some((s) => s.id === secaoParam)) return secaoParam
+    if (
+      abaAtiva === 'fiscal' &&
+      secaoParam &&
+      secoesFiscal.some((s) => s.id === secaoParam)
+    ) {
+      return secaoParam as SecaoFiscal
+    }
     return (secoesFiscal[0]?.id as SecaoFiscal) ?? 'cfop'
-  }, [secaoParam, secoesFiscal])
+  }, [abaAtiva, secaoParam, secoesFiscal])
+
+  const secaoFinanceiro: SecaoFinanceiro = useMemo(() => {
+    if (
+      abaAtiva === 'financeiro' &&
+      (secaoParam === 'planos' || secaoParam === 'recorrencia')
+    ) {
+      return secaoParam
+    }
+    return 'planos'
+  }, [abaAtiva, secaoParam])
 
   function mudarAba(id: string) {
     const params = new URLSearchParams()
     params.set('aba', id)
     if (id === 'fiscal' && secaoFiscal) params.set('secao', secaoFiscal)
+    if (id === 'financeiro') params.set('secao', secaoFinanceiro)
     router.replace(`/configuracoes?${params.toString()}`)
   }
 
   function mudarSecaoFiscal(id: string) {
     router.replace(`/configuracoes?aba=fiscal&secao=${id}`)
+  }
+
+  function mudarSecaoFinanceiro(id: string) {
+    router.replace(`/configuracoes?aba=financeiro&secao=${id}`)
   }
 
   return (
@@ -440,7 +468,15 @@ function ConteudoDaPaginaDeConfiguracoes() {
       {abaAtiva === 'logistica' && podeLogistica && <PainelUnidadesMedida />}
 
       {abaAtiva === 'financeiro' && podeFinanceiroAba && (
-        <ConteudoDaPaginaPlanosFinanceiros />
+        <div className="space-y-4">
+          <Abas
+            abas={ABAS_FINANCEIRO}
+            abaAtiva={secaoFinanceiro}
+            aoMudar={mudarSecaoFinanceiro}
+          />
+          {secaoFinanceiro === 'planos' && <ConteudoDaPaginaPlanosFinanceiros />}
+          {secaoFinanceiro === 'recorrencia' && <PainelRecorrenciasFinanceiras />}
+        </div>
       )}
 
       {abaAtiva === 'fiscal' && podeFiscal && (
