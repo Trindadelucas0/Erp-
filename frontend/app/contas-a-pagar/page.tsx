@@ -209,9 +209,17 @@ function ConteudoContasAPagar() {
     void carregarCatalogos()
     const nfeRecebidaId = searchParams.get('nfeRecebidaId')?.trim() || ''
     const origem = searchParams.get('origem')?.trim() || ''
+    const vencimentoDe = searchParams.get('vencimentoDe')?.trim() || ''
+    const vencimentoAte = searchParams.get('vencimentoAte')?.trim() || ''
     const iniciais =
-      nfeRecebidaId || origem
-        ? { ...FILTROS_VAZIOS, nfeRecebidaId, origem }
+      nfeRecebidaId || origem || vencimentoDe || vencimentoAte
+        ? {
+            ...FILTROS_VAZIOS,
+            nfeRecebidaId,
+            origem,
+            vencimentoDe,
+            vencimentoAte,
+          }
         : FILTROS_VAZIOS
     cancelarDebounceFiltroTexto()
     filtrosRef.current = iniciais

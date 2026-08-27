@@ -78,4 +78,14 @@ describe('casarRecorrencia', () => {
     expect(msg).toContain('2.600')
     expect(msg).toContain('Limpeza')
   })
+
+  it('unicidade de valor: duas ativas do mesmo fornecedor com valores diferentes casam a correta', () => {
+    const r = casarRecorrencia({
+      fornecedorPessoaId: 'f1',
+      valorTotal: 150,
+      recorrenciasAtivas: regras,
+    })
+    expect(r.status).toBe('casou')
+    if (r.status === 'casou') expect(r.recorrencia.id).toBe('r2')
+  })
 })

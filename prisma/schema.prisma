@@ -1112,7 +1112,7 @@ model Produto {
 }
 
 /// Regra de recorrência: fornecedor + produto/serviço + valor esperado.
-/// Quando a NFS-e/NFe documental chega com o mesmo emitente e valor, a Entrada auto-consolida.
+/// Quando a NFS-e/NFe documental chega com o mesmo emitente e valor (na vigência), a Entrada auto-consolida.
 model RecorrenciaFinanceira {
   id                  String   @id @default(uuid())
   companyId           String
@@ -1122,6 +1122,14 @@ model RecorrenciaFinanceira {
   produtoId           String
   produto             Produto  @relation(fields: [produtoId], references: [id], onDelete: Restrict)
   valor               Decimal  @db.Decimal(18, 2)
+  /// mensal | anual
+  periodicidade       String   @default("mensal")
+  /// Dia do mês esperado (1–28)
+  diaVencimento       Int      @default(1)
+  /// Competência de início YYYY-MM
+  competenciaInicio   String   @default("2020-01")
+  /// Competência de fim YYYY-MM (null = sem fim)
+  competenciaFim      String?
   ativo               Boolean  @default(true)
   nfesRecebidas       NfeRecebida[]
   createdAt           DateTime @default(now())

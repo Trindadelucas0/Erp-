@@ -1,8 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
@@ -278,6 +278,7 @@ function tituloPainel(painel: PainelEntrada): string {
 
 function ConteudoEntradaNotas() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [painel, setPainel] = useState<PainelEntrada>('analise')
   const [notas, setNotas] = useState<NotaPendente[]>([])
   const [carregando, setCarregando] = useState(true)
@@ -343,8 +344,22 @@ function ConteudoEntradaNotas() {
   }, [carregarRecursosDocumento])
 
   useEffect(() => {
+    const painelQuery = searchParams.get('painel')?.trim().toLowerCase() ?? ''
+    const painelValidos = PAINEIS.map((p) => p.id)
+    const painelDaUrl = painelValidos.includes(painelQuery as PainelEntrada)
+      ? (painelQuery as PainelEntrada)
+      : null
+
     const salvos = lerFiltrosSalvos()
-    if (salvos) {
+    if (painelDaUrl) {
+      setPainel(painelDaUrl)
+      if (salvos) {
+        setDataDe(salvos.dataDe)
+        setDataAte(salvos.dataAte)
+        setBusca(salvos.busca)
+        setBuscaDebounced(salvos.busca.trim())
+      }
+    } else if (salvos) {
       setPainel(salvos.painel)
       setDataDe(salvos.dataDe)
       setDataAte(salvos.dataAte)
@@ -352,7 +367,7 @@ function ConteudoEntradaNotas() {
       setBuscaDebounced(salvos.busca.trim())
     }
     setFiltrosProntos(true)
-  }, [])
+  }, [searchParams])
 
   useEffect(() => {
     if (!filtrosProntos) return
@@ -1676,7 +1691,13 @@ function ConteudoEntradaNotas() {
 export default function PaginaEntradaNotas() {
   return (
     <ProtegerRota chaveDaPagina="entrada-notas">
-      <ConteudoEntradaNotas />
+      <Suspense
+        fallback={
+          <p className="text-sm text-muted-foreground">Carregando Entrada de Notas…</p>
+        }
+      >
+        <ConteudoEntradaNotas />
+      </Suspense>
     </ProtegerRota>
   )
 }

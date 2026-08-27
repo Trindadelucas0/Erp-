@@ -161,7 +161,7 @@ function dadosEscalares(dados: DadosParaCriarProduto | DadosParaEditarProduto) {
     entregar: dados.entregar ?? false,
     entregaPorEncomenda: dados.entregaPorEncomenda ?? false,
     flagDevolucao: dados.flagDevolucao ?? false,
-    controlaEstoque: true,
+    controlaEstoque: dados.controlaEstoque ?? true,
     flagComissao: dados.flagComissao ?? false,
     permiteEstoqueNegativo: dados.permiteEstoqueNegativo ?? false,
     bloqueadoCompra: dados.bloqueadoCompra ?? false,

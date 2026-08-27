@@ -6,6 +6,14 @@ import type {
   DadosParaEditarRecorrencia,
 } from './esquema-recorrencias-financeiras.js'
 import { repositorioDeRecorrenciasFinanceiras } from './repositorio-recorrencias-financeiras.js'
+import { servicoDeProdutos } from '../produtos/servico-produtos.js'
+import { servicoDeMarcas } from '../produtos/servico-marcas.js'
+import { servicoDeUnidadesMedida } from '../produtos/servico-unidades-medida.js'
+import { proximoSkuNumerico } from '../produtos/sku-sequencial.js'
+import { esquemaDeCriacaoDeProduto } from '../produtos/esquema-produtos.js'
+
+const MARCA_SERVICO = 'Serviço'
+const UNIDADE_SERVICO = 'UN'
 
 async function validarFornecedor(companyId: string, pessoaId: string) {
   const pessoa = await clientePrisma.pessoa.findFirst({
@@ -51,6 +59,19 @@ async function garantirValorUnicoAtivo(
   }
 }
 
+function payloadPersistencia(dados: DadosParaCriarRecorrencia | DadosParaEditarRecorrencia) {
+  return {
+    fornecedorPessoaId: dados.fornecedorPessoaId,
+    produtoId: dados.produtoId,
+    valor: dados.valor,
+    periodicidade: dados.periodicidade,
+    diaVencimento: dados.diaVencimento,
+    competenciaInicio: dados.competenciaInicio,
+    competenciaFim: dados.competenciaFim,
+    ativo: 'ativo' in dados ? dados.ativo !== false : true,
+  }
+}
+
 async function listar(
   companyId: string,
   filtro: { q?: string; incluirInativos?: boolean; fornecedorPessoaId?: string }
@@ -71,12 +92,10 @@ async function criar(companyId: string, dados: DadosParaCriarRecorrencia, usuari
     await garantirValorUnicoAtivo(companyId, dados.fornecedorPessoaId, dados.valor)
   }
 
-  const registro = await repositorioDeRecorrenciasFinanceiras.criar(companyId, {
-    fornecedorPessoaId: dados.fornecedorPessoaId,
-    produtoId: dados.produtoId,
-    valor: dados.valor,
-    ativo: dados.ativo !== false,
-  })
+  const registro = await repositorioDeRecorrenciasFinanceiras.criar(
+    companyId,
+    payloadPersistencia(dados)
+  )
 
   await registrarAuditoria({
     usuarioId,
@@ -87,6 +106,10 @@ async function criar(companyId: string, dados: DadosParaCriarRecorrencia, usuari
       fornecedorPessoaId: registro.fornecedorPessoaId,
       produtoId: registro.produtoId,
       valor: registro.valor,
+      periodicidade: registro.periodicidade,
+      diaVencimento: registro.diaVencimento,
+      competenciaInicio: registro.competenciaInicio,
+      competenciaFim: registro.competenciaFim,
       ativo: registro.ativo,
     },
   })
@@ -109,12 +132,11 @@ async function editar(
     await garantirValorUnicoAtivo(companyId, dados.fornecedorPessoaId, dados.valor, id)
   }
 
-  const registro = await repositorioDeRecorrenciasFinanceiras.atualizar(companyId, id, {
-    fornecedorPessoaId: dados.fornecedorPessoaId,
-    produtoId: dados.produtoId,
-    valor: dados.valor,
-    ativo: dados.ativo,
-  })
+  const registro = await repositorioDeRecorrenciasFinanceiras.atualizar(
+    companyId,
+    id,
+    payloadPersistencia(dados)
+  )
   if (!registro) throw new ErroDaAplicacao('Recorrência não encontrada', 404)
 
   await registrarAuditoria({
@@ -126,12 +148,20 @@ async function editar(
       fornecedorPessoaId: existente.fornecedorPessoaId,
       produtoId: existente.produtoId,
       valor: existente.valor,
+      periodicidade: existente.periodicidade,
+      diaVencimento: existente.diaVencimento,
+      competenciaInicio: existente.competenciaInicio,
+      competenciaFim: existente.competenciaFim,
       ativo: existente.ativo,
     },
     valoresDepois: {
       fornecedorPessoaId: registro.fornecedorPessoaId,
       produtoId: registro.produtoId,
       valor: registro.valor,
+      periodicidade: registro.periodicidade,
+      diaVencimento: registro.diaVencimento,
+      competenciaInicio: registro.competenciaInicio,
+      competenciaFim: registro.competenciaFim,
       ativo: registro.ativo,
     },
   })
@@ -172,10 +202,63 @@ async function alterarStatus(
   return registro
 }
 
+async function agenda(companyId: string, competencia: string) {
+  return repositorioDeRecorrenciasFinanceiras.montarAgenda(companyId, competencia)
+}
+
+async function garantirMarcaServico(companyId: string): Promise<string> {
+  try {
+    return await servicoDeMarcas.validarMarca(MARCA_SERVICO, companyId)
+  } catch {
+    try {
+      const criada = await servicoDeMarcas.criarMarca({ nome: MARCA_SERVICO }, companyId)
+      return criada.nome
+    } catch {
+      return servicoDeMarcas.validarMarca(MARCA_SERVICO, companyId)
+    }
+  }
+}
+
+async function criarServico(companyId: string, nome: string, usuarioId: string) {
+  try {
+    await servicoDeUnidadesMedida.validarUnidade(UNIDADE_SERVICO, companyId)
+  } catch {
+    throw new ErroDaAplicacao(
+      'Unidade UN não cadastrada. Cadastre em Configurações → Logística.',
+      400
+    )
+  }
+
+  const marca = await garantirMarcaServico(companyId)
+  const sku = await proximoSkuNumerico(companyId)
+  const parse = esquemaDeCriacaoDeProduto.safeParse({
+    nomeVenda: nome,
+    marca,
+    unidade: UNIDADE_SERVICO,
+    controlaEstoque: false,
+    sku,
+  })
+  if (!parse.success) {
+    throw new ErroDaAplicacao(parse.error.errors[0]?.message ?? 'Dados do serviço inválidos', 400)
+  }
+
+  const produto = await servicoDeProdutos.criarProduto(parse.data, companyId, usuarioId)
+  return {
+    id: produto.id,
+    nomeVenda: produto.nomeVenda,
+    sku: produto.sku,
+    unidade: produto.unidade,
+    marca: produto.marca,
+    controlaEstoque: produto.controlaEstoque,
+  }
+}
+
 export const servicoDeRecorrenciasFinanceiras = {
   listar,
   obter,
   criar,
   editar,
   alterarStatus,
+  agenda,
+  criarServico,
 }

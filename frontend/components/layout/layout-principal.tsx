@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { BarraLateral } from '@/components/layout/barra-lateral'
 import { Cabecalho } from '@/components/layout/cabecalho'
 import { ProvedorDeAtalhos } from '@/components/compartilhado/provedor-de-atalhos'
+import { ProvedorPendencias } from '@/components/pendencias/provedor-pendencias'
 import {
   Sheet,
   SheetContent,
@@ -19,6 +20,7 @@ export function LayoutPrincipal({ children }: Props) {
 
   return (
     <ProvedorDeAtalhos>
+    <ProvedorPendencias>
     <div className="flex min-h-screen min-w-0 overflow-x-hidden bg-background">
       <Sheet open={menuAberto} onOpenChange={setMenuAberto}>
         <SheetContent
@@ -41,6 +43,7 @@ export function LayoutPrincipal({ children }: Props) {
         </main>
       </div>
     </div>
+    </ProvedorPendencias>
     </ProvedorDeAtalhos>
   )
 }

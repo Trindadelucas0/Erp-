@@ -2,9 +2,11 @@ import type { FastifyReply, FastifyRequest } from 'fastify'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { servicoDeRecorrenciasFinanceiras } from './servico-recorrencias-financeiras.js'
 import {
+  esquemaCriarServicoRecorrencia,
   esquemaDeAtivarRecorrencia,
   esquemaDeCriacaoDeRecorrencia,
   esquemaDeEdicaoDeRecorrencia,
+  esquemaFiltroAgenda,
   esquemaFiltroListagemRecorrencias,
 } from './esquema-recorrencias-financeiras.js'
 
@@ -23,6 +25,31 @@ async function listar(requisicao: FastifyRequest, resposta: FastifyReply) {
     fornecedorPessoaId: parse.data.fornecedorPessoaId,
   })
   return resposta.send({ recorrencias })
+}
+
+async function agenda(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parse = esquemaFiltroAgenda.safeParse(requisicao.query)
+  if (!parse.success) {
+    throw new ErroDaAplicacao(parse.error.errors[0]?.message ?? 'Competência inválida', 400)
+  }
+  const agendaDoMes = await servicoDeRecorrenciasFinanceiras.agenda(
+    companyId(requisicao),
+    parse.data.competencia
+  )
+  return resposta.send({ agenda: agendaDoMes })
+}
+
+async function criarServico(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parse = esquemaCriarServicoRecorrencia.safeParse(requisicao.body)
+  if (!parse.success) {
+    throw new ErroDaAplicacao(parse.error.errors[0]?.message ?? 'Nome do serviço inválido', 400)
+  }
+  const produto = await servicoDeRecorrenciasFinanceiras.criarServico(
+    companyId(requisicao),
+    parse.data.nome,
+    requisicao.idDoUsuario!
+  )
+  return resposta.status(201).send({ produto })
 }
 
 async function obter(requisicao: FastifyRequest, resposta: FastifyReply) {
@@ -76,6 +103,8 @@ async function alterarStatus(requisicao: FastifyRequest, resposta: FastifyReply)
 
 export const controladorDeRecorrenciasFinanceiras = {
   listar,
+  agenda,
+  criarServico,
   obter,
   criar,
   editar,

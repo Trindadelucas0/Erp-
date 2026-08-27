@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
@@ -74,6 +75,7 @@ const FILTROS_VAZIOS: Filtros = {
 const DEBOUNCE_FILTRO_TEXTO_MS = 400
 
 function ConteudoContasAReceber() {
+  const searchParams = useSearchParams()
   const podeCriar = usePermissao('financeiro:create')
   const podeEditar = usePermissao('financeiro:edit')
   const { perfil } = useSessaoDoUsuario()
@@ -199,9 +201,18 @@ function ConteudoContasAReceber() {
 
   useEffect(() => {
     void carregarCatalogos()
-    void carregar(FILTROS_VAZIOS)
+    const vencimentoDe = searchParams.get('vencimentoDe')?.trim() || ''
+    const vencimentoAte = searchParams.get('vencimentoAte')?.trim() || ''
+    const iniciais =
+      vencimentoDe || vencimentoAte
+        ? { ...FILTROS_VAZIOS, vencimentoDe, vencimentoAte }
+        : FILTROS_VAZIOS
+    cancelarDebounceFiltroTexto()
+    filtrosRef.current = iniciais
+    setFiltros(iniciais)
+    void carregar(iniciais)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [carregarCatalogos])
+  }, [carregarCatalogos, searchParams])
 
   function abrirNovo() {
     setEditando(null)
@@ -586,7 +597,13 @@ function ConteudoContasAReceber() {
 export default function PaginaContasAReceber() {
   return (
     <ProtegerRota chaveDaPagina="contas-a-receber">
-      <ConteudoContasAReceber />
+      <Suspense
+        fallback={
+          <p className="text-sm text-muted-foreground">Carregando Contas a Receber…</p>
+        }
+      >
+        <ConteudoContasAReceber />
+      </Suspense>
     </ProtegerRota>
   )
 }

@@ -87,6 +87,11 @@ export const PAGINAS_VINCULAVEIS: readonly PaginaDoSistema[] = [
     modulo: 'financeiro',
   },
   {
+    chave: 'pendencias',
+    caminho: '/pendencias',
+    rotulo: 'Pendências',
+  },
+  {
     chave: 'configuracoes',
     caminho: '/configuracoes',
     rotulo: 'Configurações',
@@ -195,6 +200,16 @@ export function montarPaginasPermitidasParaUsuario(
   ) {
     const config = resolverPaginaPorChave('configuracoes')
     if (config) paginasPorChave.set('configuracoes', config)
+  }
+
+  const temPendencias =
+    permissoesEfetivas.includes('financeiro:view') ||
+    permissoesEfetivas.includes('compras:view') ||
+    permissoesEfetivas.includes('estoque:view') ||
+    permissoesEfetivas.includes('clientes:view')
+  if (temPendencias && !paginasPorChave.has('pendencias')) {
+    const pendencias = resolverPaginaPorChave('pendencias')
+    if (pendencias) paginasPorChave.set('pendencias', pendencias)
   }
 
   return filtrarParaMenu([...paginasPorChave.values()])

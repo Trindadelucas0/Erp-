@@ -1,6 +1,7 @@
 /**
  * Aplica o gate de recorrência financeira no pipeline da Entrada.
- * Fonte: DOCUMENTACAO-SISTEMA.md §7 (recorrência).
+ * Fonte: DOCUMENTACAO-SISTEMA.md §7.23.
+ * A regra só vale se a emissão da nota está na vigência; fora = fluxo normal.
  */
 import { repositorioDeRecorrenciasFinanceiras } from '../recorrencias-financeiras/repositorio-recorrencias-financeiras.js'
 import {
@@ -8,6 +9,7 @@ import {
   mensagemValorDivergenteRecorrencia,
   type ResultadoCasamentoRecorrencia,
 } from '../recorrencias-financeiras/casar-recorrencia.js'
+import { filtrarRecorrenciasNaVigencia } from '../recorrencias-financeiras/vigencia-recorrencia.js'
 import { resolverParcelasRecorrencia } from '../contas-a-pagar/resolver-parcelas-recorrencia.js'
 
 export type DecisaoRecorrenciaPipeline =
@@ -38,12 +40,13 @@ export async function avaliarRecorrenciaNoPipeline(input: {
     input.companyId,
     input.fornecedorPessoaId
   )
-  if (ativas.length === 0) return { acao: 'ignorar' }
+  const naVigencia = filtrarRecorrenciasNaVigencia(ativas, input.dataEmissao)
+  if (naVigencia.length === 0) return { acao: 'ignorar' }
 
   const match: ResultadoCasamentoRecorrencia = casarRecorrencia({
     fornecedorPessoaId: input.fornecedorPessoaId,
     valorTotal: Number(input.valorTotal ?? 0),
-    recorrenciasAtivas: ativas.map((r) => ({
+    recorrenciasAtivas: naVigencia.map((r) => ({
       id: r.id,
       valor: r.valor,
       produtoId: r.produtoId,

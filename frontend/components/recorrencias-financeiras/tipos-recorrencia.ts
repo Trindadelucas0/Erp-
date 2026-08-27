@@ -4,6 +4,10 @@ export type RecorrenciaFinanceiraLista = {
   fornecedorPessoaId: string
   produtoId: string
   valor: number
+  periodicidade: 'mensal' | 'anual' | string
+  diaVencimento: number
+  competenciaInicio: string
+  competenciaFim: string | null
   ativo: boolean
   createdAt: string
   updatedAt: string
@@ -19,4 +23,21 @@ export type RecorrenciaFinanceiraLista = {
     sku: string | null
     unidade: string
   } | null
+}
+
+export type ItemAgendaRecorrencia = {
+  recorrenciaId: string
+  fornecedorNome: string
+  servicoNome: string
+  valor: number
+  diaVencimento: number
+  situacao: 'chegou' | 'aguardando'
+}
+
+export type AgendaRecorrencia = {
+  competencia: string
+  itens: ItemAgendaRecorrencia[]
+  totalEsperado: number
+  quantidadeRegras: number
+  quantidadeChegou: number
 }

@@ -5,6 +5,7 @@ import { Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SeletorDeEmpresa } from '@/components/layout/seletor-de-empresa'
 import { AlternadorDeTema } from '@/components/layout/alternador-de-tema'
+import { SinoPendencias } from '@/components/pendencias/sino-pendencias'
 import { textoVersaoSistema } from '@/lib/versao-sistema'
 
 const TITULOS_POR_ROTA: Record<string, string> = {
@@ -13,8 +14,8 @@ const TITULOS_POR_ROTA: Record<string, string> = {
   '/cadastros': 'Cadastros',
   '/users': 'Usuários',
   '/papeis': 'Gerenciar papéis',
-    '/auditoria': 'Auditoria',
-    '/auditoria-entradas': 'Auditoria de entradas',
+  '/auditoria': 'Auditoria',
+  '/auditoria-entradas': 'Auditoria de entradas',
   '/configuracoes': 'Configurações',
   '/clientes': 'Clientes',
   '/clientes/aprovacao': 'Aprovação de clientes',
@@ -26,6 +27,9 @@ const TITULOS_POR_ROTA: Record<string, string> = {
   '/entrada-notas': 'Entrada de Notas',
   '/contagens': 'Contagens de entrada',
   '/estoque': 'Estoque',
+  '/contas-a-pagar': 'Contas a Pagar',
+  '/contas-a-receber': 'Contas a Receber',
+  '/pendencias': 'Pendências',
 }
 
 const PREFIXOS_TITULO: { prefixo: string; titulo: string }[] = [
@@ -84,6 +88,7 @@ export function Cabecalho({ titulo, acoes, aoAbrirMenuMobile }: Props) {
         >
           {textoVersaoSistema()}
         </span>
+        <SinoPendencias />
         <AlternadorDeTema />
         <SeletorDeEmpresa />
         {acoes && <div className="flex items-center gap-2">{acoes}</div>}

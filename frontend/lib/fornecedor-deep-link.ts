@@ -32,9 +32,14 @@ export function limparDeepLinkFornecedor() {
   sessionStorage.removeItem(FORNECEDOR_DEEP_LINK_KEY)
 }
 
+export const RETORNO_RECORRENCIA_FINANCEIRA =
+  '/configuracoes?aba=financeiro&secao=recorrencia'
+
 export function retornoEntradaNotasValido(
   retorno: string | null | undefined
 ): string | null {
-  if (retorno && /^\/entrada-notas\/[a-zA-Z0-9-]+$/.test(retorno)) return retorno
+  if (!retorno) return null
+  if (/^\/entrada-notas\/[a-zA-Z0-9-]+$/.test(retorno)) return retorno
+  if (retorno === RETORNO_RECORRENCIA_FINANCEIRA) return retorno
   return null
 }
