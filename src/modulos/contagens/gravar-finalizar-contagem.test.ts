@@ -12,6 +12,8 @@ vi.mock('./repositorio-contagens.js', () => ({
     finalizarSessaoOk: vi.fn(),
     finalizarSessaoDivergente: vi.fn(),
     atualizarQtdContadaComVersao: vi.fn(),
+    atualizarQtdEsperadaItens: vi.fn().mockResolvedValue(undefined),
+    listarNomesUnidades: vi.fn().mockResolvedValue(new Map([['SC', 'Saco']])),
     cancelarSessao: vi.fn(),
   },
 }))
@@ -28,7 +30,21 @@ function sessaoBase(overrides: Record<string, unknown> = {}) {
     observacao: null,
     iniciadoEm: new Date(),
     finalizadoEm: null,
-    notas: [{ nfeRecebidaId: 'nota-1', nfeRecebida: { id: 'nota-1', chaveNfe: 'x'.repeat(44), nomeEmitente: 'F', documentoEmitente: null, dataEmissao: null, statusEntrada: 'entrada_contagem' } }],
+    notas: [
+      {
+        nfeRecebidaId: 'nota-1',
+        nfeRecebida: {
+          id: 'nota-1',
+          chaveNfe: 'x'.repeat(44),
+          nomeEmitente: 'F',
+          documentoEmitente: null,
+          dataEmissao: null,
+          statusEntrada: 'entrada_contagem',
+          fornecedorPessoaId: 'forn-1',
+          itens: [{ produtoId: 'p1', quantidade: 10 }],
+        },
+      },
+    ],
     itens: [
       {
         id: 'item-1',
@@ -42,7 +58,14 @@ function sessaoBase(overrides: Record<string, unknown> = {}) {
         qtdEsperada: 10,
         qtdContada: 10,
         statusItem: 'pendente',
-        produto: { id: 'p1', sku: '812', codigoBarras: null, embalagensMaster: [] },
+        produto: {
+          id: 'p1',
+          sku: '812',
+          unidade: 'SC',
+          codigoBarras: null,
+          fornecedores: [],
+          embalagensMaster: [],
+        },
       },
     ],
     revisoes: [],
@@ -115,7 +138,14 @@ describe('gravar rascunho vs finalizar', () => {
           qtdEsperada: 10,
           qtdContada: 8,
           statusItem: 'pendente',
-          produto: { id: 'p1', sku: '812', codigoBarras: null, embalagensMaster: [] },
+          produto: {
+            id: 'p1',
+            sku: '812',
+            unidade: 'SC',
+            codigoBarras: null,
+            fornecedores: [],
+            embalagensMaster: [],
+          },
         },
       ],
     })

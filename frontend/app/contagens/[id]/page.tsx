@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
+import { X } from 'lucide-react'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
 import { clienteHttp } from '@/services/api'
@@ -31,6 +32,8 @@ type ItemSessao = {
   codigoOriginal: string | null
   marca: string | null
   unidade: string | null
+  unidadeNome?: string | null
+  descricaoEmbalagem?: string | null
   qtdEmbalagemPadrao: number | null
   qtdContada: number
   statusItem: string
@@ -93,6 +96,43 @@ function rotuloAcaoRevisao(acao: string): string {
   if (acao === 'voltar_admin') return 'Voltar (admin)'
   if (acao === 'cancelar') return 'Cancelar'
   return acao
+}
+
+function AlertaEmbalagemContagem({ descricao }: { descricao: string }) {
+  const [aberto, setAberto] = useState(true)
+
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        className="flex size-5 shrink-0 items-center justify-center rounded-full bg-red-600 text-[11px] font-bold leading-none text-white animate-pulse shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60"
+        aria-label={aberto ? descricao : `Mostrar: ${descricao}`}
+        aria-expanded={aberto}
+        onClick={() => setAberto(true)}
+      >
+        !
+      </button>
+      {aberto ? (
+        <span
+          role="status"
+          className="absolute bottom-full left-1/2 z-20 mb-1.5 flex w-max max-w-[240px] -translate-x-1/2 items-start gap-1 rounded-md border border-border bg-popover px-2 py-1.5 text-xs font-normal text-popover-foreground shadow-md"
+        >
+          <span className="min-w-0 flex-1 leading-snug">{descricao}</span>
+          <button
+            type="button"
+            className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="Fechar aviso de embalagem"
+            onClick={(e) => {
+              e.stopPropagation()
+              setAberto(false)
+            }}
+          >
+            <X className="size-3.5" aria-hidden />
+          </button>
+        </span>
+      ) : null}
+    </span>
+  )
 }
 
 function ConteudoSessaoContagem() {
@@ -530,7 +570,14 @@ function ConteudoSessaoContagem() {
                     <td className="px-3 py-2 tabular-nums">
                       {item.qtdEmbalagemPadrao ?? '—'}
                     </td>
-                    <td className="px-3 py-2">{item.unidade || 'UN'}</td>
+                    <td className="px-3 py-2">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span>{item.unidadeNome || item.unidade || 'UN'}</span>
+                        {item.descricaoEmbalagem ? (
+                          <AlertaEmbalagemContagem descricao={item.descricaoEmbalagem} />
+                        ) : null}
+                      </span>
+                    </td>
                     <td className="px-3 py-2">
                       {editavel ? (
                         <Input

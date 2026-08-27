@@ -2005,6 +2005,7 @@ async function obterDetalhe(
       sku: string | null
       nomeExibicao: string
       unidade: string | null
+      unidadeNome: string | null
       qtdEsperada: number
       qtdContada: number
       diferenca: number
@@ -2019,6 +2020,14 @@ async function obterDetalhe(
     const sessao = await repositorioContagens.buscarSessaoFinalizadaDaNota(companyId, notaId)
     contagemBaixada = Boolean(sessao?.baixadaEm)
     if (sessao) {
+      const siglas = [
+        ...new Set(
+          (sessao.itens ?? [])
+            .map((item) => item.unidade?.trim().toUpperCase())
+            .filter((s): s is string => Boolean(s))
+        ),
+      ]
+      const nomesUnidades = await repositorioContagens.listarNomesUnidades(companyId, siglas)
       const itens = (sessao.itens ?? []).map((item) => {
         const qtdEsperada = decimalNum(item.qtdEsperada) ?? 0
         const qtdContada = decimalNum(item.qtdContada) ?? 0
@@ -2030,12 +2039,17 @@ async function obterDetalhe(
             nomeExibicao = nomeExibicao.slice(0, -sufixo.length).trimEnd()
           }
         }
+        const unidade = item.unidade?.trim() || null
+        const unidadeNome = unidade
+          ? nomesUnidades.get(unidade.toUpperCase()) || unidade
+          : null
         return {
           id: item.id,
           produtoId: item.produtoId,
           sku,
           nomeExibicao,
-          unidade: item.unidade,
+          unidade,
+          unidadeNome,
           qtdEsperada,
           qtdContada,
           diferenca: arredondarQtd(qtdContada - qtdEsperada),

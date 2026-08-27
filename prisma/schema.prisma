@@ -1175,7 +1175,7 @@ model ContagemEntradaItem {
   marca             String?
   unidade           String?
   qtdEmbalagemPadrao Decimal?      @db.Decimal(18, 4)
-  /// Quantidade esperada em unidade de venda — NUNCA enviar ao cliente na API cega
+  /// Quantidade esperada em unidade de compra (qtd da NF) — NUNCA enviar ao cliente na API cega
   qtdEsperada       Decimal        @db.Decimal(18, 4)
   qtdContada        Decimal        @default(0) @db.Decimal(18, 4)
   /// pendente | ok | divergente

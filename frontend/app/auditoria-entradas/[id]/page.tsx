@@ -43,6 +43,7 @@ type ItemContagemAuditoria = {
   sku: string | null
   nomeExibicao: string
   unidade: string | null
+  unidadeNome?: string | null
   qtdEsperada: number
   qtdContada: number
   diferenca: number
@@ -399,7 +400,9 @@ function ConteudoDetalheAuditoria() {
                         <div className="font-medium">{item.nomeExibicao}</div>
                         <div className="text-xs text-muted-foreground">
                           {item.sku || '—'}
-                          {item.unidade ? ` · ${item.unidade}` : ''}
+                          {item.unidadeNome || item.unidade
+                            ? ` · ${item.unidadeNome || item.unidade}`
+                            : ''}
                         </div>
                       </td>
                       <td className="px-3 py-2 tabular-nums">{formatarQtd(item.qtdEsperada)}</td>

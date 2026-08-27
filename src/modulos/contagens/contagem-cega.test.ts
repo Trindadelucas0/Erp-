@@ -33,6 +33,33 @@ describe('contagem cega — bip e comparação', () => {
     expect(contagemCegaInterno.resolverBipNaSessao('0000000000000', itensSessao)).toBeNull()
   })
 
+  it('converte bip peça para unidade de compra quando multiplicador > 1', () => {
+    expect(contagemCegaInterno.converterIncrementoBipParaCompra(1, 10)).toBe(0.1)
+    expect(contagemCegaInterno.converterIncrementoBipParaCompra(1, 1)).toBe(1)
+  })
+
+  it('converte bip master para unidade de compra', () => {
+    expect(contagemCegaInterno.converterIncrementoBipParaCompra(12, 6)).toBe(2)
+    expect(contagemCegaInterno.converterIncrementoBipParaCompra(12, 1)).toBe(12)
+  })
+
+  it('descrição de embalagem sem revelar quantidade da NF', () => {
+    expect(
+      contagemCegaInterno.formatarDescricaoEmbalagem({
+        multiplicador: 10,
+        nomeUnidadeCompra: 'Caixa',
+        nomeUnidadeVenda: 'Saco',
+      })
+    ).toBe('1 caixa com 10 saco')
+    expect(
+      contagemCegaInterno.formatarDescricaoEmbalagem({
+        multiplicador: 1,
+        nomeUnidadeCompra: 'Saco',
+        nomeUnidadeVenda: 'Saco',
+      })
+    ).toBeNull()
+  })
+
   it('compararItens lista só nomes divergentes e marca status', () => {
     const { divergentes, updates } = contagemCegaInterno.compararItens([
       { id: 'i1', nomeExibicao: 'Anel', qtdEsperada: 10, qtdContada: 10 },

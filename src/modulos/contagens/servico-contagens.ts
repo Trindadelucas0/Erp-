@@ -9,6 +9,7 @@ import {
   variantesCodigoBarrasParaBusca,
 } from '../../compartilhado/validacoes/codigo-barras-gtin.js'
 import { podeIniciarContagemLogistica } from '../entrada-notas/status-entrada-contagem.js'
+import { resolverUnidadeEntrada } from '../pedidos-compra/resolver-item-fornecedor.js'
 import {
   repositorioContagens,
   type ItemRevisaoCega,
@@ -45,6 +46,34 @@ function resolverItensPorEmbalagem(
   const vinculo = fornecedores.find((f) => f.fornecedorPessoaId === fornecedorPessoaId)
   const valor = decimalNum(vinculo?.multiplicadorEntrada)
   return valor != null && Number.isFinite(valor) && valor > 0 ? valor : 1
+}
+
+/**
+ * Converte incremento de bip (unidade de venda / master) para unidade de compra.
+ * peça: +1 / multiplicador; master: +qtdMaster / multiplicador.
+ */
+function converterIncrementoBipParaCompra(incrementoVenda: number, multiplicador: number): number {
+  const mult = multiplicador > 0 ? multiplicador : 1
+  return arredondarQtd(incrementoVenda / mult)
+}
+
+function nomeUnidadeFallback(sigla: string | null | undefined): string {
+  const s = sigla?.trim() || 'UN'
+  return s
+}
+
+function formatarDescricaoEmbalagem(params: {
+  multiplicador: number
+  nomeUnidadeCompra: string
+  nomeUnidadeVenda: string
+}): string | null {
+  if (!(params.multiplicador > 1)) return null
+  const compra = params.nomeUnidadeCompra.trim().toLowerCase() || 'embalagem'
+  const venda = params.nomeUnidadeVenda.trim().toLowerCase() || 'unidade'
+  const qtd = Number.isInteger(params.multiplicador)
+    ? String(params.multiplicador)
+    : String(params.multiplicador)
+  return `1 ${compra} com ${qtd} ${venda}`
 }
 
 function extrairSerieNumeroChave(chave: string): { serie: string | null; numero: string | null } {
@@ -91,12 +120,15 @@ function mapearItemCego(item: {
   codigoOriginal: string | null
   marca: string | null
   unidade: string | null
+  unidadeNome?: string | null
+  descricaoEmbalagem?: string | null
   qtdEmbalagemPadrao: unknown
   qtdContada: unknown
   statusItem: string
   produto?: { sku?: string | null } | null
 }) {
   const sku = item.produto?.sku?.trim() || null
+  const unidade = item.unidade?.trim() || 'UN'
   return {
     id: item.id,
     produtoId: item.produtoId,
@@ -105,11 +137,32 @@ function mapearItemCego(item: {
     codigoBarras: item.codigoBarras,
     codigoOriginal: item.codigoOriginal,
     marca: item.marca,
-    unidade: item.unidade,
+    unidade,
+    unidadeNome: item.unidadeNome?.trim() || nomeUnidadeFallback(unidade),
+    descricaoEmbalagem: item.descricaoEmbalagem ?? null,
     qtdEmbalagemPadrao: decimalNum(item.qtdEmbalagemPadrao),
     qtdContada: decimalNum(item.qtdContada) ?? 0,
     statusItem: item.statusItem,
   }
+}
+
+type VinculoProduto = {
+  fornecedorPessoaId: string
+  unidadeEntrada?: string | null
+  multiplicadorEntrada?: unknown
+  codigoFornecedor?: string | null
+}
+
+function escolherVinculoProduto(
+  fornecedores: VinculoProduto[] | undefined,
+  fornecedorIdsNotas: string[]
+): VinculoProduto | undefined {
+  if (!fornecedores?.length || fornecedorIdsNotas.length === 0) return undefined
+  for (const fid of fornecedorIdsNotas) {
+    const v = fornecedores.find((f) => f.fornecedorPessoaId === fid)
+    if (v) return v
+  }
+  return undefined
 }
 
 function sessaoEditavel(sessao: { status: string; baixadaEm?: Date | null }): boolean {
@@ -252,18 +305,26 @@ async function criar(companyId: string, usuarioId: string, nfeRecebidaIds: strin
       const qtdNf = decimalNum(item.quantidade)
       if (qtdNf == null || qtdNf <= 0) continue
 
-      const fator = resolverItensPorEmbalagem(produto.fornecedores, nota.fornecedorPessoaId)
-      const qtdVenda = arredondarQtd(qtdNf * fator)
+      // Contagem cega: esperado = quantidade da NF (unidade de compra), sem × multiplicador.
+      const qtdCompra = arredondarQtd(qtdNf)
 
       const vinculo = produto.fornecedores.find(
         (f) => f.fornecedorPessoaId === nota.fornecedorPessoaId
+      )
+      const unidadeCompra = resolverUnidadeEntrada(
+        {
+          fornecedorPessoaId: vinculo?.fornecedorPessoaId ?? '',
+          codigoFornecedor: vinculo?.codigoFornecedor ?? null,
+          unidadeEntrada: vinculo?.unidadeEntrada ?? null,
+        },
+        produto.unidade || item.unidade || 'UN'
       )
       const master = produto.embalagensMaster[0]
       const qtdMaster = decimalNum(master?.quantidade)
 
       const existente = porProduto.get(item.produtoId)
       if (existente) {
-        existente.qtdEsperada = arredondarQtd(existente.qtdEsperada + qtdVenda)
+        existente.qtdEsperada = arredondarQtd(existente.qtdEsperada + qtdCompra)
         if (!existente.codigoOriginal && vinculo?.codigoFornecedor) {
           existente.codigoOriginal = vinculo.codigoFornecedor
         }
@@ -276,9 +337,9 @@ async function criar(companyId: string, usuarioId: string, nfeRecebidaIds: strin
         codigoBarras: produto.codigoBarras,
         codigoOriginal: vinculo?.codigoFornecedor ?? item.codigoProduto ?? null,
         marca: produto.marca || null,
-        unidade: produto.unidade || item.unidade || 'UN',
+        unidade: unidadeCompra,
         qtdEmbalagemPadrao: qtdMaster != null && qtdMaster > 0 ? qtdMaster : 1,
-        qtdEsperada: qtdVenda,
+        qtdEsperada: qtdCompra,
       })
     }
   }
@@ -309,8 +370,113 @@ async function criar(companyId: string, usuarioId: string, nfeRecebidaIds: strin
   return obterDetalhe(companyId, sessao.id)
 }
 
-function montarDetalheCego(sessao: Awaited<ReturnType<typeof repositorioContagens.buscarSessaoCompleta>>) {
+async function enriquecerItensComUnidadeCompra(
+  companyId: string,
+  sessao: NonNullable<Awaited<ReturnType<typeof repositorioContagens.buscarSessaoCompleta>>>
+) {
+  const fornecedorIds = sessao.notas
+    .map((n) => n.nfeRecebida.fornecedorPessoaId)
+    .filter((id): id is string => Boolean(id))
+
+  const siglas = new Set<string>()
+  for (const item of sessao.itens) {
+    const vinculo = escolherVinculoProduto(item.produto?.fornecedores, fornecedorIds)
+    const unidadeVenda = item.produto?.unidade?.trim() || item.unidade || 'UN'
+    const unidadeCompra = resolverUnidadeEntrada(
+      vinculo
+        ? {
+            fornecedorPessoaId: vinculo.fornecedorPessoaId,
+            codigoFornecedor: null,
+            unidadeEntrada: vinculo.unidadeEntrada ?? null,
+          }
+        : undefined,
+      unidadeVenda
+    )
+    siglas.add(unidadeCompra.trim().toUpperCase())
+    siglas.add(unidadeVenda.trim().toUpperCase())
+  }
+
+  const nomes = await repositorioContagens.listarNomesUnidades(companyId, [...siglas])
+
+  return sessao.itens.map((item) => {
+    const vinculo = escolherVinculoProduto(item.produto?.fornecedores, fornecedorIds)
+    const unidadeVenda = item.produto?.unidade?.trim() || item.unidade || 'UN'
+    const unidadeCompra = resolverUnidadeEntrada(
+      vinculo
+        ? {
+            fornecedorPessoaId: vinculo.fornecedorPessoaId,
+            codigoFornecedor: null,
+            unidadeEntrada: vinculo.unidadeEntrada ?? null,
+          }
+        : undefined,
+      unidadeVenda
+    )
+    const mult = resolverItensPorEmbalagem(
+      item.produto?.fornecedores,
+      vinculo?.fornecedorPessoaId ?? fornecedorIds[0]
+    )
+    const nomeCompra =
+      nomes.get(unidadeCompra.trim().toUpperCase()) || nomeUnidadeFallback(unidadeCompra)
+    const nomeVenda =
+      nomes.get(unidadeVenda.trim().toUpperCase()) || nomeUnidadeFallback(unidadeVenda)
+
+    return mapearItemCego({
+      ...item,
+      unidade: unidadeCompra,
+      unidadeNome: nomeCompra,
+      descricaoEmbalagem: formatarDescricaoEmbalagem({
+        multiplicador: mult,
+        nomeUnidadeCompra: nomeCompra,
+        nomeUnidadeVenda: nomeVenda,
+      }),
+    })
+  })
+}
+
+/**
+ * Sessões abertas/em andamento com contagem zerada: recalcula qtdEsperada = soma qtd NF
+ * (legado tinha qtd NF × multiplicador). Se já digitou, não mexe.
+ */
+async function recalcularEsperadoSeZerado(
+  sessao: NonNullable<Awaited<ReturnType<typeof repositorioContagens.buscarSessaoCompleta>>>
+) {
+  if (!sessaoEditavel(sessao)) return
+  const algumaContada = sessao.itens.some((i) => (decimalNum(i.qtdContada) ?? 0) > 0)
+  if (algumaContada) return
+
+  const porProduto = new Map<string, number>()
+  for (const vinculoNota of sessao.notas) {
+    for (const itemNf of vinculoNota.nfeRecebida.itens ?? []) {
+      if (!itemNf.produtoId) continue
+      const qtd = decimalNum(itemNf.quantidade)
+      if (qtd == null || qtd <= 0) continue
+      porProduto.set(
+        itemNf.produtoId,
+        arredondarQtd((porProduto.get(itemNf.produtoId) ?? 0) + qtd)
+      )
+    }
+  }
+
+  const updates: Array<{ id: string; qtdEsperada: number }> = []
+  for (const item of sessao.itens) {
+    const nova = porProduto.get(item.produtoId)
+    if (nova == null) continue
+    const atual = decimalNum(item.qtdEsperada) ?? 0
+    if (arredondarQtd(atual) !== arredondarQtd(nova)) {
+      updates.push({ id: item.id, qtdEsperada: nova })
+      ;(item as { qtdEsperada: unknown }).qtdEsperada = nova
+    }
+  }
+  if (updates.length > 0) {
+    await repositorioContagens.atualizarQtdEsperadaItens(updates)
+  }
+}
+
+async function obterDetalhe(companyId: string, id: string) {
+  const sessao = await repositorioContagens.buscarSessaoCompleta(companyId, id)
   if (!sessao) throw new ErroDaAplicacao('Contagem não encontrada', 404)
+  await recalcularEsperadoSeZerado(sessao)
+  const itens = await enriquecerItensComUnidadeCompra(companyId, sessao)
   return {
     id: sessao.id,
     status: sessao.status,
@@ -320,14 +486,9 @@ function montarDetalheCego(sessao: Awaited<ReturnType<typeof repositorioContagen
     baixadaEm: sessao.baixadaEm,
     versao: sessao.versao,
     entradas: sessao.notas.map((n) => mapearNotaCega(n.nfeRecebida)),
-    itens: sessao.itens.map(mapearItemCego),
+    itens,
     revisoes: (sessao.revisoes ?? []).map(mapearRevisao),
   }
-}
-
-async function obterDetalhe(companyId: string, id: string) {
-  const sessao = await repositorioContagens.buscarSessaoCompleta(companyId, id)
-  return montarDetalheCego(sessao)
 }
 
 type MatchBip =
@@ -408,8 +569,18 @@ async function bipar(
   const item = sessao.itens.find((i) => i.produtoId === match.produtoId)
   if (!item) throw new ErroDaAplicacao('Item não encontrado na sessão', 404)
 
+  const fornecedorIds = sessao.notas
+    .map((n) => n.nfeRecebida.fornecedorPessoaId)
+    .filter((id): id is string => Boolean(id))
+  const vinculo = escolherVinculoProduto(item.produto?.fornecedores, fornecedorIds)
+  const multiplicador = resolverItensPorEmbalagem(
+    item.produto?.fornecedores,
+    vinculo?.fornecedorPessoaId ?? fornecedorIds[0]
+  )
+  const incrementoCompra = converterIncrementoBipParaCompra(match.incremento, multiplicador)
+
   const atual = decimalNum(item.qtdContada) ?? 0
-  const nova = arredondarQtd(atual + match.incremento)
+  const nova = arredondarQtd(atual + incrementoCompra)
   const r = await repositorioContagens.atualizarQtdContadaComVersao({
     sessaoId,
     itemId: item.id,
@@ -420,11 +591,17 @@ async function bipar(
     throw new ErroDaAplicacao(repositorioContagens.MSG_CONCORRENCIA, 409)
   }
 
+  const itensEnriquecidos = await enriquecerItensComUnidadeCompra(companyId, {
+    ...sessao,
+    itens: sessao.itens.map((i) =>
+      i.id === item.id ? { ...i, qtdContada: nova, statusItem: 'pendente' } : i
+    ),
+  })
+  const itemMapeado = itensEnriquecidos.find((i) => i.id === item.id)!
+
   return {
-    item: {
-      ...mapearItemCego({ ...item, qtdContada: nova, statusItem: 'pendente' }),
-    },
-    incremento: match.incremento,
+    item: itemMapeado,
+    incremento: incrementoCompra,
     tipoBip: match.tipo,
     versao: versaoEsperada + 1,
   }
@@ -458,8 +635,16 @@ async function atualizarQtdManual(
     throw new ErroDaAplicacao(repositorioContagens.MSG_CONCORRENCIA, 409)
   }
 
+  const itensEnriquecidos = await enriquecerItensComUnidadeCompra(companyId, {
+    ...sessao,
+    itens: sessao.itens.map((i) =>
+      i.id === item.id ? { ...i, qtdContada: nova, statusItem: 'pendente' } : i
+    ),
+  })
+  const itemMapeado = itensEnriquecidos.find((i) => i.id === item.id)!
+
   return {
-    item: mapearItemCego({ ...item, qtdContada: nova, statusItem: 'pendente' }),
+    item: itemMapeado,
     versao: versaoEsperada + 1,
   }
 }
@@ -720,6 +905,8 @@ async function cancelar(
 export const contagemCegaInterno = {
   resolverItensPorEmbalagem,
   resolverBipNaSessao,
+  converterIncrementoBipParaCompra,
+  formatarDescricaoEmbalagem,
   compararItens,
   arredondarQtd,
   extrairSerieNumeroChave,

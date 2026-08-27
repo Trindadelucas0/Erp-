@@ -158,6 +158,7 @@ async function buscarNotasParaSessao(companyId: string, ids: string[]) {
                 select: {
                   fornecedorPessoaId: true,
                   multiplicadorEntrada: true,
+                  unidadeEntrada: true,
                   codigoFornecedor: true,
                 },
               },
@@ -273,6 +274,14 @@ async function buscarSessaoCompleta(companyId: string, id: string) {
               documentoEmitente: true,
               dataEmissao: true,
               statusEntrada: true,
+              fornecedorPessoaId: true,
+              itens: {
+                where: { produtoId: { not: null } },
+                select: {
+                  produtoId: true,
+                  quantidade: true,
+                },
+              },
             },
           },
         },
@@ -284,7 +293,15 @@ async function buscarSessaoCompleta(companyId: string, id: string) {
             select: {
               id: true,
               sku: true,
+              unidade: true,
               codigoBarras: true,
+              fornecedores: {
+                select: {
+                  fornecedorPessoaId: true,
+                  unidadeEntrada: true,
+                  multiplicadorEntrada: true,
+                },
+              },
               embalagensMaster: {
                 select: { codigoBarras: true, quantidade: true },
               },
@@ -300,6 +317,30 @@ async function buscarSessaoCompleta(companyId: string, id: string) {
       },
     },
   })
+}
+
+async function atualizarQtdEsperadaItens(
+  itens: Array<{ id: string; qtdEsperada: number }>
+) {
+  if (itens.length === 0) return
+  await clientePrisma.$transaction(
+    itens.map((item) =>
+      clientePrisma.contagemEntradaItem.update({
+        where: { id: item.id },
+        data: { qtdEsperada: new Prisma.Decimal(item.qtdEsperada) },
+      })
+    )
+  )
+}
+
+async function listarNomesUnidades(companyId: string, siglas: string[]) {
+  const unicas = [...new Set(siglas.map((s) => s.trim().toUpperCase()).filter(Boolean))]
+  if (unicas.length === 0) return new Map<string, string>()
+  const rows = await clientePrisma.unidadeMedida.findMany({
+    where: { companyId, sigla: { in: unicas }, ativo: true },
+    select: { sigla: true, nome: true },
+  })
+  return new Map(rows.map((r) => [r.sigla.toUpperCase(), r.nome]))
 }
 
 /**
@@ -637,6 +678,8 @@ export const repositorioContagens = {
   criarSessao,
   buscarSessaoCompleta,
   atualizarQtdContadaComVersao,
+  atualizarQtdEsperadaItens,
+  listarNomesUnidades,
   gravarRascunho,
   finalizarSessaoOk,
   finalizarSessaoDivergente,
