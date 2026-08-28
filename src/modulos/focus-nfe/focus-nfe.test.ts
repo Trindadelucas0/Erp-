@@ -21,8 +21,9 @@ import {
 import { codigoHttpClienteErroFocus } from './codigo-http-cliente-focus.js'
 import { analisarFiscalBasico } from '../entrada-notas/analise-fiscal/analisar-fiscal-basico.js'
 import { decisaoAvancoCursorCteAposXml } from './servico-focus-nfe.js'
-import { ehRedirectHttpFocus, resolverUrlRedirectFocus } from './cliente-focus-nfe.js'
-import { gerarPdfLegivelDoXml } from './gerador-pdf-nota-xml.js'
+import { ehRedirectHttpFocus, resolverUrlRedirectFocus, ehErroTokenFocus, eh429BloqueioAutenticacaoFocus } from './cliente-focus-nfe.js'
+import { detectarPdfAuxiliarLegado } from './armazenamento-danfe.js'
+import PDFDocument from 'pdfkit'
 
 describe('sync CT-e — cursor DistDFe', () => {
   it('avanca cursor quando XML ok ou documento ignorado (decisao definitiva)', () => {
@@ -143,6 +144,41 @@ describe('codigoHttpClienteErroFocus', () => {
   })
 })
 
+describe('erros de token / bloqueio auth Focus', () => {
+  it('detecta 401 permissao_negada como token inválido', () => {
+    expect(
+      ehErroTokenFocus({
+        sucesso: false,
+        codigoHttp: 401,
+        codigo: 'permissao_negada',
+        mensagem: 'Access token inválido (host: api.focusnfe.com.br)',
+      })
+    ).toBe(true)
+  })
+
+  it('detecta 429 por excesso de tentativas de autenticação', () => {
+    expect(
+      eh429BloqueioAutenticacaoFocus({
+        sucesso: false,
+        codigoHttp: 429,
+        codigo: 'limite_excedido',
+        mensagem:
+          'Número máximo de tentativas de autenticação excedido para o IP 177.134.142.179. Tente novamente em 120 segundos',
+      })
+    ).toBe(true)
+  })
+
+  it('429 de rate limit comum não é bloqueio de autenticação', () => {
+    expect(
+      eh429BloqueioAutenticacaoFocus({
+        sucesso: false,
+        codigoHttp: 429,
+        mensagem: 'Limite de requisições excedido. Aguarde 15 segundos.',
+      })
+    ).toBe(false)
+  })
+})
+
 describe('PDF Focus — redirect 302', () => {
   it('reconhece códigos de redirect HTTP', () => {
     expect(ehRedirectHttpFocus(302)).toBe(true)
@@ -167,19 +203,19 @@ describe('PDF Focus — redirect 302', () => {
   })
 })
 
-describe('gerador PDF do XML', () => {
-  it('gera buffer PDF válido a partir de XML NFe mínimo', async () => {
-    const xml = `<?xml version="1.0"?>
-<nfeProc><NFe><infNFe Id="NFe35240111111111111111550010000000011123456789">
-<ide><nNF>1</nNF><serie>1</serie><natOp>VENDA</natOp><dhEmi>2026-01-15T10:00:00-03:00</dhEmi></ide>
-<emit><CNPJ>11111111111111</CNPJ><xNome>FORNECEDOR TESTE</xNome></emit>
-<dest><CNPJ>22222222222222</CNPJ><xNome>EMPRESA TESTE</xNome></dest>
-<det nItem="1"><prod><cProd>1</cProd><xProd>PRODUTO A</xProd><NCM>12345678</NCM><CFOP>5102</CFOP><qCom>2</qCom><vUnCom>10</vUnCom><vProd>20</vProd></prod></det>
-<total><ICMSTot><vNF>20.00</vNF></ICMSTot></total>
-</infNFe></NFe></nfeProc>`
-    const pdf = await gerarPdfLegivelDoXml(xml)
-    expect(pdf.subarray(0, 4).toString('utf8')).toBe('%PDF')
-    expect(pdf.length).toBeGreaterThan(500)
+describe('detectar PDF prévia não oficial', () => {
+  it('identifica PDF prévia gerado do XML (não DANFE Focus)', async () => {
+    const pdf = await new Promise<Buffer>((resolve, reject) => {
+      const doc = new PDFDocument({ margin: 40, size: 'A4' })
+      const partes: Buffer[] = []
+      doc.on('data', (chunk) => partes.push(chunk as Buffer))
+      doc.on('end', () => resolve(Buffer.concat(partes)))
+      doc.on('error', reject)
+      doc.text('Prévia do documento fiscal — NFe 55 (produto)')
+      doc.text('Gerado do XML armazenado no ERP (não é o DANFE/DACTe oficial da Focus).')
+      doc.end()
+    })
+    expect(await detectarPdfAuxiliarLegado(pdf)).toBe(true)
   })
 })
 

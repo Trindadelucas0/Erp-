@@ -79,16 +79,21 @@ export async function removerArquivoDanfe(relativo: string | null | undefined): 
   }
 }
 
-/** Detecta PDF auxiliar legado gerado do XML (recurso removido). */
+/** Detecta PDF auxiliar/prévia gerado do XML (não é DANFE/DACTe oficial da Focus). */
 export async function detectarPdfAuxiliarLegado(pdf: Buffer): Promise<boolean> {
-  if (pdf.length > LIMITE_BYTES_PDF_AUXILIAR) return false
   try {
     const { text } = await extractText(new Uint8Array(pdf), { mergePages: true })
     const conteudo = String(text)
-    return (
+    if (conteudo.includes('Prévia do documento fiscal')) return true
+    if (conteudo.includes('não é o DANFE')) return true
+    if (
+      pdf.length <= LIMITE_BYTES_PDF_AUXILIAR &&
       conteudo.includes('Documento auxiliar') &&
       conteudo.includes('gerado do XML')
-    )
+    ) {
+      return true
+    }
+    return false
   } catch {
     return false
   }

@@ -40,6 +40,25 @@ export type RespostaErro = {
 }
 export type RespostaFocus<T> = RespostaSucesso<T> | RespostaErro
 
+/** 401 / permissao_negada / mensagem de token — não adianta manifestar ou retentar. */
+export function ehErroTokenFocus(resposta: RespostaErro): boolean {
+  const msg = resposta.mensagem.toLowerCase()
+  return (
+    resposta.codigoHttp === 401 ||
+    resposta.codigo === 'permissao_negada' ||
+    msg.includes('access token') ||
+    msg.includes('token inválido') ||
+    msg.includes('token invalido')
+  )
+}
+
+/** 429 por excesso de tentativas de autenticação (IP bloqueado) — distinto de rate limit de API. */
+export function eh429BloqueioAutenticacaoFocus(resposta: RespostaErro): boolean {
+  if (resposta.codigoHttp !== 429) return false
+  const msg = resposta.mensagem.toLowerCase()
+  return msg.includes('autentica') || msg.includes('authentication')
+}
+
 export type NfeRecebidaResumoFocus = {
   nome_emitente?: string
   documento_emitente?: string
@@ -304,6 +323,7 @@ async function chamarComRetry<T>(
   for (let tentativa = 1; tentativa <= MAX_TENTATIVAS_429; tentativa += 1) {
     ultima = await chamarUmaVez<T>(metodo, caminho, apiToken, homologacao, opcoes)
     if (ultima.sucesso || ultima.codigoHttp !== 429) return ultima
+    if (ultima.sucesso === false && eh429BloqueioAutenticacaoFocus(ultima)) return ultima
 
     if (tentativa >= MAX_TENTATIVAS_429) break
 
@@ -509,6 +529,7 @@ async function baixarPdfBinario(
     for (let tentativa = 1; tentativa <= MAX_TENTATIVAS_429; tentativa += 1) {
       ultima = await baixarPdfUmaVez(apiToken, homologacao, caminho, query)
       if (ultima.sucesso || ultima.codigoHttp !== 429) return ultima
+      if (ultima.sucesso === false && eh429BloqueioAutenticacaoFocus(ultima)) return ultima
       if (tentativa >= MAX_TENTATIVAS_429) break
       const esperaSec = segundosEspera429(
         ultima.mensagem,

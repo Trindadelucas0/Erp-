@@ -123,6 +123,16 @@ export function mensagemErroFocusAmigavel(opcoes: {
   return opcoes.mensagemOriginal || `Erro Focus HTTP ${http ?? '?'} `
 }
 
+export function mensagemBloqueioAutenticacaoFocus(mensagemOriginal: string): string {
+  const m = mensagemOriginal.match(/(\d+)\s*segundo/i)
+  const sec = m ? Math.min(Number(m[1]) || 120, 120) : 120
+  return (
+    `Focus bloqueou tentativas de autenticação deste IP (token inválido). ` +
+    `Aguarde cerca de ${sec} segundo(s), corrija o token em Configurações → Focus NFe ` +
+    `(token de produção com homologação desmarcada, ou token de homologação com homologação marcada) e tente de novo.`
+  )
+}
+
 /**
  * XML/lista OK na Focus, mas PDF (DANFE/DACTe) falha — indica inconsistência do serviço Focus, não token ERP.
  */
