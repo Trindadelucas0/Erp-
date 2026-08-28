@@ -20,8 +20,8 @@ describe('valoresIguaisEmCentavos', () => {
 
 describe('casarRecorrencia', () => {
   const regras = [
-    { id: 'r1', valor: 2600, produtoId: 'p1', produtoNome: 'Limpeza' },
-    { id: 'r2', valor: 150, produtoId: 'p2', produtoNome: 'Água' },
+    { id: 'r1', valor: 2600 },
+    { id: 'r2', valor: 150 },
   ]
 
   it('sem fornecedor → sem_recorrencia', () => {
@@ -53,7 +53,6 @@ describe('casarRecorrencia', () => {
     expect(r.status).toBe('casou')
     if (r.status === 'casou') {
       expect(r.recorrencia.id).toBe('r1')
-      expect(r.recorrencia.produtoNome).toBe('Limpeza')
     }
   })
 
@@ -71,12 +70,9 @@ describe('casarRecorrencia', () => {
   })
 
   it('mensagem de divergência cita valores', () => {
-    const msg = mensagemValorDivergenteRecorrencia(2500, [
-      { valor: 2600, produtoNome: 'Limpeza' },
-    ])
+    const msg = mensagemValorDivergenteRecorrencia(2500, [{ valor: 2600 }])
     expect(msg).toContain('2.500')
     expect(msg).toContain('2.600')
-    expect(msg).toContain('Limpeza')
   })
 
   it('unicidade de valor: duas ativas do mesmo fornecedor com valores diferentes casam a correta', () => {

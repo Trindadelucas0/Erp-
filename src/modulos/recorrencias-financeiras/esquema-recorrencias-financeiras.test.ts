@@ -7,7 +7,6 @@ import {
 
 const base = {
   fornecedorPessoaId: '11111111-1111-1111-1111-111111111111',
-  produtoId: '22222222-2222-2222-2222-222222222222',
   valor: 2600,
   periodicidade: 'mensal' as const,
   diaVencimento: 10,

@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import { textoCadastroObrigatorio } from '../../compartilhado/normalizacao/esquema-texto-cadastro.js'
 
 const valorPositivo = z.coerce
   .number({ invalid_type_error: 'Valor inválido' })
@@ -41,7 +40,6 @@ function refinarVigencia(
 
 const camposRecorrencia = {
   fornecedorPessoaId: z.string().uuid('Fornecedor inválido'),
-  produtoId: z.string().uuid('Produto/serviço inválido'),
   valor: valorPositivo,
   periodicidade: esquemaPeriodicidade,
   diaVencimento: esquemaDiaVencimento,
@@ -80,10 +78,5 @@ export const esquemaFiltroAgenda = z.object({
   competencia: competenciaYm,
 })
 
-export const esquemaCriarServicoRecorrencia = z.object({
-  nome: textoCadastroObrigatorio(2, 60),
-})
-
 export type DadosParaCriarRecorrencia = z.infer<typeof esquemaDeCriacaoDeRecorrencia>
 export type DadosParaEditarRecorrencia = z.infer<typeof esquemaDeEdicaoDeRecorrencia>
-export type DadosParaCriarServicoRecorrencia = z.infer<typeof esquemaCriarServicoRecorrencia>

@@ -9,10 +9,6 @@ import { InputPadrao } from '@/components/ui/input-padrao'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { ComboboxPessoa } from '@/components/pedidos-compra/combobox-pessoa'
-import {
-  ComboboxProduto,
-  type ProdutoOpcao,
-} from '@/components/pedidos-compra/combobox-produto'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { SelectPadrao } from '@/components/ui/select-padrao'
@@ -35,7 +31,6 @@ type Props = {
 
 type FormRecorrencia = {
   fornecedorPessoaId: string
-  produtoId: string
   valor: string
   periodicidade: 'mensal' | 'anual'
   diaVencimento: string
@@ -67,7 +62,6 @@ function competenciaHoje(): string {
 
 const formVazio = (): FormRecorrencia => ({
   fornecedorPessoaId: '',
-  produtoId: '',
   valor: '',
   periodicidade: 'mensal',
   diaVencimento: '1',
@@ -92,13 +86,8 @@ export function ModalRecorrenciaFinanceira({
 }: Props) {
   const router = useRouter()
   const podeCriarFornecedor = usePermissao('fornecedores:create')
-  const podeCriarServico = usePermissao('financeiro:create')
 
   const [form, setForm] = useState<FormRecorrencia>(formVazio)
-  const [produtos, setProdutos] = useState<ProdutoOpcao[]>([])
-  const [carregandoBuscaProduto, setCarregandoBuscaProduto] = useState(false)
-  const [nomeServicoNovo, setNomeServicoNovo] = useState('')
-  const [criandoServico, setCriandoServico] = useState(false)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
 
@@ -107,7 +96,6 @@ export function ModalRecorrenciaFinanceira({
     if (modoEdicao && registro) {
       setForm({
         fornecedorPessoaId: registro.fornecedorPessoaId,
-        produtoId: registro.produtoId,
         valor: String(registro.valor).replace('.', ','),
         periodicidade: registro.periodicidade === 'anual' ? 'anual' : 'mensal',
         diaVencimento: String(registro.diaVencimento || 1),
@@ -115,52 +103,11 @@ export function ModalRecorrenciaFinanceira({
         competenciaFim: registro.competenciaFim || '',
         ativo: registro.ativo,
       })
-      if (registro.produto) {
-        setProdutos([
-          {
-            id: registro.produto.id,
-            nomeVenda: registro.produto.nomeVenda,
-            sku: registro.produto.sku,
-            unidade: registro.produto.unidade,
-          },
-        ])
-      } else {
-        setProdutos([])
-      }
     } else {
       setForm(formVazio())
-      setProdutos([])
     }
-    setNomeServicoNovo('')
     setErro('')
   }, [aberto, modoEdicao, registro])
-
-  async function buscarProdutos(termo: string) {
-    const q = termo.trim()
-    if (q.length < 2) {
-      setProdutos((atual) =>
-        form.produtoId ? atual.filter((p) => p.id === form.produtoId) : []
-      )
-      return
-    }
-    setCarregandoBuscaProduto(true)
-    try {
-      const { data } = await clienteHttp.get<{ produtos?: ProdutoOpcao[] }>('/produtos', {
-        params: { q, pagina: 1, limite: 20, resumo: 'true' },
-      })
-      const lista = data.produtos ?? []
-      setProdutos((atual) => {
-        const selecionado = atual.find((p) => p.id === form.produtoId)
-        if (!selecionado) return lista
-        if (lista.some((p) => p.id === selecionado.id)) return lista
-        return [selecionado, ...lista]
-      })
-    } catch {
-      setProdutos((atual) => atual.filter((p) => p.id === form.produtoId))
-    } finally {
-      setCarregandoBuscaProduto(false)
-    }
-  }
 
   function irCadastrarFornecedor() {
     gravarDeepLinkFornecedor({
@@ -170,45 +117,11 @@ export function ModalRecorrenciaFinanceira({
     router.push('/fornecedores')
   }
 
-  async function cadastrarServico() {
-    const nome = nomeServicoNovo.trim()
-    if (nome.length < 2) {
-      setErro('Informe o nome do serviço (mínimo 2 caracteres)')
-      return
-    }
-    setErro('')
-    setCriandoServico(true)
-    try {
-      const { data } = await clienteHttp.post<{ produto: ProdutoOpcao }>('/recorrencias-financeiras/servicos', {
-        nome,
-      })
-      const produto = data.produto
-      if (!produto?.id) {
-        setErro('Serviço criado, mas a resposta não trouxe o cadastro')
-        return
-      }
-      setProdutos((atual) => {
-        if (atual.some((p) => p.id === produto.id)) return atual
-        return [produto, ...atual]
-      })
-      setForm((f) => ({ ...f, produtoId: produto.id }))
-      setNomeServicoNovo('')
-    } catch (err) {
-      setErro(extrairMensagemApi(err, 'Não foi possível cadastrar o serviço'))
-    } finally {
-      setCriandoServico(false)
-    }
-  }
-
   async function salvar(e: FormEvent) {
     e.preventDefault()
     setErro('')
     if (!form.fornecedorPessoaId) {
       setErro('Selecione o fornecedor')
-      return
-    }
-    if (!form.produtoId) {
-      setErro('Selecione o produto/serviço')
       return
     }
     const valor = parseDinheiro(form.valor)
@@ -234,7 +147,6 @@ export function ModalRecorrenciaFinanceira({
     try {
       const payload = {
         fornecedorPessoaId: form.fornecedorPessoaId,
-        produtoId: form.produtoId,
         valor,
         periodicidade: form.periodicidade,
         diaVencimento: dia,
@@ -294,36 +206,6 @@ export function ModalRecorrenciaFinanceira({
                 >
                   Cadastrar fornecedor
                 </button>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <ComboboxProduto
-                rotulo="Serviço"
-                produtos={produtos}
-                valor={form.produtoId}
-                aoMudar={(id) => setForm((f) => ({ ...f, produtoId: id }))}
-                aoBuscar={(termo) => void buscarProdutos(termo)}
-                carregandoBusca={carregandoBuscaProduto}
-              />
-              {podeCriarServico && (
-                <div className="flex flex-wrap items-end gap-2">
-                  <div className="min-w-[12rem] flex-1">
-                    <InputPadrao
-                      rotulo="Novo serviço"
-                      placeholder="Nome do serviço"
-                      value={nomeServicoNovo}
-                      onChange={(e) => setNomeServicoNovo(e.target.value)}
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={criandoServico}
-                    onClick={() => void cadastrarServico()}
-                  >
-                    {criandoServico ? 'Cadastrando…' : 'Cadastrar serviço'}
-                  </Button>
-                </div>
               )}
             </div>
             <InputPadrao

@@ -199,8 +199,8 @@ export function PainelRecorrenciasFinanceiras() {
         <div>
           <h2 className="text-lg font-semibold tracking-tight">Recorrência</h2>
           <p className="text-sm text-muted-foreground">
-            Cadastre fornecedor, serviço e valor. Quando a nota chegar com o mesmo valor, na
-            vigência, a Entrada consolida sozinha.
+            Cadastre fornecedor e valor. Quando a nota chegar com o mesmo valor, na vigência, a
+            Entrada consolida sozinha.
           </p>
         </div>
         {podeCriar && (
@@ -251,11 +251,10 @@ export function PainelRecorrenciasFinanceiras() {
         ) : (
           <>
             <div className="overflow-x-auto rounded-md border-2 border-border">
-              <table className="w-full min-w-[36rem] text-sm">
+              <table className="w-full min-w-[28rem] text-sm">
                 <thead className="bg-muted/50 text-left">
                   <tr className="border-b border-border">
                     <th className="px-3 py-2 font-medium">Fornecedor</th>
-                    <th className="px-3 py-2 font-medium">Serviço</th>
                     <th className="px-3 py-2 font-medium">Valor</th>
                     <th className="px-3 py-2 font-medium">Dia</th>
                     <th className="px-3 py-2 font-medium">Situação</th>
@@ -265,7 +264,6 @@ export function PainelRecorrenciasFinanceiras() {
                   {agenda.itens.map((item) => (
                     <tr key={item.recorrenciaId} className="border-b border-border last:border-0">
                       <td className="px-3 py-2">{item.fornecedorNome}</td>
-                      <td className="px-3 py-2">{item.servicoNome}</td>
                       <td className="px-3 py-2 tabular-nums">{formatarMoedaBr(item.valor)}</td>
                       <td className="px-3 py-2 tabular-nums">{item.diaVencimento}</td>
                       <td className="px-3 py-2">
@@ -295,7 +293,7 @@ export function PainelRecorrenciasFinanceiras() {
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="pl-8"
-              placeholder="Buscar fornecedor ou produto…"
+              placeholder="Buscar fornecedor…"
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
             />
@@ -319,11 +317,10 @@ export function PainelRecorrenciasFinanceiras() {
           </p>
         ) : (
           <div className="overflow-x-auto rounded-md border-2 border-border">
-            <table className="w-full min-w-[52rem] text-sm">
+            <table className="w-full min-w-[44rem] text-sm">
               <thead className="bg-muted/50 text-left">
                 <tr className="border-b border-border">
                   <th className="px-3 py-2 font-medium">Fornecedor</th>
-                  <th className="px-3 py-2 font-medium">Serviço</th>
                   <th className="px-3 py-2 font-medium">Valor</th>
                   <th className="px-3 py-2 font-medium">Periodicidade</th>
                   <th className="px-3 py-2 font-medium">Dia</th>
@@ -337,14 +334,6 @@ export function PainelRecorrenciasFinanceiras() {
                   <tr key={reg.id} className="border-b border-border last:border-0">
                     <td className="px-3 py-2">
                       {reg.fornecedor?.nomeFantasia || reg.fornecedor?.nome || '—'}
-                    </td>
-                    <td className="px-3 py-2">
-                      {reg.produto?.sku ? (
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {reg.produto.sku}{' '}
-                        </span>
-                      ) : null}
-                      {reg.produto?.nomeVenda || '—'}
                     </td>
                     <td className="px-3 py-2 tabular-nums">{formatarMoedaBr(reg.valor)}</td>
                     <td className="px-3 py-2">{rotuloPeriodicidade(reg.periodicidade)}</td>

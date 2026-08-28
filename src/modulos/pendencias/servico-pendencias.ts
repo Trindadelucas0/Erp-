@@ -258,7 +258,7 @@ async function coletarRecorrencia(companyId: string, hoje: Date): Promise<ItemPe
       id: `rec:${i.recorrenciaId}:${competencia}`,
       tipo: 'recorrencia_aguardando' as const,
       urgencia: 'fila' as const,
-      titulo: `Recorrência aguardando nota — ${i.servicoNome}`,
+      titulo: `Recorrência aguardando nota — ${i.fornecedorNome}`,
       descricao: `${i.fornecedorNome} · ${formatarMoedaBr(i.valor)} · dia ${i.diaVencimento}`,
       href: '/configuracoes?aba=financeiro&secao=recorrencia',
     }))

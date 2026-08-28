@@ -49,8 +49,6 @@ export async function avaliarRecorrenciaNoPipeline(input: {
     recorrenciasAtivas: naVigencia.map((r) => ({
       id: r.id,
       valor: r.valor,
-      produtoId: r.produtoId,
-      produtoNome: r.produto?.nomeVenda ?? null,
     })),
   })
 
@@ -82,7 +80,7 @@ export async function avaliarRecorrenciaNoPipeline(input: {
   return {
     acao: 'casou',
     recorrenciaId: match.recorrencia.id,
-    produtoNome: match.recorrencia.produtoNome ?? null,
+    produtoNome: null,
     autoConsolidar: input.documental,
   }
 }

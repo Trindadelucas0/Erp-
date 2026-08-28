@@ -1111,7 +1111,7 @@ model Produto {
   @@index([companyId, nomeVenda])
 }
 
-/// Regra de recorrência: fornecedor + produto/serviço + valor esperado.
+/// Regra de recorrência: fornecedor + valor esperado (+ periodicidade e vigência).
 /// Quando a NFS-e/NFe documental chega com o mesmo emitente e valor (na vigência), a Entrada auto-consolida.
 model RecorrenciaFinanceira {
   id                  String   @id @default(uuid())
@@ -1119,8 +1119,8 @@ model RecorrenciaFinanceira {
   company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   fornecedorPessoaId  String
   fornecedorPessoa    Pessoa   @relation(fields: [fornecedorPessoaId], references: [id], onDelete: Restrict)
-  produtoId           String
-  produto             Produto  @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  produtoId           String?
+  produto             Produto? @relation(fields: [produtoId], references: [id], onDelete: Restrict)
   valor               Decimal  @db.Decimal(18, 2)
   /// mensal | anual
   periodicidade       String   @default("mensal")

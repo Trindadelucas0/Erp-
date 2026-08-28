@@ -204,10 +204,7 @@ async function gerarTituloMercadoriaNfe(
       throw new ErroDaAplicacao(montagem.mensagem, 400)
     }
     parcelas = montagem.parcelas
-    const nomeProduto = nota.recorrenciaFinanceira?.produto?.nomeVenda?.trim()
-    observacao = nomeProduto
-      ? `Recorrência: ${nomeProduto}`
-      : 'Gerado automaticamente por recorrência na Entrada de Notas'
+    observacao = 'Gerado automaticamente por recorrência na Entrada de Notas'
     numeroDocumento = nota.chaveNfe ? nota.chaveNfe.slice(-9) : null
   } else {
     const xml = nota.xmlConteudo ? normalizarXmlNfe(nota.xmlConteudo) : ''

@@ -6,8 +6,6 @@
 export type RecorrenciaParaMatch = {
   id: string
   valor: number
-  produtoId: string
-  produtoNome?: string | null
 }
 
 export type ResultadoCasamentoRecorrencia =
@@ -15,7 +13,7 @@ export type ResultadoCasamentoRecorrencia =
   | { status: 'casou'; recorrencia: RecorrenciaParaMatch }
   | {
       status: 'valor_divergente'
-      esperados: Array<{ id: string; valor: number; produtoNome?: string | null }>
+      esperados: Array<{ id: string; valor: number }>
       valorNota: number
     }
 
@@ -48,7 +46,6 @@ export function casarRecorrencia(input: {
       esperados: input.recorrenciasAtivas.map((r) => ({
         id: r.id,
         valor: r.valor,
-        produtoNome: r.produtoNome,
       })),
       valorNota,
     }
@@ -66,7 +63,6 @@ export function casarRecorrencia(input: {
     esperados: input.recorrenciasAtivas.map((r) => ({
       id: r.id,
       valor: r.valor,
-      produtoNome: r.produtoNome,
     })),
     valorNota,
   }
@@ -78,13 +74,8 @@ export function formatarMoedaBr(valor: number): string {
 
 export function mensagemValorDivergenteRecorrencia(
   valorNota: number,
-  esperados: Array<{ valor: number; produtoNome?: string | null }>
+  esperados: Array<{ valor: number }>
 ): string {
-  const lista = esperados
-    .map((e) => {
-      const nome = e.produtoNome?.trim() ? ` (${e.produtoNome})` : ''
-      return `${formatarMoedaBr(e.valor)}${nome}`
-    })
-    .join('; ')
+  const lista = esperados.map((e) => formatarMoedaBr(e.valor)).join('; ')
   return `Recorrência: valor da nota (${formatarMoedaBr(valorNota)}) não confere com o cadastrado (${lista}). Confira a nota ou a regra em Configurações → Financeiro → Recorrência.`
 }

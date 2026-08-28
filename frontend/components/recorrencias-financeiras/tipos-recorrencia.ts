@@ -2,7 +2,7 @@ export type RecorrenciaFinanceiraLista = {
   id: string
   companyId: string
   fornecedorPessoaId: string
-  produtoId: string
+  produtoId?: string | null
   valor: number
   periodicidade: 'mensal' | 'anual' | string
   diaVencimento: number
@@ -17,7 +17,7 @@ export type RecorrenciaFinanceiraLista = {
     nomeFantasia: string | null
     documento: string | null
   } | null
-  produto: {
+  produto?: {
     id: string
     nomeVenda: string
     sku: string | null
@@ -28,7 +28,6 @@ export type RecorrenciaFinanceiraLista = {
 export type ItemAgendaRecorrencia = {
   recorrenciaId: string
   fornecedorNome: string
-  servicoNome: string
   valor: number
   diaVencimento: number
   situacao: 'chegou' | 'aguardando'

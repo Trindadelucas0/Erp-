@@ -19,12 +19,6 @@ export async function rotasDeRecorrenciasFinanceiras(aplicacao: FastifyInstance)
     controladorDeRecorrenciasFinanceiras.agenda
   )
 
-  aplicacao.post(
-    '/servicos',
-    { preHandler: [...auth, middlewareDeAutorizacao('financeiro:create')] },
-    controladorDeRecorrenciasFinanceiras.criarServico
-  )
-
   aplicacao.get(
     '/:id',
     { preHandler: [...auth, middlewareDeAutorizacao('financeiro:view')] },

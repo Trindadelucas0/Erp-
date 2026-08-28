@@ -20,7 +20,6 @@ function decimalNum(v: unknown): number {
 
 type DadosPersistenciaRecorrencia = {
   fornecedorPessoaId: string
-  produtoId: string
   valor: number
   periodicidade: string
   diaVencimento: number
@@ -33,7 +32,7 @@ function mapear(registro: {
   id: string
   companyId: string
   fornecedorPessoaId: string
-  produtoId: string
+  produtoId: string | null
   valor: unknown
   periodicidade: string
   diaVencimento: number
@@ -96,8 +95,6 @@ async function listar(
     OR: [
       { fornecedorPessoa: { nome: { contains: token, mode: 'insensitive' as const } } },
       { fornecedorPessoa: { nomeFantasia: { contains: token, mode: 'insensitive' as const } } },
-      { produto: { nomeVenda: { contains: token, mode: 'insensitive' as const } } },
-      { produto: { sku: { contains: token, mode: 'insensitive' as const } } },
     ],
   }))
 
@@ -170,7 +167,6 @@ async function buscarAtivaPorFornecedorEValor(
 function dadosPrisma(dados: DadosPersistenciaRecorrencia) {
   return {
     fornecedorPessoaId: dados.fornecedorPessoaId,
-    produtoId: dados.produtoId,
     valor: new Prisma.Decimal(dados.valor.toFixed(2)),
     periodicidade: dados.periodicidade,
     diaVencimento: dados.diaVencimento,
@@ -184,6 +180,7 @@ async function criar(companyId: string, dados: DadosPersistenciaRecorrencia) {
   const registro = await clientePrisma.recorrenciaFinanceira.create({
     data: {
       companyId,
+      produtoId: null,
       ...dadosPrisma(dados),
     },
     include: includeListagem,
@@ -257,7 +254,6 @@ async function montarAgenda(companyId: string, competencia: string) {
   const itens = naCompetencia.map((r) => ({
     recorrenciaId: r.id,
     fornecedorNome: r.fornecedor?.nomeFantasia || r.fornecedor?.nome || '—',
-    servicoNome: r.produto?.nomeVenda || '—',
     valor: r.valor,
     diaVencimento: r.diaVencimento,
     situacao: chegaram.has(r.id) ? ('chegou' as const) : ('aguardando' as const),
