@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
+import { dispararDownloadArquivo } from '@/lib/disparar-download-arquivo'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { Button } from '@/components/ui/button'
@@ -197,12 +198,8 @@ function ConteudoDetalheAuditoria() {
       `/entrada-notas/${id}/anexo-divergencia/${anexoId}/download`,
       { responseType: 'blob' }
     )
-    const url = URL.createObjectURL(new Blob([resp.data]))
-    const a = document.createElement('a')
-    a.href = url
-    a.download = nomeArquivo
-    a.click()
-    URL.revokeObjectURL(url)
+    const blob = resp.data instanceof Blob ? resp.data : new Blob([resp.data])
+    dispararDownloadArquivo(blob, nomeArquivo)
   }
 
   if (carregando) {

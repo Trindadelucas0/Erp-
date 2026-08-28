@@ -5,6 +5,7 @@ import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js
 import type { Prisma } from '@prisma/client'
 import type { DadosParaCriarProduto, DadosParaEditarProduto } from './esquema-produtos.js'
 import { urlPublicaFoto } from './armazenamento-foto-produto.js'
+import { normalizarSkuProduto } from './normalizar-sku.js'
 import { proximoSkuNumerico } from './sku-sequencial.js'
 import {
   calcularSkipProdutos,
@@ -145,7 +146,7 @@ function mapearProduto(produto: ProdutoDb, companyId: string) {
 
 function dadosEscalares(dados: DadosParaCriarProduto | DadosParaEditarProduto) {
   return {
-    sku: dados.sku || null,
+    sku: normalizarSkuProduto(dados.sku) ?? null,
     ativo: dados.ativo ?? true,
     nomeVenda: dados.nomeVenda,
     marca: dados.marca,
@@ -492,7 +493,9 @@ async function buscarPorId(id: string) {
 }
 
 async function buscarPorSkuNaEmpresa(sku: string, companyId: string) {
-  return clientePrisma.produto.findFirst({ where: { sku, companyId } })
+  const skuNormalizado = normalizarSkuProduto(sku)
+  if (!skuNormalizado) return null
+  return clientePrisma.produto.findFirst({ where: { sku: skuNormalizado, companyId } })
 }
 
 export type ConflitoCodigoBarras = {
@@ -559,7 +562,7 @@ async function buscarConflitosCodigoBarras(
 
 async function criar(dados: DadosParaCriarProduto, companyId: string) {
   return clientePrisma.$transaction(async (tx) => {
-    const sku = dados.sku?.trim() || (await proximoSkuNumerico(companyId, tx))
+    const sku = normalizarSkuProduto(dados.sku) || (await proximoSkuNumerico(companyId, tx))
     const produto = await tx.produto.create({
       data: { ...dadosEscalares({ ...dados, sku }), companyId },
       include: includeCompleto,

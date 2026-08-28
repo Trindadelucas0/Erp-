@@ -17,4 +17,9 @@ describe('calcularProximoSkuNumerico', () => {
   it('retorna 11 após 9 e 10', () => {
     expect(calcularProximoSkuNumerico(['9', '10'])).toBe('11')
   })
+
+  it('considera SKU com ponto como separador visual', () => {
+    expect(calcularProximoSkuNumerico(['9.325', '13694'])).toBe('13695')
+    expect(calcularProximoSkuNumerico(['13.694'])).toBe('13695')
+  })
 })

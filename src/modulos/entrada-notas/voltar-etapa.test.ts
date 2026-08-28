@@ -1675,3 +1675,59 @@ describe('gate fiscal — CFOP de entrada obrigatório', () => {
     expect(servicoDeAutenticacao.verificarSenhaDoUsuario).not.toHaveBeenCalled()
   })
 })
+
+describe('servicoEntradaNotas.gravarCodigoOriginal', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('recusa gravar sem fornecedor vinculado na nota', async () => {
+    vi.mocked(repositorioEntradaNotas.buscarNotaCompleta).mockResolvedValue({
+      ...buildNotaFixture(),
+      fornecedorPessoaId: null,
+      itens: [
+        {
+          id: 'item-1',
+          produtoId: 'produto-1',
+          codigoProduto: 'ABC',
+        },
+      ],
+    } as never)
+
+    await expect(
+      servicoEntradaNotas.gravarCodigoOriginal('empresa-1', 'nota-1', 'item-1')
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      message: expect.stringMatching(/fornecedor da nota ainda não está vinculado/i),
+    })
+
+    expect(repositorioEntradaNotas.gravarCodigoOriginalVinculo).not.toHaveBeenCalled()
+  })
+
+  it('grava código original quando fornecedor e produto estão vinculados', async () => {
+    vi.mocked(repositorioEntradaNotas.buscarNotaCompleta).mockResolvedValue({
+      ...buildNotaFixture(),
+      fornecedorPessoaId: 'fornecedor-1',
+      itens: [
+        {
+          id: 'item-1',
+          produtoId: 'produto-1',
+          codigoProduto: 'ABC',
+        },
+      ],
+    } as never)
+
+    const resultado = await servicoEntradaNotas.gravarCodigoOriginal(
+      'empresa-1',
+      'nota-1',
+      'item-1'
+    )
+
+    expect(resultado).toMatchObject({ sucesso: true })
+    expect(repositorioEntradaNotas.gravarCodigoOriginalVinculo).toHaveBeenCalledWith(
+      'produto-1',
+      'fornecedor-1',
+      'ABC'
+    )
+  })
+})

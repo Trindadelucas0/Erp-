@@ -8,7 +8,7 @@ import {
   urgenciaPorVencimento,
 } from './datas-pendencias.js'
 import { tiposParaTela } from './mapa-tela-pendencias.js'
-import { ORDEM_URGENCIA } from './tipos-pendencias.js'
+import { ORDEM_URGENCIA, TIPOS_PENDENCIA } from './tipos-pendencias.js'
 
 describe('datas-pendencias', () => {
   it('diasAteVencimento: negativo = vencido, 0 = hoje', () => {
@@ -41,8 +41,15 @@ describe('mapa-tela-pendencias', () => {
     expect(tiposParaTela('/entrada-notas?painel=analise')).toContain(
       'fila_entrada_analise'
     )
+    expect(tiposParaTela('/entrada-notas')).toContain('contagem_baixar')
+    expect(tiposParaTela('/entrada-notas')).not.toContain('fila_entrada_contagem')
+    expect(tiposParaTela('/contagens')).not.toContain('fila_entrada_contagem')
     expect(tiposParaTela('/produtos')).toBeNull()
     expect(tiposParaTela('/pendencias')).toBeNull()
+  })
+
+  it('nao inclui fila_entrada_contagem nos tipos de pendencia', () => {
+    expect(TIPOS_PENDENCIA).not.toContain('fila_entrada_contagem')
   })
 })
 

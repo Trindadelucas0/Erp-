@@ -19,9 +19,16 @@ function dataIsoDia(v: Date | string | null | undefined): Date | null {
   return d
 }
 
+function vencimentoPorDiaRecorrencia(dataEmissao: Date, diaVencimento: number): Date {
+  const vencimento = new Date(dataEmissao)
+  vencimento.setDate(diaVencimento)
+  vencimento.setHours(0, 0, 0, 0)
+  return vencimento
+}
+
 /**
  * Resolve parcelas/vencimento para título gerado por recorrência (NFS-e ou NFe documental).
- * Ordem: duplicatas/prazo da nota → dataEmissão + prazoPagamento1 do fornecedor.
+ * Ordem: duplicatas/prazo da nota → dia de vencimento da recorrência → prazo do fornecedor.
  * Fail-closed (§7.4): sem vencimento resolvível → ok:false.
  */
 export async function resolverParcelasRecorrencia(input: {
@@ -32,6 +39,7 @@ export async function resolverParcelasRecorrencia(input: {
   xmlConteudo?: string | null
   prazoPagamentoXml?: string | null
   prazoPagamentoTexto?: string | null
+  recorrenciaFinanceiraId?: string | null
 }): Promise<
   | {
       ok: true
@@ -63,11 +71,25 @@ export async function resolverParcelasRecorrencia(input: {
     }
   }
 
+  if (input.recorrenciaFinanceiraId) {
+    const rec = await clientePrisma.recorrenciaFinanceira.findFirst({
+      where: { id: input.recorrenciaFinanceiraId, companyId: input.companyId },
+      select: { diaVencimento: true },
+    })
+    if (rec?.diaVencimento) {
+      const vencimento = vencimentoPorDiaRecorrencia(emissao, rec.diaVencimento)
+      return {
+        ok: true,
+        parcelas: [{ numeroDocumento: null, vencimento, valor: valorTotal }],
+      }
+    }
+  }
+
   if (!input.fornecedorPessoaId) {
     return {
       ok: false,
       mensagem:
-        'Recorrência: cadastre o prazo de pagamento no fornecedor (prazo 1) para gerar o vencimento do título.',
+        'Recorrência: cadastre o prazo de pagamento no fornecedor (prazo 1) ou configure o dia de vencimento na recorrência.',
     }
   }
 
@@ -87,7 +109,7 @@ export async function resolverParcelasRecorrencia(input: {
     return {
       ok: false,
       mensagem:
-        'Recorrência: cadastre o prazo de pagamento no fornecedor (prazo 1) para gerar o vencimento do título.',
+        'Recorrência: cadastre o prazo de pagamento no fornecedor (prazo 1) ou configure o dia de vencimento na recorrência.',
     }
   }
 

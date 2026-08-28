@@ -74,6 +74,7 @@ import {
   validarCodigosBarrasInternos,
 } from '@/lib/validar-codigo-barras-gtin'
 import type { ResultadoCompressaoProduto } from '@/lib/comprimir-imagem-produto'
+import { normalizarSkuProduto } from '@/lib/normalizar-sku'
 
 type FornecedorOpcao = { id: string; nome: string }
 
@@ -778,7 +779,7 @@ function ConteudoDaPagina() {
   function montarPayload() {
     const sobEncomenda = form.tipoEntrega === 'sob_encomenda'
     return {
-      ...(modoEdicao ? { sku: form.sku.trim() || undefined } : {}),
+      ...(modoEdicao ? { sku: normalizarSkuProduto(form.sku) } : {}),
       ativo: form.ativo,
       nomeVenda: form.nomeVenda.trim(),
       marca: form.marca.trim(),

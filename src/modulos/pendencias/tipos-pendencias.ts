@@ -22,7 +22,6 @@ export const TIPOS_PENDENCIA = [
   'problema_entrada',
   'fila_entrada_analise',
   'fila_entrada_chegada',
-  'fila_entrada_contagem',
   'fila_entrada_problemas',
   'fila_entrada_bloqueio',
 ] as const
@@ -78,7 +77,6 @@ export const ROTULO_TIPO_PENDENCIA: Record<TipoPendencia, string> = {
   problema_entrada: 'Nota com problema',
   fila_entrada_analise: 'Em análise',
   fila_entrada_chegada: 'Aguardando chegada',
-  fila_entrada_contagem: 'Liberadas para contagem',
   fila_entrada_problemas: 'Com problemas',
   fila_entrada_bloqueio: 'Entradas com estoque bloqueado',
 }

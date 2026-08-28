@@ -9,7 +9,7 @@ import {
 import { repositorioDeContasAPagar, ErroBaixa } from './repositorio-contas-a-pagar.js'
 import {
   primeiroPlanoLiberadoFornecedor,
-  resolverPlanoFinanceiroMercadoriaNfe,
+  resolverPlanoFinanceiroEntrada,
 } from './resolver-plano-financeiro-entrada.js'
 import { resolverParcelasRecorrencia } from './resolver-parcelas-recorrencia.js'
 
@@ -137,6 +137,19 @@ async function promoverFreteParaContaPagar(companyId: string, notaMercadoriaId: 
   return criados
 }
 
+function parcelasDaNotaDocumental(nota: {
+  valorTotal: unknown
+  parcelasFinanceiras: unknown
+}): Array<{ numeroDocumento: string | null; vencimento: Date; valor: number }> {
+  const stub = {
+    numeroDocumento: null as string | null,
+    vencimento: null as Date | null,
+    valor: nota.valorTotal,
+    parcelas: nota.parcelasFinanceiras,
+  }
+  return parcelasDoStubDespesa(stub)
+}
+
 async function gerarTituloMercadoriaNfe(
   companyId: string,
   notaId: string,
@@ -155,6 +168,9 @@ async function gerarTituloMercadoriaNfe(
       prazoPagamentoXml: true,
       prazoPagamentoTexto: true,
       recorrenciaFinanceiraId: true,
+      cfopEntradaId: true,
+      planoFinanceiroId: true,
+      parcelasFinanceiras: true,
       recorrenciaFinanceira: {
         select: {
           id: true,
@@ -170,26 +186,62 @@ async function gerarTituloMercadoriaNfe(
   const ehNfse = tipo === 'nfse'
   const ehNfe55 = tipo === 'nfe55'
 
-  // Título de mercadoria: NFe 55 sempre; NFS-e só quando casou recorrência.
-  if (ehNfse && !porRecorrencia) return null
   if (!ehNfe55 && !ehNfse) return null
 
   const existente = await repositorioDeContasAPagar.buscarPorNfeOrigem(companyId, notaId, 'nfe')
   if (existente) return { conta: existente, criado: false as const }
 
   const valorTotal = decimalNum(nota.valorTotal)
-  const planoFinanceiroId = ehNfe55
-    ? await resolverPlanoFinanceiroMercadoriaNfe(companyId, {
-        notaId,
-        fornecedorPessoaId: nota.fornecedorPessoaId,
-      })
-    : await primeiroPlanoLiberadoFornecedor(companyId, nota.fornecedorPessoaId)
+  const planoFinanceiroId = await resolverPlanoFinanceiroEntrada(companyId, {
+    notaId,
+    fornecedorPessoaId: nota.fornecedorPessoaId,
+    cfopEntradaId: nota.cfopEntradaId,
+    planoGravadoNaNota: nota.planoFinanceiroId,
+  })
+
+  if (!planoFinanceiroId && opcoes?.exigirVencimento !== false) {
+    throw new ErroDaAplicacao(
+      'Informe o plano financeiro na prévia antes de consolidar.',
+      400
+    )
+  }
 
   let parcelas: Array<{ numeroDocumento: string | null; vencimento: Date; valor: number }>
   let observacao: string
   let numeroDocumento: string | null
 
-  if (porRecorrencia || ehNfse) {
+  if (ehNfse) {
+    const gravadas = parcelasDaNotaDocumental(nota)
+    if (gravadas.length > 0) {
+      parcelas = gravadas
+    } else if (porRecorrencia) {
+      const montagem = await resolverParcelasRecorrencia({
+        companyId,
+        fornecedorPessoaId: nota.fornecedorPessoaId,
+        valorTotal,
+        dataEmissao: nota.dataEmissao,
+        xmlConteudo: nota.xmlConteudo,
+        prazoPagamentoXml: nota.prazoPagamentoXml,
+        prazoPagamentoTexto: nota.prazoPagamentoTexto,
+        recorrenciaFinanceiraId: nota.recorrenciaFinanceiraId,
+      })
+      if (!montagem.ok) {
+        if (opcoes?.exigirVencimento === false) return null
+        throw new ErroDaAplicacao(montagem.mensagem, 400)
+      }
+      parcelas = montagem.parcelas
+    } else {
+      if (opcoes?.exigirVencimento === false) return null
+      throw new ErroDaAplicacao(
+        'Informe a data de vencimento na prévia financeira antes de consolidar.',
+        400
+      )
+    }
+    observacao = porRecorrencia
+      ? 'Gerado automaticamente por recorrência na Entrada de Notas'
+      : 'Gerado na consolidação da NFS-e na Entrada de Notas'
+    numeroDocumento = nota.chaveNfe ? nota.chaveNfe.slice(-9) : null
+  } else if (porRecorrencia) {
     const montagem = await resolverParcelasRecorrencia({
       companyId,
       fornecedorPessoaId: nota.fornecedorPessoaId,
@@ -198,6 +250,7 @@ async function gerarTituloMercadoriaNfe(
       xmlConteudo: nota.xmlConteudo,
       prazoPagamentoXml: nota.prazoPagamentoXml,
       prazoPagamentoTexto: nota.prazoPagamentoTexto,
+      recorrenciaFinanceiraId: nota.recorrenciaFinanceiraId,
     })
     if (!montagem.ok) {
       if (opcoes?.exigirVencimento === false) return null

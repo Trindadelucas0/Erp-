@@ -12,6 +12,8 @@ import {
   esquemaDesvincularItem,
   esquemaDefinirCfopEntrada,
   esquemaDefinirCfopEntradaCte,
+  esquemaDefinirCfopEntradaNota,
+  esquemaFinanceiroDocumental,
   esquemaGravarCodigoOriginal,
   esquemaImportarFiscal,
   esquemaFinanceiroFrete,
@@ -373,6 +375,28 @@ async function desvincularCte(requisicao: FastifyRequest, resposta: FastifyReply
   return resposta.send(dados)
 }
 
+async function definirCfopEntradaNota(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parsed = esquemaDefinirCfopEntradaNota.safeParse(requisicao.body)
+  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
+  const dados = await servicoEntradaNotas.definirCfopEntradaNota(
+    companyIdDe(requisicao),
+    notaIdDe(requisicao),
+    parsed.data.cfopId
+  )
+  return resposta.send(dados)
+}
+
+async function salvarFinanceiroDocumental(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parsed = esquemaFinanceiroDocumental.safeParse(requisicao.body ?? {})
+  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
+  const dados = await servicoEntradaNotas.salvarFinanceiroDocumental(
+    companyIdDe(requisicao),
+    notaIdDe(requisicao),
+    parsed.data
+  )
+  return resposta.send(dados)
+}
+
 async function salvarFinanceiroFrete(requisicao: FastifyRequest, resposta: FastifyReply) {
   const parsed = esquemaFinanceiroFrete.safeParse(requisicao.body ?? {})
   if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
@@ -427,6 +451,7 @@ export const controladorEntradaNotas = {
   importarFiscal,
   definirCfopEntrada,
   definirCfopEntradaCte,
+  definirCfopEntradaNota,
   liberarCriticas,
   cancelarLiberacao,
   contato,
@@ -449,6 +474,7 @@ export const controladorEntradaNotas = {
   vincularCte,
   desvincularCte,
   salvarFinanceiroFrete,
+  salvarFinanceiroDocumental,
   vincularFornecedoresPendentes,
   vincularCtesPendentes,
   ctesAguardandoNf,

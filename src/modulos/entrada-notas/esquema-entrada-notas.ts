@@ -42,6 +42,11 @@ export const esquemaDefinirCfopEntradaCte = z.object({
   cfopId: z.string().uuid(),
 })
 
+/** CFOP de entrada do documento NFS-e / NFe documental. */
+export const esquemaDefinirCfopEntradaNota = z.object({
+  cfopId: z.string().uuid(),
+})
+
 export const esquemaContatoFornecedor = z.object({
   observacao: z.string().min(1, 'Informe a observação do contato'),
 })
@@ -121,6 +126,29 @@ export const esquemaFinanceiroFrete = z
     /** Formato novo: N duplicatas. */
     parcelas: z.array(esquemaParcelaFinanceiroFrete).min(1).optional(),
     /** Formato antigo (1 parcela) — fallback. */
+    numeroDocumento: z.string().max(60).nullable().optional(),
+    vencimento: z.string().min(1, 'Data de vencimento obrigatória').nullable().optional(),
+    valor: z.number().finite().nonnegative().optional(),
+  })
+  .refine(
+    (d) =>
+      (d.parcelas != null && d.parcelas.length > 0) ||
+      (d.valor != null && Number.isFinite(d.valor)),
+    { message: 'Informe ao menos uma parcela ou o valor' }
+  )
+  .refine(
+    (d) => {
+      if (d.parcelas != null && d.parcelas.length > 0) return true
+      return Boolean(d.vencimento?.trim())
+    },
+    { message: 'Informe a data de vencimento de cada parcela', path: ['vencimento'] }
+  )
+
+/** Prévia financeira documental (NFS-e / custo / consumo). */
+export const esquemaFinanceiroDocumental = z
+  .object({
+    planoFinanceiroId: z.string().uuid('Plano financeiro inválido'),
+    parcelas: z.array(esquemaParcelaFinanceiroFrete).min(1).optional(),
     numeroDocumento: z.string().max(60).nullable().optional(),
     vencimento: z.string().min(1, 'Data de vencimento obrigatória').nullable().optional(),
     valor: z.number().finite().nonnegative().optional(),

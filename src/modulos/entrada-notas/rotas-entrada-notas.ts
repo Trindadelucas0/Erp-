@@ -57,6 +57,11 @@ export async function rotasEntradaNotas(aplicacao: FastifyInstance): Promise<voi
     controladorEntradaNotas.definirCfopEntradaCte
   )
   aplicacao.post(
+    '/:id/definir-cfop-entrada-nota',
+    { preHandler: autenticado },
+    controladorEntradaNotas.definirCfopEntradaNota
+  )
+  aplicacao.post(
     '/:id/liberar-criticas',
     { preHandler: autenticado },
     controladorEntradaNotas.liberarCriticas
@@ -132,6 +137,11 @@ export async function rotasEntradaNotas(aplicacao: FastifyInstance): Promise<voi
     '/:id/financeiro-frete',
     { preHandler: autenticado },
     controladorEntradaNotas.salvarFinanceiroFrete
+  )
+  aplicacao.post(
+    '/:id/financeiro-documental',
+    { preHandler: autenticado },
+    controladorEntradaNotas.salvarFinanceiroDocumental
   )
   aplicacao.delete(
     '/:id/vinculos-cte/:vinculoId',

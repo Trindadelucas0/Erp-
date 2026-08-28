@@ -24,7 +24,6 @@ const TIPOS_PEDIDO: TipoPendencia[] = [
 const TIPOS_ENTRADA: TipoPendencia[] = [
   'fila_entrada_analise',
   'fila_entrada_chegada',
-  'fila_entrada_contagem',
   'fila_entrada_problemas',
   'fila_entrada_bloqueio',
   'problema_entrada',
@@ -32,10 +31,7 @@ const TIPOS_ENTRADA: TipoPendencia[] = [
   'divergencia_bloquear',
 ]
 
-const TIPOS_CONTAGEM: TipoPendencia[] = [
-  'contagem_sessao',
-  'fila_entrada_contagem',
-]
+const TIPOS_CONTAGEM: TipoPendencia[] = ['contagem_sessao']
 
 const TIPOS_ESTOQUE: TipoPendencia[] = ['estoque_bloqueado']
 

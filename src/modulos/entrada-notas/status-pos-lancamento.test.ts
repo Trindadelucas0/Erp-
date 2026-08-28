@@ -82,6 +82,17 @@ vi.mock('./servico-vinculo-cte.js', () => ({
   },
 }))
 
+vi.mock('../recorrencias-financeiras/repositorio-recorrencias-financeiras.js', () => ({
+  repositorioDeRecorrenciasFinanceiras: {
+    listarAtivasPorFornecedor: vi.fn().mockResolvedValue([]),
+  },
+}))
+
+vi.mock('../contas-a-pagar/resolver-plano-financeiro-entrada.js', () => ({
+  resolverPlanoFinanceiroEntrada: vi.fn().mockResolvedValue(null),
+  cfopEntradaPrevalenteDosItens: vi.fn(),
+}))
+
 vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({
   clientePrisma: {
     produto: { findFirst: vi.fn() },
@@ -327,9 +338,11 @@ describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)'
     expect(gerarTitulosContasPagarDaEntrada).not.toHaveBeenCalled()
   })
 
-  it('NFS-e (documental) sempre lança direto em entrada_contagem — nunca aguardando_chegada', async () => {
+  it('NFS-e (documental) com CFOP lança em pronta_para_consolidar — nunca aguardando_chegada nem entrada_contagem', async () => {
     ligarAnaliseSempreOk()
-    const fake = ligarRepositorioFake(notaNfse({ pedidoCompraId: 'pedido-1' }))
+    const fake = ligarRepositorioFake(
+      notaNfse({ pedidoCompraId: 'pedido-1', cfopEntradaId: 'cfop-ent' })
+    )
     vi.mocked(repositorioEntradaNotas.buscarPedidoComItens).mockResolvedValue({
       id: 'pedido-1',
       tipoCompra: 'revenda',
@@ -340,8 +353,20 @@ describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)'
       importarFocusSeAusente: false,
     })
 
-    expect(fake.getEstado().statusEntrada).toBe('entrada_contagem')
-    expect(detalhe.nota.statusEntrada).toBe('entrada_contagem')
+    expect(fake.getEstado().statusEntrada).toBe('pronta_para_consolidar')
+    expect(detalhe.nota.statusEntrada).toBe('pronta_para_consolidar')
+  })
+
+  it('NFS-e sem CFOP de entrada para em análise (fiscal bloqueante)', async () => {
+    ligarAnaliseSempreOk()
+    const fake = ligarRepositorioFake(notaNfse({ cfopEntradaId: null }))
+
+    const detalhe = await servicoEntradaNotas.analisarNota('c1', 'nota-1', {
+      importarFocusSeAusente: false,
+    })
+
+    expect(fake.getEstado().statusEntrada).toBe('em_analise')
+    expect(detalhe.nota.statusEntrada).toBe('em_analise')
   })
 
   it('lancar() manual: NFe 55 com produto cai em aguardando_chegada (com ou sem pedido)', async () => {

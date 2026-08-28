@@ -7,6 +7,7 @@ import { normalizarDocumento } from '../../compartilhado/validacoes/documentos.j
 import {
   STATUS_AGUARDANDO_CHEGADA,
   STATUS_PAINEL_CONTAGEM,
+  STATUS_PAINEL_PRONTA_CONSOLIDAR,
 } from '../entrada-notas/status-entrada-contagem.js'
 import { REGRAS_FISCAIS_PADRAO } from './esquema-focus-nfe.js'
 import { xmlNfeTemItensParseaveis } from './parser-xml-nfe.js'
@@ -155,7 +156,7 @@ async function listarNfesPorPainel(
   filtros?: {
     dataDe?: Date
     dataAte?: Date
-    painel?: 'analise' | 'aguardando_chegada' | 'contagem' | 'consolidada' | 'problemas' | 'cancelada'
+    painel?: 'analise' | 'aguardando_chegada' | 'contagem' | 'pronta_consolidar' | 'consolidada' | 'problemas' | 'cancelada'
     busca?: string
   }
 ) {
@@ -164,6 +165,7 @@ async function listarNfesPorPainel(
     analise: ['pendente', 'em_analise', 'stand_by'],
     aguardando_chegada: [STATUS_AGUARDANDO_CHEGADA],
     contagem: [...STATUS_PAINEL_CONTAGEM],
+    pronta_consolidar: [...STATUS_PAINEL_PRONTA_CONSOLIDAR],
     consolidada: ['entrada_consolidada'],
     problemas: ['com_problema', 'problema_resolvido'],
     cancelada: ['cancelada'],
@@ -242,7 +244,7 @@ async function listarCompanyIdsComFocusAtivo() {
 async function contarCtesForaDoFiltroData(
   companyId: string,
   filtros: {
-    painel?: 'analise' | 'aguardando_chegada' | 'contagem' | 'consolidada' | 'problemas' | 'cancelada'
+    painel?: 'analise' | 'aguardando_chegada' | 'contagem' | 'pronta_consolidar' | 'consolidada' | 'problemas' | 'cancelada'
     dataDe?: Date
     dataAte?: Date
   }
@@ -254,6 +256,7 @@ async function contarCtesForaDoFiltroData(
     analise: ['pendente', 'em_analise', 'stand_by'],
     aguardando_chegada: [STATUS_AGUARDANDO_CHEGADA],
     contagem: [...STATUS_PAINEL_CONTAGEM],
+    pronta_consolidar: [...STATUS_PAINEL_PRONTA_CONSOLIDAR],
     consolidada: ['entrada_consolidada'],
     problemas: ['com_problema', 'problema_resolvido'],
     cancelada: ['cancelada'],

@@ -10,7 +10,6 @@ import { usuarioEhAdmin } from '../../compartilhado/paginas/registro-de-paginas.
 import { STATUS_APROVACAO } from '../clientes/regras-cliente.js'
 import {
   STATUS_AGUARDANDO_CHEGADA,
-  STATUS_AGUARDANDO_CONTAGEM,
   STATUS_CONTAGEM_DIVERGENTE,
   STATUS_CONTAGEM_OK,
   STATUS_CONSOLIDADA,
@@ -105,7 +104,6 @@ function tipoPermitido(tipo: TipoPendencia, perm: ContextoPermissao): boolean {
     case 'problema_entrada':
     case 'fila_entrada_analise':
     case 'fila_entrada_chegada':
-    case 'fila_entrada_contagem':
     case 'fila_entrada_problemas':
     case 'fila_entrada_bloqueio':
       return perm.compras
@@ -503,13 +501,7 @@ async function coletarCompras(companyId: string, hoje: Date): Promise<ItemPenden
 }
 
 async function coletarFilasEntrada(companyId: string): Promise<ItemPendencia[]> {
-  const [
-    analise,
-    chegada,
-    contagem,
-    problemas,
-    bloqueioNotas,
-  ] = await Promise.all([
+  const [analise, chegada, problemas, bloqueioNotas] = await Promise.all([
     clientePrisma.nfeRecebida.count({
       where: {
         companyId,
@@ -518,9 +510,6 @@ async function coletarFilasEntrada(companyId: string): Promise<ItemPendencia[]> 
     }),
     clientePrisma.nfeRecebida.count({
       where: { companyId, statusEntrada: STATUS_AGUARDANDO_CHEGADA },
-    }),
-    clientePrisma.nfeRecebida.count({
-      where: { companyId, statusEntrada: STATUS_AGUARDANDO_CONTAGEM },
     }),
     clientePrisma.nfeRecebida.count({
       where: { companyId, statusEntrada: 'com_problema' },
@@ -562,16 +551,6 @@ async function coletarFilasEntrada(companyId: string): Promise<ItemPendencia[]> 
       titulo: `${chegada} nota(s) aguardando chegada`,
       descricao: 'Conferir preço/nome e liberar',
       href: '/entrada-notas?painel=aguardando_chegada',
-    })
-  }
-  if (contagem > 0) {
-    itens.push({
-      id: 'fila:contagem',
-      tipo: 'fila_entrada_contagem',
-      urgencia: 'fila',
-      titulo: `${contagem} nota(s) liberada(s) para contagem`,
-      descricao: 'Iniciar ou continuar contagem',
-      href: '/entrada-notas?painel=contagem',
     })
   }
   if (problemas > 0) {

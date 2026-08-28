@@ -14,6 +14,7 @@ import {
   normalizarCodigoBarrasGtin,
   validarCodigosBarrasInternos,
 } from '../../compartilhado/validacoes/codigo-barras-gtin.js'
+import { normalizarSkuProduto } from './normalizar-sku.js'
 
 function nulParaUndefined(valor: unknown) {
   return valor === null || valor === '' ? undefined : valor
@@ -194,8 +195,13 @@ export const esquemaProdutoFornecedor = z.object({
   ordem: z.number().int().optional(),
 })
 
+const skuOpcional = z.preprocess(
+  nulParaUndefined,
+  textoCadastroOpcional(50).transform((v) => normalizarSkuProduto(v))
+)
+
 const camposProduto = {
-  sku: textoOpcionalNulavel(50),
+  sku: skuOpcional,
   ativo: z.boolean().optional().default(true),
   nomeVenda: textoCadastroObrigatorio(2, 60),
   marca: textoCadastroObrigatorio(1, 100),

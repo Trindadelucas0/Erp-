@@ -6,7 +6,7 @@ Scripts one-shot para importar o relatório **Relação de Produtos Analítico**
 
 | Item | Decisão |
 |------|---------|
-| SKU | Mantém o Código Santri |
+| SKU | Mantém o Código Santri **sem ponto** (ex.: `9.325` → `9325`) |
 | Preço Santri | Vai para `precoCusto` (sugestão de **preço unitário** no pedido) |
 | Estoque | Não migra |
 | Código de barras | EAN-13/DUN-14; UPC-12 tenta virar EAN-13 com zero à esquerda |

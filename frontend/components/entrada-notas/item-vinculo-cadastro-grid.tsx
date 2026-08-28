@@ -46,6 +46,9 @@ export type ProdutoBuscaVinculo = {
   marca?: string | null
 }
 
+export const MSG_GRAVAR_CODIGO_ORIGINAL_SEM_FORNECEDOR =
+  'Não foi possível gravar o código original: o fornecedor da nota ainda não está vinculado. Use Cadastrar fornecedor no card acima e tente novamente.'
+
 function rotuloVinculoModo(modo: string | null): string | null {
   if (modo === 'barras') return 'código de barras'
   if (modo === 'codigo_original') return 'código original'
@@ -149,6 +152,8 @@ type Props = {
   permitirAcoesVinculo?: boolean
   /** Soften “Sem vínculo” quando documental e produto não exigido */
   vinculoNaoExigido?: boolean
+  /** Emitente/fornecedor da nota já vinculado no cadastro */
+  fornecedorVinculado?: boolean
 }
 
 export function ItemVinculoCadastroGrid({
@@ -168,8 +173,10 @@ export function ItemVinculoCadastroGrid({
   codigoOriginalGravado = false,
   permitirAcoesVinculo = true,
   vinculoNaoExigido = false,
+  fornecedorVinculado = true,
 }: Props) {
   const [gravandoCodigo, setGravandoCodigo] = useState(false)
+  const [erroGravarCodigo, setErroGravarCodigo] = useState<string | null>(null)
   const vinculado = Boolean(item.produtoId)
   const pendenteDocumental = !vinculado && vinculoNaoExigido
   const itensPorEmbalagem = item.itensPorEmbalagem ?? 1
@@ -322,28 +329,40 @@ export function ItemVinculoCadastroGrid({
         )}
         acao={
           podeGravarOriginal ? (
-            <Button
-              type="button"
-              variant="link"
-              className="h-auto p-0 text-xs font-normal"
-              disabled={acao || gravandoCodigo}
-              aria-label={gravandoCodigo ? 'Gravando código original' : 'Gravar código original'}
-              onClick={async () => {
-                if (!onGravarCodigoOriginal) return
-                setGravandoCodigo(true)
-                try {
-                  await onGravarCodigoOriginal()
-                } finally {
-                  setGravandoCodigo(false)
-                }
-              }}
-            >
-              {gravandoCodigo ? (
-                <Loader2 className="size-3.5 animate-spin" aria-hidden />
-              ) : (
-                'Gravar'
-              )}
-            </Button>
+            <span className="inline-flex flex-col items-start gap-0.5">
+              <Button
+                type="button"
+                variant="link"
+                className="h-auto p-0 text-xs font-normal"
+                disabled={acao || gravandoCodigo}
+                aria-label={gravandoCodigo ? 'Gravando código original' : 'Gravar código original'}
+                onClick={async () => {
+                  if (!onGravarCodigoOriginal) return
+                  setErroGravarCodigo(null)
+                  if (!fornecedorVinculado) {
+                    setErroGravarCodigo(MSG_GRAVAR_CODIGO_ORIGINAL_SEM_FORNECEDOR)
+                    return
+                  }
+                  setGravandoCodigo(true)
+                  try {
+                    await onGravarCodigoOriginal()
+                  } finally {
+                    setGravandoCodigo(false)
+                  }
+                }}
+              >
+                {gravandoCodigo ? (
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                ) : (
+                  'Gravar'
+                )}
+              </Button>
+              {erroGravarCodigo ? (
+                <span className="max-w-xs font-sans text-xs font-normal text-destructive">
+                  {erroGravarCodigo}
+                </span>
+              ) : null}
+            </span>
           ) : undefined
         }
       />

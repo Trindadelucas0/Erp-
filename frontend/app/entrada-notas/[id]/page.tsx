@@ -6,6 +6,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
+import { blobParecePdf, dispararDownloadArquivo } from '@/lib/disparar-download-arquivo'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
@@ -20,7 +21,10 @@ import {
   type VisualizacaoNota,
 } from '@/components/entrada-notas/conteudo-visualizacao-nota'
 import { BarraCarregamentoDownload } from '@/components/entrada-notas/barra-carregamento-download'
-import { ItemVinculoCadastroGrid } from '@/components/entrada-notas/item-vinculo-cadastro-grid'
+import {
+  ItemVinculoCadastroGrid,
+  MSG_GRAVAR_CODIGO_ORIGINAL_SEM_FORNECEDOR,
+} from '@/components/entrada-notas/item-vinculo-cadastro-grid'
 import {
   ItemVinculoFiscalGrid,
   type CfopOpcaoEntrada,
@@ -38,9 +42,22 @@ import { SUBTIPO_CFOP_CONHECIMENTO_FRETE } from '@/lib/cfop'
 import { distribuirParcelasIguais } from '@/lib/parcelas-pagamento-pedido'
 import {
   ehDocumentalEntrada,
+  ehSemContagemFisicaEntrada,
   prefixoPdfDocumento,
   rotuloTipoDocumentoLongo,
 } from '@/lib/tipo-documento-entrada'
+import { AcoesConsolidarDocumental } from '@/components/entrada-notas/acoes-consolidar-documental'
+import {
+  BlocoFinanceiroDocumental,
+  type PreviaFinanceira,
+} from '@/components/entrada-notas/bloco-financeiro-documental'
+import { CardDadosNotaEntrada } from '@/components/entrada-notas/card-dados-nota-entrada'
+import {
+  TabelaPedidoDivergencias,
+  type ResumoPedidoCompra,
+} from '@/components/entrada-notas/tabela-pedido-divergencias'
+import { ComboboxPlanoFinanceiro } from '@/components/contas-a-pagar/combobox-plano-financeiro'
+import type { PlanoFinanceiroOpcao } from '@/lib/contas-a-pagar'
 import { extrairSerieNumeroChave, tituloAnaliseEntrada } from '@/lib/chave-acesso-nfe'
 import { gravarDeepLinkFornecedor } from '@/lib/fornecedor-deep-link'
 import { prepararImagemAteBytes } from '@/lib/comprimir-imagem-ate-bytes'
@@ -343,6 +360,22 @@ type DetalheNota = {
     valorTotal: number
     nfeRecebidaId: string | null
   }>
+  planoFinanceiroId?: string | null
+  parcelasFinanceiras?: Array<{
+    numeroDocumento: string | null
+    vencimento: string | null
+    valor: number | null
+  }>
+  recorrenciaFinanceiraId?: string | null
+  recorrenciaFinanceira?: {
+    id: string
+    valor: number | null
+    diaVencimento: number
+    periodicidade: string
+  } | null
+  previaFinanceira?: PreviaFinanceira | null
+  resumoPedidoCompra?: ResumoPedidoCompra | null
+  planoFinanceiro?: { id: string; codigo: string; nome: string } | null
 }
 
 type ProdutoBusca = {
@@ -379,6 +412,7 @@ function notaLiberadaOuConsolidada(status: string): boolean {
     status === 'entrada_contagem' ||
     status === 'entrada_contagem_ok' ||
     status === 'entrada_contagem_divergente' ||
+    status === 'pronta_para_consolidar' ||
     status === 'entrada_consolidada'
   )
 }
@@ -527,6 +561,7 @@ function rotuloStatusEntrada(status: string): string {
     entrada_contagem: 'Liberada para contagem',
     entrada_contagem_ok: 'Contagem OK — pronta para consolidar',
     entrada_contagem_divergente: 'Contagem divergente — pendente correção admin',
+    pronta_para_consolidar: 'Pronta para consolidar',
     entrada_consolidada: 'Entrada consolidada',
     cancelada: 'Cancelada',
     com_problema: 'Com problema',
@@ -905,6 +940,8 @@ function ConteudoDetalheEntrada() {
   const [finParcelas, setFinParcelas] = useState<ParcelaFinanceiroFrete[]>([
     parcelaFinanceiroVazia(),
   ])
+  const [planoDocumentalId, setPlanoDocumentalId] = useState('')
+  const [planosFinanceiros, setPlanosFinanceiros] = useState<PlanoFinanceiroOpcao[]>([])
   const [codigosOriginaisGravados, setCodigosOriginaisGravados] = useState<Record<string, true>>(
     {}
   )
@@ -964,7 +1001,60 @@ function ConteudoDetalheEntrada() {
   }, [carregar])
 
   useEffect(() => {
+    let ativo = true
+    clienteHttp
+      .get<{ planos: PlanoFinanceiroOpcao[] }>('/planos-financeiros', {
+        params: { tipo: 'despesa', ativo: true },
+      })
+      .then(({ data }) => {
+        if (ativo) setPlanosFinanceiros(data.planos ?? [])
+      })
+      .catch(() => {
+        if (ativo) setPlanosFinanceiros([])
+      })
+    return () => {
+      ativo = false
+    }
+  }, [])
+
+  useEffect(() => {
     if (!nota) return
+    const semContagem = ehSemContagemFisicaEntrada(
+      nota.tipoDocumento,
+      nota.fornecedor?.modoDocumental
+    )
+    if (semContagem) {
+      setPlanoDocumentalId(
+        nota.planoFinanceiroId ?? nota.previaFinanceira?.planoFinanceiroId ?? ''
+      )
+      const parcelas = nota.parcelasFinanceiras ?? []
+      if (parcelas.length > 0) {
+        setFinParcelas(
+          parcelas.map((p) => ({
+            numeroDocumento: p.numeroDocumento ?? '',
+            vencimento: p.vencimento ?? '',
+            valor: p.valor != null ? String(p.valor) : '',
+          }))
+        )
+      } else if ((nota.previaFinanceira?.parcelas?.length ?? 0) > 0) {
+        setFinParcelas(
+          nota.previaFinanceira!.parcelas.map((p) => ({
+            numeroDocumento: p.numeroDocumento ?? '',
+            vencimento: p.vencimento ?? '',
+            valor: p.valor != null ? String(p.valor) : '',
+          }))
+        )
+      } else {
+        setFinParcelas([
+          {
+            numeroDocumento: '',
+            vencimento: '',
+            valor: nota.valorTotal != null ? String(nota.valorTotal) : '',
+          },
+        ])
+      }
+      return
+    }
     const totalTransporte = resolverTotalTransporteUi(nota)
     if (nota.tipoDocumento === 'cte') {
       const fin = (nota.despesasFrete ?? [])[0]
@@ -994,7 +1084,9 @@ function ConteudoDetalheEntrada() {
     nota?.sugestaoFinanceiroFrete?.numeroDocumento,
     nota?.sugestaoFinanceiroFrete?.valor,
     assinaturaDespesasFrete(nota),
-    assinaturaCtesFinanceiro(nota),
+    nota?.parcelasFinanceiras,
+    nota?.planoFinanceiroId,
+    nota?.fornecedor?.modoDocumental,
   ])
 
   useEffect(() => {
@@ -1051,13 +1143,10 @@ function ConteudoDetalheEntrada() {
       const resp = await clienteHttp.get(`/focus-nfe/nfe-recebidas/${id}/xml`, {
         responseType: 'blob',
       })
-      const blob = new Blob([resp.data], { type: 'application/xml' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${prefixoPdfDocumento(nota?.tipoDocumento)}-${nota?.chaveNfe || id}.xml`
-      a.click()
-      URL.revokeObjectURL(url)
+      dispararDownloadArquivo(
+        new Blob([resp.data], { type: 'application/xml' }),
+        `${prefixoPdfDocumento(nota?.tipoDocumento)}-${nota?.chaveNfe || id}.xml`
+      )
     } catch (err) {
       setErro(extrairMensagemApi(err, 'Falha ao baixar XML.'))
     } finally {
@@ -1073,13 +1162,17 @@ function ConteudoDetalheEntrada() {
       const resp = await clienteHttp.get(`/focus-nfe/nfe-recebidas/${id}/danfe`, {
         responseType: 'blob',
       })
-      const blob = new Blob([resp.data], { type: 'application/pdf' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${prefixoPdfDocumento(nota?.tipoDocumento)}-${nota?.chaveNfe || id}.pdf`
-      a.click()
-      URL.revokeObjectURL(url)
+      const blob =
+        resp.data instanceof Blob
+          ? resp.data
+          : new Blob([resp.data], { type: 'application/pdf' })
+      if (!(await blobParecePdf(blob))) {
+        throw new Error('Resposta não é um PDF válido.')
+      }
+      dispararDownloadArquivo(
+        blob,
+        `${prefixoPdfDocumento(nota?.tipoDocumento)}-${nota?.chaveNfe || id}.pdf`
+      )
       setDanfeBloqueado(false)
     } catch (err) {
       setDanfeBloqueado(true)
@@ -1470,7 +1563,12 @@ function ConteudoDetalheEntrada() {
       'problema_resolvido',
     ].includes(nota!.statusEntrada)
 
-  const ehDocumental = ehDocumentalEntrada(nota?.tipoDocumento)
+  const ehDocumentalTipo = ehDocumentalEntrada(nota?.tipoDocumento)
+  const ehSemContagemFisica = ehSemContagemFisicaEntrada(
+    nota?.tipoDocumento,
+    nota?.fornecedor?.modoDocumental
+  )
+  const ehDocumental = ehDocumentalTipo || Boolean(nota?.fornecedor?.modoDocumental)
   const ehNfse = nota?.tipoDocumento === 'nfse'
   const ehCte = nota?.tipoDocumento === 'cte'
   const ehNfe55 = !ehDocumental
@@ -1508,6 +1606,9 @@ function ConteudoDetalheEntrada() {
     fiscalExigeManifesto ||
     fiscalExigeCfopEntrada ||
     (fiscalBloqueante && !nota?.criticasLiberadas)
+  const titulosGeradosNfse = (nota?.contasPagar?.length ?? 0) > 0
+  const financeiroDocumentalOk = nota?.previaFinanceira?.completo === true
+  const dossieSomenteLeitura = finalizada || comProblema || problemaResolvido
   const abas = useMemo(() => {
     if (!nota) return []
     if (ehNfse) {
@@ -1748,6 +1849,92 @@ function ConteudoDetalheEntrada() {
         {xmlModal?.visualizacao && <ConteudoVisualizacaoNota visualizacao={xmlModal.visualizacao} />}
       </Modal>
 
+      {ehNfse ? (
+        <div className="space-y-4">
+          <CardDadosNotaEntrada
+            nota={nota}
+            rotuloStatus={rotuloStatusEntrada(nota.statusEntrada)}
+            cadastroBloqueante={cadastroBloqueante}
+            cfopsEntrada={cfopsEntrada}
+            cfopEditavel={!dossieSomenteLeitura && !pipelineBloqueado}
+            acao={acao}
+            onDefinirCfop={(cfopId) => void postAcao('/definir-cfop-entrada-nota', { cfopId })}
+            acoesCadastro={
+              cadastroBloqueante && !nota.fornecedor && nota.documentoEmitente ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    gravarDeepLinkFornecedor({
+                      documento: nota.documentoEmitente!,
+                      nome: nota.nomeEmitente ?? undefined,
+                      retorno: `/entrada-notas/${nota.id}`,
+                    })
+                    router.push('/fornecedores')
+                  }}
+                >
+                  Cadastrar fornecedor
+                </Button>
+              ) : undefined
+            }
+          />
+
+          {nota.recorrenciaFinanceira && (
+            <div className="rounded-md border border-emerald-300/60 bg-emerald-50 px-3 py-2 text-sm dark:border-emerald-800 dark:bg-emerald-950/30">
+              Recorrência casada — valor {formatMoedaBr(nota.recorrenciaFinanceira.valor)} ·
+              vencimento dia {nota.recorrenciaFinanceira.diaVencimento}
+            </div>
+          )}
+
+          <TabelaPedidoDivergencias
+            resumo={nota.resumoPedidoCompra}
+            pedidosDisponiveis={pedidos}
+            pedidoCompraId={nota.pedidoCompraId}
+            desabilitado={dossieSomenteLeitura}
+            acao={acao}
+            onSelecionarPedido={(pedidoId) => void postAcao('/definir-pedido', { pedidoCompraId: pedidoId })}
+          />
+
+          <BlocoFinanceiroDocumental
+            notaId={nota.id}
+            previa={nota.previaFinanceira}
+            planos={planosFinanceiros}
+            planoId={planoDocumentalId}
+            parcelas={finParcelas}
+            titulosGerados={titulosGeradosNfse}
+            somenteLeitura={dossieSomenteLeitura}
+            acao={acao}
+            onPlanoChange={setPlanoDocumentalId}
+            onParcelaChange={(index, campo, valor) => {
+              setFinParcelas((prev) =>
+                prev.map((p, i) => (i === index ? { ...p, [campo]: valor } : p))
+              )
+            }}
+            onSalvar={() =>
+              void postAcao('/financeiro-documental', {
+                planoFinanceiroId: planoDocumentalId,
+                parcelas: finParcelas.map((p) => ({
+                  numeroDocumento: p.numeroDocumento || null,
+                  vencimento: p.vencimento,
+                  valor: Number(p.valor),
+                })),
+              })
+            }
+          />
+
+          <AcoesConsolidarDocumental
+            senha={senha}
+            onSenhaChange={setSenha}
+            onConsolidar={() => void postAcao('/lancar', { modo: 'consolidar', senha })}
+            desabilitado={dossieSomenteLeitura || pipelineBloqueado}
+            acao={acao}
+            financeiroCompleto={financeiroDocumentalOk}
+            cadastroBloqueante={cadastroBloqueante}
+            finalizada={finalizada}
+          />
+        </div>
+      ) : (
+        <>
       <CardPadrao titulo="Resumo">
         <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
           <p className="flex flex-wrap items-center gap-1.5">
@@ -1898,11 +2085,28 @@ function ConteudoDetalheEntrada() {
             titulo={ehNfse ? 'Serviço (NFS-e)' : ehCte ? 'Transporte (CTe)' : 'Itens — vínculo de produtos'}
           >
             {ehDocumental ? (
-              <p className="text-sm text-muted-foreground">
-                {ehCte
-                  ? 'CTe: o emitente pode ser Transportadora ou Fornecedor (mesmo CNPJ). O vínculo com a NF de mercadoria fica na aba Vínculo NF.'
-                  : 'NFS-e: cadastre o prestador como fornecedor. Sem itens de produto.'}
-              </p>
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  {ehCte
+                    ? 'CTe: o emitente pode ser Transportadora ou Fornecedor (mesmo CNPJ). O vínculo com a NF de mercadoria fica na aba Vínculo NF.'
+                    : 'NFS-e: cadastre o prestador como fornecedor. Sem itens de produto.'}
+                </p>
+                {ehNfse && (
+                  <div className="rounded-md border border-border/60 p-3">
+                    <p className="mb-2 text-sm font-medium">CFOP de entrada</p>
+                    <CfopEntradaFreteCampos
+                      cfopXml={null}
+                      cfopEntrada={nota.cfopEntrada}
+                      cfopsEntrada={cfopsEntrada}
+                      finalizada={pipelineBloqueado}
+                      acao={acao}
+                      onDefinirCfopEntrada={(cfopId) =>
+                        void postAcao('/definir-cfop-entrada-nota', { cfopId })
+                      }
+                    />
+                  </div>
+                )}
+              </div>
             ) : (
               <div className="space-y-4">
                 {nota.fornecedor?.modoDocumental ? (
@@ -1928,6 +2132,7 @@ function ConteudoDetalheEntrada() {
                       Boolean(nota.fornecedor.permitirVinculoManual)
                     }
                     vinculoNaoExigido={Boolean(nota.fornecedor?.modoDocumental)}
+                    fornecedorVinculado={Boolean(nota.fornecedor)}
                     onAbrirBusca={() => abrirBuscaProduto(item)}
                     onFecharBusca={() => {
                       setItemVinculando(null)
@@ -1954,6 +2159,11 @@ function ConteudoDetalheEntrada() {
                     onGravarCodigoOriginal={
                       item.produtoId && item.codigoProduto
                         ? async () => {
+                            if (!nota.fornecedor) {
+                              setMensagem(null)
+                              setErro(MSG_GRAVAR_CODIGO_ORIGINAL_SEM_FORNECEDOR)
+                              return
+                            }
                             const ok = await postAcao('/gravar-codigo-original', {
                               itemId: item.id,
                             })
@@ -2729,46 +2939,143 @@ function ConteudoDetalheEntrada() {
           ) : !pipelineBloqueado ? (
             <CardPadrao titulo="Lançamento">
               <p className="mb-3 text-sm text-muted-foreground">
-                {ehDocumental
-                  ? 'Conferência documental. Liberar para contagem e consolidar não movimentam estoque.'
+                {ehSemContagemFisica
+                  ? 'Despesa/serviço — não movimenta estoque e não vai para contagem. Preencha o financeiro e consolide com senha de gerente.'
                   : 'Conferência final. Liberar para contagem não movimenta estoque. Consolidar estoque (senha gerente) grava físico e fiscal no estoque.'}
               </p>
+              {nota.recorrenciaFinanceira && (
+                <div className="mb-3 rounded-md border border-emerald-300/60 bg-emerald-50 px-3 py-2 text-sm dark:border-emerald-800 dark:bg-emerald-950/30">
+                  Recorrência casada — valor{' '}
+                  {formatMoedaBr(nota.recorrenciaFinanceira.valor)} · vencimento dia{' '}
+                  {nota.recorrenciaFinanceira.diaVencimento}
+                </div>
+              )}
               {abaBloqueada('lancamento') && (
                 <p className="mb-3 text-sm text-amber-700 dark:text-amber-400">
                   Resolva as etapas anteriores (cadastro → fiscal → negociação → frete) antes de lançar.
                 </p>
               )}
-              <div className="flex flex-wrap items-end gap-3">
-                <BotaoPrimario
-                  type="button"
-                  disabled={acao || abaBloqueada('lancamento')}
-                  onClick={() => postAcao('/lancar', { modo: 'contagem' })}
-                >
-                  Liberar para contagem
-                </BotaoPrimario>
-                <div>
-                  <Label htmlFor="senha-consolidar">Senha gerente</Label>
-                  <input
-                    id="senha-consolidar"
-                    type="password"
-                    className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
-                    value={senha}
-                    onChange={(e) => setSenha(e.target.value)}
+              {ehSemContagemFisica ? (
+                <div className="space-y-4">
+                  <ComboboxPlanoFinanceiro
+                    rotulo="Plano financeiro"
+                    planos={planosFinanceiros}
+                    valor={planoDocumentalId}
+                    aoMudar={setPlanoDocumentalId}
                   />
+                  <div className="space-y-2">
+                    {finParcelas.map((parcela, index) => (
+                      <div
+                        key={index}
+                        className="flex flex-wrap items-end gap-3 rounded-md border border-border/60 p-2"
+                      >
+                        <div className="min-w-[140px]">
+                          <Label htmlFor={`doc-venc-${index}`}>Data de vencimento</Label>
+                          <input
+                            id={`doc-venc-${index}`}
+                            type="date"
+                            className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm"
+                            value={parcela.vencimento}
+                            onChange={(e) => {
+                              const v = e.target.value
+                              setFinParcelas((prev) =>
+                                prev.map((p, i) => (i === index ? { ...p, vencimento: v } : p))
+                              )
+                            }}
+                          />
+                        </div>
+                        <div className="min-w-[120px]">
+                          <Label htmlFor={`doc-valor-${index}`}>Valor</Label>
+                          <input
+                            id={`doc-valor-${index}`}
+                            className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm"
+                            value={parcela.valor}
+                            onChange={(e) => {
+                              const v = e.target.value
+                              setFinParcelas((prev) =>
+                                prev.map((p, i) => (i === index ? { ...p, valor: v } : p))
+                              )
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={acao || abaBloqueada('lancamento') || !planoDocumentalId}
+                      onClick={() =>
+                        postAcao('/financeiro-documental', {
+                          planoFinanceiroId: planoDocumentalId,
+                          parcelas: finParcelas.map((p) => ({
+                            numeroDocumento: p.numeroDocumento || null,
+                            vencimento: p.vencimento,
+                            valor: Number(p.valor),
+                          })),
+                        })
+                      }
+                    >
+                      Salvar financeiro
+                    </Button>
+                    <div>
+                      <Label htmlFor="senha-consolidar">Senha gerente</Label>
+                      <input
+                        id="senha-consolidar"
+                        type="password"
+                        className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
+                        value={senha}
+                        onChange={(e) => setSenha(e.target.value)}
+                      />
+                    </div>
+                    <BotaoPrimario
+                      type="button"
+                      disabled={acao || !senha || abaBloqueada('lancamento')}
+                      onClick={() => postAcao('/lancar', { modo: 'consolidar', senha })}
+                    >
+                      Consolidar (documental)
+                    </BotaoPrimario>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Contas a pagar é gerado ao consolidar. Plano e vencimento são obrigatórios.
+                  </p>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={acao || !senha || abaBloqueada('lancamento')}
-                  onClick={() => postAcao('/lancar', { modo: 'consolidar', senha })}
-                >
-                  {ehDocumental ? 'Consolidar (documental)' : 'Consolidar estoque'}
-                </Button>
-              </div>
-              <p className="mt-3 text-xs text-muted-foreground">
-                Os títulos em Contas a Pagar (mercadoria e frete, quando houver) são gerados ao
-                consolidar — Baixar contagem OK, Consolidar ou Bloquear estoque.
-              </p>
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <BotaoPrimario
+                      type="button"
+                      disabled={acao || abaBloqueada('lancamento')}
+                      onClick={() => postAcao('/lancar', { modo: 'contagem' })}
+                    >
+                      Liberar para contagem
+                    </BotaoPrimario>
+                    <div>
+                      <Label htmlFor="senha-consolidar">Senha gerente</Label>
+                      <input
+                        id="senha-consolidar"
+                        type="password"
+                        className="mt-1 block w-full max-w-xs min-w-0 rounded-md border bg-background px-3 py-2 text-sm"
+                        value={senha}
+                        onChange={(e) => setSenha(e.target.value)}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={acao || !senha || abaBloqueada('lancamento')}
+                      onClick={() => postAcao('/lancar', { modo: 'consolidar', senha })}
+                    >
+                      Consolidar estoque
+                    </Button>
+                  </div>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Os títulos em Contas a Pagar (mercadoria e frete, quando houver) são gerados ao
+                    consolidar — Baixar contagem OK, Consolidar ou Bloquear estoque.
+                  </p>
+                </>
+              )}
             </CardPadrao>
           ) : (
             <CardPadrao
@@ -2777,7 +3084,9 @@ function ConteudoDetalheEntrada() {
                   ? 'Fora do fluxo (com problema)'
                   : nota.statusEntrada === 'entrada_consolidada'
                     ? 'Entrada consolidada'
-                    : nota.statusEntrada === 'entrada_contagem_ok'
+                    : nota.statusEntrada === 'pronta_para_consolidar'
+                      ? 'Pronta para consolidar'
+                      : nota.statusEntrada === 'entrada_contagem_ok'
                       ? nota.contagemBaixada
                         ? 'Contagem baixada — pronta para consolidar'
                         : 'Contagem OK — baixar para consolidar'
@@ -2804,7 +3113,9 @@ function ConteudoDetalheEntrada() {
                     ? ' Problema resolvido — nota fora do fluxo de entrada.'
                     : nota.statusEntrada === 'aguardando_chegada'
                       ? ' Nota lançada — aguardando chegada física da mercadoria. Libere para a logística iniciar a contagem.'
-                      : nota.statusEntrada === 'entrada_contagem' && !ehDocumental
+                      : nota.statusEntrada === 'pronta_para_consolidar'
+                        ? ' Despesa/serviço pronta — preencha o financeiro (plano e vencimento) e consolide com senha de gerente.'
+                        : nota.statusEntrada === 'entrada_contagem' && !ehDocumental
                         ? ' Aguardando contagem cega da logística.'
                         : nota.statusEntrada === 'entrada_contagem' && ehDocumental
                           ? ' Documental — pode consolidar sem contagem física.'
@@ -3155,14 +3466,84 @@ function ConteudoDetalheEntrada() {
                 </div>
               )}
               {(nota.statusEntrada === 'entrada_contagem_ok' ||
+                nota.statusEntrada === 'pronta_para_consolidar' ||
                 (nota.statusEntrada === 'entrada_contagem' && ehDocumental)) && (
                 <div className="mt-4 space-y-3 rounded-md border border-border/80 bg-muted/20 p-3">
-                  {ehDocumental ? (
+                  {ehSemContagemFisica || nota.statusEntrada === 'pronta_para_consolidar' ? (
                     <>
                       <p className="text-sm text-muted-foreground">
-                        Consolidar (documental) encerra a entrada sem movimentar estoque.
+                        Consolidar (documental) encerra a entrada sem movimentar estoque. Contas a pagar
+                        nascem ao consolidar.
                       </p>
+                      {nota.recorrenciaFinanceira && (
+                        <div className="rounded-md border border-emerald-300/60 bg-emerald-50 px-3 py-2 text-sm dark:border-emerald-800 dark:bg-emerald-950/30">
+                          Recorrência casada — valor{' '}
+                          {formatMoedaBr(nota.recorrenciaFinanceira.valor)} · vencimento dia{' '}
+                          {nota.recorrenciaFinanceira.diaVencimento}
+                        </div>
+                      )}
+                      <ComboboxPlanoFinanceiro
+                        rotulo="Plano financeiro"
+                        planos={planosFinanceiros}
+                        valor={planoDocumentalId}
+                        aoMudar={setPlanoDocumentalId}
+                      />
+                      <div className="space-y-2">
+                        {finParcelas.map((parcela, index) => (
+                          <div
+                            key={index}
+                            className="flex flex-wrap items-end gap-3 rounded-md border border-border/60 p-2"
+                          >
+                            <div className="min-w-[140px]">
+                              <Label htmlFor={`doc-fin-venc-${index}`}>Data de vencimento</Label>
+                              <input
+                                id={`doc-fin-venc-${index}`}
+                                type="date"
+                                className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm"
+                                value={parcela.vencimento}
+                                onChange={(e) => {
+                                  const v = e.target.value
+                                  setFinParcelas((prev) =>
+                                    prev.map((p, i) => (i === index ? { ...p, vencimento: v } : p))
+                                  )
+                                }}
+                              />
+                            </div>
+                            <div className="min-w-[120px]">
+                              <Label htmlFor={`doc-fin-valor-${index}`}>Valor</Label>
+                              <input
+                                id={`doc-fin-valor-${index}`}
+                                className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm"
+                                value={parcela.valor}
+                                onChange={(e) => {
+                                  const v = e.target.value
+                                  setFinParcelas((prev) =>
+                                    prev.map((p, i) => (i === index ? { ...p, valor: v } : p))
+                                  )
+                                }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                       <div className="flex flex-wrap items-end gap-3">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          disabled={acao || !planoDocumentalId}
+                          onClick={() =>
+                            postAcao('/financeiro-documental', {
+                              planoFinanceiroId: planoDocumentalId,
+                              parcelas: finParcelas.map((p) => ({
+                                numeroDocumento: p.numeroDocumento || null,
+                                vencimento: p.vencimento,
+                                valor: Number(p.valor),
+                              })),
+                            })
+                          }
+                        >
+                          Salvar financeiro
+                        </Button>
                         <div>
                           <Label htmlFor="senha-consolidar-contagem">Senha gerente</Label>
                           <input
@@ -3338,6 +3719,8 @@ function ConteudoDetalheEntrada() {
             </CardPadrao>
           )}
         </div>
+      )}
+        </>
       )}
     </div>
   )

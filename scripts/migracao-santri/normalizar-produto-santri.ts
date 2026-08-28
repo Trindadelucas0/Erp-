@@ -12,6 +12,7 @@ import {
   normalizarCodigoBarrasGtin,
 } from '../../src/compartilhado/validacoes/codigo-barras-gtin.js'
 import { normalizarTextoCadastro } from '../../src/compartilhado/normalizacao/texto-cadastro.js'
+import { normalizarSkuProduto } from '../../src/modulos/produtos/normalizar-sku.js'
 import type { ProdutoSantriBruto } from './tipos.js'
 
 export type AvisoNormalizacao = {
@@ -253,7 +254,10 @@ export function normalizarProdutoSantri(
   bruto: ProdutoSantriBruto
 ): ProdutoSantriNormalizado | { erro: string; sku?: string } {
   const avisos: AvisoNormalizacao[] = []
-  const sku = bruto.codigo.trim()
+  const sku = normalizarSkuProduto(bruto.codigo)
+  if (!sku) {
+    return { erro: 'Código (SKU) inválido ou vazio', sku: bruto.codigo.trim() }
+  }
   const nomeVenda = (normalizarTextoCadastro(bruto.nome) ?? '').slice(0, 60)
   if (!nomeVenda || nomeVenda.length < 2) {
     return { erro: 'Nome de venda inválido ou curto demais', sku }

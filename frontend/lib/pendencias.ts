@@ -44,7 +44,6 @@ export const ROTULO_TIPO_PENDENCIA: Record<string, string> = {
   problema_entrada: 'Nota com problema',
   fila_entrada_analise: 'Em análise',
   fila_entrada_chegada: 'Aguardando chegada',
-  fila_entrada_contagem: 'Liberadas para contagem',
   fila_entrada_problemas: 'Com problemas',
   fila_entrada_bloqueio: 'Entradas com estoque bloqueado',
 }

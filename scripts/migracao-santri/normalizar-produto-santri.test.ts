@@ -140,7 +140,7 @@ describe('normalizarProdutoSantri', () => {
     const r = normalizarProdutoSantri(bruto({}))
     expect('erro' in r).toBe(false)
     if ('erro' in r) return
-    expect(r.sku).toBe('1.234')
+    expect(r.sku).toBe('1234')
     expect(r.marca).toBe('MARCA')
     expect(r.fase2.precoSantriIgnorado).toBe(10)
     expect(r.ncm).toBe('40159000')

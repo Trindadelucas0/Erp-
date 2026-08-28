@@ -191,7 +191,7 @@ model NfeRecebida {
   nfeCompleta              Boolean   @default(false)
   tipoNfe                  String?
   versaoFocus              Int       @default(0)
-  /// pendente | em_analise | stand_by | com_problema | problema_resolvido | entrada_contagem | entrada_contagem_ok | entrada_contagem_divergente | entrada_consolidada | cancelada
+  /// pendente | em_analise | stand_by | com_problema | problema_resolvido | aguardando_chegada | entrada_contagem | entrada_contagem_ok | entrada_contagem_divergente | pronta_para_consolidar | entrada_consolidada | cancelada
   statusEntrada            String    @default("pendente")
   /// focus | xml
   origem                   String    @default("focus")
@@ -233,6 +233,11 @@ model NfeRecebida {
   /// Recorrência financeira que casou (fornecedor + valor) na Entrada
   recorrenciaFinanceiraId  String?
   recorrenciaFinanceira    RecorrenciaFinanceira? @relation(fields: [recorrenciaFinanceiraId], references: [id], onDelete: SetNull)
+  /// Plano financeiro escolhido na análise (despesa/serviço ou mercadoria)
+  planoFinanceiroId        String?
+  planoFinanceiro          PlanoFinanceiro? @relation("NfeRecebidaPlanoFinanceiro", fields: [planoFinanceiroId], references: [id], onDelete: SetNull)
+  /// Prévia financeira documental: [{ numeroDocumento, vencimento, valor }]
+  parcelasFinanceiras      Json?
   itens                    NfeRecebidaItem[]
   tratativas               NfeRecebidaTratativa[]
   vinculosComoNfe          NfeCteVinculo[]          @relation("VinculoNfeMercadoria")
@@ -252,6 +257,7 @@ model NfeRecebida {
   @@index([companyId, chaveNfeReferenciada])
   @@index([cfopEntradaId])
   @@index([recorrenciaFinanceiraId])
+  @@index([planoFinanceiroId])
 }
 
 /// Anexo da NfeRecebida (hoje só a ressalva assinada da divergência de contagem).
@@ -854,6 +860,7 @@ model PlanoFinanceiro {
   contasPagar             ContaPagar[]
   contasReceber           ContaReceber[]
   cfopsComPlanoPadrao     Cfop[]                         @relation("CfopPlanoFinanceiroPadrao")
+  nfesRecebidasPlano     NfeRecebida[]                  @relation("NfeRecebidaPlanoFinanceiro")
   createdAt               DateTime                       @default(now())
 
   @@unique([codigo, companyId])

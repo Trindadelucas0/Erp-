@@ -52,14 +52,21 @@ import {
   STATUS_CONTAGEM_DIVERGENTE,
   STATUS_CONTAGEM_OK,
   STATUS_PAINEL_CONTAGEM,
+  STATUS_PAINEL_PRONTA_CONSOLIDAR,
+  STATUS_PRONTA_PARA_CONSOLIDAR,
 } from './status-entrada-contagem.js'
 import { gerarTitulosContasPagarDaEntrada } from '../contas-a-pagar/gerar-titulos-entrada.js'
+import { resolverPlanoFinanceiroEntrada } from '../contas-a-pagar/resolver-plano-financeiro-entrada.js'
 import {
   extrairFlagsFornecedorDaNota,
   resolverModoDocumentalEntrada,
   type FlagsFornecedorEntrada,
 } from './resolver-modo-documental-entrada.js'
 import { avaliarRecorrenciaNoPipeline } from './avaliar-recorrencia-pipeline.js'
+import {
+  montarPreviaFinanceiraDocumental,
+  montarResumoPedidoCompraDocumental,
+} from './montar-dossie-documental.js'
 import {
   servicoDeEstoque,
   type ResultadoEntradaNotaFiscal,
@@ -608,6 +615,9 @@ function podeAvancarCadastro(etapa: ResultadoEtapa): boolean {
 const MSG_CFOP_ENTRADA_ITEM =
   'Informe o CFOP de entrada do(s) item(ns) (sugestão automática indisponível). Use Trocar na aba Fiscal.'
 
+const MSG_CFOP_ENTRADA_DOCUMENTO =
+  'Informe o CFOP de entrada do documento antes de continuar. Use Trocar na aba Cadastro.'
+
 /**
  * Fiscal: CST/CFOP (exigeManifesto) e CFOP de entrada do item nunca liberam;
  * NCM/origem libera com senha.
@@ -732,6 +742,73 @@ async function lancarContagem(
   })
 }
 
+/** Despesa/serviço (NFS-e, custo, consumo) — sem contagem física. */
+async function lancarProntaParaConsolidar(
+  companyId: string,
+  notaId: string,
+  origem: 'automatica' | 'humana'
+) {
+  await sugerirPlanoFinanceiroNaNota(companyId, notaId)
+  await repositorioEntradaNotas.atualizarNota(notaId, {
+    statusEntrada: STATUS_PRONTA_PARA_CONSOLIDAR,
+    etapaAtual: 'lancamento',
+    origemLancamento: origem,
+  })
+}
+
+async function sugerirPlanoFinanceiroNaNota(companyId: string, notaId: string) {
+  const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota || nota.planoFinanceiroId) return
+  const plano = await resolverPlanoFinanceiroEntrada(companyId, {
+    notaId,
+    fornecedorPessoaId: nota.fornecedorPessoaId,
+    cfopEntradaId: nota.cfopEntradaId,
+  })
+  if (plano) {
+    await repositorioEntradaNotas.atualizarNota(notaId, { planoFinanceiroId: plano })
+  }
+}
+
+function parcelasFinanceirasDaNota(nota: {
+  valorTotal: unknown
+  parcelasFinanceiras: unknown
+}): Array<{ numeroDocumento: string | null; vencimento: string | null; valor: number }> {
+  if (Array.isArray(nota.parcelasFinanceiras) && nota.parcelasFinanceiras.length > 0) {
+    return (nota.parcelasFinanceiras as Array<{
+      numeroDocumento?: string | null
+      vencimento?: string | null
+      valor?: number | null
+    }>).map((p) => ({
+      numeroDocumento: p.numeroDocumento ?? null,
+      vencimento: p.vencimento ?? null,
+      valor: decimalNum(p.valor),
+    }))
+  }
+  const valor = decimalNum(nota.valorTotal)
+  return [{ numeroDocumento: null, vencimento: null, valor }]
+}
+
+function financeiroDocumentalCompleto(nota: {
+  planoFinanceiroId: string | null
+  valorTotal: unknown
+  parcelasFinanceiras: unknown
+}): boolean {
+  if (!nota.planoFinanceiroId) return false
+  const parcelas = parcelasFinanceirasDaNota(nota)
+  return parcelas.every((p) => Boolean(p.vencimento?.trim()) && p.valor > 0)
+}
+
+function notaEhDocumentalSemEstoque(nota: {
+  tipoDocumento: string | null
+  fornecedorPessoa?: {
+    papeis?: Array<{ dadosFornecedor?: FlagsFornecedorEntrada | null } | null>
+  } | null
+}): boolean {
+  if (nota.tipoDocumento === 'nfse') return true
+  const flags = extrairFlagsFornecedorDaNota(nota)
+  return resolverModoDocumentalEntrada(flags)
+}
+
 /**
  * Consolida entrada documental por recorrência (sem senha de gerente — origem sistema).
  * Gera Contas a Pagar e marca entrada_consolidada. Sem movimento de estoque.
@@ -754,15 +831,19 @@ async function consolidarDocumentalPorRecorrencia(companyId: string, notaId: str
 }
 
 /**
- * Status pós-lançamento: NFe 55 com item de produto (contagem física) fica em
- * `aguardando_chegada` até liberar manualmente para a logística — com ou sem pedido,
- * qualquer tipoCompra. Documental (NFS-e/CT-e / sem produto) segue direto para
- * `entrada_contagem` — regra permanente, DOCUMENTACAO-SISTEMA.md §7.19.
+ * Status pós-lançamento: NFe 55 com produto (contagem física) → aguardando_chegada.
+ * Documental (NFS-e / custo / consumo) → pronta_para_consolidar (sem contagem).
  */
 async function statusPosLancamento(nota: {
   tipoDocumento: string | null
   itens: { produtoId: string | null }[]
+  fornecedorPessoa?: {
+    papeis?: Array<{ dadosFornecedor?: FlagsFornecedorEntrada | null } | null>
+  } | null
 }): Promise<string> {
+  if (notaEhDocumentalSemEstoque(nota)) {
+    return STATUS_PRONTA_PARA_CONSOLIDAR
+  }
   const exigeContagemFisica =
     (nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento) && nota.itens.some((i) => i.produtoId)
   return exigeContagemFisica ? STATUS_AGUARDANDO_CHEGADA : STATUS_AGUARDANDO_CONTAGEM
@@ -1078,7 +1159,7 @@ async function analisarNotaDocumental(
     await repositorioEntradaNotas.atualizarNota(notaId, {
       recorrenciaFinanceiraId: decisaoRec.recorrenciaId,
     })
-    await lancarContagem(notaId, 'automatica')
+    await sugerirPlanoFinanceiroNaNota(companyId, notaId)
     await consolidarDocumentalPorRecorrencia(companyId, notaId)
     analise.motivoParada = null
     analise.negociacao = {
@@ -1097,7 +1178,26 @@ async function analisarNotaDocumental(
     return await obterDetalhe(companyId, notaId)
   }
 
-  await lancarContagem(notaId, 'automatica')
+  nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+
+  if (!nota.cfopEntradaId) {
+    analise.autoLancado = false
+    analise.motivoParada = 'fiscal'
+    analise.fiscal = {
+      status: 'bloqueante',
+      avisos: [],
+      bloqueios: [MSG_CFOP_ENTRADA_DOCUMENTO],
+    }
+    await repositorioEntradaNotas.atualizarNota(notaId, {
+      analiseJson: asJson(analise),
+      etapaAtual: 'servico',
+      statusEntrada: 'em_analise',
+    })
+    return await obterDetalhe(companyId, notaId)
+  }
+
+  await lancarProntaParaConsolidar(companyId, notaId, 'automatica')
   return await obterDetalhe(companyId, notaId)
 }
 
@@ -1601,7 +1701,11 @@ async function analisarNota(
   analise.motivoParada = null
   await aplicarRateioEDespesasFrete(companyId, notaId)
   const statusDestino = await statusPosLancamento(nota)
-  await lancarContagem(notaId, 'automatica', statusDestino)
+  if (statusDestino === STATUS_PRONTA_PARA_CONSOLIDAR) {
+    await lancarProntaParaConsolidar(companyId, notaId, 'automatica')
+  } else {
+    await lancarContagem(notaId, 'automatica', statusDestino)
+  }
 
   if (decisaoRecNfe.acao === 'casou' && decisaoRecNfe.autoConsolidar) {
     await consolidarDocumentalPorRecorrencia(companyId, notaId)
@@ -2202,6 +2306,36 @@ async function obterDetalhe(
     }
   }
 
+  const documentalSemEstoque = notaEhDocumentalSemEstoque(nota)
+  const titulosGerados = contasPagar.length > 0
+  const previaFinanceira = documentalSemEstoque
+    ? await montarPreviaFinanceiraDocumental(
+        companyId,
+        {
+          id: nota.id,
+          tipoDocumento: nota.tipoDocumento,
+          valorTotal: nota.valorTotal,
+          fornecedorPessoaId: nota.fornecedorPessoaId,
+          cfopEntradaId: nota.cfopEntradaId,
+          planoFinanceiroId: nota.planoFinanceiroId,
+          parcelasFinanceiras: nota.parcelasFinanceiras,
+          xmlConteudo: nota.xmlConteudo,
+          prazoPagamentoXml: nota.prazoPagamentoXml,
+          prazoPagamentoTexto: nota.prazoPagamentoTexto,
+          dataEmissao: nota.dataEmissao,
+          recorrenciaFinanceiraId: nota.recorrenciaFinanceiraId,
+          planoFinanceiro: nota.planoFinanceiro,
+        },
+        { titulosGerados }
+      )
+    : null
+  const resumoPedidoCompra = documentalSemEstoque
+    ? await montarResumoPedidoCompraDocumental(companyId, {
+        pedidoCompraId: nota.pedidoCompraId,
+        valorTotal: nota.valorTotal,
+      })
+    : null
+
   return {
     nota: {
       id: nota.id,
@@ -2260,6 +2394,30 @@ async function obterDetalhe(
       })),
       prazoPagamentoXml: nota.prazoPagamentoXml,
       prazoPagamentoTexto: nota.prazoPagamentoTexto,
+      planoFinanceiroId: nota.planoFinanceiroId ?? null,
+      planoFinanceiro: nota.planoFinanceiro
+        ? {
+            id: nota.planoFinanceiro.id,
+            codigo: nota.planoFinanceiro.codigo,
+            nome: nota.planoFinanceiro.nome,
+          }
+        : null,
+      parcelasFinanceiras: parcelasJsonParaResposta(nota.parcelasFinanceiras, {
+        numeroDocumento: null,
+        vencimento: null,
+        valor: decimalNum(nota.valorTotal),
+      }),
+      recorrenciaFinanceiraId: nota.recorrenciaFinanceiraId ?? null,
+      recorrenciaFinanceira: nota.recorrenciaFinanceira
+        ? {
+            id: nota.recorrenciaFinanceira.id,
+            valor: decimalNum(nota.recorrenciaFinanceira.valor),
+            diaVencimento: nota.recorrenciaFinanceira.diaVencimento,
+            periodicidade: nota.recorrenciaFinanceira.periodicidade,
+          }
+        : null,
+      previaFinanceira,
+      resumoPedidoCompra,
       modFrete: nota.modFrete ?? null,
       chaveNfeReferenciada: nota.chaveNfeReferenciada ?? null,
       cfopXml:
@@ -2267,13 +2425,19 @@ async function obterDetalhe(
           ? extrairCfopDoXmlCte(nota.xmlConteudo)
           : null,
       cfopEntrada:
-        nota.tipoDocumento === 'cte' && nota.cfopEntrada
+        (nota.tipoDocumento === 'cte' || nota.tipoDocumento === 'nfse') && nota.cfopEntrada
           ? {
               id: nota.cfopEntrada.id,
               codigo: nota.cfopEntrada.codigo,
               nome: nota.cfopEntrada.nome,
             }
-          : null,
+          : notaEhDocumentalSemEstoque(nota) && nota.cfopEntrada
+            ? {
+                id: nota.cfopEntrada.id,
+                codigo: nota.cfopEntrada.codigo,
+                nome: nota.cfopEntrada.nome,
+              }
+            : null,
       sugestaoFinanceiroFrete:
         nota.tipoDocumento === 'cte' && nota.xmlConteudo
           ? extrairSugestaoFinanceiroDoXmlCte(nota.xmlConteudo)
@@ -2602,7 +2766,10 @@ async function gravarCodigoOriginal(companyId: string, notaId: string, itemId: s
   const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
   if (!nota.fornecedorPessoaId) {
-    throw new ErroDaAplicacao('Vincule o fornecedor antes de gravar o código original.', 400)
+    throw new ErroDaAplicacao(
+      'Não foi possível gravar o código original: o fornecedor da nota ainda não está vinculado. Cadastre ou vincule o fornecedor antes de gravar.',
+      400
+    )
   }
   const item = nota.itens.find((i) => i.id === itemId)
   if (!item?.produtoId) throw new ErroDaAplicacao('Item sem produto vinculado', 400)
@@ -2679,6 +2846,37 @@ async function definirCfopEntradaCte(companyId: string, cteId: string, cfopId: s
 
   await repositorioEntradaNotas.atualizarNota(cteId, { cfopEntradaId: cfop.id })
   return obterDetalhe(companyId, cteId)
+}
+
+/**
+ * CFOP de entrada no documento (NFS-e ou NFe documental) — nível nota, não item.
+ */
+async function definirCfopEntradaNota(companyId: string, notaId: string, cfopId: string) {
+  const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  const documental =
+    nota.tipoDocumento === 'nfse' || notaEhDocumentalSemEstoque(nota)
+  if (!documental) {
+    throw new ErroDaAplicacao(
+      'CFOP de entrada no documento só se aplica a NFS-e ou NFe de custo/consumo.',
+      400
+    )
+  }
+
+  const cfop = await repositorioEntradaNotas.buscarCfopEntradaAtivo(companyId, cfopId)
+  if (!cfop) {
+    throw new ErroDaAplicacao('CFOP de entrada não encontrado, inativo ou de saída.', 400)
+  }
+
+  await repositorioEntradaNotas.atualizarNota(notaId, { cfopEntradaId: cfop.id })
+
+  if (nota.statusEntrada === 'em_analise' || nota.statusEntrada === 'pendente') {
+    if (nota.tipoDocumento === 'nfse') {
+      return analisarNotaDocumental(companyId, notaId, 'nfse')
+    }
+    return analisarNota(companyId, notaId)
+  }
+  return obterDetalhe(companyId, notaId)
 }
 
 async function liberarCriticas(companyId: string, notaId: string, usuarioId: string, senha: string) {
@@ -3017,6 +3215,9 @@ async function lancarEstoqueAoConsolidar(
   if (nota.tipoDocumento === 'nfse' || nota.tipoDocumento === 'cte') {
     return null
   }
+  if (notaEhDocumentalSemEstoque(nota)) {
+    return null
+  }
 
   const linhas = montarLinhasEstoqueEntradaNf(nota)
   if (linhas.length === 0) {
@@ -3092,8 +3293,11 @@ async function lancar(
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
 
   const noPainelContagem = STATUS_PAINEL_CONTAGEM.includes(nota.statusEntrada)
+  const noPainelProntaConsolidar = STATUS_PAINEL_PRONTA_CONSOLIDAR.includes(nota.statusEntrada)
   const jaConsolidada = nota.statusEntrada === 'entrada_consolidada'
+  const documentalSemEstoque = notaEhDocumentalSemEstoque(nota)
   const exigeContagemFisica =
+    !documentalSemEstoque &&
     (nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento) &&
     nota.itens.some((i) => i.produtoId)
 
@@ -3102,6 +3306,15 @@ async function lancar(
   }
   if (modo === 'contagem' && noPainelContagem) {
     throw new ErroDaAplicacao('Nota já liberada para contagem.', 409)
+  }
+  if (modo === 'contagem' && noPainelProntaConsolidar) {
+    throw new ErroDaAplicacao('Nota já está pronta para consolidar.', 409)
+  }
+  if (modo === 'contagem' && documentalSemEstoque) {
+    throw new ErroDaAplicacao(
+      'Entrada documental (serviço/custo/consumo) não usa contagem — preencha o financeiro e consolide com senha.',
+      400
+    )
   }
   if (modo === 'contagem' && nota.statusEntrada === STATUS_AGUARDANDO_CHEGADA) {
     throw new ErroDaAplicacao(
@@ -3128,8 +3341,8 @@ async function lancar(
     )
   }
 
-  // Liberada para contagem já passou no gate; consolidar a partir dela não revalida.
-  if (!noPainelContagem) {
+  // Liberada para contagem / pronta para consolidar já passou no gate; consolidar não revalida pipeline.
+  if (!noPainelContagem && !noPainelProntaConsolidar) {
     const gate = pipelineProntoParaLancar(
       nota.analiseJson as AnaliseJson | null,
       nota.criticasLiberadas,
@@ -3145,6 +3358,12 @@ async function lancar(
     null
 
   if (modo === 'consolidar') {
+    if (documentalSemEstoque && !financeiroDocumentalCompleto(nota)) {
+      throw new ErroDaAplicacao(
+        'Preencha o plano financeiro e a data de vencimento na prévia antes de consolidar.',
+        400
+      )
+    }
     if (!podeConsolidarEstoque(nota.statusEntrada, { exigeContagemFisica })) {
       throw new ErroDaAplicacao(mensagemBloqueioConsolidar(nota.statusEntrada), 409)
     }
@@ -3162,8 +3381,7 @@ async function lancar(
     if (!ok) throw new ErroDaAplicacao('Senha inválida.', 403)
     await aplicarRateioEDespesasFrete(companyId, notaId)
     contasPagarResumo = await gerarTitulosContasPagarDaEntrada(companyId, notaId, {
-      // Legado já em contagem: não trava consolidar se NF não tiver cobr/dup
-      exigirVencimentoMercadoria: !noPainelContagem,
+      exigirVencimentoMercadoria: !noPainelContagem && !noPainelProntaConsolidar,
     })
     estoqueResumo = await lancarEstoqueAoConsolidar(companyId, notaId, usuarioId)
     await repositorioEntradaNotas.atualizarNota(notaId, {
@@ -3179,7 +3397,11 @@ async function lancar(
   } else {
     await aplicarRateioEDespesasFrete(companyId, notaId)
     const statusDestino = await statusPosLancamento(nota)
-    await lancarContagem(notaId, 'humana', statusDestino)
+    if (statusDestino === STATUS_PRONTA_PARA_CONSOLIDAR) {
+      await lancarProntaParaConsolidar(companyId, notaId, 'humana')
+    } else {
+      await lancarContagem(notaId, 'humana', statusDestino)
+    }
   }
 
   const detalhe = await obterDetalhe(companyId, notaId)
@@ -3769,6 +3991,62 @@ function parcelaFreteDoVinculo(v: {
   return 0
 }
 
+async function salvarFinanceiroDocumental(
+  companyId: string,
+  notaId: string,
+  dados: {
+    planoFinanceiroId?: string | null
+    parcelas?: ParcelaFinanceiroFrete[]
+    numeroDocumento?: string | null
+    vencimento?: string | null
+    valor?: number
+  }
+) {
+  const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  if (!notaEhDocumentalSemEstoque(nota)) {
+    throw new ErroDaAplicacao('Financeiro documental só se aplica a NFS-e ou NFe de custo/consumo.', 400)
+  }
+
+  const statusesBloqueados = ['cancelada', 'com_problema', 'problema_resolvido', 'entrada_consolidada']
+  if (statusesBloqueados.includes(nota.statusEntrada)) {
+    throw new ErroDaAplicacao('Nota fora do fluxo de entrada', 400)
+  }
+
+  const planoId = dados.planoFinanceiroId?.trim() || null
+  if (!planoId) {
+    throw new ErroDaAplicacao('Informe o plano financeiro', 400)
+  }
+  const plano = await clientePrisma.planoFinanceiro.findFirst({
+    where: { id: planoId, companyId, ativo: true },
+    select: { id: true },
+  })
+  if (!plano) throw new ErroDaAplicacao('Plano financeiro inválido ou inativo', 400)
+
+  const parcelas = normalizarParcelasFinanceiroFrete(dados)
+  const valorNota = decimalNum(nota.valorTotal)
+  const soma = Math.round(parcelas.reduce((s, p) => s + p.valor, 0) * 100) / 100
+  if (valorNota > 0 && Math.abs(soma - valorNota) > TOLERANCIA_PARCELAS_FRETE) {
+    throw new ErroDaAplicacao(
+      `Soma das parcelas (${soma.toFixed(2)}) difere do valor da nota (${valorNota.toFixed(2)})`,
+      400
+    )
+  }
+
+  const parcelasJson = parcelas.map((p) => ({
+    numeroDocumento: p.numeroDocumento,
+    vencimento: p.vencimento ? p.vencimento.toISOString().slice(0, 10) : null,
+    valor: p.valor,
+  }))
+
+  await repositorioEntradaNotas.atualizarNota(notaId, {
+    planoFinanceiroId: planoId,
+    parcelasFinanceiras: parcelasJson as Prisma.InputJsonValue,
+  })
+
+  return obterDetalhe(companyId, notaId)
+}
+
 async function salvarFinanceiroFrete(
   companyId: string,
   notaId: string,
@@ -3971,6 +4249,7 @@ export const servicoEntradaNotas = {
   importarFiscalProduto,
   definirCfopEntrada,
   definirCfopEntradaCte,
+  definirCfopEntradaNota,
   liberarCriticas,
   cancelarLiberacaoCriticas,
   contatoFornecedor,
@@ -4001,4 +4280,5 @@ export const servicoEntradaNotas = {
   vincularCte,
   desvincularCte,
   salvarFinanceiroFrete,
+  salvarFinanceiroDocumental,
 }

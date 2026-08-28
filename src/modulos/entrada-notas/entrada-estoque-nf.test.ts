@@ -49,11 +49,12 @@ describe('fluxo contagem → consolidar (regra de status)', () => {
     expect(mensagemBloqueioConsolidar('entrada_contagem_divergente')).toMatch(/divergente/i)
   })
 
-  it('documental sem produtos: permite consolidar no pipeline ou liberada; bloqueia divergente', () => {
+  it('documental sem produtos: permite consolidar em pronta_para_consolidar; bloqueia divergente', () => {
     const doc = { exigeContagemFisica: false }
-    expect(podeConsolidarEstoque('em_analise', doc)).toBe(true)
+    expect(podeConsolidarEstoque('em_analise', doc)).toBe(false)
+    expect(podeConsolidarEstoque('pronta_para_consolidar', doc)).toBe(true)
     expect(podeConsolidarEstoque('entrada_contagem', doc)).toBe(true)
-    expect(podeConsolidarEstoque('entrada_contagem_ok', doc)).toBe(true)
+    expect(podeConsolidarEstoque('entrada_contagem_ok', doc)).toBe(false)
     expect(podeConsolidarEstoque('entrada_contagem_divergente', doc)).toBe(false)
     expect(podeConsolidarEstoque('entrada_consolidada', doc)).toBe(false)
   })

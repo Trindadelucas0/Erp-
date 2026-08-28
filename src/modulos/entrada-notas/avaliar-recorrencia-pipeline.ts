@@ -71,6 +71,8 @@ export async function avaliarRecorrenciaNoPipeline(input: {
       xmlConteudo: input.xmlConteudo,
       prazoPagamentoXml: input.prazoPagamentoXml,
       prazoPagamentoTexto: input.prazoPagamentoTexto,
+      recorrenciaFinanceiraId:
+        match.status === 'casou' ? match.recorrencia.id : null,
     })
     if (!parcelas.ok) {
       return { acao: 'bloquear', mensagem: parcelas.mensagem }

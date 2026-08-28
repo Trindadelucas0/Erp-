@@ -3,13 +3,19 @@
  */
 import type { Prisma } from '@prisma/client'
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
+import { normalizarSkuProduto } from './normalizar-sku.js'
 
-const SKU_NUMERICO = /^\d+$/
+function extrairNumeroSku(sku: string): number | null {
+  const limpo = normalizarSkuProduto(sku)
+  if (!limpo || !/^\d+$/.test(limpo)) return null
+  return Number(limpo)
+}
 
 export function calcularProximoSkuNumerico(skus: (string | null | undefined)[]): string {
   const numeros = skus
-    .filter((s): s is string => typeof s === 'string' && SKU_NUMERICO.test(s))
-    .map((s) => Number(s))
+    .filter((s): s is string => typeof s === 'string')
+    .map((s) => extrairNumeroSku(s))
+    .filter((n): n is number => n != null)
   const proximo = numeros.length > 0 ? Math.max(...numeros) + 1 : 1
   return String(proximo)
 }

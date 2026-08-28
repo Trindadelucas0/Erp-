@@ -6,6 +6,8 @@
 export const STATUS_AGUARDANDO_CONTAGEM = 'entrada_contagem' as const
 export const STATUS_CONTAGEM_OK = 'entrada_contagem_ok' as const
 export const STATUS_CONTAGEM_DIVERGENTE = 'entrada_contagem_divergente' as const
+/** NFS-e / custo / consumo — pronta para consolidar com senha (sem contagem física). */
+export const STATUS_PRONTA_PARA_CONSOLIDAR = 'pronta_para_consolidar' as const
 export const STATUS_CONSOLIDADA = 'entrada_consolidada' as const
 
 /**
@@ -21,10 +23,14 @@ export const STATUS_PAINEL_CONTAGEM: readonly string[] = [
   STATUS_CONTAGEM_DIVERGENTE,
 ]
 
+/** Painel "Prontas para consolidar" — despesa/serviço sem contagem física. */
+export const STATUS_PAINEL_PRONTA_CONSOLIDAR: readonly string[] = [STATUS_PRONTA_PARA_CONSOLIDAR]
+
 /** Nota já saiu do pipeline de análise (liberada ou além — inclui "aguardando chegada"). */
 export const STATUS_POS_LIBERACAO: readonly string[] = [
   STATUS_AGUARDANDO_CHEGADA,
   ...STATUS_PAINEL_CONTAGEM,
+  ...STATUS_PAINEL_PRONTA_CONSOLIDAR,
   STATUS_CONSOLIDADA,
 ]
 
@@ -51,8 +57,7 @@ export function podeLiberarParaContagem(status: string): boolean {
 /**
  * Consolidar estoque:
  * - NFe 55 com produtos: só após contagem logística OK.
- * - Documental (NFS-e/CT-e / sem itens de produto): pode consolidar após liberar
- *   (`entrada_contagem`) ou ainda no pipeline (gate em `lancar`); nunca se divergente.
+ * - Documental (NFS-e / custo / consumo): em `pronta_para_consolidar`; nunca se divergente.
  */
 export function podeConsolidarEstoque(
   status: string,
@@ -70,7 +75,10 @@ export function podeConsolidarEstoque(
     return status === STATUS_CONTAGEM_OK
   }
   if (status === STATUS_CONTAGEM_DIVERGENTE) return false
-  return true
+  if (status === STATUS_PRONTA_PARA_CONSOLIDAR) return true
+  // Legado: notas documentais antigas ainda em entrada_contagem
+  if (status === STATUS_AGUARDANDO_CONTAGEM) return true
+  return false
 }
 
 export function mensagemBloqueioConsolidar(status: string): string {
@@ -79,6 +87,9 @@ export function mensagemBloqueioConsolidar(status: string): string {
   }
   if (status === STATUS_AGUARDANDO_CONTAGEM) {
     return 'Finalize a contagem logística (tela Contagens de entrada) antes de consolidar estoque.'
+  }
+  if (status === STATUS_PRONTA_PARA_CONSOLIDAR) {
+    return 'Preencha o financeiro (plano e vencimento) antes de consolidar.'
   }
   return 'Nota não está pronta para consolidar estoque.'
 }

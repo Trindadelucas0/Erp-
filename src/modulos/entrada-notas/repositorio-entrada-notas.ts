@@ -117,6 +117,17 @@ const includeNotaCompleta = {
   anexos: {
     orderBy: { createdAt: 'desc' as const },
   },
+  recorrenciaFinanceira: {
+    select: {
+      id: true,
+      valor: true,
+      diaVencimento: true,
+      periodicidade: true,
+    },
+  },
+  planoFinanceiro: {
+    select: { id: true, codigo: true, nome: true },
+  },
 } as const
 
 export type NotaCompletaEntrada = Prisma.NfeRecebidaGetPayload<{
@@ -189,6 +200,8 @@ async function atualizarNota(
     divergenciaDesfecho?: string | null
     divergenciaResolvidaEm?: Date | null
     recorrenciaFinanceiraId?: string | null
+    planoFinanceiroId?: string | null
+    parcelasFinanceiras?: Prisma.InputJsonValue | null
   }
 ) {
   return clientePrisma.nfeRecebida.update({

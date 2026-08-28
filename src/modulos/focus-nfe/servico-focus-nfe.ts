@@ -1694,7 +1694,7 @@ async function importarXml(companyId: string, xmlBruto: string) {
 
   const mensagemContagem =
     tipoDoc === 'nfse'
-      ? 'NFS-e importada e liberada para contagem documental (sem estoque).'
+      ? 'NFS-e importada e pronta para consolidar (sem estoque).'
       : tipoDoc === 'cte'
         ? 'CTe importado e liberado para contagem documental (sem estoque).'
         : 'XML importado e entrada automática (Liberar para contagem) — sem críticas bloqueantes.'
@@ -1707,7 +1707,7 @@ async function importarXml(companyId: string, xmlBruto: string) {
     statusEntrada: apos?.statusEntrada ?? registro.statusEntrada,
     etapaAtual: apos?.etapaAtual ?? registro.etapaAtual,
     mensagem:
-      apos?.statusEntrada === 'entrada_contagem'
+      apos?.statusEntrada === 'entrada_contagem' || apos?.statusEntrada === 'pronta_para_consolidar'
         ? mensagemContagem
         : criado
           ? 'XML importado. Abra a nota para concluir a análise de entrada.'

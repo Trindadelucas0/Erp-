@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
+import { blobParecePdf, dispararDownloadArquivo } from '@/lib/disparar-download-arquivo'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -145,6 +146,7 @@ type PainelEntrada =
   | 'analise'
   | 'aguardando_chegada'
   | 'contagem'
+  | 'pronta_consolidar'
   | 'consolidada'
   | 'problemas'
   | 'cancelada'
@@ -172,6 +174,7 @@ const PAINEIS: Array<{ id: PainelEntrada; rotulo: string }> = [
   { id: 'analise', rotulo: 'Em análise' },
   { id: 'aguardando_chegada', rotulo: 'Aguardando chegada' },
   { id: 'contagem', rotulo: 'Liberadas p/ contagem' },
+  { id: 'pronta_consolidar', rotulo: 'Prontas para consolidar' },
   { id: 'consolidada', rotulo: 'Entradas consolidadas' },
   { id: 'problemas', rotulo: 'Com problemas' },
   { id: 'cancelada', rotulo: 'Canceladas' },
@@ -717,13 +720,10 @@ function ConteudoEntradaNotas() {
         responseType: 'text',
         transformResponse: [(d) => d],
       })
-      const blob = new Blob([data], { type: 'application/xml' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${chave || id}.xml`
-      a.click()
-      URL.revokeObjectURL(url)
+      dispararDownloadArquivo(
+        new Blob([data], { type: 'application/xml' }),
+        `${chave || id}.xml`
+      )
     } catch (err) {
       setErro(extrairMensagemApi(err, 'Não foi possível baixar o XML.'))
     } finally {
@@ -752,16 +752,18 @@ function ConteudoEntradaNotas() {
     setDownloadRotulo('Baixando PDF…')
     setErro('')
     try {
-      const { data } = await clienteHttp.get<ArrayBuffer>(`/focus-nfe/nfe-recebidas/${n.id}/danfe`, {
-        responseType: 'arraybuffer',
+      const { data } = await clienteHttp.get<Blob>(`/focus-nfe/nfe-recebidas/${n.id}/danfe`, {
+        responseType: 'blob',
       })
-      const blob = new Blob([data], { type: 'application/pdf' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${prefixoPdfDocumento(n.tipoDocumento)}-${n.chaveNfe || n.id}.pdf`
-      a.click()
-      URL.revokeObjectURL(url)
+      const blob =
+        data instanceof Blob ? data : new Blob([data], { type: 'application/pdf' })
+      if (!(await blobParecePdf(blob))) {
+        throw new Error('Resposta não é um PDF válido.')
+      }
+      dispararDownloadArquivo(
+        blob,
+        `${prefixoPdfDocumento(n.tipoDocumento)}-${n.chaveNfe || n.id}.pdf`
+      )
       await carregar({ silencioso: true })
     } catch (err) {
       setErro(extrairMensagemApi(err, 'Não foi possível baixar o PDF.'))

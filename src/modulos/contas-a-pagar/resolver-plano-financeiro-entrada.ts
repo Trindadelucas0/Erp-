@@ -120,16 +120,14 @@ async function planoDoParFornecedorCfop(
   return papel?.dadosFornecedor?.paresPlanoCfopPadrao?.[0]?.planoFinanceiroId ?? null
 }
 
-/**
- * Resolve o plano financeiro do título de mercadoria (NFe) na Entrada:
- * CFOP prevalente → plano padrão do CFOP → par fornecedor+CFOP → primeiro plano do fornecedor.
- */
-export async function resolverPlanoFinanceiroMercadoriaNfe(
+async function cfopEntradaIdDaNota(
   companyId: string,
-  params: { notaId: string; fornecedorPessoaId: string | null }
+  notaId: string,
+  cfopDocumentoId?: string | null
 ): Promise<string | null> {
+  if (cfopDocumentoId) return cfopDocumentoId
   const itens = await clientePrisma.nfeRecebidaItem.findMany({
-    where: { nfeRecebidaId: params.notaId, nfeRecebida: { companyId } },
+    where: { nfeRecebidaId: notaId, nfeRecebida: { companyId } },
     select: {
       cfopEntradaId: true,
       valorTotal: true,
@@ -137,19 +135,51 @@ export async function resolverPlanoFinanceiroMercadoriaNfe(
       nItem: true,
     },
   })
+  return cfopEntradaPrevalenteDosItens(itens)
+}
 
-  const cfopPrevalente = cfopEntradaPrevalenteDosItens(itens)
-  if (cfopPrevalente) {
-    const planoCfop = await planoPadraoDoCfop(companyId, cfopPrevalente)
+/**
+ * Prioridade: plano gravado na nota → fornecedor → CFOP (padrão / par) → null (manual).
+ */
+export async function resolverPlanoFinanceiroEntrada(
+  companyId: string,
+  params: {
+    notaId: string
+    fornecedorPessoaId: string | null
+    cfopEntradaId?: string | null
+    planoGravadoNaNota?: string | null
+  }
+): Promise<string | null> {
+  if (params.planoGravadoNaNota) return params.planoGravadoNaNota
+
+  const planoFornecedor = await primeiroPlanoLiberadoFornecedor(
+    companyId,
+    params.fornecedorPessoaId
+  )
+  if (planoFornecedor) return planoFornecedor
+
+  const cfopId = await cfopEntradaIdDaNota(companyId, params.notaId, params.cfopEntradaId)
+  if (cfopId) {
+    const planoCfop = await planoPadraoDoCfop(companyId, cfopId)
     if (planoCfop) return planoCfop
 
     const planoPar = await planoDoParFornecedorCfop(
       companyId,
       params.fornecedorPessoaId,
-      cfopPrevalente
+      cfopId
     )
     if (planoPar) return planoPar
   }
 
-  return primeiroPlanoLiberadoFornecedor(companyId, params.fornecedorPessoaId)
+  return null
+}
+
+/**
+ * @deprecated Use resolverPlanoFinanceiroEntrada — mantém compatibilidade de import.
+ */
+export async function resolverPlanoFinanceiroMercadoriaNfe(
+  companyId: string,
+  params: { notaId: string; fornecedorPessoaId: string | null; planoGravadoNaNota?: string | null }
+): Promise<string | null> {
+  return resolverPlanoFinanceiroEntrada(companyId, params)
 }

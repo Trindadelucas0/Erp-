@@ -11,6 +11,7 @@ vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import {
   cfopEntradaPrevalenteDosItens,
+  resolverPlanoFinanceiroEntrada,
   resolverPlanoFinanceiroMercadoriaNfe,
 } from './resolver-plano-financeiro-entrada.js'
 
@@ -57,103 +58,98 @@ describe('cfopEntradaPrevalenteDosItens', () => {
   })
 })
 
-describe('resolverPlanoFinanceiroMercadoriaNfe', () => {
+describe('resolverPlanoFinanceiroEntrada — prioridade fornecedor → CFOP → null', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('usa plano padrão do CFOP prevalente quando configurado e ativo', async () => {
-    vi.mocked(clientePrisma.nfeRecebidaItem.findMany).mockResolvedValue([
-      { cfopEntradaId: 'cfop-prev', valorTotal: 500, quantidade: 1, nItem: 1 },
-    ] as never)
+  it('usa plano gravado na nota quando informado', async () => {
+    const plano = await resolverPlanoFinanceiroEntrada('company-1', {
+      notaId: 'nota-1',
+      fornecedorPessoaId: 'forn-1',
+      planoGravadoNaNota: 'plano-nota',
+    })
+
+    expect(plano).toBe('plano-nota')
+    expect(clientePrisma.pessoaPapel.findFirst).not.toHaveBeenCalled()
+  })
+
+  it('prioriza primeiro plano do fornecedor sobre CFOP', async () => {
+    vi.mocked(clientePrisma.pessoaPapel.findFirst).mockResolvedValue({
+      dadosFornecedor: {
+        planosFinanceiros: [{ planoFinanceiroId: 'plano-forn' }],
+      },
+    } as never)
+
+    const plano = await resolverPlanoFinanceiroEntrada('company-1', {
+      notaId: 'nota-1',
+      fornecedorPessoaId: 'forn-1',
+      cfopEntradaId: 'cfop-prev',
+    })
+
+    expect(plano).toBe('plano-forn')
+    expect(clientePrisma.cfop.findFirst).not.toHaveBeenCalled()
+  })
+
+  it('usa plano padrão do CFOP quando fornecedor não tem plano', async () => {
+    vi.mocked(clientePrisma.pessoaPapel.findFirst).mockResolvedValue({
+      dadosFornecedor: { planosFinanceiros: [] },
+    } as never)
     vi.mocked(clientePrisma.cfop.findFirst).mockResolvedValue({
       planoFinanceiroPadraoId: 'plano-cfop',
       planoFinanceiroPadrao: { id: 'plano-cfop', ativo: true },
     } as never)
 
-    const plano = await resolverPlanoFinanceiroMercadoriaNfe('company-1', {
+    const plano = await resolverPlanoFinanceiroEntrada('company-1', {
       notaId: 'nota-1',
       fornecedorPessoaId: 'forn-1',
+      cfopEntradaId: 'cfop-prev',
     })
 
     expect(plano).toBe('plano-cfop')
-    expect(clientePrisma.pessoaPapel.findFirst).not.toHaveBeenCalled()
   })
 
   it('cai no par fornecedor+CFOP quando CFOP não tem plano padrão', async () => {
-    vi.mocked(clientePrisma.nfeRecebidaItem.findMany).mockResolvedValue([
-      { cfopEntradaId: 'cfop-prev', valorTotal: 500, quantidade: 1, nItem: 1 },
-    ] as never)
-    vi.mocked(clientePrisma.cfop.findFirst).mockResolvedValue({
-      planoFinanceiroPadraoId: null,
-      planoFinanceiroPadrao: null,
-    } as never)
-    vi.mocked(clientePrisma.pessoaPapel.findFirst).mockResolvedValue({
-      dadosFornecedor: {
-        paresPlanoCfopPadrao: [{ planoFinanceiroId: 'plano-par' }],
-      },
-    } as never)
-
-    const plano = await resolverPlanoFinanceiroMercadoriaNfe('company-1', {
-      notaId: 'nota-1',
-      fornecedorPessoaId: 'forn-1',
-    })
-
-    expect(plano).toBe('plano-par')
-  })
-
-  it('cai no primeiro plano liberado do fornecedor quando nada mais está configurado', async () => {
-    vi.mocked(clientePrisma.nfeRecebidaItem.findMany).mockResolvedValue([
-      { cfopEntradaId: 'cfop-prev', valorTotal: 500, quantidade: 1, nItem: 1 },
-    ] as never)
-    vi.mocked(clientePrisma.cfop.findFirst).mockResolvedValue({
-      planoFinanceiroPadraoId: null,
-      planoFinanceiroPadrao: null,
-    } as never)
     vi.mocked(clientePrisma.pessoaPapel.findFirst)
       .mockResolvedValueOnce({
-        dadosFornecedor: { paresPlanoCfopPadrao: [] },
+        dadosFornecedor: { planosFinanceiros: [] },
       } as never)
       .mockResolvedValueOnce({
         dadosFornecedor: {
-          planosFinanceiros: [{ planoFinanceiroId: 'plano-forn' }],
+          paresPlanoCfopPadrao: [{ planoFinanceiroId: 'plano-par' }],
         },
       } as never)
-
-    const plano = await resolverPlanoFinanceiroMercadoriaNfe('company-1', {
-      notaId: 'nota-1',
-      fornecedorPessoaId: 'forn-1',
-    })
-
-    expect(plano).toBe('plano-forn')
-  })
-
-  it('ignora plano inativo no CFOP e usa próximo fallback', async () => {
-    vi.mocked(clientePrisma.nfeRecebidaItem.findMany).mockResolvedValue([
-      { cfopEntradaId: 'cfop-prev', valorTotal: 500, quantidade: 1, nItem: 1 },
-    ] as never)
     vi.mocked(clientePrisma.cfop.findFirst).mockResolvedValue({
-      planoFinanceiroPadraoId: 'plano-inativo',
-      planoFinanceiroPadrao: { id: 'plano-inativo', ativo: false },
-    } as never)
-    vi.mocked(clientePrisma.pessoaPapel.findFirst).mockResolvedValue({
-      dadosFornecedor: {
-        paresPlanoCfopPadrao: [{ planoFinanceiroId: 'plano-par' }],
-      },
+      planoFinanceiroPadraoId: null,
+      planoFinanceiroPadrao: null,
     } as never)
 
-    const plano = await resolverPlanoFinanceiroMercadoriaNfe('company-1', {
+    const plano = await resolverPlanoFinanceiroEntrada('company-1', {
       notaId: 'nota-1',
       fornecedorPessoaId: 'forn-1',
+      cfopEntradaId: 'cfop-prev',
     })
 
     expect(plano).toBe('plano-par')
   })
 
-  it('sem CFOP prevalente usa primeiro plano do fornecedor', async () => {
+  it('retorna null quando nada está configurado (escolha manual)', async () => {
+    vi.mocked(clientePrisma.pessoaPapel.findFirst).mockResolvedValue({
+      dadosFornecedor: { planosFinanceiros: [] },
+    } as never)
     vi.mocked(clientePrisma.nfeRecebidaItem.findMany).mockResolvedValue([
       { cfopEntradaId: null, valorTotal: 500, quantidade: 1, nItem: 1 },
     ] as never)
+
+    const plano = await resolverPlanoFinanceiroEntrada('company-1', {
+      notaId: 'nota-1',
+      fornecedorPessoaId: 'forn-1',
+    })
+
+    expect(plano).toBeNull()
+  })
+
+  it('alias resolverPlanoFinanceiroMercadoriaNfe delega para resolverPlanoFinanceiroEntrada', async () => {
     vi.mocked(clientePrisma.pessoaPapel.findFirst).mockResolvedValue({
       dadosFornecedor: {
         planosFinanceiros: [{ planoFinanceiroId: 'plano-forn' }],
@@ -166,6 +162,5 @@ describe('resolverPlanoFinanceiroMercadoriaNfe', () => {
     })
 
     expect(plano).toBe('plano-forn')
-    expect(clientePrisma.cfop.findFirst).not.toHaveBeenCalled()
   })
 })
