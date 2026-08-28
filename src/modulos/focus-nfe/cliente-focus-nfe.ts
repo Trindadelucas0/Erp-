@@ -150,6 +150,21 @@ function baseUrl(homologacao: boolean): string {
   return homologacao ? URL_HOMOLOG : URL_PROD
 }
 
+/** Focus devolve 302 + Location (S3). O GET na URL final não leva Authorization. @see doc PDF recebida */
+export function ehRedirectHttpFocus(status: number): boolean {
+  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308
+}
+
+/** Resolve Location relativa (ex.: /path) contra a URL da requisição Focus. */
+export function resolverUrlRedirectFocus(urlOrigem: string, location: string): string {
+  if (/^https?:\/\//i.test(location)) return location
+  return new URL(location, urlOrigem).href
+}
+
+function bufferEhPdfValido(buffer: Buffer): boolean {
+  return buffer.length >= 5 && buffer.subarray(0, 4).toString('utf8') === '%PDF'
+}
+
 /** Interpreta Retry-After (segundos ou data HTTP). */
 function parseRetryAfterHeader(raw: string | undefined): number | undefined {
   if (!raw) return undefined
@@ -355,15 +370,45 @@ async function baixarPdfUmaVez(
     const inicio = Date.now()
 
     try {
-      const resposta = await fetch(url, {
+      const headersFocus = {
+        Authorization: montarAuth(apiToken),
+        Accept: 'application/pdf',
+      }
+
+      let resposta = await fetch(url, {
         method: 'GET',
-        headers: {
-          Authorization: montarAuth(apiToken),
-          Accept: 'application/pdf',
-        },
-        redirect: 'follow',
+        headers: headersFocus,
+        redirect: 'manual',
         signal: controller.signal,
       })
+
+      if (ehRedirectHttpFocus(resposta.status)) {
+        const location = resposta.headers.get('location')?.trim()
+        if (!location) {
+          clearTimeout(timer)
+          logFocus('error', 'api_erro', {
+            metodo: 'GET',
+            path: caminho,
+            http: resposta.status,
+            mensagem: 'Redirect sem Location',
+            ms: Date.now() - inicio,
+          })
+          return {
+            sucesso: false,
+            mensagem: 'Focus redirecionou o DANFE sem informar a URL do PDF.',
+            codigoHttp: 502,
+          }
+        }
+        logFocusVerbose('pdf_redirect', { path: caminho, http: resposta.status })
+        const urlPdf = resolverUrlRedirectFocus(url, location)
+        resposta = await fetch(urlPdf, {
+          method: 'GET',
+          headers: { Accept: 'application/pdf' },
+          redirect: 'follow',
+          signal: controller.signal,
+        })
+      }
+
       clearTimeout(timer)
       const ms = Date.now() - inicio
       const headers: Record<string, string> = {}
@@ -383,7 +428,7 @@ async function baixarPdfUmaVez(
           mensagem = corpo.mensagem || corpo.message || mensagem
           codigo = corpo.codigo
         } catch {
-          /* corpo não JSON */
+          /* corpo não JSON (HTML/texto do S3 ou Focus) */
         }
         const retryAfterSec = parseRetryAfterHeader(headers['retry-after'])
         logFocus('error', 'api_erro', {
@@ -405,7 +450,7 @@ async function baixarPdfUmaVez(
 
       const ab = await resposta.arrayBuffer()
       const buffer = Buffer.from(ab)
-      if (buffer.length < 5 || buffer.subarray(0, 4).toString('utf8') !== '%PDF') {
+      if (!bufferEhPdfValido(buffer)) {
         logFocus('error', 'api_erro', {
           metodo: 'GET',
           path: caminho,

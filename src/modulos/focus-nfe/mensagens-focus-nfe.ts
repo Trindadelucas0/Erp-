@@ -121,7 +121,24 @@ export function mensagemErroFocusAmigavel(opcoes: {
 
 
   return opcoes.mensagemOriginal || `Erro Focus HTTP ${http ?? '?'} `
-
 }
 
+/**
+ * XML/lista OK na Focus, mas PDF (DANFE/DACTe) falha — indica inconsistência do serviço Focus, não token ERP.
+ */
+export function mensagemInconsistenciaFocusPdf(
+  tipoDocumento: 'nfe55' | 'nfse' | 'cte' | string | null | undefined
+): string {
+  const doc =
+    tipoDocumento === 'nfse'
+      ? 'PDF da NFS-e'
+      : tipoDocumento === 'cte'
+        ? 'DACTe (PDF)'
+        : 'DANFE (PDF)'
+  return (
+    `${doc} indisponível na Focus para esta nota — inconsistência com a Focus ` +
+    `(o XML da mesma nota está acessível; token e BUSCAR estão corretos). ` +
+    'Use Ver nota ou Baixar XML. Se persistir, contate o suporte da Focus NFe.'
+  )
+}
 

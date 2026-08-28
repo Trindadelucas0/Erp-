@@ -16,9 +16,13 @@ import {
 import {
   mascararCnpj,
   mensagemErroFocusAmigavel,
+  mensagemInconsistenciaFocusPdf,
 } from './mensagens-focus-nfe.js'
+import { codigoHttpClienteErroFocus } from './codigo-http-cliente-focus.js'
 import { analisarFiscalBasico } from '../entrada-notas/analise-fiscal/analisar-fiscal-basico.js'
 import { decisaoAvancoCursorCteAposXml } from './servico-focus-nfe.js'
+import { ehRedirectHttpFocus, resolverUrlRedirectFocus } from './cliente-focus-nfe.js'
+import { gerarPdfLegivelDoXml } from './gerador-pdf-nota-xml.js'
 
 describe('sync CT-e — cursor DistDFe', () => {
   it('avanca cursor quando XML ok ou documento ignorado (decisao definitiva)', () => {
@@ -115,6 +119,67 @@ describe('mensagens Focus', () => {
       cnpjMascarado: '**********0102',
     })
     expect(msg).toMatch(/habilita_manifestacao_homologacao|Recebimento/i)
+  })
+
+  it('mensagem de inconsistência quando XML ok e PDF falha na Focus', () => {
+    const msg = mensagemInconsistenciaFocusPdf('nfe55')
+    expect(msg).toMatch(/inconsistência com a Focus/i)
+    expect(msg).toMatch(/XML da mesma nota/i)
+    expect(msg).toMatch(/DANFE \(PDF\)/i)
+  })
+})
+
+describe('codigoHttpClienteErroFocus', () => {
+  it('mapeia 401/403 da Focus para 502 (evita logout no browser)', () => {
+    expect(codigoHttpClienteErroFocus(401)).toBe(502)
+    expect(codigoHttpClienteErroFocus(403)).toBe(502)
+  })
+
+  it('preserva 429 e 404; demais 4xx viram 502', () => {
+    expect(codigoHttpClienteErroFocus(429)).toBe(429)
+    expect(codigoHttpClienteErroFocus(404)).toBe(404)
+    expect(codigoHttpClienteErroFocus(400)).toBe(502)
+    expect(codigoHttpClienteErroFocus(undefined)).toBe(502)
+  })
+})
+
+describe('PDF Focus — redirect 302', () => {
+  it('reconhece códigos de redirect HTTP', () => {
+    expect(ehRedirectHttpFocus(302)).toBe(true)
+    expect(ehRedirectHttpFocus(307)).toBe(true)
+    expect(ehRedirectHttpFocus(200)).toBe(false)
+    expect(ehRedirectHttpFocus(401)).toBe(false)
+  })
+
+  it('resolve Location relativa contra URL Focus', () => {
+    expect(
+      resolverUrlRedirectFocus(
+        'https://api.focusnfe.com.br/v2/nfes_recebidas/123.pdf?cnpj=1',
+        'https://focusnfe.s3.sa-east-1.amazonaws.com/x.pdf'
+      )
+    ).toBe('https://focusnfe.s3.sa-east-1.amazonaws.com/x.pdf')
+    expect(
+      resolverUrlRedirectFocus(
+        'https://api.focusnfe.com.br/v2/nfes_recebidas/123.pdf',
+        '/redirect/path.pdf'
+      )
+    ).toBe('https://api.focusnfe.com.br/redirect/path.pdf')
+  })
+})
+
+describe('gerador PDF do XML', () => {
+  it('gera buffer PDF válido a partir de XML NFe mínimo', async () => {
+    const xml = `<?xml version="1.0"?>
+<nfeProc><NFe><infNFe Id="NFe35240111111111111111550010000000011123456789">
+<ide><nNF>1</nNF><serie>1</serie><natOp>VENDA</natOp><dhEmi>2026-01-15T10:00:00-03:00</dhEmi></ide>
+<emit><CNPJ>11111111111111</CNPJ><xNome>FORNECEDOR TESTE</xNome></emit>
+<dest><CNPJ>22222222222222</CNPJ><xNome>EMPRESA TESTE</xNome></dest>
+<det nItem="1"><prod><cProd>1</cProd><xProd>PRODUTO A</xProd><NCM>12345678</NCM><CFOP>5102</CFOP><qCom>2</qCom><vUnCom>10</vUnCom><vProd>20</vProd></prod></det>
+<total><ICMSTot><vNF>20.00</vNF></ICMSTot></total>
+</infNFe></NFe></nfeProc>`
+    const pdf = await gerarPdfLegivelDoXml(xml)
+    expect(pdf.subarray(0, 4).toString('utf8')).toBe('%PDF')
+    expect(pdf.length).toBeGreaterThan(500)
   })
 })
 

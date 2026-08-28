@@ -60,6 +60,51 @@ async function normalizarCorpoErroBinario(erro: {
   }
 }
 
+function extrairMensagemErroResposta(data: unknown): string {
+  if (data == null) return ''
+  if (typeof data === 'object' && data !== null && 'mensagem' in data) {
+    return String((data as { mensagem?: string }).mensagem ?? '')
+  }
+  if (typeof data === 'string') {
+    const t = data.trim()
+    if (t.startsWith('{')) {
+      try {
+        return String((JSON.parse(t) as { mensagem?: string }).mensagem ?? '')
+      } catch {
+        return t
+      }
+    }
+    return t
+  }
+  return ''
+}
+
+/** 401 da Focus (token/ambiente) não deve deslogar o usuário do ERP. */
+function erro401IndicaSessaoExpirada(erro: { response?: { data?: unknown } }): boolean {
+  const mensagem = extrairMensagemErroResposta(erro.response?.data).toLowerCase()
+  if (!mensagem) return true
+  if (
+    mensagem.includes('focus') ||
+    mensagem.includes('nfe recebidas') ||
+    mensagem.includes('ambiente homolog') ||
+    mensagem.includes('ambiente produc') ||
+    mensagem.includes('baixar o pdf na focus') ||
+    mensagem.includes('obter o xml')
+  ) {
+    return false
+  }
+  return (
+    mensagem.includes('sessão') ||
+    mensagem.includes('sessao') ||
+    mensagem.includes('token inválido ou expirado') ||
+    mensagem.includes('token invalido ou expirado') ||
+    mensagem.includes('usuário inativo') ||
+    mensagem.includes('usuario inativo') ||
+    mensagem.includes('não autenticado') ||
+    mensagem.includes('nao autenticado')
+  )
+}
+
 clienteHttp.interceptors.response.use(
   (resposta) => resposta,
   async (erro) => {
@@ -68,6 +113,7 @@ clienteHttp.interceptors.response.use(
     if (typeof window !== 'undefined') {
       if (
         erro.response?.status === 401 &&
+        erro401IndicaSessaoExpirada(erro) &&
         !window.location.pathname.includes('/login') &&
         !window.location.pathname.startsWith('/assinatura') &&
         !window.location.pathname.startsWith('/portal-fornecedor')

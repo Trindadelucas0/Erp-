@@ -4,7 +4,7 @@
  * Uso:
  *   npm run migrar:remover-pontos-sku
  *   npm run migrar:remover-pontos-sku -- --company-id <uuid>
- *   npm run migrar:remover-pontos-sku -- --aplicar
+ *   npm run migrar:remover-pontos-sku -- --todas-empresas --aplicar
  *   npm run migrar:remover-pontos-sku -- --listar-empresas
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -18,6 +18,7 @@ type Args = {
   companyId?: string
   aplicar: boolean
   listarEmpresas: boolean
+  todasEmpresas: boolean
   saida?: string
 }
 
@@ -31,11 +32,12 @@ type LinhaRelatorio = {
 }
 
 function lerArgs(argv: string[]): Args {
-  const args: Args = { aplicar: false, listarEmpresas: false }
+  const args: Args = { aplicar: false, listarEmpresas: false, todasEmpresas: false }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--aplicar') args.aplicar = true
     else if (a === '--listar-empresas') args.listarEmpresas = true
+    else if (a === '--todas-empresas') args.todasEmpresas = true
     else if (a === '--company-id') args.companyId = argv[++i]
     else if (a === '--saida') args.saida = argv[++i]
   }
@@ -49,30 +51,19 @@ function csvEscape(v: string): string {
 
 async function listarEmpresas() {
   const empresas = await prisma.company.findMany({
-    select: { id: true, nome: true, cnpj: true },
-    orderBy: { nome: 'asc' },
+    select: { id: true, name: true, cnpj: true, active: true },
+    orderBy: { name: 'asc' },
   })
+  console.log('Empresas:')
   for (const e of empresas) {
-    console.log(`${e.id}\t${e.cnpj ?? ''}\t${e.nome}`)
+    console.log(`  ${e.id}  ${e.active ? 'ATIVA' : 'inativa'}  ${e.name}  CNPJ ${e.cnpj}`)
   }
 }
 
-async function main() {
-  const args = lerArgs(process.argv.slice(2))
-
-  if (args.listarEmpresas) {
-    await listarEmpresas()
-    return
-  }
-
-  if (!args.companyId) {
-    console.error('Informe --company-id <uuid> ou use --listar-empresas')
-    process.exit(1)
-  }
-
+async function processarEmpresa(companyId: string, aplicar: boolean, saida?: string) {
   const produtos = await prisma.produto.findMany({
     where: {
-      companyId: args.companyId,
+      companyId,
       sku: { contains: '.' },
     },
     select: { id: true, sku: true, nomeVenda: true, companyId: true },
@@ -124,7 +115,7 @@ async function main() {
       continue
     }
 
-    if (!args.aplicar) {
+    if (!aplicar) {
       atualizar += 1
       linhas.push({
         produtoId: produto.id,
@@ -165,10 +156,10 @@ async function main() {
     }
   }
 
-  const dirSaida = args.saida ?? path.join('scripts', 'migracao-santri', 'saida')
+  const dirSaida = saida ?? path.join('scripts', 'migracao-santri', 'saida')
   mkdirSync(dirSaida, { recursive: true })
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-  const relatorioPath = path.join(dirSaida, `remover-pontos-sku-${stamp}.csv`)
+  const relatorioPath = path.join(dirSaida, `remover-pontos-sku-${companyId.slice(0, 8)}-${stamp}.csv`)
   const cabecalho =
     'produtoId,companyId,skuAntigo,skuNovo,status,mensagem,nomeVenda'
   const corpo = linhas.map((l) => {
@@ -186,13 +177,62 @@ async function main() {
   writeFileSync(relatorioPath, [cabecalho, ...corpo].join('\n'), 'utf8')
 
   console.log('---')
+  console.log(`Empresa: ${companyId}`)
   console.log(`Produtos com ponto no SKU: ${produtos.length}`)
   console.log(`Atualizar: ${atualizar}`)
   console.log(`Colisões: ${colisao}`)
   console.log(`Sem mudança: ${semMudanca}`)
   console.log(`Erros: ${erros}`)
-  console.log(`Modo: ${args.aplicar ? 'APLICAR' : 'DRY-RUN'}`)
+  console.log(`Modo: ${aplicar ? 'APLICAR' : 'DRY-RUN'}`)
   console.log(`Relatório: ${relatorioPath}`)
+
+  return { atualizar, colisao, erros, total: produtos.length }
+}
+
+async function main() {
+  const args = lerArgs(process.argv.slice(2))
+
+  if (args.listarEmpresas) {
+    await listarEmpresas()
+    return
+  }
+
+  if (!args.companyId && !args.todasEmpresas) {
+    console.error('Informe --company-id <uuid>, --todas-empresas ou use --listar-empresas')
+    process.exit(1)
+  }
+
+  const companyIds = args.todasEmpresas
+    ? (
+        await prisma.company.findMany({
+          where: { active: true },
+          select: { id: true },
+          orderBy: { name: 'asc' },
+        })
+      ).map((e) => e.id)
+    : [args.companyId!]
+
+  let totalAtualizar = 0
+  let totalColisao = 0
+  let totalErros = 0
+  let totalComPonto = 0
+
+  for (const companyId of companyIds) {
+    const res = await processarEmpresa(companyId, args.aplicar, args.saida)
+    totalAtualizar += res.atualizar
+    totalColisao += res.colisao
+    totalErros += res.erros
+    totalComPonto += res.total
+  }
+
+  if (companyIds.length > 1) {
+    console.log('=== TOTAL ===')
+    console.log(`Empresas processadas: ${companyIds.length}`)
+    console.log(`Produtos com ponto no SKU: ${totalComPonto}`)
+    console.log(`Atualizar: ${totalAtualizar}`)
+    console.log(`Colisões: ${totalColisao}`)
+    console.log(`Erros: ${totalErros}`)
+  }
 }
 
 main()

@@ -12,8 +12,10 @@ import { logFocus } from './logs-focus-nfe.js'
 import {
   mascararCnpj,
   mensagemErroFocusAmigavel,
+  mensagemInconsistenciaFocusPdf,
   normalizarCnpj,
 } from './mensagens-focus-nfe.js'
+import { codigoHttpClienteErroFocus } from './codigo-http-cliente-focus.js'
 import {
   extrairCamposResumoDoXml,
   normalizarXmlNfe,
@@ -28,6 +30,7 @@ import {
   removerArquivoDanfe,
   salvarDanfe,
 } from './armazenamento-danfe.js'
+import { gerarPdfLegivelDoXml } from './gerador-pdf-nota-xml.js'
 import type { DadosParaSalvarConfigFocus, DadosRegrasFiscais } from './esquema-focus-nfe.js'
 import { REGRAS_FISCAIS_PADRAO, sanitizarRegrasFiscais } from './esquema-focus-nfe.js'
 import { analisarFiscalBasico } from '../entrada-notas/analise-fiscal/analisar-fiscal-basico.js'
@@ -443,7 +446,7 @@ async function executarSync(companyId: string, contexto: ContextoJob) {
             cnpjMascarado,
             fonte: credenciais.fonte,
           })
-          throw new ErroDaAplicacao(mensagem, resp.codigoHttp ?? 502)
+          throw new ErroDaAplicacao(mensagem, codigoHttpClienteErroFocus(resp.codigoHttp))
         }
       } else {
         const lista = Array.isArray(resp.dados) ? resp.dados : []
@@ -1297,7 +1300,11 @@ async function obterXmlNotaInterno(
         eh429
           ? `Limite Focus excedido. Tente de novo em instantes. (${msg})`
           : `Não foi possível obter o XML: ${msg}`,
-        xmlResp.sucesso === false ? (xmlResp.codigoHttp ?? 502) : 502
+        eh429
+          ? 429
+          : codigoHttpClienteErroFocus(
+              xmlResp.sucesso === false ? xmlResp.codigoHttp : undefined
+            )
       )
     }
 
@@ -1408,7 +1415,10 @@ async function obterDanfeNota(companyId: string, id: string) {
   const dentroRateLimit =
     agora - atualizadoEm < recursos.danfeRateLimitMinutos * 60 * 1000
 
-  async function persistirPdfLocal(pdf: Buffer, origem: 'cache' | 'focus') {
+  async function persistirPdfLocal(
+    pdf: Buffer,
+    origem: 'cache' | 'focus' | 'xml_local'
+  ) {
     const caminho = await salvarDanfe(companyId, nota.id, pdf)
     await repositorioFocusNfe.atualizarDanfe(nota.id, {
       danfeCaminho: caminho,
@@ -1478,8 +1488,24 @@ async function obterDanfeNota(companyId: string, id: string) {
   const cnpjEmpresa = empresa?.cnpj ? normalizarCnpj(empresa.cnpj) : null
   const chave = nota.chaveNfe
 
-  // 3) NFe: garantir ciência + XML antes do PDF
-  if (!ehDocumental && !(nota.xmlConteudo && nota.nfeCompleta)) {
+  async function tentarPdfLocalDoXml(): Promise<Buffer | null> {
+    const atualizada = await repositorioFocusNfe.buscarPorId(companyId, nota.id)
+    const xml = atualizada?.xmlConteudo?.trim() ?? nota.xmlConteudo?.trim()
+    if (!xml) return null
+    try {
+      return await gerarPdfLegivelDoXml(xml)
+    } catch (erro) {
+      logFocus('warn', 'pdf_local_xml_falhou', {
+        notaId: nota.id,
+        chave,
+        mensagem: erro instanceof Error ? erro.message : String(erro),
+      })
+      return null
+    }
+  }
+
+  // 3) NFe: ciência na Focus antes do PDF (mesmo com XML local) + XML completo se faltar
+  if (!ehDocumental) {
     const man = (nota.manifestacaoDestinatario ?? '').toLowerCase()
     if (!man || man === 'nulo' || man === 'null') {
       await clienteFocusNfe.manifestar(
@@ -1491,26 +1517,28 @@ async function obterDanfeNota(companyId: string, id: string) {
         cnpjEmpresa
       )
     }
-    const xmlRes = await completarXmlDaFocus(
-      companyId,
-      credenciais.apiToken,
-      credenciais.homologacao,
-      {
-        chave_nfe: chave,
-        manifestacao_destinatario: nota.manifestacaoDestinatario ?? 'ciencia',
-        situacao: nota.situacao ?? undefined,
-      },
-      () => undefined
-    )
-    if (xmlRes.rateLimit) {
-      await repositorioFocusNfe.atualizarDanfe(nota.id, {
-        danfeStatus: 'rate_limit',
-        danfeAtualizadoEm: new Date(),
-      })
-      throw new ErroDaAplicacao(
-        'Limite Focus excedido ao preparar o XML. Aguarde um minuto e tente baixar o PDF de novo.',
-        429
+    if (!(nota.xmlConteudo && nota.nfeCompleta)) {
+      const xmlRes = await completarXmlDaFocus(
+        companyId,
+        credenciais.apiToken,
+        credenciais.homologacao,
+        {
+          chave_nfe: chave,
+          manifestacao_destinatario: nota.manifestacaoDestinatario ?? 'ciencia',
+          situacao: nota.situacao ?? undefined,
+        },
+        () => undefined
       )
+      if (xmlRes.rateLimit) {
+        await repositorioFocusNfe.atualizarDanfe(nota.id, {
+          danfeStatus: 'rate_limit',
+          danfeAtualizadoEm: new Date(),
+        })
+        throw new ErroDaAplicacao(
+          'Limite Focus excedido ao preparar o XML. Aguarde um minuto e tente baixar o PDF de novo.',
+          429
+        )
+      }
     }
   }
 
@@ -1574,6 +1602,7 @@ async function obterDanfeNota(companyId: string, id: string) {
   }
 
   if (!pdfResp.sucesso) {
+    const ambiente = credenciais.homologacao ? ('homolog' as const) : ('producao' as const)
     if (pdfResp.codigoHttp === 429) {
       await repositorioFocusNfe.atualizarDanfe(nota.id, {
         danfeStatus: 'rate_limit',
@@ -1585,6 +1614,10 @@ async function obterDanfeNota(companyId: string, id: string) {
       )
     }
     if (pdfResp.codigoHttp === 404) {
+      const pdfLocal = await tentarPdfLocalDoXml()
+      if (pdfLocal) {
+        return persistirPdfLocal(pdfLocal, 'xml_local')
+      }
       await repositorioFocusNfe.atualizarDanfe(nota.id, {
         danfeStatus: 'indisponivel',
         danfeAtualizadoEm: new Date(),
@@ -1600,9 +1633,76 @@ async function obterDanfeNota(companyId: string, id: string) {
         422
       )
     }
+    if (pdfResp.codigoHttp === 401 || pdfResp.codigoHttp === 403) {
+      if (!ehDocumental) {
+        await clienteFocusNfe.manifestar(
+          credenciais.apiToken,
+          credenciais.homologacao,
+          chave,
+          'ciencia',
+          undefined,
+          cnpjEmpresa
+        )
+        pdfResp = await tentarPdf()
+        if (pdfResp.sucesso) {
+          return persistirPdfLocal(pdfResp.dados, 'focus')
+        }
+      }
+
+      const pdfLocal = await tentarPdfLocalDoXml()
+      if (pdfLocal) {
+        return persistirPdfLocal(pdfLocal, 'xml_local')
+      }
+
+      const xmlFocusOk = ehNfse
+        ? (
+            await clienteFocusNfe.baixarXmlNfse(
+              credenciais.apiToken,
+              credenciais.homologacao,
+              chave
+            )
+          ).sucesso
+        : ehCte
+          ? (
+              await clienteFocusNfe.baixarXmlCte(
+                credenciais.apiToken,
+                credenciais.homologacao,
+                chave
+              )
+            ).sucesso
+          : (
+              await clienteFocusNfe.baixarXml(
+                credenciais.apiToken,
+                credenciais.homologacao,
+                chave,
+                cnpjEmpresa
+              )
+            ).sucesso
+
+      if (xmlFocusOk) {
+        throw new ErroDaAplicacao(mensagemInconsistenciaFocusPdf(tipo), 422)
+      }
+
+      throw new ErroDaAplicacao(
+        mensagemErroFocusAmigavel({
+          codigoHttp: pdfResp.codigoHttp,
+          mensagemOriginal: pdfResp.mensagem,
+          ambiente,
+          cnpjMascarado: cnpjEmpresa ? mascararCnpj(cnpjEmpresa) : undefined,
+          fonte: credenciais.fonte,
+        }),
+        502
+      )
+    }
+    if (!pdfResp.sucesso && pdfResp.codigoHttp === 502) {
+      const pdfLocal = await tentarPdfLocalDoXml()
+      if (pdfLocal) {
+        return persistirPdfLocal(pdfLocal, 'xml_local')
+      }
+    }
     throw new ErroDaAplicacao(
-      `Não foi possível baixar o PDF na Focus: ${pdfResp.mensagem}`,
-      pdfResp.codigoHttp ?? 502
+      `Inconsistência com a Focus ao baixar o PDF: ${pdfResp.mensagem}`,
+      codigoHttpClienteErroFocus(pdfResp.codigoHttp)
     )
   }
 
