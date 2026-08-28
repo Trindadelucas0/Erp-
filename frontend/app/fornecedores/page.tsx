@@ -6,6 +6,7 @@
  */
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { atributosCampoBuscaLista } from '@/lib/atributos-campo-busca-lista'
 import { cn } from '@/lib/utils'
 import { classesCampo, classesCampoBase, classesCampoLista } from '@/components/ui/classes-campo'
 import { clienteHttp } from '@/services/api'
@@ -1987,7 +1988,7 @@ function ConteudoDaPaginaDeFornecedores() {
         <div className="mb-4">
           <input
             ref={refBusca}
-            type="text"
+            {...atributosCampoBuscaLista('busca-lista-fornecedores')}
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar por razão social, nome fantasia, CPF/CNPJ ou UF..."

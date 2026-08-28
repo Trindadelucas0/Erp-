@@ -5,6 +5,7 @@
  * BrasilAPI, verificação de duplicidade, flags fiscais e validação de abas.
  */
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { atributosCampoBuscaLista } from '@/lib/atributos-campo-busca-lista'
 import { cn } from '@/lib/utils'
 import { classesCampo, classesCampoBase, classesCampoLista } from '@/components/ui/classes-campo'
 import { clienteHttp } from '@/services/api'
@@ -1901,6 +1902,7 @@ function ConteudoDaPaginaDeClientes() {
         <div className="mb-3 flex flex-wrap gap-3">
           <input
             ref={refBusca}
+            {...atributosCampoBuscaLista('busca-lista-clientes')}
             className={cn(classesCampoLista, 'max-w-xs')}
             placeholder="Buscar por razão social, nome fantasia, CPF/CNPJ ou UF..."
             value={busca}

@@ -14,6 +14,7 @@ import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/modal'
 import { Label } from '@/components/ui/label'
+import { atributosCampoBuscaLista } from '@/lib/atributos-campo-busca-lista'
 import { cn } from '@/lib/utils'
 import { BadgeStatus } from '@/components/ui/badge-status'
 import { LinhasSkeletonTabela } from '@/components/ui/linhas-skeleton-tabela'
@@ -240,6 +241,7 @@ function ConteudoDaPagina() {
       >
         <div className="mb-3 flex flex-wrap items-end gap-3">
           <input
+            {...atributosCampoBuscaLista('busca-lista-pedidos-compra')}
             className={cn(classesCampoLista, 'sm:max-w-[10rem]')}
             placeholder="Nº ou descrição"
             value={filtros.buscaNumero}

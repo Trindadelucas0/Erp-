@@ -5,6 +5,7 @@
  * BrasilAPI, verificação de duplicidade e campos específicos (ANTT, tipo veículo).
  */
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { atributosCampoBuscaLista } from '@/lib/atributos-campo-busca-lista'
 import { cn } from '@/lib/utils'
 import { classesCampo, classesCampoBase, classesCampoLista } from '@/components/ui/classes-campo'
 import { clienteHttp } from '@/services/api'
@@ -1282,7 +1283,7 @@ function ConteudoDaPaginaDeTransportadoras() {
         <div className="mb-4">
           <input
             ref={refBusca}
-            type="text"
+            {...atributosCampoBuscaLista('busca-lista-transportadoras')}
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar por razão social, nome fantasia, CPF/CNPJ ou UF..."

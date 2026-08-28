@@ -42,6 +42,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Select, classesOption } from '@/components/ui/select'
 import { classesCampoLista } from '@/components/ui/classes-campo'
+import { atributosCampoBuscaLista } from '@/lib/atributos-campo-busca-lista'
 import { Modal } from '@/components/ui/modal'
 import { Abas } from '@/components/ui/abas'
 import { Separator } from '@/components/ui/separator'
@@ -1082,7 +1083,7 @@ function ConteudoDaPaginaDeUsuarios() {
         <div className="mb-4 flex flex-wrap gap-2">
           <input
             ref={refBusca}
-            type="text"
+            {...atributosCampoBuscaLista('busca-lista-usuarios')}
             value={termoBusca}
             onChange={(e) => setTermoBusca(e.target.value)}
             placeholder="Buscar por nome ou e-mail..."

@@ -27,6 +27,7 @@ import {
 import { BarraCarregamentoDownload } from '@/components/entrada-notas/barra-carregamento-download'
 import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { classesCampoLista, classesCampoBase } from '@/components/ui/classes-campo'
+import { atributosCampoBuscaLista } from '@/lib/atributos-campo-busca-lista'
 import { cn } from '@/lib/utils'
 import { Loader2 } from 'lucide-react'
 
@@ -1056,7 +1057,7 @@ function ConteudoEntradaNotas() {
             <Label htmlFor="filtro-busca">Pesquisar na lista</Label>
             <input
               id="filtro-busca"
-              type="search"
+              {...atributosCampoBuscaLista('busca-lista-entrada-notas')}
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               placeholder="Emitente, valor ou chave (banco local)…"
