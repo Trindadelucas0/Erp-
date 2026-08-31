@@ -33,6 +33,10 @@ function normalizarCorpoErro(dados: unknown): CorpoErroApi | string | null {
     if (dados instanceof ArrayBuffer || ArrayBuffer.isView(dados)) {
       return normalizarCorpoErro(textoDeBuffer(dados as ArrayBuffer | ArrayBufferView))
     }
+    // Blob.text() é async — o interceptor em api.ts já parseia JSON de download.
+    if (typeof Blob !== 'undefined' && dados instanceof Blob) {
+      return null
+    }
     const obj = dados as CorpoErroApi & Record<string, unknown>
     if (typeof obj.mensagem === 'string' || typeof obj.message === 'string') return obj
   }
@@ -76,7 +80,7 @@ export function extrairMensagemApi(erro: unknown, mensagemPadrao: string): strin
     return mensagemPadrao || 'Não encontramos o item solicitado. Atualize a página e tente novamente.'
   }
   if (status === 502 || status === 503) {
-    return 'Servidor ZapSign indisponível. Tente novamente em instantes.'
+    return mensagemPadrao || 'Serviço indisponível. Tente novamente em instantes.'
   }
   if (status === 500) {
     return 'A API interrompeu a operação antes de responder. Verifique o terminal da API e tente novamente.'
