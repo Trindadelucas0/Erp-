@@ -12,10 +12,11 @@ import {
   useInstanciaDropdownCatalogo,
   useOuvirFechamentoDropdownCatalogo,
 } from '@/lib/dropdown-catalogo'
+import { type PlanoFinanceiroOpcao } from '@/lib/contas-a-pagar'
 import { textosContemTodosTermos } from '@/lib/normalizar-busca'
 import { cn } from '@/lib/utils'
 
-export type PlanoFinanceiroOpcao = { id: string; nome: string; codigo?: string }
+export type { PlanoFinanceiroOpcao }
 
 type PosicaoDropdown = {
   top: number

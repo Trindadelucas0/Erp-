@@ -6,8 +6,8 @@ import { cn } from '@/lib/utils'
 
 export type ResultadoEtapaUi = {
   status: string
-  avisos: string[]
-  bloqueios: string[]
+  avisos?: string[]
+  bloqueios?: string[]
   bloqueiosNaoLiberaveis?: string[]
   detalhes?: Record<string, unknown>
 }

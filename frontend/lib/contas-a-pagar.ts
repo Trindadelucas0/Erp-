@@ -1,5 +1,6 @@
 export type TipoContaPagar = 'duplicata' | 'tributos'
 export type TipoTributo = 'darf_simples' | 'darf_normal' | 'gps'
+export type PlanoFinanceiroOpcao = { id: string; nome: string; codigo?: string }
 
 export type ContaPagarLista = {
   id: string
