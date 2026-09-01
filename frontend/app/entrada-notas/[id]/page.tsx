@@ -471,7 +471,7 @@ function etapasVoltarDisponiveis(nota: DetalheNota, ehDocumental: boolean): Etap
   ) {
     return []
   }
-  // NFS-e/documental: só cadastro. NFe 55: frete → cadastro → …
+  // NFS-e/CT-e: só cadastro. NFe 55 (revenda ou consumo): frete → cadastro → …
   const validas: EtapaPipeline[] = ehDocumental ? ['cadastro'] : ORDEM_ETAPAS
   const atual = etapaEfetiva(nota)
   const indiceAtual = atual === 'lancamento' ? ORDEM_ETAPAS.length : ORDEM_ETAPAS.indexOf(atual)
@@ -1571,7 +1571,8 @@ function ConteudoDetalheEntrada() {
   const ehDocumental = ehDocumentalTipo || Boolean(nota?.fornecedor?.modoDocumental)
   const ehNfse = nota?.tipoDocumento === 'nfse'
   const ehCte = nota?.tipoDocumento === 'cte'
-  const ehNfe55 = !ehDocumental
+  /** NFe 55 produto — inclusive uso/consumo (modoDocumental); não confundir com dossiê NFS-e/CT-e. */
+  const ehNfe55 = !ehNfse && !ehCte
   const serieNumero = nota ? extrairSerieNumeroChave(nota.chaveNfe) : { serie: null, numero: null }
   /** Frete remetente: aba só leitura (sem exigir/preencher CT-e, CFOP, financeiro). */
   const freteConsultivo = ehNfe55 && Boolean(nota) && !nota!.exigeCte
@@ -1635,8 +1636,8 @@ function ConteudoDetalheEntrada() {
 
   const opcoesVoltarEtapa = useMemo(() => {
     if (!nota) return []
-    return etapasVoltarDisponiveis(nota, ehDocumental)
-  }, [nota, ehDocumental])
+    return etapasVoltarDisponiveis(nota, ehDocumentalTipo)
+  }, [nota, ehDocumentalTipo])
 
   useEffect(() => {
     if (opcoesVoltarEtapa.length === 0) {
@@ -2084,7 +2085,7 @@ function ConteudoDetalheEntrada() {
           <CardPadrao
             titulo={ehNfse ? 'Serviço (NFS-e)' : ehCte ? 'Transporte (CTe)' : 'Itens — vínculo de produtos'}
           >
-            {ehDocumental ? (
+            {ehDocumentalTipo ? (
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground">
                   {ehCte
