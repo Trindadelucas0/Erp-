@@ -3,10 +3,12 @@ import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-audi
 import {
   codigoCompativelComTipo,
   codigoInicialSemPai,
+  compararCodigoPlano,
   extrairSegmentosSugeridos,
   extrairSufixoDeCodigo,
   montarCodigoComSufixo,
   montarCodigoPorSegmentos,
+  ordenarPorCodigoPlano,
   prefixoParaNovoPlano,
   proximoCodigoFilho,
   raizDoTipo,
@@ -37,6 +39,16 @@ function paraRespostaApi(plano: ReturnType<typeof repositorioDePlanosFinanceiros
   }
 }
 
+function ordenarNosArvore(
+  nos: (ReturnType<typeof paraRespostaApi> & { filhos: unknown[] })[]
+) {
+  nos.sort((a, b) => compararCodigoPlano(a.codigo, b.codigo))
+  for (const no of nos) {
+    const filhos = no.filhos as (ReturnType<typeof paraRespostaApi> & { filhos: unknown[] })[]
+    if (filhos.length > 0) ordenarNosArvore(filhos)
+  }
+}
+
 function montarArvore(
   planos: Awaited<ReturnType<typeof repositorioDePlanosFinanceiros.listarPorEmpresa>>
 ) {
@@ -62,6 +74,7 @@ function montarArvore(
     }
   }
 
+  ordenarNosArvore(raizes)
   return raizes
 }
 
@@ -118,7 +131,9 @@ async function listarParaGestao(
   }
 
   return {
-    planos: planos.map((p) => paraRespostaApi(repositorioDePlanosFinanceiros.mapear(p))),
+    planos: ordenarPorCodigoPlano(
+      planos.map((p) => paraRespostaApi(repositorioDePlanosFinanceiros.mapear(p)))
+    ),
     arvore: montarArvore(planos),
   }
 }

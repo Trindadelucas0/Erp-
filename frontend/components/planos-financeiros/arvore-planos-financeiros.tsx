@@ -20,6 +20,7 @@ import { BadgeStatus } from '@/components/ui/badge-status'
 import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
 import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
 import { ordenarArvore } from '@/lib/ordenacao-lista'
+import { compararCodigoPlano, ordenarArvorePlanosPorCodigo } from '@/lib/plano-financeiro'
 import { textosContemTodosTermos } from '@/lib/normalizar-busca'
 import { cn } from '@/lib/utils'
 import { criarRestrictToContainer } from './modifier-restrict-container'
@@ -385,15 +386,26 @@ export function ArvorePlanosFinanceiros({
     return () => window.removeEventListener('resize', atualizarLarguraTabela)
   }, [arrastarHabilitado, atualizarLarguraTabela])
 
-  const arvoreOrdenada = useMemo(
-    () =>
-      ordenarArvore(arvore, ordenacao, (no, coluna) => {
-        if (coluna === 'nome') return no.nome
-        if (coluna === 'situacao') return no.ativo ? 'Ativo' : 'Inativo'
-        return no[coluna] ? 1 : 0
-      }),
-    [arvore, ordenacao]
-  )
+  const arvorePorCodigo = useMemo(() => ordenarArvorePlanosPorCodigo(arvore), [arvore])
+
+  const arvoreOrdenada = useMemo(() => {
+    if (!ordenacao || ordenacao.coluna === 'nome') {
+      const fator = ordenacao?.direcao === 'desc' ? -1 : 1
+      const ordenarNivel = (nos: PlanoFinanceiroNo[]): PlanoFinanceiroNo[] =>
+        [...nos]
+          .sort((a, b) => compararCodigoPlano(a.codigo, b.codigo) * fator)
+          .map((no) => ({
+            ...no,
+            filhos: no.filhos?.length ? ordenarNivel(no.filhos) : no.filhos,
+          }))
+      return ordenarNivel(arvorePorCodigo)
+    }
+
+    return ordenarArvore(arvorePorCodigo, ordenacao, (no, coluna) => {
+      if (coluna === 'situacao') return no.ativo ? 'Ativo' : 'Inativo'
+      return no[coluna] ? 1 : 0
+    })
+  }, [arvorePorCodigo, ordenacao])
 
   const linhas = useMemo(() => {
     const termo = busca.trim()

@@ -43,9 +43,10 @@ npm run migrar:planos-financeiros -- --arquivo /caminho/outro.json --aplicar
 
 ## Regras da importação
 
-- Códigos `1` e `2` (categoria) **não** entram — só `1.1`, `1.1.1`, `2.1`, `2.1.1`, etc.
-- Código já existente: atualiza nome e flags; **não** apaga planos que não estão no JSON.
-- Código novo: cria na ordem grupo → subgrupo.
+- **Substituição:** planos no banco que **não** estão na planilha são **removidos** (subgrupos antes dos grupos).
+- Cabeçalhos de categoria (`1`, `2`) **não** entram — só `1.1`, `1.1.1`, `2.1`, `2.1.1`, etc.
+- Código na planilha: cria ou atualiza nome e flags.
+- Vínculos de fornecedor nos planos removidos somem (cascade). Títulos/contas que usavam o plano ficam com plano vazio (set null).
 - Falha de validação no JSON: aborta antes de gravar.
 
 ## Conferir na UI

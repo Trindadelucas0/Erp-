@@ -1,4 +1,5 @@
 import type { TipoPlanoFinanceiro } from './codigo-plano-financeiro.js'
+import { compararCodigoPlano } from './codigo-plano-financeiro.js'
 import {
   renumerarListaFilhos,
   type EstadoPlanoMover,
@@ -49,7 +50,7 @@ function filhosOrdenadosPorCodigo(
     if (plano.parentId === parentId) filhos.push(plano)
   }
   return filhos
-    .sort((a, b) => a.codigo.localeCompare(b.codigo, undefined, { numeric: true }))
+    .sort((a, b) => compararCodigoPlano(a.codigo, b.codigo))
     .map((p) => p.id)
 }
 

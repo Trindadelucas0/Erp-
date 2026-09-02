@@ -13,6 +13,15 @@ export function raizDoTipo(tipo: TipoPlanoFinanceiro): string {
   return '3'
 }
 
+/** Ordenação numérica de códigos hierárquicos (2.2 antes de 2.10). */
+export function compararCodigoPlano(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true })
+}
+
+export function ordenarPorCodigoPlano<T extends { codigo: string }>(itens: T[]): T[] {
+  return [...itens].sort((x, y) => compararCodigoPlano(x.codigo, y.codigo))
+}
+
 export function nivelDoCodigo(codigo: string): number {
   if (!codigo.includes('.')) return 1
   return codigo.split('.').length

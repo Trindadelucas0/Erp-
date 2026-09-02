@@ -52,6 +52,7 @@ type AcaoPrevista =
   | { tipo: 'criar'; plano: PlanoJson; parentCodigo: string | null }
   | { tipo: 'atualizar'; codigo: string; nomeAntigo: string; nomeNovo: string }
   | { tipo: 'igual'; codigo: string }
+  | { tipo: 'remover'; codigo: string; nome: string; id: string }
 
 function lerArgs(argv: string[]): Args {
   const args: Args = {
@@ -215,6 +216,16 @@ function montarAcoes(
   >
 ): AcaoPrevista[] {
   const acoes: AcaoPrevista[] = []
+  const codigosJson = new Set(planosOrdenados.map((p) => p.codigo))
+
+  const paraRemover = [...existentesPorCodigo.entries()]
+    .filter(([codigo]) => !codigosJson.has(codigo))
+    .map(([codigo, plano]) => ({ codigo, plano }))
+    .sort((a, b) => profundidadeCodigo(b.codigo) - profundidadeCodigo(a.codigo))
+
+  for (const { codigo, plano } of paraRemover) {
+    acoes.push({ tipo: 'remover', codigo, nome: plano.nome, id: plano.id })
+  }
 
   for (const plano of planosOrdenados) {
     const existente = existentesPorCodigo.get(plano.codigo)
@@ -248,15 +259,26 @@ function imprimirRelatorio(
   const criar = acoes.filter((a) => a.tipo === 'criar')
   const atualizar = acoes.filter((a) => a.tipo === 'atualizar')
   const iguais = acoes.filter((a) => a.tipo === 'igual')
+  const remover = acoes.filter((a) => a.tipo === 'remover')
 
-  console.log('--- Importação de planos financeiros ---')
+  console.log('--- Importação de planos financeiros (substituição) ---')
   console.log(`Empresa: ${empresa.name} (${empresa.cnpj})`)
   if (pacote.fonte) console.log(`Fonte JSON: ${pacote.fonte}`)
   if (pacote.emitidoEm) console.log(`Emitido em: ${pacote.emitidoEm}`)
   console.log(`Planos no JSON: ${pacote.planos.length}`)
+  console.log(`Remover (fora da planilha): ${remover.length}`)
   console.log(`Criar: ${criar.length}`)
   console.log(`Atualizar: ${atualizar.length}`)
   console.log(`Já iguais: ${iguais.length}`)
+
+  if (remover.length > 0) {
+    console.log('\nA remover (amostra até 15):')
+    for (const acao of remover.slice(0, 15)) {
+      if (acao.tipo !== 'remover') continue
+      console.log(`  - ${acao.codigo} ${acao.nome}`)
+    }
+    if (remover.length > 15) console.log(`  ... +${remover.length - 15}`)
+  }
 
   if (criar.length > 0) {
     console.log('\nA criar (amostra até 15):')
@@ -295,6 +317,12 @@ async function aplicarAcoes(
     }
 
     for (const acao of acoes) {
+      if (acao.tipo === 'remover') {
+        await tx.planoFinanceiro.delete({ where: { id: acao.id } })
+        mapaIdPorCodigo.delete(acao.codigo)
+        continue
+      }
+
       if (acao.tipo === 'igual') continue
 
       if (acao.tipo === 'atualizar') {
@@ -389,12 +417,12 @@ async function main() {
 
   const temMudanca = acoes.some((a) => a.tipo !== 'igual')
   if (!temMudanca) {
-    console.log('\nNada a gravar — cadastro já está alinhado ao JSON.')
+    console.log('\nNada a gravar — cadastro já está igual à planilha.')
     return
   }
 
   await aplicarAcoes(empresa.id, planosOrdenados, acoes)
-  console.log('\nImportação concluída.')
+  console.log('\nSubstituição concluída — cadastro alinhado à planilha.')
 }
 
 main()

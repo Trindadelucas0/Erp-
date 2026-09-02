@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  compararCodigoPlano,
   codigoFilhoPorIndice,
   codigoRaizPorIndice,
   coletarDescendentes,
@@ -19,6 +20,18 @@ import {
 } from './logica-mover-plano-financeiro.js'
 
 describe('codigo-plano-financeiro', () => {
+  it('compararCodigoPlano ordena segmentos numericamente', () => {
+    const codigos = ['2.10', '2.2', '2.1', '2.9', '2.10.15', '2.10.2']
+    expect([...codigos].sort(compararCodigoPlano)).toEqual([
+      '2.1',
+      '2.2',
+      '2.9',
+      '2.10',
+      '2.10.2',
+      '2.10.15',
+    ])
+  })
+
   it('codigoFilhoPorIndice gera código filho', () => {
     expect(codigoFilhoPorIndice('1.1', 2)).toBe('1.1.2')
   })

@@ -4,6 +4,7 @@ import type {
   DadosParaEditarPlanoFinanceiro,
 } from './esquema-planos-financeiros.js'
 import type { TipoPlanoFinanceiro } from './codigo-plano-financeiro.js'
+import { ordenarPorCodigoPlano } from './codigo-plano-financeiro.js'
 import { montarFiltroBuscaCamposEscalares } from '../../compartilhado/utilitarios/filtro-busca-textual.js'
 
 export type PlanoFinanceiroRegistro = {
@@ -56,16 +57,16 @@ async function listarPorEmpresa(
   opcoes?: { tipo?: TipoPlanoFinanceiro; incluirInativos?: boolean; q?: string }
 ) {
   const filtroBusca = montarFiltroBuscaCamposEscalares(opcoes?.q, ['codigo', 'nome'])
-  return clientePrisma.planoFinanceiro.findMany({
+  const planos = await clientePrisma.planoFinanceiro.findMany({
     where: {
       companyId,
       ...(opcoes?.tipo ? { tipo: opcoes.tipo } : {}),
       ...(!opcoes?.incluirInativos ? { ativo: true } : {}),
       ...(filtroBusca ?? {}),
     },
-    orderBy: { codigo: 'asc' },
     ...(opcoes?.q && !opcoes?.incluirInativos ? { take: 50 } : {}),
   })
+  return ordenarPorCodigoPlano(planos)
 }
 
 async function listarFolhasAtivas(
@@ -88,7 +89,7 @@ async function listarFolhasAtivas(
     take: 50,
   })
 
-  return planos.filter((p) => p._count.children === 0)
+  return ordenarPorCodigoPlano(planos.filter((p) => p._count.children === 0))
 }
 
 async function buscarPorId(companyId: string, id: string) {

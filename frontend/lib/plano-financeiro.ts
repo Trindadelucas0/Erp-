@@ -30,6 +30,22 @@ export function raizCodigoPlano(codigo: string): string | null {
   return match ? match[1] : null
 }
 
+/** Ordenação numérica de códigos hierárquicos (2.2 antes de 2.10). */
+export function compararCodigoPlano(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true })
+}
+
+export type PlanoComCodigo = { codigo: string; filhos?: PlanoComCodigo[] }
+
+export function ordenarArvorePlanosPorCodigo<T extends PlanoComCodigo>(nos: T[]): T[] {
+  return [...nos]
+    .sort((a, b) => compararCodigoPlano(a.codigo, b.codigo))
+    .map((no) => ({
+      ...no,
+      filhos: no.filhos?.length ? ordenarArvorePlanosPorCodigo(no.filhos) : no.filhos,
+    }))
+}
+
 export function prefixoParaNovoPlano(
   tipo: TipoPlanoFinanceiro,
   codigoPai?: string | null
