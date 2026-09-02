@@ -166,6 +166,7 @@ async function buscarNotasParaSessao(companyId: string, ids: string[]) {
                 select: {
                   quantidade: true,
                   codigoBarras: true,
+                  descricao: true,
                   ordem: true,
                 },
                 orderBy: { ordem: 'asc' },
@@ -303,7 +304,8 @@ async function buscarSessaoCompleta(companyId: string, id: string) {
                 },
               },
               embalagensMaster: {
-                select: { codigoBarras: true, quantidade: true },
+                select: { codigoBarras: true, quantidade: true, descricao: true },
+                orderBy: { ordem: 'asc' },
               },
             },
           },
@@ -328,6 +330,24 @@ async function atualizarQtdEsperadaItens(
       clientePrisma.contagemEntradaItem.update({
         where: { id: item.id },
         data: { qtdEsperada: new Prisma.Decimal(item.qtdEsperada) },
+      })
+    )
+  )
+}
+
+async function migrarItensLegadoUnidadeVenda(
+  itens: Array<{ id: string; qtdEsperada: number; qtdContada: number; unidade: string }>
+) {
+  if (itens.length === 0) return
+  await clientePrisma.$transaction(
+    itens.map((item) =>
+      clientePrisma.contagemEntradaItem.update({
+        where: { id: item.id },
+        data: {
+          qtdEsperada: new Prisma.Decimal(item.qtdEsperada),
+          qtdContada: new Prisma.Decimal(item.qtdContada),
+          unidade: item.unidade,
+        },
       })
     )
   )
@@ -679,6 +699,7 @@ export const repositorioContagens = {
   buscarSessaoCompleta,
   atualizarQtdContadaComVersao,
   atualizarQtdEsperadaItens,
+  migrarItensLegadoUnidadeVenda,
   listarNomesUnidades,
   gravarRascunho,
   finalizarSessaoOk,

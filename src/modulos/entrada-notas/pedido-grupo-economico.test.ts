@@ -93,6 +93,12 @@ vi.mock('./servico-vinculo-cte.js', () => ({
   },
 }))
 
+vi.mock('../recorrencias-financeiras/repositorio-recorrencias-financeiras.js', () => ({
+  repositorioDeRecorrenciasFinanceiras: {
+    listarAtivasPorFornecedor: vi.fn().mockResolvedValue([]),
+  },
+}))
+
 import { repositorioEntradaNotas } from './repositorio-entrada-notas.js'
 import { obterPessoaIdsRedePorPessoaId } from '../fornecedores/vinculos-fornecedor.js'
 import { analisarCadastro } from './analise-cadastro/analisar-cadastro.js'
@@ -121,6 +127,7 @@ function notaBase(extra: Record<string, unknown> = {}) {
     xmlConteudo: xmlComDet,
     nfeCompleta: true,
     analiseJson: null,
+    finalidadeEntrada: 'revenda',
     itens: [
       {
         id: 'item-1',

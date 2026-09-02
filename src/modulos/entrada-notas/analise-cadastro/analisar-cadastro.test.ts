@@ -165,6 +165,34 @@ describe('analisarCadastro — auto-match de itens', () => {
     expect(resultado.itensAtualizados[0].criticaCadastro).toBe(false)
   })
 
+  it('finalidadePendente bloqueia Cadastro e não exige vínculo (não assume revenda)', async () => {
+    const resultado = await analisarCadastro({
+      ...base,
+      finalidadePendente: true,
+      itens: [{ id: 'item-1', gtin: '000', codigoProduto: 'x', produtoId: null, vinculoModo: null }],
+    })
+
+    expect(resultado.resultado.status).toBe('bloqueante')
+    expect(resultado.resultado.bloqueios[0]).toContain('finalidade')
+    expect(resultado.resultado.bloqueios.some((b) => b.includes('sem produto'))).toBe(false)
+    expect(resultado.itensAtualizados[0].criticaCadastro).toBe(false)
+  })
+
+  it('exigirVinculoProduto + modoDocumental ainda bloqueia item sem vínculo (conferência)', async () => {
+    vi.mocked(repositorioEntradaNotas.buscarProdutoPorGtin).mockResolvedValue(null as never)
+
+    const resultado = await analisarCadastro({
+      ...base,
+      modoDocumental: true,
+      exigirVinculoProduto: true,
+      itens: [{ id: 'item-1', gtin: '000', codigoProduto: '000002', produtoId: null, vinculoModo: null }],
+    })
+
+    expect(resultado.resultado.status).toBe('bloqueante')
+    expect(resultado.resultado.bloqueios.some((b) => b.includes('sem produto'))).toBe(true)
+    expect(resultado.itensAtualizados[0].criticaCadastro).toBe(true)
+  })
+
   it('CT-e: aceitarTransportadoraComoEmitente busca com flag e mensagem específica', async () => {
     vi.mocked(repositorioEntradaNotas.buscarFornecedorPorCnpj).mockResolvedValue(null as never)
 

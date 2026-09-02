@@ -59,7 +59,11 @@ import { gerarTitulosContasPagarDaEntrada } from '../contas-a-pagar/gerar-titulo
 import { resolverPlanoFinanceiroEntrada } from '../contas-a-pagar/resolver-plano-financeiro-entrada.js'
 import {
   extrairFlagsFornecedorDaNota,
+  finalidadeHabilitadaNoFornecedor,
+  MSG_FINALIDADE_ENTRADA,
   resolverModoDocumentalEntrada,
+  statusPermiteTrocaFinalidade,
+  type FinalidadeEntrada,
   type FlagsFornecedorEntrada,
 } from './resolver-modo-documental-entrada.js'
 import { avaliarRecorrenciaNoPipeline } from './avaliar-recorrencia-pipeline.js'
@@ -800,13 +804,12 @@ function financeiroDocumentalCompleto(nota: {
 
 function notaEhDocumentalSemEstoque(nota: {
   tipoDocumento: string | null
-  fornecedorPessoa?: {
-    papeis?: Array<{ dadosFornecedor?: FlagsFornecedorEntrada | null } | null>
-  } | null
+  finalidadeEntrada?: string | null
 }): boolean {
-  if (nota.tipoDocumento === 'nfse') return true
-  const flags = extrairFlagsFornecedorDaNota(nota)
-  return resolverModoDocumentalEntrada(flags)
+  return resolverModoDocumentalEntrada({
+    tipoDocumento: nota.tipoDocumento,
+    finalidadeEntrada: nota.finalidadeEntrada,
+  })
 }
 
 /**
@@ -836,6 +839,7 @@ async function consolidarDocumentalPorRecorrencia(companyId: string, notaId: str
  */
 async function statusPosLancamento(nota: {
   tipoDocumento: string | null
+  finalidadeEntrada?: string | null
   itens: { produtoId: string | null }[]
   fornecedorPessoa?: {
     papeis?: Array<{ dadosFornecedor?: FlagsFornecedorEntrada | null } | null>
@@ -1450,13 +1454,21 @@ async function analisarNota(
 
   // --- Cadastro ---
   const flagsFornecedor = await obterFlagsFornecedorEntrada(companyId, nota)
-  const modoDocumental = resolverModoDocumentalEntrada(flagsFornecedor)
+  const nfe55 = nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento
+  const modoDocumental = resolverModoDocumentalEntrada({
+    tipoDocumento: nota.tipoDocumento,
+    finalidadeEntrada: nota.finalidadeEntrada,
+  })
+  const exigirVinculoProduto =
+    modoDocumental && Boolean(flagsFornecedor?.exigirItensEntrada)
 
   const cadastro = await analisarCadastro({
     companyId,
     documentoEmitente: nota.documentoEmitente,
     fornecedorPessoaId: nota.fornecedorPessoaId,
     modoDocumental,
+    exigirVinculoProduto,
+    finalidadePendente: nfe55 && !nota.finalidadeEntrada,
     itens: nota.itens.map((i) => ({
       id: i.id,
       nItem: i.nItem,
@@ -1482,6 +1494,17 @@ async function analisarNota(
   })
 
   analise.cadastro = cadastro.resultado
+  if (nfe55 && !nota.finalidadeEntrada) {
+    const bloqueios = [...(analise.cadastro.bloqueios ?? [])]
+    if (!bloqueios.includes(MSG_FINALIDADE_ENTRADA)) {
+      bloqueios.unshift(MSG_FINALIDADE_ENTRADA)
+    }
+    analise.cadastro = {
+      ...analise.cadastro,
+      status: 'bloqueante',
+      bloqueios,
+    }
+  }
   if (avisoXmlFocus && nota.itens.length === 0) {
     const bloqueios = [...(analise.cadastro.bloqueios ?? [])]
     if (!bloqueios.some((b) => b.includes(avisoXmlFocus))) {
@@ -2354,6 +2377,7 @@ async function obterDetalhe(
       observacaoContato: nota.observacaoContato,
       pedidoCompraId: nota.pedidoCompraId,
       origemLancamento: nota.origemLancamento,
+      finalidadeEntrada: nota.finalidadeEntrada ?? null,
       problemaDesfecho: nota.problemaDesfecho ?? null,
       problemaMarcadoEm: nota.problemaMarcadoEm ?? null,
       problemaResolvidoEm: nota.problemaResolvidoEm ?? null,
@@ -2462,7 +2486,10 @@ async function obterDetalhe(
               cnpj: nota.fornecedorPessoa.cnpj,
               nomeFantasia: nota.fornecedorPessoa.nomeFantasia,
               ...flags,
-              modoDocumental: resolverModoDocumentalEntrada(flags),
+              modoDocumental: resolverModoDocumentalEntrada({
+                tipoDocumento: nota.tipoDocumento,
+                finalidadeEntrada: nota.finalidadeEntrada,
+              }),
             }
           })()
         : null,
@@ -2642,13 +2669,21 @@ async function recalcularSomenteCadastro(companyId: string, notaId: string) {
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
 
   const flagsFornecedor = await obterFlagsFornecedorEntrada(companyId, nota)
-  const modoDocumental = resolverModoDocumentalEntrada(flagsFornecedor)
+  const nfe55 = nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento
+  const modoDocumental = resolverModoDocumentalEntrada({
+    tipoDocumento: nota.tipoDocumento,
+    finalidadeEntrada: nota.finalidadeEntrada,
+  })
+  const exigirVinculoProduto =
+    modoDocumental && Boolean(flagsFornecedor?.exigirItensEntrada)
 
   const cadastro = await analisarCadastro({
     companyId,
     documentoEmitente: nota.documentoEmitente,
     fornecedorPessoaId: nota.fornecedorPessoaId,
     modoDocumental,
+    exigirVinculoProduto,
+    finalidadePendente: nfe55 && !nota.finalidadeEntrada,
     itens: nota.itens.map((i) => ({
       id: i.id,
       nItem: i.nItem,
@@ -2669,6 +2704,17 @@ async function recalcularSomenteCadastro(companyId: string, notaId: string) {
   }
 
   let resultadoCadastro = cadastro.resultado
+  if (nfe55 && !nota.finalidadeEntrada) {
+    const bloqueios = [...(resultadoCadastro.bloqueios ?? [])]
+    if (!bloqueios.includes(MSG_FINALIDADE_ENTRADA)) {
+      bloqueios.unshift(MSG_FINALIDADE_ENTRADA)
+    }
+    resultadoCadastro = {
+      ...resultadoCadastro,
+      status: 'bloqueante',
+      bloqueios,
+    }
+  }
   const syncRateio = await sincronizarRateioAposCadastro(companyId, notaId)
   if (syncRateio.bloqueiosPeso.length > 0) {
     resultadoCadastro = {
@@ -2846,6 +2892,46 @@ async function definirCfopEntradaCte(companyId: string, cteId: string, cfopId: s
 
   await repositorioEntradaNotas.atualizarNota(cteId, { cfopEntradaId: cfop.id })
   return obterDetalhe(companyId, cteId)
+}
+
+/**
+ * Finalidade da NFe 55 (Revenda vs Uso e Consumo). Clique explícito; reanalisa.
+ * Recusa após lançamento. Flags do fornecedor só habilitam a opção.
+ */
+async function definirFinalidadeEntrada(
+  companyId: string,
+  notaId: string,
+  finalidade: FinalidadeEntrada
+) {
+  const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+  if (nota.tipoDocumento === 'nfse' || nota.tipoDocumento === 'cte') {
+    throw new ErroDaAplicacao('Finalidade da entrada só se aplica a NFe 55.', 400)
+  }
+  if (!statusPermiteTrocaFinalidade(nota.statusEntrada)) {
+    throw new ErroDaAplicacao(
+      'Não é possível alterar a finalidade após o lançamento.',
+      409
+    )
+  }
+  if (!nota.fornecedorPessoaId) {
+    throw new ErroDaAplicacao(
+      'Vincule o fornecedor antes de definir a finalidade da entrada.',
+      400
+    )
+  }
+  const flags = await obterFlagsFornecedorEntrada(companyId, nota)
+  if (!finalidadeHabilitadaNoFornecedor(finalidade, flags)) {
+    throw new ErroDaAplicacao(
+      finalidade === 'revenda'
+        ? 'O cadastro do fornecedor não habilita Revenda. Marque o tipo Revenda no cadastro.'
+        : 'O cadastro do fornecedor não habilita Uso e Consumo. Marque Consumo ou Prestador de serviço no cadastro.',
+      400
+    )
+  }
+
+  await repositorioEntradaNotas.atualizarNota(notaId, { finalidadeEntrada: finalidade })
+  return analisarNota(companyId, notaId)
 }
 
 /**
@@ -3330,6 +3416,15 @@ async function lancar(
       'Nota com problema — não é possível lançar. Resolva ou desconheça a operação.',
       409
     )
+  }
+  if (
+    (nota.statusEntrada === 'pendente' ||
+      nota.statusEntrada === 'em_analise' ||
+      nota.statusEntrada === 'stand_by') &&
+    (nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento) &&
+    !nota.finalidadeEntrada
+  ) {
+    throw new ErroDaAplicacao(MSG_FINALIDADE_ENTRADA, 400)
   }
   if (
     (nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento) &&
@@ -4250,6 +4345,7 @@ export const servicoEntradaNotas = {
   definirCfopEntrada,
   definirCfopEntradaCte,
   definirCfopEntradaNota,
+  definirFinalidadeEntrada,
   liberarCriticas,
   cancelarLiberacaoCriticas,
   contatoFornecedor,

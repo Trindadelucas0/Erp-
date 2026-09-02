@@ -1,6 +1,6 @@
 {
   "name": "erp",
-  "version": "1.13.17",
+  "version": "1.13.19",
   "private": true,
   "type": "module",
   "scripts": {
@@ -22,6 +22,7 @@
     "migrar:precos-santri": "tsx --import ./scripts/carregar-url-do-banco.ts scripts/atualizar-precos-santri.ts",
     "migrar:completar-santri": "tsx --import ./scripts/carregar-url-do-banco.ts scripts/atualizar-campos-produto-santri.ts",
     "migrar:remover-pontos-sku": "tsx --import ./scripts/carregar-url-do-banco.ts scripts/remover-pontos-sku-produtos.ts",
+    "migrar:planos-financeiros": "tsx --import ./scripts/carregar-url-do-banco.ts scripts/importar-planos-financeiros.ts",
     "db:studio": "tsx scripts/executar-prisma.ts studio",
     "db:generate": "tsx scripts/executar-prisma.ts generate",
     "test": "vitest run",

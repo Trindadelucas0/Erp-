@@ -259,6 +259,8 @@ type DetalheNota = {
   observacaoContato: string | null
   pedidoCompraId: string | null
   origemLancamento: string | null
+  /** NFe 55: revenda | uso_consumo | null */
+  finalidadeEntrada?: 'revenda' | 'uso_consumo' | null
   prazoPagamentoXml: string | null
   prazoPagamentoTexto: string | null
   problemaDesfecho?: string | null
@@ -1021,7 +1023,7 @@ function ConteudoDetalheEntrada() {
     if (!nota) return
     const semContagem = ehSemContagemFisicaEntrada(
       nota.tipoDocumento,
-      nota.fornecedor?.modoDocumental
+      nota.finalidadeEntrada === 'uso_consumo'
     )
     if (semContagem) {
       setPlanoDocumentalId(
@@ -1086,7 +1088,7 @@ function ConteudoDetalheEntrada() {
     assinaturaDespesasFrete(nota),
     nota?.parcelasFinanceiras,
     nota?.planoFinanceiroId,
-    nota?.fornecedor?.modoDocumental,
+    nota?.finalidadeEntrada,
   ])
 
   useEffect(() => {
@@ -1220,7 +1222,8 @@ function ConteudoDetalheEntrada() {
         if (
           path !== '/financeiro-frete' &&
           path !== '/definir-cfop-entrada' &&
-          path !== '/definir-cfop-entrada-cte'
+          path !== '/definir-cfop-entrada-cte' &&
+          path !== '/finalidade-entrada'
         ) {
           setAbaAtiva(abaInicial(data.nota))
         }
@@ -1236,6 +1239,8 @@ function ConteudoDetalheEntrada() {
           setMensagem('Prévia financeira do frete salva (vira Contas a Pagar ao consolidar).')
         } else if (path === '/definir-cfop-entrada' || path === '/definir-cfop-entrada-cte') {
           setMensagem('CFOP de entrada atualizado.')
+        } else if (path === '/finalidade-entrada') {
+          setMensagem(mensagemAposAnalisar(data.nota))
         } else if (path === '/lancar' && body?.modo === 'consolidar') {
           setSenha('')
           const resumo = data.estoqueResumo ?? data.nota.estoqueResumo ?? null
@@ -1564,15 +1569,30 @@ function ConteudoDetalheEntrada() {
     ].includes(nota!.statusEntrada)
 
   const ehDocumentalTipo = ehDocumentalEntrada(nota?.tipoDocumento)
+  const modoDocumentalNfe = nota?.finalidadeEntrada === 'uso_consumo'
   const ehSemContagemFisica = ehSemContagemFisicaEntrada(
     nota?.tipoDocumento,
-    nota?.fornecedor?.modoDocumental
+    modoDocumentalNfe
   )
-  const ehDocumental = ehDocumentalTipo || Boolean(nota?.fornecedor?.modoDocumental)
+  const ehDocumental = ehDocumentalTipo || modoDocumentalNfe
   const ehNfse = nota?.tipoDocumento === 'nfse'
   const ehCte = nota?.tipoDocumento === 'cte'
-  /** NFe 55 produto — inclusive uso/consumo (modoDocumental); não confundir com dossiê NFS-e/CT-e. */
+  /** NFe 55 produto — inclusive uso/consumo (finalidade da nota); não confundir com dossiê NFS-e/CT-e. */
   const ehNfe55 = !ehNfse && !ehCte
+  const emAnaliseFinalidade =
+    nota?.statusEntrada === 'pendente' ||
+    nota?.statusEntrada === 'em_analise' ||
+    nota?.statusEntrada === 'stand_by'
+  const podeEditarFinalidade =
+    ehNfe55 &&
+    emAnaliseFinalidade &&
+    Boolean(nota?.fornecedor) &&
+    !pipelineBloqueado
+  const revendaHabilitada = Boolean(nota?.fornecedor?.tipoRevenda)
+  const usoConsumoHabilitado =
+    Boolean(nota?.fornecedor?.tipoConsumo) || Boolean(nota?.fornecedor?.tipoPrestadorServico)
+  const exigirVinculoDocumental =
+    modoDocumentalNfe && Boolean(nota?.fornecedor?.exigirItensEntrada)
   const serieNumero = nota ? extrairSerieNumeroChave(nota.chaveNfe) : { serie: null, numero: null }
   /** Frete remetente: aba só leitura (sem exigir/preencher CT-e, CFOP, financeiro). */
   const freteConsultivo = ehNfe55 && Boolean(nota) && !nota!.exigeCte
@@ -1985,6 +2005,74 @@ function ConteudoDetalheEntrada() {
             </p>
           )}
         </div>
+        {ehNfe55 && (
+          <div className="mt-3 space-y-2 border-t pt-3">
+            <p className="text-sm font-medium">Finalidade da entrada</p>
+            <p className="text-xs text-muted-foreground">
+              Vale para a nota inteira. O cadastro do fornecedor só habilita as opções — é preciso
+              marcar aqui, mesmo se só uma estiver disponível.
+            </p>
+            {!nota.fornecedor && (
+              <p className="text-sm text-amber-700 dark:text-amber-400">
+                Vincule o fornecedor para escolher a finalidade.
+              </p>
+            )}
+            <fieldset className="space-y-1" disabled={!podeEditarFinalidade}>
+              <legend className="sr-only">Finalidade da entrada</legend>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <label
+                  className={`flex items-center gap-1.5 ${
+                    !revendaHabilitada || !podeEditarFinalidade
+                      ? 'text-muted-foreground'
+                      : ''
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="finalidade-entrada"
+                    value="revenda"
+                    checked={nota.finalidadeEntrada === 'revenda'}
+                    disabled={!podeEditarFinalidade || !revendaHabilitada}
+                    onChange={() => {
+                      if (!podeEditarFinalidade || !revendaHabilitada) return
+                      void postAcao('/finalidade-entrada', { finalidade: 'revenda' })
+                    }}
+                  />
+                  Revenda
+                </label>
+                <label
+                  className={`flex items-center gap-1.5 ${
+                    !usoConsumoHabilitado || !podeEditarFinalidade
+                      ? 'text-muted-foreground'
+                      : ''
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="finalidade-entrada"
+                    value="uso_consumo"
+                    checked={nota.finalidadeEntrada === 'uso_consumo'}
+                    disabled={!podeEditarFinalidade || !usoConsumoHabilitado}
+                    onChange={() => {
+                      if (!podeEditarFinalidade || !usoConsumoHabilitado) return
+                      void postAcao('/finalidade-entrada', { finalidade: 'uso_consumo' })
+                    }}
+                  />
+                  Uso e Consumo
+                </label>
+              </div>
+            </fieldset>
+            {nota.fornecedor && (!revendaHabilitada || !usoConsumoHabilitado) && (
+              <p className="text-xs text-muted-foreground">
+                {!revendaHabilitada && !usoConsumoHabilitado
+                  ? 'Nenhuma finalidade habilitada neste fornecedor. Ajuste o tipo no cadastro (aba Outros).'
+                  : !revendaHabilitada
+                    ? 'Revenda desabilitada neste fornecedor. Para usar, marque o tipo Revenda no cadastro (aba Outros).'
+                    : 'Uso e Consumo desabilitado neste fornecedor. Para usar, marque Consumo ou Prestador de serviço no cadastro (aba Outros).'}
+              </p>
+            )}
+          </div>
+        )}
         {ehNfe55 && (nota.ctesVinculados ?? []).length > 0 && (
           <div className="mt-3 border-t pt-3 text-sm">
             <p className="font-medium text-muted-foreground">CT-es vinculados</p>
@@ -2110,12 +2198,14 @@ function ConteudoDetalheEntrada() {
               </div>
             ) : (
               <div className="space-y-4">
-                {nota.fornecedor?.modoDocumental ? (
+                {modoDocumentalNfe ? (
                   <p className="rounded-md border border-dashed bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-                    Entrada documental (uso/consumo) — vínculo de produto não exigido
-                    {nota.fornecedor.permitirVinculoManual
-                      ? '. Você pode conciliar manualmente se quiser.'
-                      : '.'}
+                    Entrada documental (uso/consumo)
+                    {exigirVinculoDocumental
+                      ? ' — vínculo de produto exigido para conferência (sem estoque de revenda).'
+                      : nota.fornecedor?.permitirVinculoManual
+                        ? ' — vínculo de produto não exigido. Você pode conciliar manualmente se quiser.'
+                        : ' — vínculo de produto não exigido.'}
                   </p>
                 ) : null}
                 {(nota.itens ?? []).map((item) => (
@@ -2129,10 +2219,11 @@ function ConteudoDetalheEntrada() {
                     buscaProduto={buscaProduto}
                     produtos={produtos}
                     permitirAcoesVinculo={
-                      !nota.fornecedor?.modoDocumental ||
-                      Boolean(nota.fornecedor.permitirVinculoManual)
+                      !modoDocumentalNfe ||
+                      Boolean(nota.fornecedor?.permitirVinculoManual) ||
+                      exigirVinculoDocumental
                     }
-                    vinculoNaoExigido={Boolean(nota.fornecedor?.modoDocumental)}
+                    vinculoNaoExigido={modoDocumentalNfe && !exigirVinculoDocumental}
                     fornecedorVinculado={Boolean(nota.fornecedor)}
                     onAbrirBusca={() => abrirBuscaProduto(item)}
                     onFecharBusca={() => {

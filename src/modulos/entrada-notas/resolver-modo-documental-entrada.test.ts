@@ -1,64 +1,105 @@
 import { describe, expect, it } from 'vitest'
-import { resolverModoDocumentalEntrada } from './resolver-modo-documental-entrada.js'
+import {
+  finalidadeHabilitadaNoFornecedor,
+  inferirFinalidadeLegadoDasFlags,
+  resolverModoDocumentalEntrada,
+  statusPermiteTrocaFinalidade,
+} from './resolver-modo-documental-entrada.js'
 
 describe('resolverModoDocumentalEntrada', () => {
-  it('retorna false sem flags / fornecedor', () => {
+  it('null / indefinido → não documental (não assume revenda)', () => {
     expect(resolverModoDocumentalEntrada(null)).toBe(false)
     expect(resolverModoDocumentalEntrada(undefined)).toBe(false)
+    expect(resolverModoDocumentalEntrada({})).toBe(false)
+    expect(
+      resolverModoDocumentalEntrada({ tipoDocumento: 'nfe55', finalidadeEntrada: null })
+    ).toBe(false)
   })
 
-  it('Revenda exige vínculo (não documental)', () => {
+  it('NFS-e é documental independentemente da finalidade', () => {
+    expect(resolverModoDocumentalEntrada({ tipoDocumento: 'nfse' })).toBe(true)
+    expect(
+      resolverModoDocumentalEntrada({ tipoDocumento: 'nfse', finalidadeEntrada: 'revenda' })
+    ).toBe(true)
+  })
+
+  it('finalidade uso_consumo → documental mesmo com tipoRevenda no fornecedor', () => {
     expect(
       resolverModoDocumentalEntrada({
-        tipoRevenda: true,
-        tipoConsumo: false,
-        tipoPrestadorServico: false,
-        exigirItensEntrada: false,
+        tipoDocumento: 'nfe55',
+        finalidadeEntrada: 'uso_consumo',
+      })
+    ).toBe(true)
+  })
+
+  it('finalidade revenda → não documental mesmo com só Consumo no cadastro', () => {
+    expect(
+      resolverModoDocumentalEntrada({
+        tipoDocumento: 'nfe55',
+        finalidadeEntrada: 'revenda',
       })
     ).toBe(false)
   })
 
-  it('Consumo sem exigir itens → documental', () => {
+  it('Revenda+Consumo no fornecedor sem finalidade → não assume documental', () => {
     expect(
       resolverModoDocumentalEntrada({
-        tipoRevenda: false,
-        tipoConsumo: true,
-        tipoPrestadorServico: false,
-        exigirItensEntrada: false,
+        tipoDocumento: 'nfe55',
+        finalidadeEntrada: null,
       })
-    ).toBe(true)
+    ).toBe(false)
+  })
+})
+
+describe('finalidadeHabilitadaNoFornecedor', () => {
+  it('Revenda exige tipoRevenda', () => {
+    expect(finalidadeHabilitadaNoFornecedor('revenda', { tipoRevenda: true })).toBe(true)
+    expect(finalidadeHabilitadaNoFornecedor('revenda', { tipoConsumo: true })).toBe(false)
+    expect(finalidadeHabilitadaNoFornecedor('revenda', null)).toBe(false)
   })
 
-  it('Prestador sem exigir itens → documental', () => {
+  it('Uso e Consumo exige tipoConsumo ou tipoPrestadorServico', () => {
+    expect(finalidadeHabilitadaNoFornecedor('uso_consumo', { tipoConsumo: true })).toBe(true)
     expect(
-      resolverModoDocumentalEntrada({
-        tipoRevenda: false,
-        tipoConsumo: false,
-        tipoPrestadorServico: true,
-        exigirItensEntrada: false,
-      })
+      finalidadeHabilitadaNoFornecedor('uso_consumo', { tipoPrestadorServico: true })
     ).toBe(true)
+    expect(finalidadeHabilitadaNoFornecedor('uso_consumo', { tipoRevenda: true })).toBe(false)
   })
+})
 
-  it('Consumo com exigir itens → NÃO documental', () => {
+describe('statusPermiteTrocaFinalidade', () => {
+  it('troca em análise ok; pós-lançamento recusa', () => {
+    expect(statusPermiteTrocaFinalidade('em_analise')).toBe(true)
+    expect(statusPermiteTrocaFinalidade('pendente')).toBe(true)
+    expect(statusPermiteTrocaFinalidade('stand_by')).toBe(true)
+    expect(statusPermiteTrocaFinalidade('aguardando_chegada')).toBe(false)
+    expect(statusPermiteTrocaFinalidade('entrada_consolidada')).toBe(false)
+    expect(statusPermiteTrocaFinalidade('pronta_para_consolidar')).toBe(false)
+  })
+})
+
+describe('inferirFinalidadeLegadoDasFlags (só backfill)', () => {
+  it('espelha a regra antiga: Consumo sem Revenda e sem exigir itens → uso_consumo', () => {
     expect(
-      resolverModoDocumentalEntrada({
+      inferirFinalidadeLegadoDasFlags({
         tipoRevenda: false,
         tipoConsumo: true,
-        tipoPrestadorServico: false,
+        exigirItensEntrada: false,
+      })
+    ).toBe('uso_consumo')
+    expect(
+      inferirFinalidadeLegadoDasFlags({
+        tipoRevenda: true,
+        tipoConsumo: true,
+        exigirItensEntrada: false,
+      })
+    ).toBe('revenda')
+    expect(
+      inferirFinalidadeLegadoDasFlags({
+        tipoRevenda: false,
+        tipoConsumo: true,
         exigirItensEntrada: true,
       })
-    ).toBe(false)
-  })
-
-  it('Consumo + Revenda → NÃO documental (revenda manda)', () => {
-    expect(
-      resolverModoDocumentalEntrada({
-        tipoRevenda: true,
-        tipoConsumo: true,
-        tipoPrestadorServico: false,
-        exigirItensEntrada: false,
-      })
-    ).toBe(false)
+    ).toBe('revenda')
   })
 })

@@ -6,7 +6,7 @@ export function ehDocumentalEntrada(tipo: TipoDocumentoEntrada): boolean {
   return tipo === 'nfse' || tipo === 'cte'
 }
 
-/** NFS-e ou NFe custo/consumo — sem contagem física nem movimento de estoque. */
+/** NFS-e ou NFe 55 com finalidade uso/consumo — sem contagem física nem movimento de estoque. */
 export function ehSemContagemFisicaEntrada(
   tipo: TipoDocumentoEntrada,
   modoDocumental?: boolean | null

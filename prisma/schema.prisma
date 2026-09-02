@@ -193,6 +193,8 @@ model NfeRecebida {
   versaoFocus              Int       @default(0)
   /// pendente | em_analise | stand_by | com_problema | problema_resolvido | aguardando_chegada | entrada_contagem | entrada_contagem_ok | entrada_contagem_divergente | pronta_para_consolidar | entrada_consolidada | cancelada
   statusEntrada            String    @default("pendente")
+  /// NFe 55: revenda | uso_consumo | null (obrigatório clique explícito em análise)
+  finalidadeEntrada        String?
   /// focus | xml
   origem                   String    @default("focus")
   /// automatica | humana | null

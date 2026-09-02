@@ -1818,6 +1818,11 @@ function ConteudoDaPaginaDeFornecedores() {
               <div className="min-w-0 space-y-6">
                 <div className="space-y-2">
                   <label className="text-sm font-semibold leading-none">Tipo de fornecedor</label>
+                  <p className="text-xs text-muted-foreground">
+                    Habilita quais opções o operador pode marcar na Entrada de Notas (Revenda ou Uso e
+                    Consumo). Não define sozinho a finalidade da nota — cada NFe 55 exige escolha
+                    explícita no detalhe.
+                  </p>
                   <div className="flex flex-wrap gap-4">
                     <CampoCheckbox rotulo="Revenda" valor={form.tipoRevenda} aoMudar={(v) => aoMudarTipoFornecedor('tipoRevenda', v)} />
                     <CampoCheckbox rotulo="Consumo" valor={form.tipoConsumo} aoMudar={(v) => aoMudarTipoFornecedor('tipoConsumo', v)} />
@@ -1895,6 +1900,10 @@ function ConteudoDaPaginaDeFornecedores() {
                       <CampoCheckbox rotulo="Permitir vínculo manual dos produtos na entrada" valor={form.permitirVinculoManual} aoMudar={(v) => set('permitirVinculoManual', v)} />
                       <CampoCheckbox rotulo="Exigir itens na entrada p/ uso e consumo" valor={form.exigirItensEntrada} aoMudar={(v) => set('exigirItensEntrada', v)} />
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      Com Uso e Consumo na nota: exige vínculo de produto só para conferência — não
+                      vira estoque de revenda nem contagem.
+                    </p>
                   </div>
                 )}
 

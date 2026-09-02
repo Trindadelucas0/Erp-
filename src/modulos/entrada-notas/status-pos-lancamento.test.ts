@@ -160,6 +160,7 @@ function notaEmAnalise(overrides: Record<string, unknown> = {}) {
     nfeCompleta: true,
     analiseJson: null,
     itens: [itemComProduto('prod-b', 4)],
+    finalidadeEntrada: 'revenda',
     fornecedorPessoa: {
       id: 'pessoa-a',
       nome: 'Fornecedor A',
@@ -222,6 +223,7 @@ function notaLancada(overrides: Record<string, unknown> = {}) {
     criticasLiberadas: false,
     analiseJson: null,
     xmlConteudo: xmlComDet,
+    finalidadeEntrada: 'revenda',
     fornecedorPessoa: { papeis: [] },
     itens: [itemComProduto('prod-a', 10, { descricao: 'Produto prod-a' })],
     tratativas: [],
@@ -336,6 +338,152 @@ describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)'
     expect(repositorioEntradaNotas.buscarPedidoComItens).not.toHaveBeenCalled()
     expect(repositorioEntradaNotas.buscarTipoCompraPedido).not.toHaveBeenCalled()
     expect(gerarTitulosContasPagarDaEntrada).not.toHaveBeenCalled()
+  })
+
+  it('sem finalidade em NFe 55: Cadastro bloqueia e não auto-lança', async () => {
+    ligarAnaliseSempreOk()
+    const fake = ligarRepositorioFake(notaEmAnalise({ finalidadeEntrada: null }))
+
+    const detalhe = await servicoEntradaNotas.analisarNota('c1', 'nota-1', {
+      importarFocusSeAusente: false,
+    })
+
+    expect(fake.getEstado().statusEntrada).toBe('em_analise')
+    expect(detalhe.nota.statusEntrada).toBe('em_analise')
+    expect(detalhe.nota.analise?.cadastro?.status).toBe('bloqueante')
+    expect(String(detalhe.nota.analise?.cadastro?.bloqueios?.[0] ?? '')).toMatch(/finalidade/i)
+  })
+
+  it('Revenda+Consumo no fornecedor sem finalidade → não assume documental nem lança', async () => {
+    ligarAnaliseSempreOk()
+    const fake = ligarRepositorioFake(
+      notaEmAnalise({
+        finalidadeEntrada: null,
+        fornecedorPessoa: {
+          id: 'pessoa-a',
+          nome: 'Fornecedor A',
+          cnpj: '111',
+          nomeFantasia: null,
+          papeis: [
+            {
+              dadosFornecedor: {
+                tipoRevenda: true,
+                tipoConsumo: true,
+                tipoPrestadorServico: false,
+                exigirItensEntrada: false,
+                permitirVinculoManual: false,
+                regraRateioFrete: null,
+              },
+            },
+          ],
+        },
+      })
+    )
+
+    await servicoEntradaNotas.analisarNota('c1', 'nota-1', { importarFocusSeAusente: false })
+    expect(fake.getEstado().statusEntrada).toBe('em_analise')
+  })
+
+  it('finalidade uso_consumo → pronta_para_consolidar mesmo com tipoRevenda=true', async () => {
+    ligarAnaliseSempreOk()
+    const fake = ligarRepositorioFake(
+      notaEmAnalise({
+        finalidadeEntrada: 'uso_consumo',
+        fornecedorPessoa: {
+          id: 'pessoa-a',
+          nome: 'Fornecedor A',
+          cnpj: '111',
+          nomeFantasia: null,
+          papeis: [
+            {
+              dadosFornecedor: {
+                tipoRevenda: true,
+                tipoConsumo: true,
+                tipoPrestadorServico: false,
+                exigirItensEntrada: false,
+                permitirVinculoManual: false,
+                regraRateioFrete: null,
+              },
+            },
+          ],
+        },
+      })
+    )
+
+    const detalhe = await servicoEntradaNotas.analisarNota('c1', 'nota-1', {
+      importarFocusSeAusente: false,
+    })
+
+    expect(fake.getEstado().statusEntrada).toBe('pronta_para_consolidar')
+    expect(detalhe.nota.statusEntrada).toBe('pronta_para_consolidar')
+  })
+
+  it('finalidade revenda → aguardando_chegada mesmo com só Consumo no cadastro', async () => {
+    ligarAnaliseSempreOk()
+    const fake = ligarRepositorioFake(
+      notaEmAnalise({
+        finalidadeEntrada: 'revenda',
+        fornecedorPessoa: {
+          id: 'pessoa-a',
+          nome: 'Fornecedor A',
+          cnpj: '111',
+          nomeFantasia: null,
+          papeis: [
+            {
+              dadosFornecedor: {
+                tipoRevenda: false,
+                tipoConsumo: true,
+                tipoPrestadorServico: false,
+                exigirItensEntrada: false,
+                permitirVinculoManual: false,
+                regraRateioFrete: null,
+              },
+            },
+          ],
+        },
+      })
+    )
+
+    const detalhe = await servicoEntradaNotas.analisarNota('c1', 'nota-1', {
+      importarFocusSeAusente: false,
+    })
+
+    expect(fake.getEstado().statusEntrada).toBe('aguardando_chegada')
+    expect(detalhe.nota.statusEntrada).toBe('aguardando_chegada')
+  })
+
+  it('exigirItensEntrada + uso_consumo → ainda documental (pronta_para_consolidar)', async () => {
+    ligarAnaliseSempreOk()
+    const fake = ligarRepositorioFake(
+      notaEmAnalise({
+        finalidadeEntrada: 'uso_consumo',
+        fornecedorPessoa: {
+          id: 'pessoa-a',
+          nome: 'Fornecedor A',
+          cnpj: '111',
+          nomeFantasia: null,
+          papeis: [
+            {
+              dadosFornecedor: {
+                tipoRevenda: false,
+                tipoConsumo: true,
+                tipoPrestadorServico: false,
+                exigirItensEntrada: true,
+                permitirVinculoManual: false,
+                regraRateioFrete: null,
+              },
+            },
+          ],
+        },
+      })
+    )
+
+    const detalhe = await servicoEntradaNotas.analisarNota('c1', 'nota-1', {
+      importarFocusSeAusente: false,
+    })
+
+    expect(fake.getEstado().statusEntrada).toBe('pronta_para_consolidar')
+    expect(detalhe.nota.statusEntrada).toBe('pronta_para_consolidar')
   })
 
   it('NFS-e (documental) com CFOP lança em pronta_para_consolidar — nunca aguardando_chegada nem entrada_contagem', async () => {
@@ -457,5 +605,68 @@ describe('liberarParaContagem — sair de "Aguardando chegada"', () => {
     await expect(servicoEntradaNotas.liberarParaContagem('c1', 'nota-inexistente')).rejects.toThrow(
       ErroDaAplicacao
     )
+  })
+})
+
+describe('definirFinalidadeEntrada', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('troca em análise grava e reanalisa', async () => {
+    ligarAnaliseSempreOk()
+    const fake = ligarRepositorioFake(notaEmAnalise({ finalidadeEntrada: null }))
+
+    await servicoEntradaNotas.definirFinalidadeEntrada('c1', 'nota-1', 'revenda')
+
+    expect(fake.getEstado().finalidadeEntrada).toBe('revenda')
+  })
+
+  it('pós-lançamento recusa (409)', async () => {
+    ligarRepositorioFake(notaLancada({ statusEntrada: 'aguardando_chegada' }))
+
+    await expect(
+      servicoEntradaNotas.definirFinalidadeEntrada('c1', 'nota-1', 'revenda')
+    ).rejects.toMatchObject({ statusCode: 409 })
+  })
+
+  it('sem fornecedor vinculado recusa (400)', async () => {
+    ligarRepositorioFake(
+      notaEmAnalise({ fornecedorPessoaId: null, fornecedorPessoa: null, finalidadeEntrada: null })
+    )
+
+    await expect(
+      servicoEntradaNotas.definirFinalidadeEntrada('c1', 'nota-1', 'revenda')
+    ).rejects.toMatchObject({ statusCode: 400 })
+  })
+
+  it('opção não habilitada no fornecedor recusa (400)', async () => {
+    ligarRepositorioFake(
+      notaEmAnalise({
+        finalidadeEntrada: null,
+        fornecedorPessoa: {
+          id: 'pessoa-a',
+          nome: 'Fornecedor A',
+          cnpj: '111',
+          nomeFantasia: null,
+          papeis: [
+            {
+              dadosFornecedor: {
+                tipoRevenda: false,
+                tipoConsumo: true,
+                tipoPrestadorServico: false,
+                exigirItensEntrada: false,
+                permitirVinculoManual: false,
+                regraRateioFrete: null,
+              },
+            },
+          ],
+        },
+      })
+    )
+
+    await expect(
+      servicoEntradaNotas.definirFinalidadeEntrada('c1', 'nota-1', 'revenda')
+    ).rejects.toMatchObject({ statusCode: 400 })
   })
 })

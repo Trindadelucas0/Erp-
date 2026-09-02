@@ -30,6 +30,7 @@ vi.mock('../contagens/repositorio-contagens.js', () => ({
     }),
     marcarSessaoBaixada: vi.fn(),
     reabrirSessaoAposBaixa: vi.fn(),
+    listarNomesUnidades: vi.fn().mockResolvedValue(new Map()),
   },
 }))
 
@@ -141,6 +142,7 @@ function notaPronta(overrides: Record<string, unknown> = {}) {
     pedidoCompraId: 'pedido-1',
     criticasLiberadas: false,
     analiseJson: null,
+    finalidadeEntrada: 'revenda',
     fornecedorPessoa: { papeis: [] },
     itens: [itemComProduto('prod-a', 10), itemComProduto('prod-b', 3)],
     tratativas: [],
@@ -173,6 +175,7 @@ function notaEmAnalise(overrides: Record<string, unknown> = {}) {
     nfeCompleta: true,
     analiseJson: null,
     itens: [itemComProduto('prod-b', 4)],
+    finalidadeEntrada: 'revenda',
     fornecedorPessoa: {
       id: 'pessoa-a',
       nome: 'Fornecedor A',

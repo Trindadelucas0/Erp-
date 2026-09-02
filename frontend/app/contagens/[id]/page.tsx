@@ -242,9 +242,7 @@ function ConteudoSessaoContagem() {
       atualizarItemLocal(data.item)
       aplicarVersao(data.versao)
       setMensagem(
-        data.tipoBip === 'master'
-          ? `Caixa master: +${data.incremento} em ${data.item.nomeExibicao}`
-          : `+${data.incremento} em ${data.item.nomeExibicao}`
+        `+${data.incremento} ${data.item.unidade || 'UN'} em ${data.item.nomeExibicao}`
       )
       setCodigoBip('')
     } catch (e) {
@@ -580,28 +578,38 @@ function ConteudoSessaoContagem() {
                     </td>
                     <td className="px-3 py-2">
                       {editavel ? (
-                        <Input
-                          type="number"
-                          min={0}
-                          step="any"
-                          className="h-8 w-24"
-                          value={Number.isFinite(item.qtdContada) ? item.qtdContada : 0}
-                          disabled={acao}
-                          onChange={(e) => {
-                            const v = Number(e.target.value)
-                            atualizarItemLocal({
-                              ...item,
-                              qtdContada: Number.isFinite(v) ? v : 0,
-                            })
-                          }}
-                          onBlur={(e) => {
-                            const v = Number(e.target.value)
-                            void salvarQtdManual(item.id, Number.isFinite(v) && v >= 0 ? v : 0)
-                          }}
-                          aria-label={`Quantidade contada de ${item.nomeExibicao}`}
-                        />
+                        <span className="inline-flex items-center gap-1.5">
+                          <Input
+                            type="number"
+                            min={0}
+                            step="any"
+                            className="h-8 w-24"
+                            value={Number.isFinite(item.qtdContada) ? item.qtdContada : 0}
+                            disabled={acao}
+                            onChange={(e) => {
+                              const v = Number(e.target.value)
+                              atualizarItemLocal({
+                                ...item,
+                                qtdContada: Number.isFinite(v) ? v : 0,
+                              })
+                            }}
+                            onBlur={(e) => {
+                              const v = Number(e.target.value)
+                              void salvarQtdManual(item.id, Number.isFinite(v) && v >= 0 ? v : 0)
+                            }}
+                            aria-label={`Quantidade contada de ${item.nomeExibicao}`}
+                          />
+                          <span className="text-xs text-muted-foreground">
+                            {item.unidade || 'UN'}
+                          </span>
+                        </span>
                       ) : (
-                        <span className="tabular-nums">{item.qtdContada}</span>
+                        <span className="tabular-nums">
+                          {item.qtdContada}{' '}
+                          <span className="text-xs text-muted-foreground">
+                            {item.unidade || 'UN'}
+                          </span>
+                        </span>
                       )}
                     </td>
                   </tr>

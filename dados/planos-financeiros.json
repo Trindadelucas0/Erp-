@@ -1,0 +1,1433 @@
+{
+  "fonte": "PLANOS FINANCEIROS.xls",
+  "emitidoEm": "2026-09-01",
+  "ignoradosCabecalhoCategoria": [
+    "1",
+    "2"
+  ],
+  "total": 158,
+  "planos": [
+    {
+      "codigo": "1.1",
+      "nome": "RECEBIMENTOS DE VENDAS",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.1.1",
+      "nome": "DINHEIRO",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.1.2",
+      "nome": "CARTÕES (DÉBITO E CRÉDITO)",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.1.3",
+      "nome": "DUPLICATAS",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.1.4",
+      "nome": "PIX",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.2",
+      "nome": "ADIANTAMENTOS / DEVOLUCOES DE VENDAS",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.2.1",
+      "nome": "DINHEIRO",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.2.4",
+      "nome": "CARTÕES (DÉBITO E CRÉDITO)",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.2.5",
+      "nome": "DUPLICATAS",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.2.8",
+      "nome": "PIX",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.2.9",
+      "nome": "CRÉDITO",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.3",
+      "nome": "RECEITAS FINANCEIRAS",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.3.1",
+      "nome": "JUROS RECEBIDOS DE CLIENTES",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.3.2",
+      "nome": "RECEBIMENTO DE BONIFICACOES",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.3.3",
+      "nome": "DESCONTOS OBTIDOS SOBRE FORNECEDORES",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.3.4",
+      "nome": "DESCONTOS OBTIDOS SOBRE TRIBUTOS",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.3.5",
+      "nome": "DESCONTOS OBTIDOS SOBRE OUTRAS DESPESAS",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.3.6",
+      "nome": "BONUS PARCELA EM DIA",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.3.7",
+      "nome": "OUTRAS RECEITAS",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.3.8",
+      "nome": "ESTORNO DE TARIFAS BANCÁRIAS",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.3.9",
+      "nome": "RECEBIMENTO DISTRIBUIÇÃO DE LUCRO CT CAPITAL COOP.",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.3.10",
+      "nome": "DEVOUÇÃO DE PIX",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "1.3.11",
+      "nome": "INTEGRALIZAÇÃO DE RATEIO/CAPITAL",
+      "tipo": "receita",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.1",
+      "nome": "CMV",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.1.1",
+      "nome": "FORNECEDORES",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.1.2",
+      "nome": "FRETES SOBRE COMPRAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.1.3",
+      "nome": "ICMS SOBRE COMPRAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.1.4",
+      "nome": "DESPESAS EXTRAS DE COMPRAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.2",
+      "nome": "IMPOSTOS SOBRE VENDAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.2.1",
+      "nome": "PIS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.2.2",
+      "nome": "COFINS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.2.3",
+      "nome": "ICMS SOBRE VENDAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.2.4",
+      "nome": "SIMPLES NACIONAL",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.2.5",
+      "nome": "CONTRIBUICAO SOCIAL",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.2.6",
+      "nome": "IMPOSTO DE RENDA",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.2.7",
+      "nome": "ICMS ST S/ VENDAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.3",
+      "nome": "DESPESAS SOBRE VENDAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.3.1",
+      "nome": "COMISSOES PAGAS A VENDEDORES",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.3.2",
+      "nome": "COMISSOES PAGAS A ARQUITETOS E PROMOTORES",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.3.3",
+      "nome": "COMISSOES PAGAS A TERCEIROS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.3.4",
+      "nome": "PREMIACOES PAGAS SOBRE VENDAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.3.5",
+      "nome": "ANALISE DE CREDITO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.4",
+      "nome": "DESPESAS COM ENTREGAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.4.1",
+      "nome": "SALARIOS SOBRE ENTREGAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.4.2",
+      "nome": "FRETES PAGOS A TERCEIROS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.4.3",
+      "nome": "OUTRAS DESPESAS COM ENTREGAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.5",
+      "nome": "DESPESAS ADMINISTRATIVAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.5.1",
+      "nome": "INSS SOBRE PRO-LABORE",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.5.2",
+      "nome": "RETIRADAS DE PRO-LABORE",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.5.3",
+      "nome": "ASSOCIACOES DE CLASSE",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.5.4",
+      "nome": "DOACOES E BRINDES",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.5.5",
+      "nome": "HONORARIOS CONTABEIS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.5.6",
+      "nome": "HONORARIOS ADVOCACIONAIS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.5.7",
+      "nome": "SEGUROS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.5.8",
+      "nome": "VIAGENS E ESTADIAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.5.9",
+      "nome": "CONSULTORIAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6",
+      "nome": "DESPESAS OPERACIONAIS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.1",
+      "nome": "ALUGUEL DE IMOVEIS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.2",
+      "nome": "AGUA",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.3",
+      "nome": "ENERGIA",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.4",
+      "nome": "TELEFONE FIXO E INTERNET",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.5",
+      "nome": "TELEFONE CELULAR",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.6",
+      "nome": "CORREIOS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.7",
+      "nome": "ASSINATURAS DE REVISTAS E JORNAIS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.8",
+      "nome": "LOCACAO DE EMPILHADEIRAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.9",
+      "nome": "MATERIAIS DE LIMPEZA",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": true
+    },
+    {
+      "codigo": "2.6.10",
+      "nome": "IMPRESSOS E MATERIAIS DE EXPEDIENTE",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": true
+    },
+    {
+      "codigo": "2.6.11",
+      "nome": "MANUTENCAO DE MAQUINAS E EQUIPAMENTOS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": true
+    },
+    {
+      "codigo": "2.6.12",
+      "nome": "MANUTENCAO DO IMOBILIZADO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": true
+    },
+    {
+      "codigo": "2.6.13",
+      "nome": "SEGURANCA TERCEIRIZADA",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.14",
+      "nome": "LOCACAO DE SOFTWARE",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.15",
+      "nome": "AUTO DE INFRACAO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.16",
+      "nome": "DESPESAS COM CARTORIO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.17",
+      "nome": "DESPESAS COM CPD/TI",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.18",
+      "nome": "TAXAS MUNICIPAIS, IPTU E ITU",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.19",
+      "nome": "MOTOBOY",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.20",
+      "nome": "DESPESAS COM ESTACIONAMENTO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.21",
+      "nome": "DESPESAS COM COPIAS E AUTENTICACOES",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.22",
+      "nome": "MATERIAL DE USO E CONSUMO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": true
+    },
+    {
+      "codigo": "2.6.23",
+      "nome": "DESPESA COM EMBALAGENS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": true
+    },
+    {
+      "codigo": "2.6.24",
+      "nome": "TAXAS E LICENCIAMENTOS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.25",
+      "nome": "CUSTAS JUDICIAIS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.26",
+      "nome": "TAXA DE ALTERAÇÃO ATO (SEFP)",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.27",
+      "nome": "TAXAS ESTADUAIS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.6.28",
+      "nome": "BENS DE PEQUENO VALOR (ATÉ $1.200,00)",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": true
+    },
+    {
+      "codigo": "2.6.29",
+      "nome": "TAXAS DIVERSAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.7",
+      "nome": "DESPESAS COM PROPAGANDA E PUBLICIDADE",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.7.1",
+      "nome": "RADIO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.7.2",
+      "nome": "TV",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.7.3",
+      "nome": "ANUNCIO EM REVISTAS E JORNAIS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.7.4",
+      "nome": "AGENCIA DE PUBLICIDADE E PROPAGANDA",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.7.5",
+      "nome": "MATERIAL DE PROPAGANDA E MARKETING",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.7.6",
+      "nome": "DESPESAS COM PATROCINIO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.7.7",
+      "nome": "CAFE DA MANHA PARA CLIENTES",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.7.8",
+      "nome": "EVENTOS E CONFRATERNIZACOES",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.7.9",
+      "nome": "DECORACAO DA LOJA",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.7.10",
+      "nome": "ANUNCIOS NA INTERNET",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8",
+      "nome": "DESPESAS COM PESSOAL",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.1",
+      "nome": "SALARIOS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.2",
+      "nome": "DECIMO TERCEIRO SALARIO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.3",
+      "nome": "RESCISAO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.4",
+      "nome": "INDENIZACOES TRABALHISTAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.5",
+      "nome": "FERIAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.6",
+      "nome": "FUNDO DE GARANTIA",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.7",
+      "nome": "PREVIDENCIA SOCIAL",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.8",
+      "nome": "ALIMENTACAO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.9",
+      "nome": "PLANO DE SAUDE",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.10",
+      "nome": "PLANO ODONTOLOGICO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.11",
+      "nome": "VALE TRANSPORTE",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.12",
+      "nome": "UNIFORMES",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.13",
+      "nome": "SINDICATOS E CONFEDERACOES",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.14",
+      "nome": "DESPESAS COM RECRUTAMENTO E SELECAO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.15",
+      "nome": "AJUDA DE CUSTO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.16",
+      "nome": "CURSOS E TREINAMENTOS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.17",
+      "nome": "GRATIFICACOES / PREMIACOES SOB SALARIOS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.18",
+      "nome": "ADICIONAL VENDEDOR",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.19",
+      "nome": "HORA EXTRA",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.20",
+      "nome": "DSR DESCANSO SEMANAL REMUNERADO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.21",
+      "nome": "ADIANTAMENTO SALARIAL",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.22",
+      "nome": "SALARIO FAMILIA",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.23",
+      "nome": "ADIANTAMENTO DE FERIAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.24",
+      "nome": "ATESTADO ADMISSIONAL/ DEMISSIONAL / PERIÓDICO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.25",
+      "nome": "ADIANTAMENTO 13º SALARIO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.26",
+      "nome": "QUEBRA DE CAIXA",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.27",
+      "nome": "AVISO PREVIO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.28",
+      "nome": "FGTS RESCISORIO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.8.29",
+      "nome": "BOLSA ESTÁGIO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.9",
+      "nome": "DESPESAS COM VEICULOS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.9.1",
+      "nome": "MANUTENCAO E REFORMA DE VEICULOS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": true
+    },
+    {
+      "codigo": "2.9.2",
+      "nome": "COMBUSTIVEIS E LUBRIFICANTES",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": true
+    },
+    {
+      "codigo": "2.9.3",
+      "nome": "PNEUS E CAMARAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": true
+    },
+    {
+      "codigo": "2.9.4",
+      "nome": "IPVA",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.9.5",
+      "nome": "MULTAS DE TRANSITO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.9.6",
+      "nome": "RASTREAMENTO DE VEICULOS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.10",
+      "nome": "DESPESAS FINANCEIRAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.10.1",
+      "nome": "RETENCOES SOBRE VENDAS A CARTAO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.10.2",
+      "nome": "RETENCOES SOBRE VENDAS FINANCIADAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.10.3",
+      "nome": "DESPESAS COM COBRANCA BANCARIA",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.10.4",
+      "nome": "IOC/IOF",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.10.5",
+      "nome": "TARIFAS BANCARIAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.10.6",
+      "nome": "JUROS PAGOS SOBRE FORNECEDORES",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.10.7",
+      "nome": "JUROS PAGOS SOBRE TRIBUTOS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.10.8",
+      "nome": "JUROS PAGOS SOBRE OUTRAS DESPESAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.10.9",
+      "nome": "DESCONTOS CONCEDIDOS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.10.10",
+      "nome": "IRRF SOBRE APLICAÇÃO FINANCEIRA",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.10.11",
+      "nome": "IOF S/ APLICAÇÃO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.10.12",
+      "nome": "JUROS S/ ANTECIPACAO DE CARTOES",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": true,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.10.13",
+      "nome": "ALUGUEL DE MAQUINETA",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.10.14",
+      "nome": "SEGUROS EMPRESTIMOS BANCARIOS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.10.15",
+      "nome": "AMORTIZAÇÃO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.11",
+      "nome": "INDENIZACOES",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.11.1",
+      "nome": "INDENIZACOES PAGAS A CLIENTES",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.12",
+      "nome": "IMPOSTOS S/ COMPRAS",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.12.1",
+      "nome": "ICMS S/ COMPRAS (DAR 1566)",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.12.2",
+      "nome": "ICMS S/ COMPRAS (DAR 1568)",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.13",
+      "nome": "IMPOSTOS SOBRE LUCRO",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": false,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.13.1",
+      "nome": "CONTRIBUICAO SOCIAL",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    },
+    {
+      "codigo": "2.13.2",
+      "nome": "IMPOSTO DE RENDA",
+      "tipo": "despesa",
+      "mostrarNaDre": true,
+      "permiteLancamentoManual": false,
+      "exigeAnexoLancamento": true,
+      "permiteUsoConsumo": false
+    }
+  ]
+}

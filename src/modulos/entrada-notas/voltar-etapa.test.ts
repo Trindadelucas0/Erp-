@@ -143,6 +143,7 @@ function buildNotaFixture(overrides: Record<string, unknown> = {}) {
     modFrete: null,
     chaveNfeReferenciada: null,
     xmlConteudo: '<NFe></NFe>',
+    finalidadeEntrada: 'revenda',
     fornecedorPessoaId: 'fornecedor-1',
     fornecedorPessoa: null,
     analiseJson: {

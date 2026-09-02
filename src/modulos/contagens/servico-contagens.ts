@@ -49,12 +49,40 @@ function resolverItensPorEmbalagem(
 }
 
 /**
- * Converte incremento de bip (unidade de venda / master) para unidade de compra.
- * peça: +1 / multiplicador; master: +qtdMaster / multiplicador.
+ * Converte incremento de bip (unidade de venda / master) para unidade de venda na contagem.
+ * Barras da unidade → +1; barras master → +quantidade cadastrada.
  */
-function converterIncrementoBipParaCompra(incrementoVenda: number, multiplicador: number): number {
-  const mult = multiplicador > 0 ? multiplicador : 1
-  return arredondarQtd(incrementoVenda / mult)
+function incrementoBipEmUnidadeVenda(incremento: number): number {
+  return arredondarQtd(incremento)
+}
+
+function formatarDescricaoEmbalagem(params: {
+  multiplicador: number
+  nomeUnidadeCompra: string
+  nomeUnidadeVenda: string
+  embalagensMaster: Array<{ descricao?: string | null; quantidade: unknown }>
+}): string | null {
+  const partes: string[] = []
+
+  if (params.multiplicador > 1) {
+    const compra = params.nomeUnidadeCompra.trim().toLowerCase() || 'embalagem'
+    const venda = params.nomeUnidadeVenda.trim().toLowerCase() || 'unidade'
+    const qtd = Number.isInteger(params.multiplicador)
+      ? String(params.multiplicador)
+      : String(params.multiplicador)
+    const rotuloVenda = qtd === '1' ? venda : `${venda}s`
+    partes.push(`1 ${compra} = ${qtd} ${rotuloVenda}`)
+  }
+
+  for (const master of params.embalagensMaster) {
+    const qtd = decimalNum(master.quantidade)
+    if (qtd == null || qtd <= 1) continue
+    const nome = master.descricao?.trim() || 'Caixa master'
+    const rotulo = Number.isInteger(qtd) ? String(qtd) : String(qtd)
+    partes.push(`${nome}: ${rotulo} unidades`)
+  }
+
+  return partes.length > 0 ? partes.join(' · ') : null
 }
 
 function nomeUnidadeFallback(sigla: string | null | undefined): string {
@@ -62,18 +90,26 @@ function nomeUnidadeFallback(sigla: string | null | undefined): string {
   return s
 }
 
-function formatarDescricaoEmbalagem(params: {
-  multiplicador: number
-  nomeUnidadeCompra: string
-  nomeUnidadeVenda: string
-}): string | null {
-  if (!(params.multiplicador > 1)) return null
-  const compra = params.nomeUnidadeCompra.trim().toLowerCase() || 'embalagem'
-  const venda = params.nomeUnidadeVenda.trim().toLowerCase() || 'unidade'
-  const qtd = Number.isInteger(params.multiplicador)
-    ? String(params.multiplicador)
-    : String(params.multiplicador)
-  return `1 ${compra} com ${qtd} ${venda}`
+function somarQtdNfPorProduto(
+  notas: Array<{
+    nfeRecebida: {
+      itens?: Array<{ produtoId: string | null; quantidade: unknown }>
+    }
+  }>
+): Map<string, number> {
+  const porProduto = new Map<string, number>()
+  for (const vinculoNota of notas) {
+    for (const itemNf of vinculoNota.nfeRecebida.itens ?? []) {
+      if (!itemNf.produtoId) continue
+      const qtd = decimalNum(itemNf.quantidade)
+      if (qtd == null || qtd <= 0) continue
+      porProduto.set(
+        itemNf.produtoId,
+        arredondarQtd((porProduto.get(itemNf.produtoId) ?? 0) + qtd)
+      )
+    }
+  }
+  return porProduto
 }
 
 function extrairSerieNumeroChave(chave: string): { serie: string | null; numero: string | null } {
@@ -305,26 +341,18 @@ async function criar(companyId: string, usuarioId: string, nfeRecebidaIds: strin
       const qtdNf = decimalNum(item.quantidade)
       if (qtdNf == null || qtdNf <= 0) continue
 
-      // Contagem cega: esperado = quantidade da NF (unidade de compra), sem × multiplicador.
-      const qtdCompra = arredondarQtd(qtdNf)
-
       const vinculo = produto.fornecedores.find(
         (f) => f.fornecedorPessoaId === nota.fornecedorPessoaId
       )
-      const unidadeCompra = resolverUnidadeEntrada(
-        {
-          fornecedorPessoaId: vinculo?.fornecedorPessoaId ?? '',
-          codigoFornecedor: vinculo?.codigoFornecedor ?? null,
-          unidadeEntrada: vinculo?.unidadeEntrada ?? null,
-        },
-        produto.unidade || item.unidade || 'UN'
-      )
+      const multiplicador = resolverItensPorEmbalagem(produto.fornecedores, nota.fornecedorPessoaId)
+      const qtdEsperadaVenda = arredondarQtd(qtdNf * multiplicador)
+      const unidadeVenda = produto.unidade?.trim() || item.unidade?.trim() || 'UN'
       const master = produto.embalagensMaster[0]
       const qtdMaster = decimalNum(master?.quantidade)
 
       const existente = porProduto.get(item.produtoId)
       if (existente) {
-        existente.qtdEsperada = arredondarQtd(existente.qtdEsperada + qtdCompra)
+        existente.qtdEsperada = arredondarQtd(existente.qtdEsperada + qtdEsperadaVenda)
         if (!existente.codigoOriginal && vinculo?.codigoFornecedor) {
           existente.codigoOriginal = vinculo.codigoFornecedor
         }
@@ -337,9 +365,9 @@ async function criar(companyId: string, usuarioId: string, nfeRecebidaIds: strin
         codigoBarras: produto.codigoBarras,
         codigoOriginal: vinculo?.codigoFornecedor ?? item.codigoProduto ?? null,
         marca: produto.marca || null,
-        unidade: unidadeCompra,
+        unidade: unidadeVenda,
         qtdEmbalagemPadrao: qtdMaster != null && qtdMaster > 0 ? qtdMaster : 1,
-        qtdEsperada: qtdCompra,
+        qtdEsperada: qtdEsperadaVenda,
       })
     }
   }
@@ -422,20 +450,77 @@ async function enriquecerItensComUnidadeCompra(
 
     return mapearItemCego({
       ...item,
-      unidade: unidadeCompra,
-      unidadeNome: nomeCompra,
+      unidade: unidadeVenda,
+      unidadeNome: nomeVenda,
       descricaoEmbalagem: formatarDescricaoEmbalagem({
         multiplicador: mult,
         nomeUnidadeCompra: nomeCompra,
         nomeUnidadeVenda: nomeVenda,
+        embalagensMaster: item.produto?.embalagensMaster ?? [],
       }),
     })
   })
 }
 
 /**
- * Sessões abertas/em andamento com contagem zerada: recalcula qtdEsperada = soma qtd NF
- * (legado tinha qtd NF × multiplicador). Se já digitou, não mexe.
+ * Sessões abertas/em andamento legadas (esperado = soma crua NF): converte para unidade de venda.
+ * Sessões finalizadas não são reescritas.
+ */
+async function migrarLegadoParaUnidadeVenda(
+  sessao: NonNullable<Awaited<ReturnType<typeof repositorioContagens.buscarSessaoCompleta>>>
+) {
+  if (!sessaoEditavel(sessao)) return
+
+  const porProdutoRaw = somarQtdNfPorProduto(sessao.notas)
+  const fornecedorIds = sessao.notas
+    .map((n) => n.nfeRecebida.fornecedorPessoaId)
+    .filter((id): id is string => Boolean(id))
+
+  const updates: Array<{
+    id: string
+    qtdEsperada: number
+    qtdContada: number
+    unidade: string
+  }> = []
+
+  for (const item of sessao.itens) {
+    const vinculo = escolherVinculoProduto(item.produto?.fornecedores, fornecedorIds)
+    const mult = resolverItensPorEmbalagem(
+      item.produto?.fornecedores,
+      vinculo?.fornecedorPessoaId ?? fornecedorIds[0]
+    )
+    if (mult <= 1) continue
+
+    const rawNf = porProdutoRaw.get(item.produtoId)
+    if (rawNf == null) continue
+
+    const esperadaAtual = decimalNum(item.qtdEsperada) ?? 0
+    if (arredondarQtd(esperadaAtual) !== arredondarQtd(rawNf)) continue
+
+    const unidadeVenda = item.produto?.unidade?.trim() || item.unidade?.trim() || 'UN'
+    const contadaAtual = decimalNum(item.qtdContada) ?? 0
+    const novaEsperada = arredondarQtd(rawNf * mult)
+    const novaContada = arredondarQtd(contadaAtual * mult)
+
+    updates.push({
+      id: item.id,
+      qtdEsperada: novaEsperada,
+      qtdContada: novaContada,
+      unidade: unidadeVenda,
+    })
+    ;(item as { qtdEsperada: unknown }).qtdEsperada = novaEsperada
+    ;(item as { qtdContada: unknown }).qtdContada = novaContada
+    ;(item as { unidade: string | null }).unidade = unidadeVenda
+  }
+
+  if (updates.length > 0) {
+    await repositorioContagens.migrarItensLegadoUnidadeVenda(updates)
+  }
+}
+
+/**
+ * Sessões abertas/em andamento com contagem zerada: recalcula qtdEsperada = soma qtd NF × multiplicador.
+ * Se já digitou, não mexe.
  */
 async function recalcularEsperadoSeZerado(
   sessao: NonNullable<Awaited<ReturnType<typeof repositorioContagens.buscarSessaoCompleta>>>
@@ -444,23 +529,21 @@ async function recalcularEsperadoSeZerado(
   const algumaContada = sessao.itens.some((i) => (decimalNum(i.qtdContada) ?? 0) > 0)
   if (algumaContada) return
 
-  const porProduto = new Map<string, number>()
-  for (const vinculoNota of sessao.notas) {
-    for (const itemNf of vinculoNota.nfeRecebida.itens ?? []) {
-      if (!itemNf.produtoId) continue
-      const qtd = decimalNum(itemNf.quantidade)
-      if (qtd == null || qtd <= 0) continue
-      porProduto.set(
-        itemNf.produtoId,
-        arredondarQtd((porProduto.get(itemNf.produtoId) ?? 0) + qtd)
-      )
-    }
-  }
+  const porProdutoRaw = somarQtdNfPorProduto(sessao.notas)
+  const fornecedorIds = sessao.notas
+    .map((n) => n.nfeRecebida.fornecedorPessoaId)
+    .filter((id): id is string => Boolean(id))
 
   const updates: Array<{ id: string; qtdEsperada: number }> = []
   for (const item of sessao.itens) {
-    const nova = porProduto.get(item.produtoId)
-    if (nova == null) continue
+    const rawNf = porProdutoRaw.get(item.produtoId)
+    if (rawNf == null) continue
+    const vinculo = escolherVinculoProduto(item.produto?.fornecedores, fornecedorIds)
+    const mult = resolverItensPorEmbalagem(
+      item.produto?.fornecedores,
+      vinculo?.fornecedorPessoaId ?? fornecedorIds[0]
+    )
+    const nova = arredondarQtd(rawNf * mult)
     const atual = decimalNum(item.qtdEsperada) ?? 0
     if (arredondarQtd(atual) !== arredondarQtd(nova)) {
       updates.push({ id: item.id, qtdEsperada: nova })
@@ -475,6 +558,7 @@ async function recalcularEsperadoSeZerado(
 async function obterDetalhe(companyId: string, id: string) {
   const sessao = await repositorioContagens.buscarSessaoCompleta(companyId, id)
   if (!sessao) throw new ErroDaAplicacao('Contagem não encontrada', 404)
+  await migrarLegadoParaUnidadeVenda(sessao)
   await recalcularEsperadoSeZerado(sessao)
   const itens = await enriquecerItensComUnidadeCompra(companyId, sessao)
   return {
@@ -569,18 +653,10 @@ async function bipar(
   const item = sessao.itens.find((i) => i.produtoId === match.produtoId)
   if (!item) throw new ErroDaAplicacao('Item não encontrado na sessão', 404)
 
-  const fornecedorIds = sessao.notas
-    .map((n) => n.nfeRecebida.fornecedorPessoaId)
-    .filter((id): id is string => Boolean(id))
-  const vinculo = escolherVinculoProduto(item.produto?.fornecedores, fornecedorIds)
-  const multiplicador = resolverItensPorEmbalagem(
-    item.produto?.fornecedores,
-    vinculo?.fornecedorPessoaId ?? fornecedorIds[0]
-  )
-  const incrementoCompra = converterIncrementoBipParaCompra(match.incremento, multiplicador)
+  const incremento = incrementoBipEmUnidadeVenda(match.incremento)
 
   const atual = decimalNum(item.qtdContada) ?? 0
-  const nova = arredondarQtd(atual + incrementoCompra)
+  const nova = arredondarQtd(atual + incremento)
   const r = await repositorioContagens.atualizarQtdContadaComVersao({
     sessaoId,
     itemId: item.id,
@@ -601,7 +677,7 @@ async function bipar(
 
   return {
     item: itemMapeado,
-    incremento: incrementoCompra,
+    incremento,
     tipoBip: match.tipo,
     versao: versaoEsperada + 1,
   }
@@ -905,12 +981,14 @@ async function cancelar(
 export const contagemCegaInterno = {
   resolverItensPorEmbalagem,
   resolverBipNaSessao,
-  converterIncrementoBipParaCompra,
+  incrementoBipEmUnidadeVenda,
   formatarDescricaoEmbalagem,
   compararItens,
   arredondarQtd,
   extrairSerieNumeroChave,
   montarSnapshotItens,
+  calcularQtdEsperadaVenda: (qtdNf: number, multiplicador: number) =>
+    arredondarQtd(qtdNf * (multiplicador > 0 ? multiplicador : 1)),
 }
 
 export const servicoContagens = {

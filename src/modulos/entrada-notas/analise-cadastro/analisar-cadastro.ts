@@ -2,10 +2,12 @@
  * Etapa 1 — Análise de cadastro (fornecedor + vínculo de produtos).
  */
 import { repositorioEntradaNotas } from '../repositorio-entrada-notas.js'
+import { MSG_FINALIDADE_ENTRADA } from '../resolver-modo-documental-entrada.js'
 import type { ResultadoEtapa } from '../tipos-analise.js'
 
 export type CategoriaAchadoCadastro =
   | 'fornecedor'
+  | 'finalidade'
   | 'item_sem_produto'
   | 'item_desvinculado'
   | 'sem_itens'
@@ -40,10 +42,20 @@ export async function analisarCadastro(params: {
   /** NFe 55 exige itens; NFS-e não (serviço). Default true. */
   exigirItens?: boolean
   /**
-   * Consumo/Prestador sem Revenda e sem exigirItensEntrada:
-   * não bloqueia por item sem produto (entrada documental).
+   * Finalidade uso_consumo (NFe 55) ou equivalente: sem estoque/PO.
+   * Não bloqueia item sem produto, salvo `exigirVinculoProduto`.
    */
   modoDocumental?: boolean
+  /**
+   * Com finalidade uso_consumo: exige vínculo de produto só para conferência
+   * (não vira revenda — sem estoque / sem contagem / sem PO).
+   */
+  exigirVinculoProduto?: boolean
+  /**
+   * NFe 55 sem finalidade escolhida: Cadastro bloqueante; não assume revenda
+   * (não exige vínculo de produto até o operador clicar).
+   */
+  finalidadePendente?: boolean
   /**
    * CT-e: aceita Pessoa com papel transportadora (além de fornecedor)
    * para não exigir cadastro duplicado do emitente do frete.
@@ -64,12 +76,23 @@ export async function analisarCadastro(params: {
   const achados: AchadoCadastro[] = []
   const exigirItens = params.exigirItens !== false
   const modoDocumental = params.modoDocumental === true
+  const exigirVinculoProduto = params.exigirVinculoProduto === true
+  const finalidadePendente = params.finalidadePendente === true
+  const pularBloqueioVinculo = finalidadePendente || (modoDocumental && !exigirVinculoProduto)
   const aceitarTransportadora = params.aceitarTransportadoraComoEmitente === true
 
   function pushAchado(achado: AchadoCadastro) {
     achados.push(achado)
     if (achado.severidade === 'bloqueio') bloqueios.push(achado.mensagem)
     else avisos.push(achado.mensagem)
+  }
+
+  if (finalidadePendente) {
+    pushAchado({
+      categoria: 'finalidade',
+      severidade: 'bloqueio',
+      mensagem: MSG_FINALIDADE_ENTRADA,
+    })
   }
 
   let fornecedorPessoaId = params.fornecedorPessoaId
@@ -137,7 +160,7 @@ export async function analisarCadastro(params: {
     }
 
     if (!produtoId) {
-      if (modoDocumental) {
+      if (pularBloqueioVinculo) {
         critica = false
       } else {
         critica = true
@@ -170,7 +193,12 @@ export async function analisarCadastro(params: {
     itensAtualizados.push({ id: item.id, produtoId, vinculoModo, criticaCadastro: critica })
   }
 
-  if (modoDocumental && itensAtualizados.some((i) => !i.produtoId)) {
+  if (
+    modoDocumental &&
+    !exigirVinculoProduto &&
+    !finalidadePendente &&
+    itensAtualizados.some((i) => !i.produtoId)
+  ) {
     pushAchado({
       categoria: 'documental',
       severidade: 'aviso',

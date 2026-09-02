@@ -192,6 +192,7 @@ function buildNotaQuebradaFixture(): Record<string, unknown> {
     observacaoContato: null,
     pedidoCompraId: null,
     origemLancamento: null,
+    finalidadeEntrada: 'revenda',
     prazoPagamentoXml: null,
     prazoPagamentoTexto: null,
     modFrete: null,
