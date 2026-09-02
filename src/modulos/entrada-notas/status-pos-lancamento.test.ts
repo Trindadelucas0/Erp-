@@ -669,4 +669,13 @@ describe('definirFinalidadeEntrada', () => {
       servicoEntradaNotas.definirFinalidadeEntrada('c1', 'nota-1', 'revenda')
     ).rejects.toMatchObject({ statusCode: 400 })
   })
+
+  it('desmarcar em análise grava null e reanalisa', async () => {
+    ligarAnaliseSempreOk()
+    const fake = ligarRepositorioFake(notaEmAnalise({ finalidadeEntrada: 'revenda' }))
+
+    await servicoEntradaNotas.definirFinalidadeEntrada('c1', 'nota-1', null)
+
+    expect(fake.getEstado().finalidadeEntrada).toBe(null)
+  })
 })

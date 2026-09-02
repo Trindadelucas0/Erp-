@@ -1591,6 +1591,15 @@ function ConteudoDetalheEntrada() {
   const revendaHabilitada = Boolean(nota?.fornecedor?.tipoRevenda)
   const usoConsumoHabilitado =
     Boolean(nota?.fornecedor?.tipoConsumo) || Boolean(nota?.fornecedor?.tipoPrestadorServico)
+  function escolherFinalidade(valor: 'revenda' | 'uso_consumo') {
+    const habilitada = valor === 'revenda' ? revendaHabilitada : usoConsumoHabilitado
+    if (!podeEditarFinalidade || !habilitada || acao) return
+    if (nota?.finalidadeEntrada === valor) {
+      void postAcao('/finalidade-entrada', { finalidade: null })
+      return
+    }
+    void postAcao('/finalidade-entrada', { finalidade: valor })
+  }
   const exigirVinculoDocumental =
     modoDocumentalNfe && Boolean(nota?.fornecedor?.exigirItensEntrada)
   const serieNumero = nota ? extrairSerieNumeroChave(nota.chaveNfe) : { serie: null, numero: null }
@@ -2010,21 +2019,22 @@ function ConteudoDetalheEntrada() {
             <p className="text-sm font-medium">Finalidade da entrada</p>
             <p className="text-xs text-muted-foreground">
               Vale para a nota inteira. O cadastro do fornecedor só habilita as opções — é preciso
-              marcar aqui, mesmo se só uma estiver disponível.
+              marcar aqui, mesmo se só uma estiver disponível. Clique de novo na opção marcada para
+              desmarcar.
             </p>
             {!nota.fornecedor && (
               <p className="text-sm text-amber-700 dark:text-amber-400">
                 Vincule o fornecedor para escolher a finalidade.
               </p>
             )}
-            <fieldset className="space-y-1" disabled={!podeEditarFinalidade}>
+            <fieldset className="space-y-1" disabled={!podeEditarFinalidade || acao}>
               <legend className="sr-only">Finalidade da entrada</legend>
               <div className="flex flex-wrap gap-4 text-sm">
                 <label
                   className={`flex items-center gap-1.5 ${
                     !revendaHabilitada || !podeEditarFinalidade
                       ? 'text-muted-foreground'
-                      : ''
+                      : 'cursor-pointer'
                   }`}
                 >
                   <input
@@ -2032,11 +2042,9 @@ function ConteudoDetalheEntrada() {
                     name="finalidade-entrada"
                     value="revenda"
                     checked={nota.finalidadeEntrada === 'revenda'}
-                    disabled={!podeEditarFinalidade || !revendaHabilitada}
-                    onChange={() => {
-                      if (!podeEditarFinalidade || !revendaHabilitada) return
-                      void postAcao('/finalidade-entrada', { finalidade: 'revenda' })
-                    }}
+                    disabled={!podeEditarFinalidade || !revendaHabilitada || acao}
+                    onClick={() => escolherFinalidade('revenda')}
+                    onChange={() => undefined}
                   />
                   Revenda
                 </label>
@@ -2044,7 +2052,7 @@ function ConteudoDetalheEntrada() {
                   className={`flex items-center gap-1.5 ${
                     !usoConsumoHabilitado || !podeEditarFinalidade
                       ? 'text-muted-foreground'
-                      : ''
+                      : 'cursor-pointer'
                   }`}
                 >
                   <input
@@ -2052,11 +2060,9 @@ function ConteudoDetalheEntrada() {
                     name="finalidade-entrada"
                     value="uso_consumo"
                     checked={nota.finalidadeEntrada === 'uso_consumo'}
-                    disabled={!podeEditarFinalidade || !usoConsumoHabilitado}
-                    onChange={() => {
-                      if (!podeEditarFinalidade || !usoConsumoHabilitado) return
-                      void postAcao('/finalidade-entrada', { finalidade: 'uso_consumo' })
-                    }}
+                    disabled={!podeEditarFinalidade || !usoConsumoHabilitado || acao}
+                    onClick={() => escolherFinalidade('uso_consumo')}
+                    onChange={() => undefined}
                   />
                   Uso e Consumo
                 </label>

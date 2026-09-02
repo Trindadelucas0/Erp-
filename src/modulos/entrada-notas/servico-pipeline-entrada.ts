@@ -2896,12 +2896,12 @@ async function definirCfopEntradaCte(companyId: string, cteId: string, cfopId: s
 
 /**
  * Finalidade da NFe 55 (Revenda vs Uso e Consumo). Clique explícito; reanalisa.
- * Recusa após lançamento. Flags do fornecedor só habilitam a opção.
+ * `null` desmarca (volta ao vazio). Recusa após lançamento. Flags só habilitam a opção.
  */
 async function definirFinalidadeEntrada(
   companyId: string,
   notaId: string,
-  finalidade: FinalidadeEntrada
+  finalidade: FinalidadeEntrada | null
 ) {
   const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
@@ -2920,14 +2920,16 @@ async function definirFinalidadeEntrada(
       400
     )
   }
-  const flags = await obterFlagsFornecedorEntrada(companyId, nota)
-  if (!finalidadeHabilitadaNoFornecedor(finalidade, flags)) {
-    throw new ErroDaAplicacao(
-      finalidade === 'revenda'
-        ? 'O cadastro do fornecedor não habilita Revenda. Marque o tipo Revenda no cadastro.'
-        : 'O cadastro do fornecedor não habilita Uso e Consumo. Marque Consumo ou Prestador de serviço no cadastro.',
-      400
-    )
+  if (finalidade !== null) {
+    const flags = await obterFlagsFornecedorEntrada(companyId, nota)
+    if (!finalidadeHabilitadaNoFornecedor(finalidade, flags)) {
+      throw new ErroDaAplicacao(
+        finalidade === 'revenda'
+          ? 'O cadastro do fornecedor não habilita Revenda. Marque o tipo Revenda no cadastro.'
+          : 'O cadastro do fornecedor não habilita Uso e Consumo. Marque Consumo ou Prestador de serviço no cadastro.',
+        400
+      )
+    }
   }
 
   await repositorioEntradaNotas.atualizarNota(notaId, { finalidadeEntrada: finalidade })

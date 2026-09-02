@@ -47,9 +47,9 @@ export const esquemaDefinirCfopEntradaNota = z.object({
   cfopId: z.string().uuid(),
 })
 
-/** Finalidade da NFe 55 (Revenda vs Uso e Consumo) — clique explícito. */
+/** Finalidade da NFe 55 (Revenda vs Uso e Consumo) — clique explícito; null desmarca. */
 export const esquemaDefinirFinalidadeEntrada = z.object({
-  finalidade: z.enum(['revenda', 'uso_consumo']),
+  finalidade: z.enum(['revenda', 'uso_consumo']).nullable(),
 })
 
 export const esquemaContatoFornecedor = z.object({
