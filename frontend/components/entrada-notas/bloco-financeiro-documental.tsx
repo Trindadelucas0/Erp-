@@ -41,9 +41,20 @@ type Props = {
   titulosGerados?: boolean
   somenteLeitura?: boolean
   acao?: boolean
+  variante?: 'servico' | 'uso_consumo'
   onPlanoChange: (id: string) => void
   onParcelaChange: (index: number, campo: 'vencimento' | 'valor', valor: string) => void
   onSalvar: () => void
+}
+
+function formatarRotuloPlano(plano: {
+  codigo?: string | null
+  nome?: string | null
+  descricao?: string | null
+} | null): string {
+  if (!plano) return '—'
+  const nome = plano.nome || plano.descricao || ''
+  return `${plano.codigo ?? ''} ${nome}`.trim() || '—'
 }
 
 function formatarMoeda(n: number | null | undefined): string {
@@ -68,6 +79,7 @@ export function BlocoFinanceiroDocumental({
   titulosGerados,
   somenteLeitura,
   acao,
+  variante = 'servico',
   onPlanoChange,
   onParcelaChange,
   onSalvar,
@@ -77,7 +89,10 @@ export function BlocoFinanceiroDocumental({
   return (
     <CardPadrao titulo="Financeiro / títulos a gerar">
       <p className="mb-3 text-xs text-muted-foreground">
-        {rotuloOrigemPlano(previa?.origemPlano ?? null)} Contas a pagar é gerado ao consolidar.
+        {rotuloOrigemPlano(previa?.origemPlano ?? null)}{' '}
+        {variante === 'uso_consumo'
+          ? 'Uso e consumo / despesa: Contas a pagar é gerado ao consolidar.'
+          : 'Contas a pagar é gerado ao consolidar.'}
       </p>
 
       {previa && previa.bloqueios.length > 0 && !somenteLeitura && (
@@ -118,7 +133,7 @@ export function BlocoFinanceiroDocumental({
                   <td className="px-3 py-2 tabular-nums">{formatarMoeda(p.valor)}</td>
                   <td className="px-3 py-2">
                     {p.planoFinanceiro
-                      ? `${p.planoFinanceiro.codigo} ${p.planoFinanceiro.nome}`
+                      ? formatarRotuloPlano(p.planoFinanceiro)
                       : '—'}
                   </td>
                   <td className="px-3 py-2">{p.tipo}</td>
@@ -206,7 +221,7 @@ export function BlocoFinanceiroDocumental({
                         )}
                       </td>
                       <td className="px-3 py-2 text-xs">
-                        {plano ? `${plano.codigo ?? ''} ${plano.nome}`.trim() : '—'}
+                        {formatarRotuloPlano(plano)}
                       </td>
                       <td className="px-3 py-2">Duplicata</td>
                       <td className="px-3 py-2">

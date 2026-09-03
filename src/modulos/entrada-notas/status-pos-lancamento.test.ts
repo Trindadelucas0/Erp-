@@ -19,6 +19,7 @@ vi.mock('./repositorio-entrada-notas.js', () => ({
     mapaSugestaoCfopEntradaPorCodigo: vi.fn().mockResolvedValue(new Map()),
     mapaCodigoOriginalPorProduto: vi.fn().mockResolvedValue(new Map()),
     listarPedidosAbertosFornecedor: vi.fn().mockResolvedValue([]),
+    buscarCfopEntradaAtivo: vi.fn(),
   },
 }))
 
@@ -42,6 +43,10 @@ vi.mock('../estoque/servico-estoque.js', () => ({
     obterResumoEntradaNotaFiscal: vi.fn(),
     aplicarEntradaNotaFiscal: vi.fn(),
     registrarMovimentoEstoque: vi.fn(),
+    obterItensBloqueadosDivergencia: vi.fn().mockResolvedValue({
+      itens: [],
+      totais: { itens: 0, aindaBloqueados: 0, desbloqueados: 0 },
+    }),
   },
 }))
 
@@ -96,6 +101,9 @@ vi.mock('../contas-a-pagar/resolver-plano-financeiro-entrada.js', () => ({
 vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({
   clientePrisma: {
     produto: { findFirst: vi.fn() },
+    planoFinanceiro: {
+      findFirst: vi.fn().mockResolvedValue({ id: 'plano-1', codigo: '2.1', nome: 'Despesa' }),
+    },
     despesaEntradaDocumento: { upsert: vi.fn() },
     contaPagar: { findMany: vi.fn().mockResolvedValue([]) },
   },
@@ -107,6 +115,7 @@ import { analisarFiscalItens } from './analise-fiscal/analisar-fiscal-itens.js'
 import { analisarNegociacao } from './analise-negociacao/analisar-negociacao.js'
 import { servicoEntradaNotas } from './servico-pipeline-entrada.js'
 import { gerarTitulosContasPagarDaEntrada } from '../contas-a-pagar/gerar-titulos-entrada.js'
+import { servicoDeEstoque } from '../estoque/servico-estoque.js'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 
 function itemComProduto(produtoId: string, quantidade: number, overrides: Record<string, unknown> = {}) {
@@ -340,7 +349,44 @@ describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)'
     expect(gerarTitulosContasPagarDaEntrada).not.toHaveBeenCalled()
   })
 
-  it('sem finalidade em NFe 55: Cadastro bloqueia e não auto-lança', async () => {
+  it('sem finalidade em NFe 55 com dois tipos: Cadastro bloqueia e não auto-lança', async () => {
+    ligarAnaliseSempreOk()
+    const fake = ligarRepositorioFake(
+      notaEmAnalise({
+        finalidadeEntrada: null,
+        fornecedorPessoa: {
+          id: 'pessoa-a',
+          nome: 'Fornecedor A',
+          cnpj: '111',
+          nomeFantasia: null,
+          papeis: [
+            {
+              dadosFornecedor: {
+                tipoRevenda: true,
+                tipoConsumo: true,
+                tipoPrestadorServico: false,
+                exigirItensEntrada: false,
+                permitirVinculoManual: false,
+                regraRateioFrete: null,
+              },
+            },
+          ],
+        },
+      })
+    )
+
+    const detalhe = await servicoEntradaNotas.analisarNota('c1', 'nota-1', {
+      importarFocusSeAusente: false,
+    })
+
+    expect(fake.getEstado().finalidadeEntrada).toBe(null)
+    expect(fake.getEstado().statusEntrada).toBe('em_analise')
+    expect(detalhe.nota.statusEntrada).toBe('em_analise')
+    expect(detalhe.nota.analise?.cadastro?.status).toBe('bloqueante')
+    expect(String(detalhe.nota.analise?.cadastro?.bloqueios?.[0] ?? '')).toMatch(/finalidade/i)
+  })
+
+  it('só Revenda no cadastro sem finalidade → não pré-marca; Cadastro bloqueia', async () => {
     ligarAnaliseSempreOk()
     const fake = ligarRepositorioFake(notaEmAnalise({ finalidadeEntrada: null }))
 
@@ -348,10 +394,49 @@ describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)'
       importarFocusSeAusente: false,
     })
 
+    expect(fake.getEstado().finalidadeEntrada).toBe(null)
+    expect(fake.getEstado().statusEntrada).toBe('em_analise')
+    expect(detalhe.nota.analise?.cadastro?.status).toBe('bloqueante')
+    expect(String(detalhe.nota.analise?.cadastro?.bloqueios?.[0] ?? '')).toMatch(/finalidade/i)
+  })
+
+  it('só Consumo no cadastro sem finalidade → não pré-marca; Cadastro bloqueia (não entra no dossiê)', async () => {
+    ligarAnaliseSempreOk()
+    const fake = ligarRepositorioFake(
+      notaEmAnalise({
+        finalidadeEntrada: null,
+        fornecedorPessoa: {
+          id: 'pessoa-a',
+          nome: 'Fornecedor A',
+          cnpj: '111',
+          nomeFantasia: null,
+          papeis: [
+            {
+              dadosFornecedor: {
+                tipoRevenda: false,
+                tipoConsumo: true,
+                tipoPrestadorServico: false,
+                exigirItensEntrada: false,
+                permitirVinculoManual: false,
+                regraRateioFrete: null,
+              },
+            },
+          ],
+        },
+      })
+    )
+
+    const detalhe = await servicoEntradaNotas.analisarNota('c1', 'nota-1', {
+      importarFocusSeAusente: false,
+    })
+
+    expect(fake.getEstado().finalidadeEntrada).toBe(null)
     expect(fake.getEstado().statusEntrada).toBe('em_analise')
     expect(detalhe.nota.statusEntrada).toBe('em_analise')
     expect(detalhe.nota.analise?.cadastro?.status).toBe('bloqueante')
     expect(String(detalhe.nota.analise?.cadastro?.bloqueios?.[0] ?? '')).toMatch(/finalidade/i)
+    expect(analisarFiscalItens).not.toHaveBeenCalled()
+    expect(analisarNegociacao).not.toHaveBeenCalled()
   })
 
   it('Revenda+Consumo no fornecedor sem finalidade → não assume documental nem lança', async () => {
@@ -381,6 +466,7 @@ describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)'
     )
 
     await servicoEntradaNotas.analisarNota('c1', 'nota-1', { importarFocusSeAusente: false })
+    expect(fake.getEstado().finalidadeEntrada).toBe(null)
     expect(fake.getEstado().statusEntrada).toBe('em_analise')
   })
 
@@ -389,6 +475,7 @@ describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)'
     const fake = ligarRepositorioFake(
       notaEmAnalise({
         finalidadeEntrada: 'uso_consumo',
+        cfopEntradaId: 'cfop-ent',
         fornecedorPessoa: {
           id: 'pessoa-a',
           nome: 'Fornecedor A',
@@ -416,9 +503,10 @@ describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)'
 
     expect(fake.getEstado().statusEntrada).toBe('pronta_para_consolidar')
     expect(detalhe.nota.statusEntrada).toBe('pronta_para_consolidar')
+    expect(analisarFiscalItens).not.toHaveBeenCalled()
   })
 
-  it('finalidade revenda → aguardando_chegada mesmo com só Consumo no cadastro', async () => {
+  it('finalidade revenda inválida + só Consumo no cadastro → limpa (não pré-marca uso_consumo)', async () => {
     ligarAnaliseSempreOk()
     const fake = ligarRepositorioFake(
       notaEmAnalise({
@@ -448,8 +536,11 @@ describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)'
       importarFocusSeAusente: false,
     })
 
-    expect(fake.getEstado().statusEntrada).toBe('aguardando_chegada')
-    expect(detalhe.nota.statusEntrada).toBe('aguardando_chegada')
+    expect(fake.getEstado().finalidadeEntrada).toBe(null)
+    expect(fake.getEstado().statusEntrada).toBe('em_analise')
+    expect(detalhe.nota.statusEntrada).toBe('em_analise')
+    expect(detalhe.nota.analise?.cadastro?.status).toBe('bloqueante')
+    expect(analisarFiscalItens).not.toHaveBeenCalled()
   })
 
   it('exigirItensEntrada + uso_consumo → ainda documental (pronta_para_consolidar)', async () => {
@@ -457,6 +548,7 @@ describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)'
     const fake = ligarRepositorioFake(
       notaEmAnalise({
         finalidadeEntrada: 'uso_consumo',
+        cfopEntradaId: 'cfop-ent',
         fornecedorPessoa: {
           id: 'pessoa-a',
           nome: 'Fornecedor A',
@@ -515,6 +607,97 @@ describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)'
 
     expect(fake.getEstado().statusEntrada).toBe('em_analise')
     expect(detalhe.nota.statusEntrada).toBe('em_analise')
+  })
+
+  it('definirCfopEntradaNota em NFe uso_consumo libera para pronta_para_consolidar (sem fiscal por item)', async () => {
+    ligarAnaliseSempreOk()
+    const fake = ligarRepositorioFake(
+      notaEmAnalise({
+        finalidadeEntrada: 'uso_consumo',
+        cfopEntradaId: null,
+        itens: [itemComProduto('prod-b', 4, { cfopEntradaId: null })],
+        fornecedorPessoa: {
+          id: 'pessoa-a',
+          nome: 'Fornecedor A',
+          cnpj: '111',
+          nomeFantasia: null,
+          papeis: [
+            {
+              dadosFornecedor: {
+                tipoRevenda: true,
+                tipoConsumo: true,
+                tipoPrestadorServico: false,
+                exigirItensEntrada: false,
+                permitirVinculoManual: false,
+                regraRateioFrete: null,
+              },
+            },
+          ],
+        },
+      })
+    )
+    vi.mocked(repositorioEntradaNotas.buscarCfopEntradaAtivo).mockResolvedValue({
+      id: 'cfop-doc',
+      codigo: '1556',
+      nome: 'Compra para uso e consumo',
+      subtipoCfop: null,
+    } as never)
+
+    const detalhe = await servicoEntradaNotas.definirCfopEntradaNota('c1', 'nota-1', 'cfop-doc')
+
+    expect(fake.getEstado().cfopEntradaId).toBe('cfop-doc')
+    expect(fake.getEstado().statusEntrada).toBe('pronta_para_consolidar')
+    expect(detalhe.nota.statusEntrada).toBe('pronta_para_consolidar')
+    expect(analisarFiscalItens).not.toHaveBeenCalled()
+  })
+
+  it('lancar consolidar NFe uso_consumo gera título e não mexe estoque', async () => {
+    const fake = ligarRepositorioFake(
+      notaEmAnalise({
+        finalidadeEntrada: 'uso_consumo',
+        statusEntrada: 'pronta_para_consolidar',
+        etapaAtual: 'lancamento',
+        cfopEntradaId: 'cfop-ent',
+        planoFinanceiroId: 'plano-1',
+        valorTotal: 2431.5,
+        parcelasFinanceiras: [{ numeroDocumento: null, vencimento: '2026-09-10', valor: 2431.5 }],
+        fornecedorPessoa: {
+          id: 'pessoa-a',
+          nome: 'Fornecedor A',
+          cnpj: '111',
+          nomeFantasia: null,
+          papeis: [
+            {
+              dadosFornecedor: {
+                tipoRevenda: true,
+                tipoConsumo: true,
+                tipoPrestadorServico: false,
+                exigirItensEntrada: false,
+                permitirVinculoManual: false,
+                regraRateioFrete: null,
+              },
+            },
+          ],
+        },
+      })
+    )
+    vi.mocked(gerarTitulosContasPagarDaEntrada).mockResolvedValue({
+      gerados: 1,
+      contas: [{ codigo: 'CAP-1', origem: 'nfe' }],
+    } as never)
+
+    const resultado = await servicoEntradaNotas.lancar(
+      'c1',
+      'nota-1',
+      'user-1',
+      'consolidar',
+      'senha-ok'
+    )
+
+    expect(fake.getEstado().statusEntrada).toBe('entrada_consolidada')
+    expect(resultado.nota.statusEntrada).toBe('entrada_consolidada')
+    expect(gerarTitulosContasPagarDaEntrada).toHaveBeenCalled()
+    expect(servicoDeEstoque.aplicarEntradaNotaFiscal).not.toHaveBeenCalled()
   })
 
   it('lancar() manual: NFe 55 com produto cai em aguardando_chegada (com ou sem pedido)', async () => {
@@ -670,7 +853,38 @@ describe('definirFinalidadeEntrada', () => {
     ).rejects.toMatchObject({ statusCode: 400 })
   })
 
-  it('desmarcar em análise grava null e reanalisa', async () => {
+  it('desmarcar em análise com dois tipos grava null e reanalisa', async () => {
+    ligarAnaliseSempreOk()
+    const fake = ligarRepositorioFake(
+      notaEmAnalise({
+        finalidadeEntrada: 'revenda',
+        fornecedorPessoa: {
+          id: 'pessoa-a',
+          nome: 'Fornecedor A',
+          cnpj: '111',
+          nomeFantasia: null,
+          papeis: [
+            {
+              dadosFornecedor: {
+                tipoRevenda: true,
+                tipoConsumo: true,
+                tipoPrestadorServico: false,
+                exigirItensEntrada: false,
+                permitirVinculoManual: false,
+                regraRateioFrete: null,
+              },
+            },
+          ],
+        },
+      })
+    )
+
+    await servicoEntradaNotas.definirFinalidadeEntrada('c1', 'nota-1', null)
+
+    expect(fake.getEstado().finalidadeEntrada).toBe(null)
+  })
+
+  it('desmarcar com único tipo no cadastro → permanece null (não pré-marca de novo)', async () => {
     ligarAnaliseSempreOk()
     const fake = ligarRepositorioFake(notaEmAnalise({ finalidadeEntrada: 'revenda' }))
 

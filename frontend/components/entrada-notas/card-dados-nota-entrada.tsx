@@ -117,7 +117,7 @@ export function CardDadosNotaEntrada({
         </div>
       </dl>
 
-      {nota.tipoDocumento === 'nfse' && onDefinirCfop && (
+      {onDefinirCfop && (
         <div className="mt-4 rounded-md border border-border/60 p-3">
           <p className="mb-2 text-sm font-medium">CFOP de entrada</p>
           <CfopEntradaFreteCampos
@@ -126,6 +126,7 @@ export function CardDadosNotaEntrada({
             cfopsEntrada={cfopsEntrada}
             finalizada={!cfopEditavel}
             acao={acao}
+            exibirCfopXml={false}
             onDefinirCfopEntrada={onDefinirCfop}
           />
         </div>

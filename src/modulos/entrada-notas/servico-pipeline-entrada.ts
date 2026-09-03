@@ -61,6 +61,7 @@ import {
   extrairFlagsFornecedorDaNota,
   finalidadeHabilitadaNoFornecedor,
   MSG_FINALIDADE_ENTRADA,
+  resolverFinalidadePreMarcacao,
   resolverModoDocumentalEntrada,
   statusPermiteTrocaFinalidade,
   type FinalidadeEntrada,
@@ -192,6 +193,44 @@ async function obterFlagsFornecedorEntrada(
   }
   if (!pessoaId) return null
   return repositorioEntradaNotas.buscarFlagsFornecedorEntrada(pessoaId)
+}
+
+/**
+ * NFe 55 em análise: nunca pré-marca. Só limpa finalidade inválida para o cadastro.
+ * criarFornecedor / reanálise por CNPJ não grava finalidade.
+ */
+async function aplicarFinalidadePreMarcacao(
+  companyId: string,
+  nota: {
+    id: string
+    tipoDocumento?: string | null
+    statusEntrada: string
+    fornecedorPessoaId: string | null
+    finalidadeEntrada?: string | null
+    documentoEmitente: string | null
+    fornecedorPessoa?: {
+      papeis?: Array<{ dadosFornecedor?: FlagsFornecedorEntrada | null } | null>
+    } | null
+  },
+  flagsJaObtidas?: FlagsFornecedorEntrada | null
+): Promise<{ finalidade: string | null; alterou: boolean }> {
+  const nfe55 = nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento
+  const atual = (nota.finalidadeEntrada ?? null) as string | null
+  if (!nfe55 || !nota.fornecedorPessoaId || !statusPermiteTrocaFinalidade(nota.statusEntrada)) {
+    return { finalidade: atual, alterou: false }
+  }
+
+  const flags =
+    flagsJaObtidas !== undefined
+      ? flagsJaObtidas
+      : await obterFlagsFornecedorEntrada(companyId, nota)
+  const proxima = resolverFinalidadePreMarcacao(atual, flags)
+  if (proxima === undefined) {
+    return { finalidade: atual, alterou: false }
+  }
+
+  await repositorioEntradaNotas.atualizarNota(nota.id, { finalidadeEntrada: proxima })
+  return { finalidade: proxima, alterou: true }
 }
 
 /**
@@ -704,9 +743,12 @@ function pipelineProntoParaLancar(
     }
   }
   if (fiscalExigeCfopEntrada(analise.fiscal)) {
+    const doDocumento = (analise.fiscal.bloqueios ?? []).some((m) =>
+      /CFOP de entrada do documento/i.test(m)
+    )
     return {
       ok: false,
-      mensagem: MSG_CFOP_ENTRADA_ITEM,
+      mensagem: doDocumento ? MSG_CFOP_ENTRADA_DOCUMENTO : MSG_CFOP_ENTRADA_ITEM,
     }
   }
   if (!podeAvancarFiscal(analise.fiscal, criticasLiberadas)) {
@@ -855,9 +897,14 @@ async function statusPosLancamento(nota: {
 
 const ORDEM_ETAPAS: EtapaPipeline[] = ['frete', 'cadastro', 'fiscal', 'negociacao']
 
-/** Etapas de retorno válidas por tipo de documento (NFS-e/CTe só têm cadastro). */
-function etapasVoltarValidas(tipoDocumento: string | null | undefined): EtapaPipeline[] {
-  return tipoDocumento === 'nfse' || tipoDocumento === 'cte' ? ['cadastro'] : ORDEM_ETAPAS
+/** Etapas de retorno válidas: NFS-e / CT-e / NFe uso e consumo só têm cadastro. */
+function etapasVoltarValidas(
+  tipoDocumento: string | null | undefined,
+  finalidadeEntrada?: string | null
+): EtapaPipeline[] {
+  if (tipoDocumento === 'nfse' || tipoDocumento === 'cte') return ['cadastro']
+  if (finalidadeEntrada === 'uso_consumo') return ['cadastro']
+  return ORDEM_ETAPAS
 }
 
 /** Posição efetiva da nota no pipeline — finalizada conta como além do fim (permite voltar de qualquer etapa). */
@@ -907,7 +954,7 @@ async function voltarEtapa(
     )
   }
 
-  const etapasValidas = etapasVoltarValidas(nota.tipoDocumento)
+  const etapasValidas = etapasVoltarValidas(nota.tipoDocumento, nota.finalidadeEntrada)
   if (!etapasValidas.includes(etapaDestino)) {
     throw new ErroDaAplicacao(
       `Etapa "${etapaDestino}" não existe para este tipo de documento.`,
@@ -986,8 +1033,9 @@ async function voltarEtapa(
  * Roda o pipeline. Se tudo ok (ou críticas liberadas), lança automaticamente para contagem.
  */
 /**
- * Documental (NFS-e): só cadastro do emitente; sem fiscal de itens / PO / estoque.
- * Libera para contagem documental se cadastro ok.
+ * Documental (NFS-e e NFe 55 uso/consumo): só cadastro do emitente; sem frete,
+ * sem fiscal de itens / PO / estoque. CFOP no documento. Libera para consolidar
+ * se cadastro + CFOP ok.
  *
  * CTe: cadastro da transportadora + vínculo com NF-e (chave do XML). Não auto-lança
  * sozinho quando há chave referenciada — o frete entra na NF de mercadoria.
@@ -995,10 +1043,12 @@ async function voltarEtapa(
  * `importarFocusSeAusente` (default true): Reanalisar/BUSCAR batem Focus pela NF.
  * Abertura do detalhe passa false — só vínculo local.
  */
+type TipoPipelineDocumental = 'nfse' | 'cte' | 'uso_consumo'
+
 async function analisarNotaDocumental(
   companyId: string,
   notaId: string,
-  tipo: 'nfse' | 'cte',
+  tipo: TipoPipelineDocumental,
   opcoesDoc?: { importarFocusSeAusente?: boolean }
 ): Promise<{
   nota: Record<string, unknown>
@@ -1037,7 +1087,7 @@ async function analisarNotaDocumental(
     etapaAtual: 'servico',
   })
 
-  const rotulo = tipo === 'cte' ? 'CTe' : 'NFS-e'
+  const rotulo = tipo === 'cte' ? 'CTe' : tipo === 'uso_consumo' ? 'Uso e consumo' : 'NFS-e'
   const analise: AnaliseJson = {
     versao: 1,
     atualizadoEm: new Date().toISOString(),
@@ -1295,6 +1345,12 @@ async function analisarNota(
     })
   }
 
+  // NFe 55: uso/consumo segue o dossiê NFS-e (sem Frete / Fiscal por item).
+  const preDocumental = await aplicarFinalidadePreMarcacao(companyId, base)
+  if (preDocumental.finalidade === 'uso_consumo') {
+    return analisarNotaDocumental(companyId, notaId, 'uso_consumo')
+  }
+
   if (opcoes?.forcarReparseItens) {
     // Só reparseia quando o XML tem <det>; senão apagaria itens vindos do JSON Focus.
     const atual = await repositorioEntradaNotas.buscarNotaPorId(companyId, notaId)
@@ -1455,9 +1511,17 @@ async function analisarNota(
   // --- Cadastro ---
   const flagsFornecedor = await obterFlagsFornecedorEntrada(companyId, nota)
   const nfe55 = nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento
+  const preMarcacao = await aplicarFinalidadePreMarcacao(companyId, nota, flagsFornecedor)
+  if (preMarcacao.alterou) {
+    ;(nota as { finalidadeEntrada?: string | null }).finalidadeEntrada = preMarcacao.finalidade
+  }
+  const finalidadeEfetiva = preMarcacao.finalidade
+  if (finalidadeEfetiva === 'uso_consumo') {
+    return analisarNotaDocumental(companyId, notaId, 'uso_consumo')
+  }
   const modoDocumental = resolverModoDocumentalEntrada({
     tipoDocumento: nota.tipoDocumento,
-    finalidadeEntrada: nota.finalidadeEntrada,
+    finalidadeEntrada: finalidadeEfetiva,
   })
   const exigirVinculoProduto =
     modoDocumental && Boolean(flagsFornecedor?.exigirItensEntrada)
@@ -1468,7 +1532,7 @@ async function analisarNota(
     fornecedorPessoaId: nota.fornecedorPessoaId,
     modoDocumental,
     exigirVinculoProduto,
-    finalidadePendente: nfe55 && !nota.finalidadeEntrada,
+    finalidadePendente: nfe55 && !finalidadeEfetiva,
     itens: nota.itens.map((i) => ({
       id: i.id,
       nItem: i.nItem,
@@ -1494,7 +1558,7 @@ async function analisarNota(
   })
 
   analise.cadastro = cadastro.resultado
-  if (nfe55 && !nota.finalidadeEntrada) {
+  if (nfe55 && !finalidadeEfetiva) {
     const bloqueios = [...(analise.cadastro.bloqueios ?? [])]
     if (!bloqueios.includes(MSG_FINALIDADE_ENTRADA)) {
       bloqueios.unshift(MSG_FINALIDADE_ENTRADA)
@@ -2110,6 +2174,18 @@ async function obterDetalhe(
     if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
   }
 
+  // Só limpa finalidade inválida (nunca pré-marca tipo único).
+  if (
+    statusesAbertos.includes(nota.statusEntrada) &&
+    (nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento) &&
+    nota.fornecedorPessoaId
+  ) {
+    const preMarcacao = await aplicarFinalidadePreMarcacao(companyId, nota)
+    if (preMarcacao.alterou) {
+      return analisarNota(companyId, notaId, { importarFocusSeAusente: false })
+    }
+  }
+
   // Recalcula/limpa frete rateado ao abrir detalhe (evita R$ 0,00 stale / rateio precoce).
   const statusAbertoRateio = ['pendente', 'em_analise', 'stand_by'].includes(nota.statusEntrada)
   if (
@@ -2670,9 +2746,14 @@ async function recalcularSomenteCadastro(companyId: string, notaId: string) {
 
   const flagsFornecedor = await obterFlagsFornecedorEntrada(companyId, nota)
   const nfe55 = nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento
+  const preMarcacao = await aplicarFinalidadePreMarcacao(companyId, nota, flagsFornecedor)
+  if (preMarcacao.alterou) {
+    ;(nota as { finalidadeEntrada?: string | null }).finalidadeEntrada = preMarcacao.finalidade
+  }
+  const finalidadeEfetiva = preMarcacao.finalidade
   const modoDocumental = resolverModoDocumentalEntrada({
     tipoDocumento: nota.tipoDocumento,
-    finalidadeEntrada: nota.finalidadeEntrada,
+    finalidadeEntrada: finalidadeEfetiva,
   })
   const exigirVinculoProduto =
     modoDocumental && Boolean(flagsFornecedor?.exigirItensEntrada)
@@ -2683,7 +2764,7 @@ async function recalcularSomenteCadastro(companyId: string, notaId: string) {
     fornecedorPessoaId: nota.fornecedorPessoaId,
     modoDocumental,
     exigirVinculoProduto,
-    finalidadePendente: nfe55 && !nota.finalidadeEntrada,
+    finalidadePendente: nfe55 && !finalidadeEfetiva,
     itens: nota.itens.map((i) => ({
       id: i.id,
       nItem: i.nItem,
@@ -2704,7 +2785,7 @@ async function recalcularSomenteCadastro(companyId: string, notaId: string) {
   }
 
   let resultadoCadastro = cadastro.resultado
-  if (nfe55 && !nota.finalidadeEntrada) {
+  if (nfe55 && !finalidadeEfetiva) {
     const bloqueios = [...(resultadoCadastro.bloqueios ?? [])]
     if (!bloqueios.includes(MSG_FINALIDADE_ENTRADA)) {
       bloqueios.unshift(MSG_FINALIDADE_ENTRADA)
@@ -2895,8 +2976,9 @@ async function definirCfopEntradaCte(companyId: string, cteId: string, cfopId: s
 }
 
 /**
- * Finalidade da NFe 55 (Revenda vs Uso e Consumo). Clique explícito; reanalisa.
- * `null` desmarca (volta ao vazio). Recusa após lançamento. Flags só habilitam a opção.
+ * Finalidade da NFe 55 (Revenda vs Uso e Consumo). Sempre clique do operador;
+ * `null` desmarca mesmo com tipo único. criarFornecedor / reanálise por CNPJ
+ * não grava finalidade. Recusa após lançamento. Flags só habilitam opções.
  */
 async function definirFinalidadeEntrada(
   companyId: string,
@@ -2961,6 +3043,9 @@ async function definirCfopEntradaNota(companyId: string, notaId: string, cfopId:
   if (nota.statusEntrada === 'em_analise' || nota.statusEntrada === 'pendente') {
     if (nota.tipoDocumento === 'nfse') {
       return analisarNotaDocumental(companyId, notaId, 'nfse')
+    }
+    if (notaEhDocumentalSemEstoque(nota)) {
+      return analisarNotaDocumental(companyId, notaId, 'uso_consumo')
     }
     return analisarNota(companyId, notaId)
   }
@@ -3430,7 +3515,8 @@ async function lancar(
   }
   if (
     (nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento) &&
-    nota.itens.length === 0
+    nota.itens.length === 0 &&
+    !documentalSemEstoque
   ) {
     throw new ErroDaAplicacao(
       'Nota sem itens parseados do XML. Reimporte o XML ou complete o download na Focus antes de lançar.',

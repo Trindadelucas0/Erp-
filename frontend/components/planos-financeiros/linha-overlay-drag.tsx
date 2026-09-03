@@ -20,13 +20,13 @@ export function LinhaOverlayDrag({ linha, largura, expandidos }: Props) {
       <table className="w-full table-fixed text-sm">
         <colgroup>
           <col className="w-[4%]" />
-          <col className="w-[32%]" />
-          <col className="w-[9%]" />
-          <col className="w-[9%]" />
-          <col className="w-[9%]" />
-          <col className="w-[9%]" />
-          <col className="w-[20%]" />
-          <col className="w-[8%]" />
+          <col className="w-[26%]" />
+          <col className="w-[6%]" />
+          <col className="w-[10%]" />
+          <col className="w-[10%]" />
+          <col className="w-[16%]" />
+          <col className="w-[16%]" />
+          <col className="w-[12%]" />
         </colgroup>
         <tbody>
           <tr>

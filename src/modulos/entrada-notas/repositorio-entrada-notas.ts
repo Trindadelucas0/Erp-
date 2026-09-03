@@ -202,6 +202,7 @@ async function atualizarNota(
     recorrenciaFinanceiraId?: string | null
     planoFinanceiroId?: string | null
     parcelasFinanceiras?: Prisma.InputJsonValue | null
+    finalidadeEntrada?: string | null
   }
 ) {
   return clientePrisma.nfeRecebida.update({

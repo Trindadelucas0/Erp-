@@ -545,23 +545,23 @@ export function ArvorePlanosFinanceiros({
   const colunas = arrastarHabilitado ? (
     <>
       <col className="w-[4%]" />
-      <col className="w-[32%]" />
-      <col className="w-[9%]" />
-      <col className="w-[9%]" />
-      <col className="w-[9%]" />
-      <col className="w-[9%]" />
-      <col className="w-[20%]" />
-      <col className="w-[8%]" />
+      <col className="w-[26%]" />
+      <col className="w-[6%]" />
+      <col className="w-[10%]" />
+      <col className="w-[10%]" />
+      <col className="w-[16%]" />
+      <col className="w-[16%]" />
+      <col className="w-[12%]" />
     </>
   ) : (
     <>
-      <col className="w-[36%]" />
-      <col className="w-[9%]" />
-      <col className="w-[9%]" />
-      <col className="w-[9%]" />
-      <col className="w-[9%]" />
-      <col className="w-[20%]" />
-      <col className="w-[8%]" />
+      <col className="w-[30%]" />
+      <col className="w-[6%]" />
+      <col className="w-[10%]" />
+      <col className="w-[10%]" />
+      <col className="w-[16%]" />
+      <col className="w-[16%]" />
+      <col className="w-[12%]" />
     </>
   )
 
@@ -583,7 +583,7 @@ export function ArvorePlanosFinanceiros({
       : undefined
 
   const tabela = (
-    <table ref={refTabela} className="w-full min-w-[720px] table-fixed text-sm">
+    <table ref={refTabela} className="w-full min-w-[1100px] table-fixed text-sm">
       <colgroup>{colunas}</colgroup>
       <thead>
         <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
@@ -598,6 +598,7 @@ export function ArvorePlanosFinanceiros({
               ordenacao={ordenacao}
               onOrdenar={alternarOrdenacao}
               alinhamento="center"
+              quebrarTexto
             />
           ))}
           <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Situação" coluna="situacao" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />

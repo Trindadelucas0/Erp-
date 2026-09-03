@@ -24,6 +24,7 @@ import {
   ComboboxPlanoFinanceiro,
   type PlanoFinanceiroOpcao,
 } from '@/components/contas-a-pagar/combobox-plano-financeiro'
+import { mapearPlanoFinanceiroOpcao } from '@/lib/contas-a-pagar'
 import { SecaoFormularioErp } from '@/components/compartilhado/secao-formulario-erp'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { TituloPagina } from '@/components/ui/titulo-pagina'
@@ -123,13 +124,7 @@ export function ConteudoDaPaginaCfops() {
       })
       const listaPlanos = data.planos ?? data ?? []
       setPlanosFinanceiros(
-        (Array.isArray(listaPlanos) ? listaPlanos : []).map(
-          (p: { id: string; nome?: string; descricao?: string; codigo: string }) => ({
-            id: p.id,
-            nome: p.nome ?? p.descricao ?? p.codigo,
-            codigo: p.codigo,
-          })
-        )
+        (Array.isArray(listaPlanos) ? listaPlanos : []).map(mapearPlanoFinanceiroOpcao)
       )
     } catch {
       setPlanosFinanceiros([])

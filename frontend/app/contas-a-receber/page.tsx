@@ -14,6 +14,7 @@ import { Modal } from '@/components/ui/modal'
 import { Abas } from '@/components/ui/abas'
 import { LinhasSkeletonTabela } from '@/components/ui/linhas-skeleton-tabela'
 import { ComboboxPlanoFinanceiro } from '@/components/contas-a-pagar/combobox-plano-financeiro'
+import { mapearPlanoFinanceiroOpcao } from '@/lib/contas-a-pagar'
 import { FormularioContaReceber } from '@/components/contas-a-receber/formulario-conta-receber'
 import { ComboboxPessoa } from '@/components/pedidos-compra/combobox-pessoa'
 import { TelaBaixasContasAReceber } from '@/components/contas-a-receber/tela-baixas-contas-a-receber'
@@ -115,13 +116,7 @@ function ConteudoContasAReceber() {
       )
       const listaPlanos = resPlanos.data.planos ?? resPlanos.data ?? []
       setPlanos(
-        (Array.isArray(listaPlanos) ? listaPlanos : []).map(
-          (p: { id: string; nome?: string; descricao?: string; codigo: string }) => ({
-            id: p.id,
-            nome: p.nome ?? p.descricao ?? p.codigo,
-            codigo: p.codigo,
-          })
-        )
+        (Array.isArray(listaPlanos) ? listaPlanos : []).map(mapearPlanoFinanceiroOpcao)
       )
     } catch {
       // catálogos opcionais na tela

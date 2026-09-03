@@ -41,14 +41,19 @@ type Props = {
 const LIMITE = 80
 const ALTURA_MAXIMA_LISTA = 240
 
+function nomePlano(p: PlanoFinanceiroOpcao): string {
+  return p.nome || p.descricao || p.codigo || ''
+}
+
 function rotuloPlano(p: PlanoFinanceiroOpcao): string {
-  return p.codigo ? `${p.codigo} ${p.nome}` : p.nome
+  const nome = nomePlano(p)
+  return p.codigo ? `${p.codigo} ${nome}` : nome
 }
 
 function filtrarPlanos(planos: PlanoFinanceiroOpcao[], termo: string) {
   if (!termo.trim()) return planos.slice(0, LIMITE)
   return planos
-    .filter((p) => textosContemTodosTermos([p.codigo ?? '', p.nome], termo))
+    .filter((p) => textosContemTodosTermos([p.codigo ?? '', nomePlano(p)], termo))
     .slice(0, LIMITE)
 }
 

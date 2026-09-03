@@ -12,7 +12,9 @@ type Props = {
   acao?: boolean
   financeiroCompleto?: boolean
   cadastroBloqueante?: boolean
-  finalizada?: boolean
+  /** Só `entrada_consolidada`. `pronta_para_consolidar` continua pedindo senha. */
+  jaConsolidada?: boolean
+  variante?: 'servico' | 'uso_consumo'
 }
 
 export function AcoesConsolidarDocumental({
@@ -23,9 +25,10 @@ export function AcoesConsolidarDocumental({
   acao,
   financeiroCompleto,
   cadastroBloqueante,
-  finalizada,
+  jaConsolidada,
+  variante = 'servico',
 }: Props) {
-  if (finalizada) {
+  if (jaConsolidada) {
     return (
       <CardPadrao titulo="Entrada consolidada">
         <p className="text-sm text-muted-foreground">
@@ -37,13 +40,14 @@ export function AcoesConsolidarDocumental({
 
   const podeConsolidar =
     !desabilitado && !acao && !cadastroBloqueante && financeiroCompleto && senha.trim().length > 0
+  const textoIntro =
+    variante === 'uso_consumo'
+      ? 'Uso e consumo / despesa — não movimenta estoque e não vai para contagem física. Informe a senha de gerente para consolidar e gerar os títulos a pagar.'
+      : 'Despesa/serviço — não movimenta estoque e não vai para contagem física. Informe a senha de gerente para consolidar e gerar os títulos a pagar.'
 
   return (
     <CardPadrao titulo="Consolidar entrada">
-      <p className="mb-3 text-sm text-muted-foreground">
-        Despesa/serviço — não movimenta estoque e não vai para contagem física. Informe a senha de
-        gerente para consolidar e gerar os títulos a pagar.
-      </p>
+      <p className="mb-3 text-sm text-muted-foreground">{textoIntro}</p>
 
       {cadastroBloqueante && (
         <p className="mb-3 text-sm text-amber-700 dark:text-amber-400">

@@ -153,6 +153,7 @@ async function listarParaCatalogo(
   return folhas.map((p) => ({
     id: p.id,
     codigo: p.codigo,
+    nome: p.nome,
     descricao: p.nome,
     tipo: p.tipo,
   }))

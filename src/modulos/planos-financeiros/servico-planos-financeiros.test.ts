@@ -5,6 +5,7 @@ vi.mock('./repositorio-planos-financeiros.js', () => ({
     buscarPorId: vi.fn(),
     contarFilhosAtivos: vi.fn(),
     alterarAtivo: vi.fn(),
+    listarFolhasAtivas: vi.fn(),
     mapear: vi.fn((plano: Record<string, unknown>) => plano),
   },
 }))
@@ -87,5 +88,34 @@ describe('servicoDePlanosFinanceiros.alterarStatus', () => {
     await expect(
       servicoDePlanosFinanceiros.alterarStatus('company-001', 'inexistente', false, 'user-001')
     ).rejects.toThrow('Plano financeiro não encontrado')
+  })
+})
+
+describe('servicoDePlanosFinanceiros.listarParaCatalogo', () => {
+  it('devolve nome e descricao iguais ao nome do banco', async () => {
+    vi.mocked(repositorioDePlanosFinanceiros.listarFolhasAtivas).mockResolvedValue([
+      {
+        ...planoBase,
+        codigo: '2.1.1',
+        nome: 'Material de escritório',
+        _count: { children: 0 },
+      } as never,
+    ])
+
+    const resultado = await servicoDePlanosFinanceiros.listarParaCatalogo(
+      'company-001',
+      undefined,
+      'despesa'
+    )
+
+    expect(resultado).toEqual([
+      {
+        id: 'plano-001',
+        codigo: '2.1.1',
+        nome: 'Material de escritório',
+        descricao: 'Material de escritório',
+        tipo: 'despesa',
+      },
+    ])
   })
 })

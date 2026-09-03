@@ -15,6 +15,8 @@ type Props = {
   onDefinirCfopEntrada: (cfopId: string) => void | Promise<void>
   /** Layout compacto para card de lista de CT-es */
   compacto?: boolean
+  /** false no dossiê NFS-e / uso e consumo — só CFOP de entrada da nota, sem rótulo de CT-e */
+  exibirCfopXml?: boolean
 }
 
 /**
@@ -28,8 +30,12 @@ export function CfopEntradaFreteCampos({
   acao,
   onDefinirCfopEntrada,
   compacto = false,
+  exibirCfopXml = true,
 }: Props) {
   const [trocando, setTrocando] = useState(false)
+  const rotuloSelect = exibirCfopXml
+    ? 'Selecionar CFOP de entrada do CT-e'
+    : 'Selecionar CFOP de entrada'
 
   const blocoEntrada = (
     <div className={compacto ? 'space-y-1' : undefined}>
@@ -62,7 +68,7 @@ export function CfopEntradaFreteCampos({
             className="h-8 rounded-md border bg-background px-2 text-xs"
             defaultValue={cfopEntrada?.id ?? ''}
             disabled={acao}
-            aria-label="Selecionar CFOP de entrada do CT-e"
+            aria-label={rotuloSelect}
             onChange={async (e) => {
               const cfopId = e.target.value
               if (!cfopId) return
@@ -84,6 +90,10 @@ export function CfopEntradaFreteCampos({
       )}
     </div>
   )
+
+  if (!exibirCfopXml) {
+    return blocoEntrada
+  }
 
   if (compacto) {
     return (

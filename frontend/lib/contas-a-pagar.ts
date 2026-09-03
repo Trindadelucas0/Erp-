@@ -1,6 +1,20 @@
 export type TipoContaPagar = 'duplicata' | 'tributos'
 export type TipoTributo = 'darf_simples' | 'darf_normal' | 'gps'
-export type PlanoFinanceiroOpcao = { id: string; nome: string; codigo?: string }
+export type PlanoFinanceiroOpcao = { id: string; nome: string; codigo?: string; descricao?: string }
+
+/** Normaliza item de GET /planos-financeiros (catálogo pode vir com nome e/ou descricao). */
+export function mapearPlanoFinanceiroOpcao(p: {
+  id: string
+  codigo?: string
+  nome?: string
+  descricao?: string
+}): PlanoFinanceiroOpcao {
+  return {
+    id: p.id,
+    nome: p.nome ?? p.descricao ?? p.codigo ?? '',
+    codigo: p.codigo,
+  }
+}
 
 export type ContaPagarLista = {
   id: string

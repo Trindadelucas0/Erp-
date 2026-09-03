@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   finalidadeHabilitadaNoFornecedor,
+  finalidadeUnicaDoFornecedor,
   inferirFinalidadeLegadoDasFlags,
+  resolverFinalidadePreMarcacao,
   resolverModoDocumentalEntrada,
   statusPermiteTrocaFinalidade,
 } from './resolver-modo-documental-entrada.js'
@@ -64,6 +66,63 @@ describe('finalidadeHabilitadaNoFornecedor', () => {
       finalidadeHabilitadaNoFornecedor('uso_consumo', { tipoPrestadorServico: true })
     ).toBe(true)
     expect(finalidadeHabilitadaNoFornecedor('uso_consumo', { tipoRevenda: true })).toBe(false)
+  })
+})
+
+describe('finalidadeUnicaDoFornecedor', () => {
+  it('só Revenda → revenda', () => {
+    expect(finalidadeUnicaDoFornecedor({ tipoRevenda: true })).toBe('revenda')
+    expect(
+      finalidadeUnicaDoFornecedor({
+        tipoRevenda: true,
+        tipoConsumo: false,
+        tipoPrestadorServico: false,
+      })
+    ).toBe('revenda')
+  })
+
+  it('só Consumo ou Prestador → uso_consumo', () => {
+    expect(finalidadeUnicaDoFornecedor({ tipoConsumo: true })).toBe('uso_consumo')
+    expect(finalidadeUnicaDoFornecedor({ tipoPrestadorServico: true })).toBe('uso_consumo')
+  })
+
+  it('os dois ou nenhum → null', () => {
+    expect(finalidadeUnicaDoFornecedor({ tipoRevenda: true, tipoConsumo: true })).toBe(null)
+    expect(
+      finalidadeUnicaDoFornecedor({ tipoRevenda: true, tipoPrestadorServico: true })
+    ).toBe(null)
+    expect(finalidadeUnicaDoFornecedor({})).toBe(null)
+    expect(finalidadeUnicaDoFornecedor(null)).toBe(null)
+  })
+})
+
+describe('resolverFinalidadePreMarcacao', () => {
+  it('null + único tipo → não grava (clique obrigatório)', () => {
+    expect(resolverFinalidadePreMarcacao(null, { tipoRevenda: true })).toBeUndefined()
+    expect(resolverFinalidadePreMarcacao(null, { tipoConsumo: true })).toBeUndefined()
+  })
+
+  it('null + dois tipos → não grava', () => {
+    expect(
+      resolverFinalidadePreMarcacao(null, { tipoRevenda: true, tipoConsumo: true })
+    ).toBeUndefined()
+  })
+
+  it('já marcada e ainda habilitada → não sobrescreve', () => {
+    expect(resolverFinalidadePreMarcacao('revenda', { tipoRevenda: true })).toBeUndefined()
+    expect(
+      resolverFinalidadePreMarcacao('revenda', { tipoRevenda: true, tipoConsumo: true })
+    ).toBeUndefined()
+  })
+
+  it('marcada inválida + único tipo → limpa (não pré-marca o único)', () => {
+    expect(resolverFinalidadePreMarcacao('revenda', { tipoConsumo: true })).toBe(null)
+  })
+
+  it('marcada inválida sem único → limpa', () => {
+    expect(
+      resolverFinalidadePreMarcacao('revenda', { tipoRevenda: false, tipoConsumo: false })
+    ).toBe(null)
   })
 })
 

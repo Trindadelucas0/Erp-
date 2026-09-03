@@ -40,6 +40,7 @@ import {
   formatarCodigoContaPagar,
   formatarDataBr,
   formatarMoedaBr,
+  mapearPlanoFinanceiroOpcao,
   rotuloStatusContaPagar,
   tituloVencido,
   validarFormContaPagar,
@@ -120,13 +121,7 @@ function ConteudoContasAPagar() {
       )
       const listaPlanos = resPlanos.data.planos ?? resPlanos.data ?? []
       setPlanos(
-        (Array.isArray(listaPlanos) ? listaPlanos : []).map(
-          (p: { id: string; nome?: string; descricao?: string; codigo: string }) => ({
-            id: p.id,
-            nome: p.nome ?? p.descricao ?? p.codigo,
-            codigo: p.codigo,
-          })
-        )
+        (Array.isArray(listaPlanos) ? listaPlanos : []).map(mapearPlanoFinanceiroOpcao)
       )
     } catch {
       // catálogos opcionais na tela

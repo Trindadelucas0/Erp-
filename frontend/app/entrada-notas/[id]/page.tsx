@@ -57,7 +57,7 @@ import {
   type ResumoPedidoCompra,
 } from '@/components/entrada-notas/tabela-pedido-divergencias'
 import { ComboboxPlanoFinanceiro } from '@/components/contas-a-pagar/combobox-plano-financeiro'
-import type { PlanoFinanceiroOpcao } from '@/lib/contas-a-pagar'
+import { mapearPlanoFinanceiroOpcao, type PlanoFinanceiroOpcao } from '@/lib/contas-a-pagar'
 import { extrairSerieNumeroChave, tituloAnaliseEntrada } from '@/lib/chave-acesso-nfe'
 import { gravarDeepLinkFornecedor } from '@/lib/fornecedor-deep-link'
 import { prepararImagemAteBytes } from '@/lib/comprimir-imagem-ate-bytes'
@@ -408,19 +408,31 @@ function statusAbaDeEtapa(etapa?: ResultadoEtapa | null): StatusDaAba {
   return 'idle'
 }
 
+/** Já saiu da análise para chegada/contagem/consolidada. `pronta_para_consolidar` NÃO entra — ainda pede senha. */
 function notaLiberadaOuConsolidada(status: string): boolean {
   return (
     status === 'aguardando_chegada' ||
     status === 'entrada_contagem' ||
     status === 'entrada_contagem_ok' ||
     status === 'entrada_contagem_divergente' ||
-    status === 'pronta_para_consolidar' ||
     status === 'entrada_consolidada'
   )
 }
 
+const MSG_AUTO_LANCAMENTO_DOCUMENTAL =
+  'Entrada automática concluída — pronta para consolidar (documental, sem contagem).'
+
+function notaDocumentalSemContagem(nota: {
+  tipoDocumento?: string | null
+  finalidadeEntrada?: string | null
+}): boolean {
+  return nota.tipoDocumento === 'nfse' || nota.finalidadeEntrada === 'uso_consumo'
+}
+
 function abasValidasParaNota(nota: DetalheNota): AbaId[] {
-  if (nota.tipoDocumento === 'nfse') return ['cadastro', 'lancamento']
+  if (nota.tipoDocumento === 'nfse' || nota.finalidadeEntrada === 'uso_consumo') {
+    return ['cadastro', 'lancamento']
+  }
   if (nota.tipoDocumento === 'cte') return ['cadastro', 'frete', 'lancamento']
   return ['frete', 'cadastro', 'fiscal', 'negociacao', 'lancamento']
 }
@@ -473,7 +485,7 @@ function etapasVoltarDisponiveis(nota: DetalheNota, ehDocumental: boolean): Etap
   ) {
     return []
   }
-  // NFS-e/CT-e: só cadastro. NFe 55 (revenda ou consumo): frete → cadastro → …
+  // NFS-e / CT-e / NFe uso e consumo: só cadastro. Revenda: frete → cadastro → …
   const validas: EtapaPipeline[] = ehDocumental ? ['cadastro'] : ORDEM_ETAPAS
   const atual = etapaEfetiva(nota)
   const indiceAtual = atual === 'lancamento' ? ORDEM_ETAPAS.length : ORDEM_ETAPAS.indexOf(atual)
@@ -530,7 +542,10 @@ function mensagemAposAnalisar(nota: DetalheNota): string | null {
   }
 
   if (nota.origemLancamento === 'automatica') {
-    return 'Entrada automática concluída (Liberar para contagem).'
+    if (notaDocumentalSemContagem(nota) || nota.statusEntrada === 'pronta_para_consolidar') {
+      return MSG_AUTO_LANCAMENTO_DOCUMENTAL
+    }
+    return 'Entrada automática concluída.'
   }
   if (
     notaLiberadaOuConsolidada(nota.statusEntrada)
@@ -1005,11 +1020,16 @@ function ConteudoDetalheEntrada() {
   useEffect(() => {
     let ativo = true
     clienteHttp
-      .get<{ planos: PlanoFinanceiroOpcao[] }>('/planos-financeiros', {
-        params: { tipo: 'despesa', ativo: true },
-      })
+      .get<{ planos: Array<{ id: string; codigo?: string; nome?: string; descricao?: string }> }>(
+        '/planos-financeiros',
+        {
+          params: { tipo: 'despesa', ativo: true },
+        }
+      )
       .then(({ data }) => {
-        if (ativo) setPlanosFinanceiros(data.planos ?? [])
+        if (ativo) {
+          setPlanosFinanceiros((data.planos ?? []).map(mapearPlanoFinanceiroOpcao))
+        }
       })
       .catch(() => {
         if (ativo) setPlanosFinanceiros([])
@@ -1223,6 +1243,7 @@ function ConteudoDetalheEntrada() {
           path !== '/financeiro-frete' &&
           path !== '/definir-cfop-entrada' &&
           path !== '/definir-cfop-entrada-cte' &&
+          path !== '/definir-cfop-entrada-nota' &&
           path !== '/finalidade-entrada'
         ) {
           setAbaAtiva(abaInicial(data.nota))
@@ -1239,6 +1260,12 @@ function ConteudoDetalheEntrada() {
           setMensagem('Prévia financeira do frete salva (vira Contas a Pagar ao consolidar).')
         } else if (path === '/definir-cfop-entrada' || path === '/definir-cfop-entrada-cte') {
           setMensagem('CFOP de entrada atualizado.')
+        } else if (path === '/definir-cfop-entrada-nota') {
+          setMensagem(
+            notaDocumentalSemContagem(data.nota) && data.nota.origemLancamento === 'automatica'
+              ? MSG_AUTO_LANCAMENTO_DOCUMENTAL
+              : 'CFOP de entrada atualizado.'
+          )
         } else if (path === '/finalidade-entrada') {
           setMensagem(mensagemAposAnalisar(data.nota))
         } else if (path === '/lancar' && body?.modo === 'consolidar') {
@@ -1249,7 +1276,10 @@ function ConteudoDetalheEntrada() {
             setMensagem(
               `Estoque consolidado: ${resumo.itensProcessados} produto(s) no estoque (físico e fiscal).${sufixoContas}`
             )
-          } else if (ehDocumentalEntrada(data.nota.tipoDocumento)) {
+          } else if (
+            ehDocumentalEntrada(data.nota.tipoDocumento) ||
+            data.nota.finalidadeEntrada === 'uso_consumo'
+          ) {
             setMensagem(`Nota consolidada (documental — sem movimentação de estoque).${sufixoContas}`)
           } else {
             setMensagem(
@@ -1296,7 +1326,12 @@ function ConteudoDetalheEntrada() {
             'Nota lançada — aguardando chegada física para liberar a contagem.'
           )
         } else if (data.nota.origemLancamento === 'automatica') {
-          setMensagem('Entrada automática concluída (Liberar para contagem — sem estoque).')
+          setMensagem(
+            notaDocumentalSemContagem(data.nota) ||
+              data.nota.statusEntrada === 'pronta_para_consolidar'
+              ? MSG_AUTO_LANCAMENTO_DOCUMENTAL
+              : 'Entrada automática concluída.'
+          )
         } else if (notaLiberadaOuConsolidada(data.nota.statusEntrada)) {
           setMensagem(`Nota lançada: ${rotuloStatusEntrada(data.nota.statusEntrada)}.${sufixoContas}`)
         } else if (path === '/manifestar') {
@@ -1577,7 +1612,8 @@ function ConteudoDetalheEntrada() {
   const ehDocumental = ehDocumentalTipo || modoDocumentalNfe
   const ehNfse = nota?.tipoDocumento === 'nfse'
   const ehCte = nota?.tipoDocumento === 'cte'
-  /** NFe 55 produto — inclusive uso/consumo (finalidade da nota); não confundir com dossiê NFS-e/CT-e. */
+  const ehDossieDocumental = ehNfse || modoDocumentalNfe
+  /** NFe 55 — wizard de Revenda (finalidade vazia ou revenda). Uso/consumo usa dossiê. */
   const ehNfe55 = !ehNfse && !ehCte
   const emAnaliseFinalidade =
     nota?.statusEntrada === 'pendente' ||
@@ -1638,10 +1674,11 @@ function ConteudoDetalheEntrada() {
     (fiscalBloqueante && !nota?.criticasLiberadas)
   const titulosGeradosNfse = (nota?.contasPagar?.length ?? 0) > 0
   const financeiroDocumentalOk = nota?.previaFinanceira?.completo === true
-  const dossieSomenteLeitura = finalizada || comProblema || problemaResolvido
+  const entradaConsolidada = nota?.statusEntrada === 'entrada_consolidada'
+  const dossieSomenteLeitura = entradaConsolidada || comProblema || problemaResolvido
   const abas = useMemo(() => {
     if (!nota) return []
-    if (ehNfse) {
+    if (ehNfse || modoDocumentalNfe) {
       return [
         { id: 'cadastro', rotulo: 'Cadastro', status: statusAbaDeEtapa(nota.analise?.cadastro) },
         { id: 'lancamento', rotulo: 'Lançamento', status: 'idle' as StatusDaAba },
@@ -1661,12 +1698,12 @@ function ConteudoDetalheEntrada() {
       { id: 'negociacao', rotulo: 'Negociação', status: statusAbaDeEtapa(nota.analise?.negociacao) },
       { id: 'lancamento', rotulo: 'Lançamento', status: 'idle' as StatusDaAba },
     ]
-  }, [nota, ehNfse, ehCte])
+  }, [nota, ehNfse, ehCte, modoDocumentalNfe])
 
   const opcoesVoltarEtapa = useMemo(() => {
     if (!nota) return []
-    return etapasVoltarDisponiveis(nota, ehDocumentalTipo)
-  }, [nota, ehDocumentalTipo])
+    return etapasVoltarDisponiveis(nota, ehNfse || ehCte || modoDocumentalNfe)
+  }, [nota, ehNfse, ehCte, modoDocumentalNfe])
 
   useEffect(() => {
     if (opcoesVoltarEtapa.length === 0) {
@@ -1680,7 +1717,7 @@ function ConteudoDetalheEntrada() {
 
   function abaBloqueada(idAba: string): boolean {
     if (finalizada) return false
-    if (ehNfse) return idAba === 'lancamento' && cadastroBloqueante
+    if (ehNfse || modoDocumentalNfe) return idAba === 'lancamento' && cadastroBloqueante
     if (ehCte) {
       if (idAba === 'frete') return cadastroBloqueante
       if (idAba === 'lancamento') return cadastroBloqueante || negociacaoBloqueante
@@ -1879,14 +1916,14 @@ function ConteudoDetalheEntrada() {
         {xmlModal?.visualizacao && <ConteudoVisualizacaoNota visualizacao={xmlModal.visualizacao} />}
       </Modal>
 
-      {ehNfse ? (
+      {ehDossieDocumental ? (
         <div className="space-y-4">
           <CardDadosNotaEntrada
             nota={nota}
             rotuloStatus={rotuloStatusEntrada(nota.statusEntrada)}
             cadastroBloqueante={cadastroBloqueante}
             cfopsEntrada={cfopsEntrada}
-            cfopEditavel={!dossieSomenteLeitura && !pipelineBloqueado}
+            cfopEditavel={!dossieSomenteLeitura}
             acao={acao}
             onDefinirCfop={(cfopId) => void postAcao('/definir-cfop-entrada-nota', { cfopId })}
             acoesCadastro={
@@ -1909,6 +1946,56 @@ function ConteudoDetalheEntrada() {
             }
           />
 
+          {modoDocumentalNfe && (
+            <CardPadrao titulo="Finalidade da entrada">
+              <p className="text-xs text-muted-foreground">
+                Vale para a nota inteira. Clique de novo em Uso e Consumo para desmarcar e voltar ao
+                fluxo de Revenda (abas).
+              </p>
+              <fieldset className="mt-3 space-y-1" disabled={!podeEditarFinalidade || acao}>
+                <legend className="sr-only">Finalidade da entrada</legend>
+                <div className="flex flex-wrap gap-4 text-sm">
+                  {revendaHabilitada && (
+                    <label
+                      className={`flex items-center gap-1.5 ${
+                        !podeEditarFinalidade ? 'text-muted-foreground' : 'cursor-pointer'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="finalidade-entrada-dossie"
+                        value="revenda"
+                        checked={nota.finalidadeEntrada === 'revenda'}
+                        disabled={!podeEditarFinalidade || acao}
+                        onClick={() => escolherFinalidade('revenda')}
+                        onChange={() => undefined}
+                      />
+                      Revenda
+                    </label>
+                  )}
+                  {usoConsumoHabilitado && (
+                    <label
+                      className={`flex items-center gap-1.5 ${
+                        !podeEditarFinalidade ? 'text-muted-foreground' : 'cursor-pointer'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="finalidade-entrada-dossie"
+                        value="uso_consumo"
+                        checked={nota.finalidadeEntrada === 'uso_consumo'}
+                        disabled={!podeEditarFinalidade || acao}
+                        onClick={() => escolherFinalidade('uso_consumo')}
+                        onChange={() => undefined}
+                      />
+                      Uso e Consumo
+                    </label>
+                  )}
+                </div>
+              </fieldset>
+            </CardPadrao>
+          )}
+
           {nota.recorrenciaFinanceira && (
             <div className="rounded-md border border-emerald-300/60 bg-emerald-50 px-3 py-2 text-sm dark:border-emerald-800 dark:bg-emerald-950/30">
               Recorrência casada — valor {formatMoedaBr(nota.recorrenciaFinanceira.valor)} ·
@@ -1922,6 +2009,7 @@ function ConteudoDetalheEntrada() {
             pedidoCompraId={nota.pedidoCompraId}
             desabilitado={dossieSomenteLeitura}
             acao={acao}
+            variante={modoDocumentalNfe ? 'uso_consumo' : 'servico'}
             onSelecionarPedido={(pedidoId) => void postAcao('/definir-pedido', { pedidoCompraId: pedidoId })}
           />
 
@@ -1934,6 +2022,7 @@ function ConteudoDetalheEntrada() {
             titulosGerados={titulosGeradosNfse}
             somenteLeitura={dossieSomenteLeitura}
             acao={acao}
+            variante={modoDocumentalNfe ? 'uso_consumo' : 'servico'}
             onPlanoChange={setPlanoDocumentalId}
             onParcelaChange={(index, campo, valor) => {
               setFinParcelas((prev) =>
@@ -1956,11 +2045,12 @@ function ConteudoDetalheEntrada() {
             senha={senha}
             onSenhaChange={setSenha}
             onConsolidar={() => void postAcao('/lancar', { modo: 'consolidar', senha })}
-            desabilitado={dossieSomenteLeitura || pipelineBloqueado}
+            desabilitado={dossieSomenteLeitura}
             acao={acao}
             financeiroCompleto={financeiroDocumentalOk}
             cadastroBloqueante={cadastroBloqueante}
-            finalizada={finalizada}
+            jaConsolidada={entradaConsolidada}
+            variante={modoDocumentalNfe ? 'uso_consumo' : 'servico'}
           />
         </div>
       ) : (
@@ -2018,65 +2108,61 @@ function ConteudoDetalheEntrada() {
           <div className="mt-3 space-y-2 border-t pt-3">
             <p className="text-sm font-medium">Finalidade da entrada</p>
             <p className="text-xs text-muted-foreground">
-              Vale para a nota inteira. O cadastro do fornecedor só habilita as opções — é preciso
-              marcar aqui, mesmo se só uma estiver disponível. Clique de novo na opção marcada para
-              desmarcar.
+              Vale para a nota inteira. Clique para definir. Clique de novo na opção marcada para
+              desmarcar (volta ao vazio).
             </p>
             {!nota.fornecedor && (
               <p className="text-sm text-amber-700 dark:text-amber-400">
                 Vincule o fornecedor para escolher a finalidade.
               </p>
             )}
+            {nota.fornecedor && !revendaHabilitada && !usoConsumoHabilitado && (
+              <p className="text-xs text-muted-foreground">
+                Nenhuma finalidade habilitada neste fornecedor. Ajuste o tipo no cadastro (aba
+                Outros).
+              </p>
+            )}
             <fieldset className="space-y-1" disabled={!podeEditarFinalidade || acao}>
               <legend className="sr-only">Finalidade da entrada</legend>
               <div className="flex flex-wrap gap-4 text-sm">
-                <label
-                  className={`flex items-center gap-1.5 ${
-                    !revendaHabilitada || !podeEditarFinalidade
-                      ? 'text-muted-foreground'
-                      : 'cursor-pointer'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="finalidade-entrada"
-                    value="revenda"
-                    checked={nota.finalidadeEntrada === 'revenda'}
-                    disabled={!podeEditarFinalidade || !revendaHabilitada || acao}
-                    onClick={() => escolherFinalidade('revenda')}
-                    onChange={() => undefined}
-                  />
-                  Revenda
-                </label>
-                <label
-                  className={`flex items-center gap-1.5 ${
-                    !usoConsumoHabilitado || !podeEditarFinalidade
-                      ? 'text-muted-foreground'
-                      : 'cursor-pointer'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="finalidade-entrada"
-                    value="uso_consumo"
-                    checked={nota.finalidadeEntrada === 'uso_consumo'}
-                    disabled={!podeEditarFinalidade || !usoConsumoHabilitado || acao}
-                    onClick={() => escolherFinalidade('uso_consumo')}
-                    onChange={() => undefined}
-                  />
-                  Uso e Consumo
-                </label>
+                {revendaHabilitada && (
+                  <label
+                    className={`flex items-center gap-1.5 ${
+                      !podeEditarFinalidade ? 'text-muted-foreground' : 'cursor-pointer'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="finalidade-entrada"
+                      value="revenda"
+                      checked={nota.finalidadeEntrada === 'revenda'}
+                      disabled={!podeEditarFinalidade || acao}
+                      onClick={() => escolherFinalidade('revenda')}
+                      onChange={() => undefined}
+                    />
+                    Revenda
+                  </label>
+                )}
+                {usoConsumoHabilitado && (
+                  <label
+                    className={`flex items-center gap-1.5 ${
+                      !podeEditarFinalidade ? 'text-muted-foreground' : 'cursor-pointer'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="finalidade-entrada"
+                      value="uso_consumo"
+                      checked={nota.finalidadeEntrada === 'uso_consumo'}
+                      disabled={!podeEditarFinalidade || acao}
+                      onClick={() => escolherFinalidade('uso_consumo')}
+                      onChange={() => undefined}
+                    />
+                    Uso e Consumo
+                  </label>
+                )}
               </div>
             </fieldset>
-            {nota.fornecedor && (!revendaHabilitada || !usoConsumoHabilitado) && (
-              <p className="text-xs text-muted-foreground">
-                {!revendaHabilitada && !usoConsumoHabilitado
-                  ? 'Nenhuma finalidade habilitada neste fornecedor. Ajuste o tipo no cadastro (aba Outros).'
-                  : !revendaHabilitada
-                    ? 'Revenda desabilitada neste fornecedor. Para usar, marque o tipo Revenda no cadastro (aba Outros).'
-                    : 'Uso e Consumo desabilitado neste fornecedor. Para usar, marque Consumo ou Prestador de serviço no cadastro (aba Outros).'}
-              </p>
-            )}
           </div>
         )}
         {ehNfe55 && (nota.ctesVinculados ?? []).length > 0 && (
@@ -2195,6 +2281,7 @@ function ConteudoDetalheEntrada() {
                       cfopsEntrada={cfopsEntrada}
                       finalizada={pipelineBloqueado}
                       acao={acao}
+                      exibirCfopXml={false}
                       onDefinirCfopEntrada={(cfopId) =>
                         void postAcao('/definir-cfop-entrada-nota', { cfopId })
                       }

@@ -474,6 +474,23 @@ describe('servicoEntradaNotas.voltarEtapa', () => {
     ).rejects.toMatchObject({ message: expect.stringContaining('não é anterior') })
     expect(repositorioEntradaNotas.atualizarNota).not.toHaveBeenCalled()
   })
+
+  it('NFe uso_consumo recusa voltar para frete — só cadastro', async () => {
+    ligarRepositorioFake(
+      buildNotaFixture({
+        finalidadeEntrada: 'uso_consumo',
+        statusEntrada: 'pronta_para_consolidar',
+        etapaAtual: 'lancamento',
+      })
+    )
+
+    await expect(
+      servicoEntradaNotas.voltarEtapa('empresa-1', 'nota-1', 'usuario-1', 'frete')
+    ).rejects.toMatchObject({
+      message: expect.stringContaining('não existe para este tipo de documento'),
+    })
+    expect(repositorioEntradaNotas.atualizarNota).not.toHaveBeenCalled()
+  })
 })
 
 describe('servicoEntradaNotas.descancelar', () => {

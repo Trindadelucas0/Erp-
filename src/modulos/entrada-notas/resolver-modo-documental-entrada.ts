@@ -1,6 +1,7 @@
 /**
  * Modo documental da Entrada: NFS-e sempre; NFe 55 só com finalidade da nota
- * `uso_consumo`. Flags do fornecedor habilitam opções — não inferem o fluxo.
+ * `uso_consumo`. Flags do fornecedor só habilitam as opções. Sempre clique
+ * explícito — nunca pré-marca, mesmo com um só tipo. Clique na marcada desmarca.
  */
 export type FlagsFornecedorEntrada = {
   tipoRevenda?: boolean | null
@@ -45,6 +46,37 @@ export function finalidadeHabilitadaNoFornecedor(
   if (!flags) return false
   if (finalidade === 'revenda') return Boolean(flags.tipoRevenda)
   return Boolean(flags.tipoConsumo) || Boolean(flags.tipoPrestadorServico)
+}
+
+/**
+ * Quando o cadastro habilita exatamente uma finalidade. Só consulta — o pipeline
+ * **não** grava esse valor na nota (clique obrigatório).
+ */
+export function finalidadeUnicaDoFornecedor(
+  flags: FlagsFornecedorEntrada | null | undefined
+): FinalidadeEntrada | null {
+  if (!flags) return null
+  const revenda = Boolean(flags.tipoRevenda)
+  const usoConsumo = Boolean(flags.tipoConsumo) || Boolean(flags.tipoPrestadorServico)
+  if (revenda && !usoConsumo) return 'revenda'
+  if (usoConsumo && !revenda) return 'uso_consumo'
+  return null
+}
+
+/**
+ * Ajuste de finalidade a partir do cadastro: **nunca** pré-marca o tipo único.
+ * Só limpa valor inválido para as flags atuais (força novo clique).
+ */
+export function resolverFinalidadePreMarcacao(
+  finalidadeAtual: string | null | undefined,
+  flags: FlagsFornecedorEntrada | null | undefined
+): FinalidadeEntrada | null | undefined {
+  const atual = ehFinalidadeEntrada(finalidadeAtual) ? finalidadeAtual : null
+
+  if (atual && !finalidadeHabilitadaNoFornecedor(atual, flags)) {
+    return null
+  }
+  return undefined
 }
 
 export function statusPermiteTrocaFinalidade(statusEntrada: string | null | undefined): boolean {

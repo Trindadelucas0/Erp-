@@ -11,6 +11,8 @@ type Props<T extends string> = {
   onOrdenar: (coluna: T) => void
   className?: string
   alinhamento?: 'left' | 'center' | 'right'
+  /** Permite quebra de linha no rótulo (útil em colunas estreitas com texto longo). */
+  quebrarTexto?: boolean
 }
 
 const alinhamentoClasse = {
@@ -26,16 +28,27 @@ export function CabecalhoColunaOrdenavel<T extends string>({
   onOrdenar,
   className,
   alinhamento = 'left',
+  quebrarTexto = false,
 }: Props<T>) {
   const ativo = ordenacao?.coluna === coluna
   return (
-    <th className={cn('font-medium whitespace-nowrap', alinhamentoClasse[alinhamento], className)}>
+    <th
+      className={cn(
+        'font-medium',
+        quebrarTexto ? 'overflow-hidden whitespace-normal' : 'whitespace-nowrap',
+        alinhamentoClasse[alinhamento],
+        className
+      )}
+    >
       <button
         type="button"
         className={cn(
-          'inline-flex items-center gap-1 hover:text-foreground',
-          alinhamento === 'center' && 'mx-auto',
-          alinhamento === 'right' && 'ml-auto',
+          'items-center gap-1 hover:text-foreground',
+          quebrarTexto
+            ? 'flex w-full min-w-0 whitespace-normal leading-tight'
+            : 'inline-flex',
+          alinhamento === 'center' && (quebrarTexto ? 'justify-center' : 'mx-auto'),
+          alinhamento === 'right' && (quebrarTexto ? 'justify-end' : 'ml-auto'),
           ativo ? 'text-foreground' : 'text-muted-foreground'
         )}
         onClick={() => onOrdenar(coluna)}

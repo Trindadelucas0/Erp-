@@ -1796,8 +1796,10 @@ async function importarXml(companyId: string, xmlBruto: string) {
   const apos = await repositorioFocusNfe.buscarPorChave(companyId, chave)
 
   const mensagemContagem =
-    tipoDoc === 'nfse'
-      ? 'NFS-e importada e pronta para consolidar (sem estoque).'
+    tipoDoc === 'nfse' || apos?.statusEntrada === 'pronta_para_consolidar'
+      ? tipoDoc === 'nfse'
+        ? 'NFS-e importada e pronta para consolidar (sem estoque).'
+        : 'Nota documental importada e pronta para consolidar (sem contagem).'
       : tipoDoc === 'cte'
         ? 'CTe importado e liberado para contagem documental (sem estoque).'
         : 'XML importado e entrada automática (Liberar para contagem) — sem críticas bloqueantes.'

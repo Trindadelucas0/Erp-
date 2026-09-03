@@ -34,6 +34,7 @@ type Props = {
   desabilitado?: boolean
   acao?: boolean
   onSelecionarPedido?: (pedidoId: string) => void
+  variante?: 'servico' | 'uso_consumo'
 }
 
 function formatarMoeda(n: number | null | undefined): string {
@@ -48,14 +49,19 @@ export function TabelaPedidoDivergencias({
   desabilitado,
   acao,
   onSelecionarPedido,
+  variante = 'servico',
 }: Props) {
   const semPedido = !resumo?.vinculado || resumo.semPedidoInformado
+  const banner =
+    variante === 'uso_consumo'
+      ? 'Nota de uso e consumo — a ausência de pedido de compra '
+      : 'Nota de serviço — a ausência de pedido de compra '
 
   return (
     <CardPadrao titulo="Pedido de compra / divergências">
       <p className="mb-3 rounded-md border border-blue-200/80 bg-blue-50/80 px-3 py-2 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
-        Nota de serviço — a ausência de pedido de compra <strong>não exige contagem física</strong>{' '}
-        e não impede a consolidação documental.
+        {banner}
+        <strong>não exige contagem física</strong> e não impede a consolidação documental.
       </p>
 
       {!desabilitado && onSelecionarPedido && pedidosDisponiveis.length > 0 && (
