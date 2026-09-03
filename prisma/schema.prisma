@@ -58,6 +58,7 @@ model Company {
   contasReceberAnexos         ContaReceberAnexo[]
   jobs                        Job[]
   recorrenciasFinanceiras     RecorrenciaFinanceira[]
+  enderecosWms                EnderecoWms[]
   createdAt                   DateTime                     @default(now())
 }
 
@@ -1516,4 +1517,24 @@ model PendenciaFornecedor {
   updatedAt          DateTime @updatedAt
 
   @@index([companyId, fornecedorPessoaId, resolvido])
+}
+
+/// Cadastro mestre de endereço WMS (LOCAL-ÁREA-TIPO-RUA-ANDAR-POSIÇÃO).
+/// Não vincula produto nem kardex nesta fase.
+model EnderecoWms {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  codigo    String
+  local     String
+  area      String
+  tipo      String
+  rua       String
+  andar     String
+  posicao   String
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@unique([companyId, codigo])
+  @@index([companyId, local, area, tipo])
 }

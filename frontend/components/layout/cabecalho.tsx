@@ -27,6 +27,7 @@ const TITULOS_POR_ROTA: Record<string, string> = {
   '/entrada-notas': 'Entrada de Notas',
   '/contagens': 'Contagens de entrada',
   '/estoque': 'Estoque',
+  '/enderecos-wms': 'Endereços WMS',
   '/contas-a-pagar': 'Contas a Pagar',
   '/contas-a-receber': 'Contas a Receber',
   '/pendencias': 'Pendências',
