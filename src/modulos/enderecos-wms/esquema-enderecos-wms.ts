@@ -1,9 +1,7 @@
 import { z } from 'zod'
-import { AREAS_WMS, LOCAIS_WMS, TIPOS_WMS } from './nomenclatura-endereco-wms.js'
+import { LOCAIS_WMS } from './nomenclatura-endereco-wms.js'
 
 const localWms = z.enum(LOCAIS_WMS)
-const areaWms = z.enum(AREAS_WMS)
-const tipoWms = z.enum(TIPOS_WMS)
 
 const componentes = {
   local: z.string().trim().min(1, 'Local obrigatório'),
@@ -27,8 +25,8 @@ export const esquemaDeEdicaoDeEnderecoWms = z.object({
 export const esquemaFiltroListagemEnderecoWms = z.object({
   q: z.string().optional(),
   local: localWms.optional().or(z.literal('')),
-  area: areaWms.optional().or(z.literal('')),
-  tipo: tipoWms.optional().or(z.literal('')),
+  area: z.string().optional(),
+  tipo: z.string().optional(),
   incluirInativos: z.enum(['true', 'false']).optional(),
 })
 

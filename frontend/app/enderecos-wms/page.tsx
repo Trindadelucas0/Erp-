@@ -1,6 +1,7 @@
 'use client'
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { Plus } from 'lucide-react'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
@@ -23,20 +24,20 @@ import { ordenarLista } from '@/lib/ordenacao-lista'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import { atributosCampoBuscaLista } from '@/lib/atributos-campo-busca-lista'
 import {
-  AREAS_WMS,
-  LOCAIS_WMS,
-  TIPOS_WMS,
   completarDoisDigitos,
-  mascaraAndar,
+  LOCAIS_WMS,
   mascaraRuaOuPosicao,
   montarCodigoEnderecoWms,
-  ROTULOS_AREA_WMS,
   ROTULOS_LOCAL_WMS,
-  ROTULOS_TIPO_WMS,
   rotuloAreaWms,
   rotuloLocalWms,
   rotuloTipoWms,
 } from '@/lib/endereco-wms'
+import {
+  mapaNomesNivel,
+  opcoesSelectNivel,
+  type ItemEstruturaWms,
+} from '@/lib/estrutura-wms'
 
 type ColunaEndereco = 'codigo' | 'local' | 'area' | 'tipo' | 'rua' | 'andar' | 'posicao' | 'situacao'
 
@@ -66,14 +67,6 @@ const opcoesLocal = LOCAIS_WMS.map((c) => ({
   value: c,
   label: `${c} — ${ROTULOS_LOCAL_WMS[c]}`,
 }))
-const opcoesArea = AREAS_WMS.map((c) => ({
-  value: c,
-  label: `${c} — ${ROTULOS_AREA_WMS[c]}`,
-}))
-const opcoesTipo = TIPOS_WMS.map((c) => ({
-  value: c,
-  label: `${c} — ${ROTULOS_TIPO_WMS[c]}`,
-}))
 
 export default function PaginaEnderecosWms() {
   return (
@@ -89,6 +82,7 @@ function ConteudoEnderecosWms() {
   const podeEditar = usePermissao('estoque:edit')
 
   const [lista, setLista] = useState<EnderecoWms[]>([])
+  const [niveis, setNiveis] = useState<ItemEstruturaWms[]>([])
   const [carregandoLista, setCarregandoLista] = useState(true)
   const [busca, setBusca] = useState('')
   const [buscaDebounced, setBuscaDebounced] = useState('')
@@ -110,6 +104,15 @@ function ConteudoEnderecosWms() {
     return () => clearTimeout(timer)
   }, [busca])
 
+  const carregarNiveis = useCallback(async () => {
+    try {
+      const { data } = await clienteHttp.get('/estrutura-wms?incluirInativos=true')
+      setNiveis(data.niveis ?? [])
+    } catch (err: unknown) {
+      setErro(extrairMensagemApi(err, 'Erro ao carregar a estrutura WMS.'))
+    }
+  }, [])
+
   const carregar = useCallback(async () => {
     setCarregandoLista(true)
     try {
@@ -128,6 +131,11 @@ function ConteudoEnderecosWms() {
       setCarregandoLista(false)
     }
   }, [buscaDebounced, filtroLocal, filtroArea, filtroTipo, incluirInativos])
+
+  useEffect(() => {
+    if (!estaAutenticado || carregandoSessao) return
+    void carregarNiveis()
+  }, [estaAutenticado, carregandoSessao, carregarNiveis])
 
   useEffect(() => {
     if (!estaAutenticado || carregandoSessao) return
@@ -177,8 +185,8 @@ function ConteudoEnderecosWms() {
       local: form.local,
       area: form.area,
       tipo: form.tipo,
-      rua: completarDoisDigitos(form.rua),
-      andar: mascaraAndar(form.andar),
+      rua: form.rua,
+      andar: form.andar,
       posicao: completarDoisDigitos(form.posicao),
       ativo: form.ativo,
     }
@@ -199,6 +207,33 @@ function ConteudoEnderecosWms() {
     }
   }
 
+  const nomesArea = useMemo(() => mapaNomesNivel(niveis, 'area'), [niveis])
+  const nomesTipo = useMemo(() => mapaNomesNivel(niveis, 'tipo'), [niveis])
+  const opcoesFiltroArea = useMemo(
+    () => opcoesSelectNivel(niveis, 'area', { incluirInativos: true }),
+    [niveis]
+  )
+  const opcoesFiltroTipo = useMemo(
+    () => opcoesSelectNivel(niveis, 'tipo', { incluirInativos: true }),
+    [niveis]
+  )
+  const opcoesFormArea = useMemo(
+    () => opcoesSelectNivel(niveis, 'area', { codigoAtual: form.area }),
+    [niveis, form.area]
+  )
+  const opcoesFormTipo = useMemo(
+    () => opcoesSelectNivel(niveis, 'tipo', { codigoAtual: form.tipo }),
+    [niveis, form.tipo]
+  )
+  const opcoesFormRua = useMemo(
+    () => opcoesSelectNivel(niveis, 'rua', { codigoAtual: form.rua }),
+    [niveis, form.rua]
+  )
+  const opcoesFormAndar = useMemo(
+    () => opcoesSelectNivel(niveis, 'andar', { codigoAtual: form.andar }),
+    [niveis, form.andar]
+  )
+
   const listaExibida = useMemo(
     () =>
       ordenarLista(lista, ordenacao, (item, coluna) => {
@@ -208,9 +243,9 @@ function ConteudoEnderecosWms() {
           case 'local':
             return rotuloLocalWms(item.local)
           case 'area':
-            return rotuloAreaWms(item.area)
+            return rotuloAreaWms(item.area, nomesArea)
           case 'tipo':
-            return rotuloTipoWms(item.tipo)
+            return rotuloTipoWms(item.tipo, nomesTipo)
           case 'rua':
             return item.rua
           case 'andar':
@@ -221,7 +256,7 @@ function ConteudoEnderecosWms() {
             return item.ativo ? 'Ativo' : 'Inativo'
         }
       }),
-    [lista, ordenacao]
+    [lista, ordenacao, nomesArea, nomesTipo]
   )
 
   const podeSalvar = modoEdicao ? podeEditar : podeCriar
@@ -267,14 +302,14 @@ function ConteudoEnderecosWms() {
             rotulo="Área"
             valor={filtroArea}
             aoMudar={setFiltroArea}
-            opcoes={opcoesArea}
+            opcoes={opcoesFiltroArea}
             placeholder="Todas"
           />
           <SelectPadrao
             rotulo="Tipo"
             valor={filtroTipo}
             aoMudar={setFiltroTipo}
-            opcoes={opcoesTipo}
+            opcoes={opcoesFiltroTipo}
             placeholder="Todos"
           />
           <div className="flex items-end pb-1">
@@ -322,10 +357,10 @@ function ConteudoEnderecosWms() {
                     <td className="px-4 py-3" title={rotuloLocalWms(item.local)}>
                       {item.local}
                     </td>
-                    <td className="px-4 py-3" title={rotuloAreaWms(item.area)}>
+                    <td className="px-4 py-3" title={rotuloAreaWms(item.area, nomesArea)}>
                       {item.area}
                     </td>
-                    <td className="px-4 py-3" title={rotuloTipoWms(item.tipo)}>
+                    <td className="px-4 py-3" title={rotuloTipoWms(item.tipo, nomesTipo)}>
                       {item.tipo}
                     </td>
                     <td className="px-4 py-3 font-mono">{item.rua}</td>
@@ -394,7 +429,7 @@ function ConteudoEnderecosWms() {
               rotulo="Área"
               valor={form.area}
               aoMudar={(v) => setForm((f) => ({ ...f, area: v }))}
-              opcoes={opcoesArea}
+              opcoes={opcoesFormArea}
               placeholder="Selecione"
               obrigatorio
               disabled={salvando}
@@ -403,7 +438,7 @@ function ConteudoEnderecosWms() {
               rotulo="Tipo de endereço"
               valor={form.tipo}
               aoMudar={(v) => setForm((f) => ({ ...f, tipo: v }))}
-              opcoes={opcoesTipo}
+              opcoes={opcoesFormTipo}
               placeholder="Selecione"
               obrigatorio
               disabled={salvando}
@@ -411,29 +446,46 @@ function ConteudoEnderecosWms() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
-            <InputPadrao
-              rotulo="Rua"
-              obrigatorio
-              value={form.rua}
-              onChange={(e) => setForm((f) => ({ ...f, rua: mascaraRuaOuPosicao(e.target.value) }))}
-              onBlur={() => setForm((f) => ({ ...f, rua: completarDoisDigitos(f.rua) }))}
-              disabled={salvando}
-              inputMode="numeric"
-              maxLength={2}
-              placeholder="20"
-              className="font-mono"
-            />
-            <InputPadrao
-              rotulo="Andar"
-              obrigatorio
-              value={form.andar}
-              onChange={(e) => setForm((f) => ({ ...f, andar: mascaraAndar(e.target.value) }))}
-              disabled={salvando}
-              inputMode="numeric"
-              maxLength={1}
-              placeholder="2"
-              className="font-mono"
-            />
+            <div className="space-y-1">
+              <SelectPadrao
+                rotulo="Rua"
+                valor={form.rua}
+                aoMudar={(v) => setForm((f) => ({ ...f, rua: v }))}
+                opcoes={opcoesFormRua}
+                placeholder="Selecione"
+                obrigatorio
+                disabled={salvando}
+              />
+              {opcoesFormRua.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Cadastre ruas em{' '}
+                  <Link href="/estrutura-wms" className="underline underline-offset-2">
+                    Estrutura WMS
+                  </Link>
+                  .
+                </p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <SelectPadrao
+                rotulo="Andar"
+                valor={form.andar}
+                aoMudar={(v) => setForm((f) => ({ ...f, andar: v }))}
+                opcoes={opcoesFormAndar}
+                placeholder="Selecione"
+                obrigatorio
+                disabled={salvando}
+              />
+              {opcoesFormAndar.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Cadastre andares em{' '}
+                  <Link href="/estrutura-wms" className="underline underline-offset-2">
+                    Estrutura WMS
+                  </Link>
+                  .
+                </p>
+              )}
+            </div>
             <InputPadrao
               rotulo="Posição"
               obrigatorio

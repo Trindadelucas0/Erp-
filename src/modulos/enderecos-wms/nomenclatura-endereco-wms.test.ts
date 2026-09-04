@@ -60,30 +60,42 @@ describe('validarComponentesEnderecoWms / montarCodigoEnderecoWms', () => {
     ).toThrow('Local deve ser A ou B')
   })
 
-  it('rejeita área inválida', () => {
+  it('rejeita área com tamanho errado', () => {
     expect(() =>
       validarComponentesEnderecoWms({
         local: 'A',
-        area: 'XX',
+        area: 'R',
         tipo: 'CH',
         rua: '20',
         andar: '2',
         posicao: '05',
       })
-    ).toThrow('Área deve ser RC, EX ou CQ')
+    ).toThrow('Área deve ter 2 letras')
   })
 
-  it('rejeita tipo inválido', () => {
+  it('aceita área com 2 letras fora da lista antiga (catálogo decide depois)', () => {
+    const c = validarComponentesEnderecoWms({
+      local: 'A',
+      area: 'XX',
+      tipo: 'ZZ',
+      rua: '20',
+      andar: '2',
+      posicao: '05',
+    })
+    expect(montarCodigoEnderecoWms(c)).toBe('A-XX-ZZ-20-2-05')
+  })
+
+  it('rejeita tipo com tamanho errado', () => {
     expect(() =>
       validarComponentesEnderecoWms({
         local: 'A',
         area: 'RC',
-        tipo: 'ZZ',
+        tipo: 'Z',
         rua: '20',
         andar: '2',
         posicao: '05',
       })
-    ).toThrow('Tipo de endereço deve ser PP, CX, CH ou BC')
+    ).toThrow('Tipo de endereço deve ter 2 letras')
   })
 
   it('rejeita tamanho errado de andar e posição', () => {
@@ -106,6 +118,17 @@ describe('parsearCodigoEnderecoWms', () => {
       local: 'A',
       area: 'RC',
       tipo: 'CH',
+      rua: '20',
+      andar: '2',
+      posicao: '05',
+    })
+  })
+
+  it('lê código com área/tipo fora do seed antigo', () => {
+    expect(parsearCodigoEnderecoWms('A-XX-ZZ-20-2-05')).toEqual({
+      local: 'A',
+      area: 'XX',
+      tipo: 'ZZ',
       rua: '20',
       andar: '2',
       posicao: '05',

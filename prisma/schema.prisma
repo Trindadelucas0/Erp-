@@ -59,6 +59,7 @@ model Company {
   jobs                        Job[]
   recorrenciasFinanceiras     RecorrenciaFinanceira[]
   enderecosWms                EnderecoWms[]
+  niveisEnderecoWms           NivelEnderecoWms[]
   createdAt                   DateTime                     @default(now())
 }
 
@@ -1517,6 +1518,24 @@ model PendenciaFornecedor {
   updatedAt          DateTime @updatedAt
 
   @@index([companyId, fornecedorPessoaId, resolvido])
+}
+
+/// Catálogo da estrutura do depósito (área, tipo, rua, andar) por empresa.
+/// Alimenta os selects de EnderecoWms; Local e Posição não entram aqui.
+model NivelEnderecoWms {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// area | tipo | rua | andar
+  nivel     String
+  codigo    String
+  nome      String
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, nivel, codigo])
+  @@index([companyId, nivel, ativo])
 }
 
 /// Cadastro mestre de endereço WMS (LOCAL-ÁREA-TIPO-RUA-ANDAR-POSIÇÃO).

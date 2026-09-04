@@ -6,6 +6,7 @@ import {
   validarComponentesEnderecoWms,
 } from './nomenclatura-endereco-wms.js'
 import { repositorioDeEnderecosWms } from './repositorio-enderecos-wms.js'
+import { servicoDeEstruturaWms } from '../estrutura-wms/servico-estrutura-wms.js'
 import type {
   DadosParaCriarEnderecoWms,
   DadosParaEditarEnderecoWms,
@@ -59,6 +60,7 @@ async function criarEndereco(
   idDoAutor: string
 ) {
   const { componentes, codigo } = componentesOu400(dados)
+  await servicoDeEstruturaWms.exigirNiveisDoCatalogo(companyId, componentes)
 
   const duplicado = await repositorioDeEnderecosWms.buscarPorCodigo(companyId, codigo)
   if (duplicado) throw new ErroDaAplicacao(MSG_DUPLICADO, 409)
@@ -95,6 +97,12 @@ async function editarEndereco(
   if (!existente) throw new ErroDaAplicacao('Endereço WMS não encontrado', 404)
 
   const { componentes, codigo } = componentesOu400(dados)
+  await servicoDeEstruturaWms.exigirNiveisDoCatalogo(companyId, componentes, {
+    area: existente.area,
+    tipo: existente.tipo,
+    rua: existente.rua,
+    andar: existente.andar,
+  })
 
   const duplicado = await repositorioDeEnderecosWms.buscarPorCodigo(
     companyId,

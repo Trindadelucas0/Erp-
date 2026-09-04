@@ -81,6 +81,12 @@ export const PAGINAS_VINCULAVEIS: readonly PaginaDoSistema[] = [
     modulo: 'estoque',
   },
   {
+    chave: 'estrutura-wms',
+    caminho: '/estrutura-wms',
+    rotulo: 'Estrutura WMS',
+    modulo: 'estoque',
+  },
+  {
     chave: 'contas-a-pagar',
     caminho: '/contas-a-pagar',
     rotulo: 'Contas a Pagar',

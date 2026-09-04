@@ -29,6 +29,7 @@ import { rotasDeContasAPagar } from '../../modulos/contas-a-pagar/rotas-contas-a
 import { rotasDeContasAReceber } from '../../modulos/contas-a-receber/rotas-contas-a-receber.js'
 import { rotasDePendencias } from '../../modulos/pendencias/rotas-pendencias.js'
 import { rotasDeEnderecosWms } from '../../modulos/enderecos-wms/rotas-enderecos-wms.js'
+import { rotasDeEstruturaWms } from '../../modulos/estrutura-wms/rotas-estrutura-wms.js'
 import { rotasJobs } from '../../modulos/jobs/rotas-jobs.js'
 import { rotasDeUploads } from './rotas-uploads.js'
 import { rotasDoPortalFornecedor } from '../../modulos/portal-fornecedor/rotas-portal-fornecedor.js'
@@ -52,6 +53,7 @@ export async function registrarRotas(aplicacao: FastifyInstance): Promise<void> 
   await aplicacao.register(rotasDeContasAReceber, { prefix: '/contas-a-receber' })
   await aplicacao.register(rotasDePendencias, { prefix: '/pendencias' })
   await aplicacao.register(rotasDeEnderecosWms, { prefix: '/enderecos-wms' })
+  await aplicacao.register(rotasDeEstruturaWms, { prefix: '/estrutura-wms' })
   await aplicacao.register(rotasDePaginas, { prefix: '/paginas' })
   await aplicacao.register(rotasDeAuditoria, { prefix: '/auditoria' })
   await aplicacao.register(rotasDeConfiguracoes, { prefix: '/configuracoes' })
