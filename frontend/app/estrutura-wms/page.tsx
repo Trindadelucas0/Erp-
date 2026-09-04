@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Modal } from '@/components/ui/modal'
 import { InputPadrao } from '@/components/ui/input-padrao'
+import { SelectPadrao } from '@/components/ui/select-padrao'
 import { Label } from '@/components/ui/label'
 import { BadgeStatus } from '@/components/ui/badge-status'
 import { Abas } from '@/components/ui/abas'
@@ -22,6 +23,7 @@ import {
   completarCodigoNivelWms,
   mascaraCodigoNivelWms,
   NIVEIS_ESTRUTURA_WMS,
+  opcoesSelectNivel,
   ROTULOS_NIVEL_ESTRUTURA_WMS,
   type ItemEstruturaWms,
   type NivelEstruturaWms,
@@ -42,6 +44,7 @@ const ABAS = NIVEIS_ESTRUTURA_WMS.map((id) => ({
 const formVazio = {
   codigo: '',
   nome: '',
+  paiCodigo: '',
   ativo: true,
 }
 
@@ -60,6 +63,7 @@ function ConteudoEstruturaWms() {
 
   const [aba, setAba] = useState<NivelEstruturaWms>('area')
   const [lista, setLista] = useState<ItemEstruturaWms[]>([])
+  const [areas, setAreas] = useState<ItemEstruturaWms[]>([])
   const [carregandoLista, setCarregandoLista] = useState(true)
   const [incluirInativos, setIncluirInativos] = useState(true)
   const [modalAberto, setModalAberto] = useState(false)
@@ -86,10 +90,24 @@ function ConteudoEstruturaWms() {
     }
   }, [aba, incluirInativos])
 
+  const carregarAreas = useCallback(async () => {
+    try {
+      const { data } = await clienteHttp.get('/estrutura-wms?nivel=area&incluirInativos=true')
+      setAreas(data.niveis ?? [])
+    } catch {
+      setAreas([])
+    }
+  }, [])
+
   useEffect(() => {
     if (!estaAutenticado || carregandoSessao) return
     void carregar()
   }, [estaAutenticado, carregandoSessao, carregar])
+
+  useEffect(() => {
+    if (!estaAutenticado || carregandoSessao) return
+    if (aba === 'rua') void carregarAreas()
+  }, [estaAutenticado, carregandoSessao, aba, carregarAreas])
 
   function abrirNovo() {
     setModoEdicao(false)
@@ -105,6 +123,7 @@ function ConteudoEstruturaWms() {
     setForm({
       codigo: item.codigo,
       nome: item.nome,
+      paiCodigo: item.paiCodigo ?? '',
       ativo: item.ativo,
     })
     setErro('')
@@ -123,11 +142,16 @@ function ConteudoEstruturaWms() {
       setErro('Preencha o código no padrão do nível.')
       return
     }
+    if (aba === 'rua' && !form.paiCodigo) {
+      setErro('Rua deve estar vinculada a uma área.')
+      return
+    }
     setSalvando(true)
     setErro('')
     const payload = {
       codigo,
-      nome: form.nome.trim() || codigo,
+      nome: aba === 'rua' ? codigo : form.nome.trim() || codigo,
+      paiCodigo: aba === 'rua' ? form.paiCodigo : undefined,
       ativo: form.ativo,
     }
     try {
@@ -153,6 +177,18 @@ function ConteudoEstruturaWms() {
     aba === 'area' || aba === 'tipo' ? 'RC' : aba === 'rua' ? '01' : '0'
   const maxLengthCodigo = aba === 'andar' ? 1 : 2
   const inputModeCodigo = aba === 'area' || aba === 'tipo' ? 'text' : 'numeric'
+  const colunaMeio = aba === 'rua' ? 'Área' : 'Nome'
+  const opcoesAreaRua = useMemo(
+    () => opcoesSelectNivel(areas, 'area', { codigoAtual: form.paiCodigo }),
+    [areas, form.paiCodigo]
+  )
+
+  function rotuloAreaDaRua(paiCodigo?: string | null) {
+    if (!paiCodigo) return '—'
+    const area = areas.find((item) => item.codigo === paiCodigo)
+    if (!area) return paiCodigo
+    return area.nome && area.nome !== area.codigo ? `${area.codigo} — ${area.nome}` : area.codigo
+  }
 
   return (
     <div className="min-w-0 space-y-6">
@@ -202,7 +238,7 @@ function ConteudoEstruturaWms() {
             <thead>
               <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
                 <th className="px-4 py-3 font-medium">Código</th>
-                <th className="px-4 py-3 font-medium">Nome</th>
+                <th className="px-4 py-3 font-medium">{colunaMeio}</th>
                 <th className="px-4 py-3 font-medium">Situação</th>
                 <th className="px-2 py-3" />
               </tr>
@@ -220,7 +256,9 @@ function ConteudoEstruturaWms() {
                 lista.map((item) => (
                   <tr key={item.id} className="border-b border-border/60 last:border-0 hover:bg-muted/20">
                     <td className="px-4 py-3 font-mono font-medium">{item.codigo}</td>
-                    <td className="px-4 py-3">{item.nome}</td>
+                    <td className="px-4 py-3">
+                      {aba === 'rua' ? rotuloAreaDaRua(item.paiCodigo) : item.nome}
+                    </td>
                     <td className="px-4 py-3">
                       <BadgeStatus variante={item.ativo ? 'ativo' : 'inativo'}>
                         {item.ativo ? 'Ativo' : 'Inativo'}
@@ -274,15 +312,25 @@ function ConteudoEstruturaWms() {
             placeholder={placeholderCodigo}
             className="font-mono"
           />
-          <InputPadrao
-            rotulo="Nome"
-            value={form.nome}
-            onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))}
-            disabled={salvando}
-            placeholder={
-              aba === 'rua' || aba === 'andar' ? 'Opcional — usa o código se vazio' : 'Recebimento'
-            }
-          />
+          {aba === 'rua' ? (
+            <SelectPadrao
+              rotulo="Área"
+              valor={form.paiCodigo}
+              aoMudar={(v) => setForm((f) => ({ ...f, paiCodigo: v }))}
+              opcoes={opcoesAreaRua}
+              placeholder="Selecione"
+              obrigatorio
+              disabled={salvando}
+            />
+          ) : (
+            <InputPadrao
+              rotulo="Nome"
+              value={form.nome}
+              onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))}
+              disabled={salvando}
+              placeholder={aba === 'andar' ? 'Opcional — usa o código se vazio' : 'Recebimento'}
+            />
+          )}
 
           <div className="flex items-center gap-2">
             <Checkbox

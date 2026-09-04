@@ -225,10 +225,10 @@ function ConteudoEnderecosWms() {
     () => opcoesSelectNivel(niveis, 'tipo', { codigoAtual: form.tipo }),
     [niveis, form.tipo]
   )
-  const opcoesFormRua = useMemo(
-    () => opcoesSelectNivel(niveis, 'rua', { codigoAtual: form.rua }),
-    [niveis, form.rua]
-  )
+  const opcoesFormRua = useMemo(() => {
+    if (!form.area) return []
+    return opcoesSelectNivel(niveis, 'rua', { codigoAtual: form.rua, paiCodigo: form.area })
+  }, [niveis, form.rua, form.area])
   const opcoesFormAndar = useMemo(
     () => opcoesSelectNivel(niveis, 'andar', { codigoAtual: form.andar }),
     [niveis, form.andar]
@@ -428,7 +428,15 @@ function ConteudoEnderecosWms() {
             <SelectPadrao
               rotulo="Área"
               valor={form.area}
-              aoMudar={(v) => setForm((f) => ({ ...f, area: v }))}
+              aoMudar={(v) =>
+                setForm((f) => {
+                  const ruaAindaVale = niveis.some(
+                    (item) =>
+                      item.nivel === 'rua' && item.codigo === f.rua && item.paiCodigo === v
+                  )
+                  return { ...f, area: v, rua: ruaAindaVale ? f.rua : '' }
+                })
+              }
               opcoes={opcoesFormArea}
               placeholder="Selecione"
               obrigatorio
@@ -452,13 +460,13 @@ function ConteudoEnderecosWms() {
                 valor={form.rua}
                 aoMudar={(v) => setForm((f) => ({ ...f, rua: v }))}
                 opcoes={opcoesFormRua}
-                placeholder="Selecione"
+                placeholder={form.area ? 'Selecione' : 'Selecione a área primeiro'}
                 obrigatorio
-                disabled={salvando}
+                disabled={salvando || !form.area}
               />
-              {opcoesFormRua.length === 0 && (
+              {form.area && opcoesFormRua.length === 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Cadastre ruas em{' '}
+                  Cadastre ruas desta área em{' '}
                   <Link href="/estrutura-wms" className="underline underline-offset-2">
                     Estrutura WMS
                   </Link>

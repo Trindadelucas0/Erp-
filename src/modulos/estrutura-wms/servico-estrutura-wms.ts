@@ -9,6 +9,9 @@ import type {
 } from './esquema-estrutura-wms.js'
 
 const MSG_DUPLICADO = 'Código já cadastrado neste nível da estrutura'
+const MSG_RUA_SEM_AREA = 'Rua deve estar vinculada a uma área'
+const MSG_AREA_CATALOGO = 'Área não cadastrada na estrutura do depósito'
+const MSG_RUA_AREA = 'Rua não pertence à área selecionada'
 
 const ROTULO_NIVEL: Record<NivelEstruturaWms, string> = {
   area: 'Área',
@@ -29,6 +32,23 @@ function codigoOu400(nivel: NivelEstruturaWms, bruto: string): string {
     const mensagem = erro instanceof Error ? erro.message : 'Código inválido'
     throw new ErroDaAplicacao(mensagem, 400)
   }
+}
+
+async function resolverPaiDaRua(
+  companyId: string,
+  nivel: string,
+  paiBruto: string | undefined,
+  paiExistente?: string | null
+): Promise<string | null> {
+  if (nivel !== 'rua') return null
+  const pai = String(paiBruto ?? '').trim().toUpperCase()
+  if (!pai) throw new ErroDaAplicacao(MSG_RUA_SEM_AREA, 400)
+
+  const area = await repositorioDeEstruturaWms.buscarPorNivelCodigo(companyId, 'area', pai)
+  if (!area) throw new ErroDaAplicacao(MSG_AREA_CATALOGO, 400)
+  const mesmoPai = paiExistente === pai
+  if (!area.ativo && !mesmoPai) throw new ErroDaAplicacao(MSG_AREA_CATALOGO, 400)
+  return pai
 }
 
 async function listar(
@@ -52,13 +72,15 @@ async function criarNivel(
 ) {
   await repositorioDeEstruturaWms.garantirAreasETiposPadrao(companyId)
   const codigo = codigoOu400(dados.nivel, dados.codigo)
-  const nome = nomeOuCodigo(dados.nome, codigo)
+  const nome = dados.nivel === 'rua' ? codigo : nomeOuCodigo(dados.nome, codigo)
+  const paiCodigo = await resolverPaiDaRua(companyId, dados.nivel, dados.paiCodigo)
 
   try {
     const item = await repositorioDeEstruturaWms.criar(companyId, {
       nivel: dados.nivel,
       codigo,
       nome,
+      paiCodigo,
       ativo: dados.ativo ?? true,
     })
 
@@ -67,7 +89,12 @@ async function criarNivel(
       acao: 'criar',
       entidade: 'nivel_endereco_wms',
       entidadeId: item.id,
-      valoresDepois: { nivel: item.nivel, codigo: item.codigo, nome: item.nome },
+      valoresDepois: {
+        nivel: item.nivel,
+        codigo: item.codigo,
+        nome: item.nome,
+        paiCodigo: item.paiCodigo,
+      },
     })
 
     return item
@@ -89,12 +116,19 @@ async function editarNivel(
   if (!existente) throw new ErroDaAplicacao('Item da estrutura WMS não encontrado', 404)
 
   const codigo = codigoOu400(existente.nivel as NivelEstruturaWms, dados.codigo)
-  const nome = nomeOuCodigo(dados.nome, codigo)
+  const nome = existente.nivel === 'rua' ? codigo : nomeOuCodigo(dados.nome, codigo)
+  const paiCodigo = await resolverPaiDaRua(
+    companyId,
+    existente.nivel,
+    dados.paiCodigo,
+    existente.paiCodigo
+  )
 
   try {
     const item = await repositorioDeEstruturaWms.atualizar(companyId, id, {
       codigo,
       nome,
+      paiCodigo,
       ativo: dados.ativo,
     })
     if (!item) throw new ErroDaAplicacao('Item da estrutura WMS não encontrado', 404)
@@ -107,9 +141,15 @@ async function editarNivel(
       valoresAntes: {
         codigo: existente.codigo,
         nome: existente.nome,
+        paiCodigo: existente.paiCodigo,
         ativo: existente.ativo,
       },
-      valoresDepois: { codigo: item.codigo, nome: item.nome, ativo: item.ativo },
+      valoresDepois: {
+        codigo: item.codigo,
+        nome: item.nome,
+        paiCodigo: item.paiCodigo,
+        ativo: item.ativo,
+      },
     })
 
     return item
@@ -136,6 +176,8 @@ async function exigirNiveisDoCatalogo(
       { nivel: 'andar', codigo: componentes.andar, campo: 'andar' },
     ]
 
+  let itemRua: { paiCodigo: string | null } | null = null
+
   for (const par of pares) {
     const item = await repositorioDeEstruturaWms.buscarPorNivelCodigo(
       companyId,
@@ -156,6 +198,16 @@ async function exigirNiveisDoCatalogo(
         400
       )
     }
+    if (par.nivel === 'rua') itemRua = item
+  }
+
+  const ruaCombinaArea = itemRua?.paiCodigo === componentes.area
+  const legadoMesmaRua =
+    Boolean(existentes) &&
+    existentes!.rua === componentes.rua &&
+    existentes!.area === componentes.area
+  if (!ruaCombinaArea && !legadoMesmaRua) {
+    throw new ErroDaAplicacao(MSG_RUA_AREA, 400)
   }
 }
 

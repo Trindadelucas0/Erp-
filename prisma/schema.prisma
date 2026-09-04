@@ -1530,12 +1530,15 @@ model NivelEnderecoWms {
   nivel     String
   codigo    String
   nome      String
+  /// Código da área quando nivel=rua; demais níveis ficam nulos.
+  paiCodigo String?
   ativo     Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([companyId, nivel, codigo])
   @@index([companyId, nivel, ativo])
+  @@index([companyId, nivel, paiCodigo])
 }
 
 /// Cadastro mestre de endereço WMS (LOCAL-ÁREA-TIPO-RUA-ANDAR-POSIÇÃO).

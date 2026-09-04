@@ -6,6 +6,7 @@ export type ItemEstruturaWms = {
   nivel: NivelEstruturaWms | string
   codigo: string
   nome: string
+  paiCodigo?: string | null
   ativo: boolean
 }
 
@@ -40,7 +41,7 @@ export function completarCodigoNivelWms(nivel: NivelEstruturaWms, valor: string)
 export function opcoesSelectNivel(
   itens: ItemEstruturaWms[],
   nivel: NivelEstruturaWms,
-  extras: { incluirInativos?: boolean; codigoAtual?: string } = {}
+  extras: { incluirInativos?: boolean; codigoAtual?: string; paiCodigo?: string } = {}
 ) {
   return itens
     .filter((item) => item.nivel === nivel)
@@ -50,6 +51,13 @@ export function opcoesSelectNivel(
         item.ativo ||
         (extras.codigoAtual != null && extras.codigoAtual === item.codigo)
     )
+    .filter((item) => {
+      if (!extras.paiCodigo) return true
+      return (
+        item.paiCodigo === extras.paiCodigo ||
+        (extras.codigoAtual != null && extras.codigoAtual === item.codigo)
+      )
+    })
     .map((item) => ({
       value: item.codigo,
       label: item.nome && item.nome !== item.codigo ? `${item.codigo} — ${item.nome}` : item.codigo,

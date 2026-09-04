@@ -8,6 +8,7 @@ export type NivelEnderecoWmsRegistro = {
   nivel: string
   codigo: string
   nome: string
+  paiCodigo: string | null
   ativo: boolean
   createdAt: Date
 }
@@ -17,6 +18,7 @@ function mapear(row: {
   nivel: string
   codigo: string
   nome: string
+  paiCodigo: string | null
   ativo: boolean
   createdAt: Date
 }): NivelEnderecoWmsRegistro {
@@ -25,6 +27,7 @@ function mapear(row: {
     nivel: row.nivel,
     codigo: row.codigo,
     nome: row.nome,
+    paiCodigo: row.paiCodigo,
     ativo: row.ativo,
     createdAt: row.createdAt,
   }
@@ -65,7 +68,13 @@ async function buscarPorNivelCodigo(
 
 async function criar(
   companyId: string,
-  dados: { nivel: string; codigo: string; nome: string; ativo: boolean }
+  dados: {
+    nivel: string
+    codigo: string
+    nome: string
+    paiCodigo: string | null
+    ativo: boolean
+  }
 ) {
   const row = await clientePrisma.nivelEnderecoWms.create({
     data: {
@@ -73,6 +82,7 @@ async function criar(
       nivel: dados.nivel,
       codigo: dados.codigo,
       nome: dados.nome,
+      paiCodigo: dados.paiCodigo,
       ativo: dados.ativo,
     },
   })
@@ -82,7 +92,7 @@ async function criar(
 async function atualizar(
   companyId: string,
   id: string,
-  dados: { codigo: string; nome: string; ativo: boolean }
+  dados: { codigo: string; nome: string; paiCodigo: string | null; ativo: boolean }
 ) {
   const existente = await clientePrisma.nivelEnderecoWms.findFirst({
     where: { id, companyId },
@@ -95,6 +105,7 @@ async function atualizar(
     data: {
       codigo: dados.codigo,
       nome: dados.nome,
+      paiCodigo: dados.paiCodigo,
       ativo: dados.ativo,
     },
   })
