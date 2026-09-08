@@ -133,6 +133,11 @@ async function contarRuasDaArea(companyId: string, areaCodigo: string) {
 }
 
 async function garantirAreasETiposPadrao(companyId: string) {
+  const jaTemCatalogo = await clientePrisma.nivelEnderecoWms.count({
+    where: { companyId },
+  })
+  if (jaTemCatalogo > 0) return
+
   const padrao = [
     ...PADRAO_LOCAIS_WMS.map((item) => ({
       companyId,

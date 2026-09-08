@@ -12,6 +12,7 @@ vi.mock('./repositorio-enderecos-wms.js', () => ({
     criar: vi.fn(),
     atualizar: vi.fn(),
     listarPorEmpresa: vi.fn(),
+    excluir: vi.fn(),
   },
 }))
 
@@ -158,5 +159,20 @@ describe('servicoDeEnderecosWms', () => {
       message: 'Endereço WMS não encontrado',
       codigoHttp: 404,
     })
+  })
+
+  it('exclui endereço da empresa', async () => {
+    vi.mocked(repositorioDeEnderecosWms.buscarPorId).mockResolvedValue({
+      id: 'end-1',
+      codigo: 'A-RC-CH-20-2-05',
+      ...componentesValidos,
+      ativo: true,
+      createdAt: new Date(),
+    })
+    vi.mocked(repositorioDeEnderecosWms.excluir).mockResolvedValue(true)
+
+    await servicoDeEnderecosWms.excluirEndereco('company-001', 'end-1', 'user-001')
+
+    expect(repositorioDeEnderecosWms.excluir).toHaveBeenCalledWith('company-001', 'end-1')
   })
 })

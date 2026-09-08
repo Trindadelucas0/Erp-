@@ -1,9 +1,6 @@
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-auditoria.js'
-import {
-  ehCodigoPadraoEstruturaWms,
-  validarCodigoNivelEstruturaWms,
-} from '../enderecos-wms/nomenclatura-endereco-wms.js'
+import { validarCodigoNivelEstruturaWms } from '../enderecos-wms/nomenclatura-endereco-wms.js'
 import { repositorioDeEnderecosWms } from '../enderecos-wms/repositorio-enderecos-wms.js'
 import { repositorioDeEstruturaWms } from './repositorio-estrutura-wms.js'
 import type {
@@ -183,12 +180,6 @@ async function excluirNivel(companyId: string, id: string, idDoAutor: string) {
   if (!existente) throw new ErroDaAplicacao('Item da estrutura WMS não encontrado', 404)
 
   const nivel = existente.nivel as NivelEstruturaWms
-  if (ehCodigoPadraoEstruturaWms(nivel, existente.codigo)) {
-    throw new ErroDaAplicacao(
-      'O cadastro inicial da estrutura não pode ser excluído. Desative se não for usar.',
-      400
-    )
-  }
 
   if (nivel === 'area') {
     const ruas = await repositorioDeEstruturaWms.contarRuasDaArea(companyId, existente.codigo)
@@ -197,9 +188,12 @@ async function excluirNivel(companyId: string, id: string, idDoAutor: string) {
     }
   }
 
+  const campo = CAMPO_ENDERECO[nivel]
+  if (!campo) throw new ErroDaAplicacao('Nível da estrutura inválido', 400)
+
   const usados = await repositorioDeEnderecosWms.contarPorComponente(
     companyId,
-    CAMPO_ENDERECO[nivel],
+    campo,
     existente.codigo
   )
   if (usados > 0) {

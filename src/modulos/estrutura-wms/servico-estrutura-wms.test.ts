@@ -26,6 +26,7 @@ vi.mock('../enderecos-wms/repositorio-enderecos-wms.js', () => ({
 }))
 
 import { repositorioDeEstruturaWms } from './repositorio-estrutura-wms.js'
+import { repositorioDeEnderecosWms } from '../enderecos-wms/repositorio-enderecos-wms.js'
 import { servicoDeEstruturaWms } from './servico-estrutura-wms.js'
 
 function itemRua(codigo: string, ativo = true, paiCodigo = 'RC') {
@@ -341,5 +342,54 @@ describe('exigirNiveisDoCatalogo', () => {
       message: 'Local não cadastrado na estrutura do depósito',
       codigoHttp: 400,
     })
+  })
+})
+
+describe('excluirNivel', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(repositorioDeEstruturaWms.contarRuasDaArea).mockResolvedValue(0)
+    vi.mocked(repositorioDeEnderecosWms.contarPorComponente).mockResolvedValue(0)
+    vi.mocked(repositorioDeEstruturaWms.excluir).mockResolvedValue(true)
+  })
+
+  it('exclui local, área e tipo do seed quando não estão em uso', async () => {
+    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockResolvedValue(itemCatalogo('area', 'RC'))
+
+    await servicoDeEstruturaWms.excluirNivel('company-001', 'area-RC', 'user-001')
+
+    expect(repositorioDeEstruturaWms.excluir).toHaveBeenCalledWith('company-001', 'area-RC')
+  })
+
+  it('recusa excluir área que ainda tem rua', async () => {
+    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockResolvedValue(itemCatalogo('area', 'AM'))
+    vi.mocked(repositorioDeEstruturaWms.contarRuasDaArea).mockResolvedValue(2)
+
+    await expect(
+      servicoDeEstruturaWms.excluirNivel('company-001', 'area-AM', 'user-001')
+    ).rejects.toMatchObject({
+      message: 'Há ruas cadastradas nesta área. Exclua as ruas primeiro.',
+      codigoHttp: 409,
+    })
+  })
+
+  it('recusa excluir nível usado em endereço', async () => {
+    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockResolvedValue(itemCatalogo('local', 'C'))
+    vi.mocked(repositorioDeEnderecosWms.contarPorComponente).mockResolvedValue(1)
+
+    await expect(
+      servicoDeEstruturaWms.excluirNivel('company-001', 'local-C', 'user-001')
+    ).rejects.toMatchObject({
+      message: 'Há endereços WMS usando local C',
+      codigoHttp: 409,
+    })
+  })
+
+  it('exclui nível criado pelo operador quando não está em uso', async () => {
+    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockResolvedValue(itemCatalogo('local', 'C'))
+
+    await servicoDeEstruturaWms.excluirNivel('company-001', 'local-C', 'user-001')
+
+    expect(repositorioDeEstruturaWms.excluir).toHaveBeenCalledWith('company-001', 'local-C')
   })
 })

@@ -22,6 +22,7 @@ import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
 import { ordenarLista } from '@/lib/ordenacao-lista'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import { atributosCampoBuscaLista } from '@/lib/atributos-campo-busca-lista'
+import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
 import {
   completarDoisDigitos,
   mascaraRuaOuPosicao,
@@ -87,6 +88,9 @@ function ConteudoEnderecosWms() {
   const [salvando, setSalvando] = useState(false)
   const [mensagem, setMensagem] = useState('')
   const [erro, setErro] = useState('')
+  const [idParaExcluir, setIdParaExcluir] = useState('')
+  const [codigoParaExcluir, setCodigoParaExcluir] = useState('')
+  const [excluindo, setExcluindo] = useState(false)
   const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<ColunaEndereco>()
 
   useEffect(() => {
@@ -198,6 +202,26 @@ function ConteudoEnderecosWms() {
       setErro(extrairMensagemApi(err, 'Erro ao salvar endereço WMS'))
     } finally {
       setSalvando(false)
+    }
+  }
+
+  async function aoExcluir() {
+    if (!idParaExcluir) return
+    setExcluindo(true)
+    setErro('')
+    try {
+      await clienteHttp.delete(`/enderecos-wms/${idParaExcluir}`)
+      setMensagem('Endereço excluído.')
+      if (idEmEdicao === idParaExcluir) fecharFormulario()
+      setIdParaExcluir('')
+      setCodigoParaExcluir('')
+      await carregar()
+    } catch (err: unknown) {
+      setErro(extrairMensagemApi(err, 'Erro ao excluir endereço WMS'))
+      setIdParaExcluir('')
+      setCodigoParaExcluir('')
+    } finally {
+      setExcluindo(false)
     }
   }
 
@@ -528,11 +552,28 @@ function ConteudoEnderecosWms() {
                       </BadgeStatus>
                     </td>
                     <td className="px-2 py-3">
-                      {podeEditar && (
-                        <Button type="button" variant="ghost" size="sm" onClick={() => abrirEdicao(item)}>
-                          Editar
-                        </Button>
-                      )}
+                      <div className="flex flex-wrap items-center gap-1">
+                        {podeEditar && (
+                          <Button type="button" variant="ghost" size="sm" onClick={() => abrirEdicao(item)}>
+                            Editar
+                          </Button>
+                        )}
+                        {podeEditar && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => {
+                              setErro('')
+                              setIdParaExcluir(item.id)
+                              setCodigoParaExcluir(item.codigo)
+                            }}
+                          >
+                            Excluir
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -540,6 +581,27 @@ function ConteudoEnderecosWms() {
           </table>
         </div>
       </CardPadrao>
+
+      <ModalConfirmacao
+        aberto={Boolean(idParaExcluir)}
+        titulo="Excluir endereço?"
+        mensagem={
+          codigoParaExcluir
+            ? `O endereço ${codigoParaExcluir} será removido da lista.`
+            : 'O endereço será removido da lista.'
+        }
+        textoConfirmar={excluindo ? 'Excluindo...' : 'Excluir'}
+        textoCancelar="Cancelar"
+        aoConfirmar={() => {
+          if (!excluindo) void aoExcluir()
+        }}
+        aoCancelar={() => {
+          if (!excluindo) {
+            setIdParaExcluir('')
+            setCodigoParaExcluir('')
+          }
+        }}
+      />
     </div>
   )
 }

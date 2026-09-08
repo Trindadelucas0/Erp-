@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label'
 import { BadgeStatus } from '@/components/ui/badge-status'
 import { Abas } from '@/components/ui/abas'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
+import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
 import {
   completarCodigoNivelWms,
   mascaraCodigoNivelWms,
@@ -74,6 +75,8 @@ function ConteudoEstruturaWms() {
   const [salvando, setSalvando] = useState(false)
   const [mensagem, setMensagem] = useState('')
   const [erro, setErro] = useState('')
+  const [itemParaExcluir, setItemParaExcluir] = useState<ItemEstruturaWms | null>(null)
+  const [excluindo, setExcluindo] = useState(false)
 
   const carregar = useCallback(async () => {
     setCarregandoLista(true)
@@ -172,6 +175,24 @@ function ConteudoEstruturaWms() {
     }
   }
 
+  async function aoExcluir() {
+    if (!itemParaExcluir) return
+    setExcluindo(true)
+    setErro('')
+    try {
+      await clienteHttp.delete(`/estrutura-wms/${itemParaExcluir.id}`)
+      setMensagem(`${ROTULOS_NIVEL_ESTRUTURA_WMS[aba]} excluído.`)
+      setItemParaExcluir(null)
+      if (idEmEdicao === itemParaExcluir.id) fecharModal()
+      await carregar()
+    } catch (err: unknown) {
+      setErro(extrairMensagemApi(err, 'Erro ao excluir a estrutura WMS'))
+      setItemParaExcluir(null)
+    } finally {
+      setExcluindo(false)
+    }
+  }
+
   const rotuloNivel = ROTULOS_NIVEL_ESTRUTURA_WMS[aba]
   const podeSalvar = modoEdicao ? podeEditar : podeCriar
   const placeholderCodigo =
@@ -266,11 +287,27 @@ function ConteudoEstruturaWms() {
                       </BadgeStatus>
                     </td>
                     <td className="px-2 py-3">
-                      {podeEditar && (
-                        <Button type="button" variant="ghost" size="sm" onClick={() => abrirEdicao(item)}>
-                          Editar
-                        </Button>
-                      )}
+                      <div className="flex flex-wrap items-center gap-1">
+                        {podeEditar && (
+                          <Button type="button" variant="ghost" size="sm" onClick={() => abrirEdicao(item)}>
+                            Editar
+                          </Button>
+                        )}
+                        {podeEditar && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => {
+                              setErro('')
+                              setItemParaExcluir(item)
+                            }}
+                          >
+                            Excluir
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -352,6 +389,24 @@ function ConteudoEstruturaWms() {
           </div>
         </form>
       </Modal>
+
+      <ModalConfirmacao
+        aberto={Boolean(itemParaExcluir)}
+        titulo={`Excluir ${rotuloNivel.toLowerCase()}?`}
+        mensagem={
+          itemParaExcluir
+            ? `O código ${itemParaExcluir.codigo} sai da estrutura e deixa de aparecer no endereço.`
+            : ''
+        }
+        textoConfirmar={excluindo ? 'Excluindo...' : 'Excluir'}
+        textoCancelar="Cancelar"
+        aoConfirmar={() => {
+          if (!excluindo) void aoExcluir()
+        }}
+        aoCancelar={() => {
+          if (!excluindo) setItemParaExcluir(null)
+        }}
+      />
     </div>
   )
 }

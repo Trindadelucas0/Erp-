@@ -66,7 +66,7 @@ async function editarEndereco(requisicao: FastifyRequest, resposta: FastifyReply
 async function excluirEndereco(requisicao: FastifyRequest, resposta: FastifyReply) {
   const { id } = requisicao.params as { id: string }
   await servicoDeEnderecosWms.excluirEndereco(companyId(requisicao), id, requisicao.idDoUsuario!)
-  return resposta.status(204).send()
+  return resposta.send({ ok: true })
 }
 
 export const controladorDeEnderecosWms = {

@@ -28,13 +28,6 @@ export const LOCAIS_WMS = PADRAO_LOCAIS_WMS.map((l) => l.codigo)
 export const AREAS_WMS = PADRAO_AREAS_WMS.map((a) => a.codigo)
 export const TIPOS_WMS = PADRAO_TIPOS_WMS.map((t) => t.codigo)
 
-export function ehCodigoPadraoEstruturaWms(nivel: string, codigo: string): boolean {
-  if (nivel === 'local') return PADRAO_LOCAIS_WMS.some((item) => item.codigo === codigo)
-  if (nivel === 'area') return PADRAO_AREAS_WMS.some((item) => item.codigo === codigo)
-  if (nivel === 'tipo') return PADRAO_TIPOS_WMS.some((item) => item.codigo === codigo)
-  return false
-}
-
 export type AreaWms = (typeof PADRAO_AREAS_WMS)[number]['codigo']
 export type TipoWms = (typeof PADRAO_TIPOS_WMS)[number]['codigo']
 
