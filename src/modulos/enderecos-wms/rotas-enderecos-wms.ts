@@ -30,4 +30,10 @@ export async function rotasDeEnderecosWms(aplicacao: FastifyInstance) {
     { preHandler: [...auth, middlewareDeAutorizacao('estoque:edit')] },
     controladorDeEnderecosWms.editarEndereco
   )
+
+  aplicacao.delete(
+    '/:id',
+    { preHandler: [...auth, middlewareDeAutorizacao('estoque:edit')] },
+    controladorDeEnderecosWms.excluirEndereco
+  )
 }

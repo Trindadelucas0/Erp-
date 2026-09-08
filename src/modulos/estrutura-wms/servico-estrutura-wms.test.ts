@@ -12,8 +12,16 @@ vi.mock('./repositorio-estrutura-wms.js', () => ({
     buscarPorNivelCodigo: vi.fn(),
     criar: vi.fn(),
     atualizar: vi.fn(),
+    excluir: vi.fn(),
+    contarRuasDaArea: vi.fn(),
     garantirAreasETiposPadrao: vi.fn(),
     ehUnicidadePrisma: vi.fn(() => false),
+  },
+}))
+
+vi.mock('../enderecos-wms/repositorio-enderecos-wms.js', () => ({
+  repositorioDeEnderecosWms: {
+    contarPorComponente: vi.fn(),
   },
 }))
 

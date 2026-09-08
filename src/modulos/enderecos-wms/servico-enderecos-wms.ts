@@ -136,9 +136,26 @@ async function editarEndereco(
   }
 }
 
+async function excluirEndereco(companyId: string, id: string, idDoAutor: string) {
+  const existente = await repositorioDeEnderecosWms.buscarPorId(companyId, id)
+  if (!existente) throw new ErroDaAplicacao('Endereço WMS não encontrado', 404)
+
+  const apagou = await repositorioDeEnderecosWms.excluir(companyId, id)
+  if (!apagou) throw new ErroDaAplicacao('Endereço WMS não encontrado', 404)
+
+  await registrarAuditoria({
+    usuarioId: idDoAutor,
+    acao: 'excluir',
+    entidade: 'endereco_wms',
+    entidadeId: id,
+    valoresAntes: { codigo: existente.codigo },
+  })
+}
+
 export const servicoDeEnderecosWms = {
   listar,
   buscarPorId,
   criarEndereco,
   editarEndereco,
+  excluirEndereco,
 }

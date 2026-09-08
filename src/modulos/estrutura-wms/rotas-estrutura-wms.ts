@@ -30,4 +30,10 @@ export async function rotasDeEstruturaWms(aplicacao: FastifyInstance) {
     { preHandler: [...auth, middlewareDeAutorizacao('estoque:edit')] },
     controladorDeEstruturaWms.editarNivel
   )
+
+  aplicacao.delete(
+    '/:id',
+    { preHandler: [...auth, middlewareDeAutorizacao('estoque:edit')] },
+    controladorDeEstruturaWms.excluirNivel
+  )
 }

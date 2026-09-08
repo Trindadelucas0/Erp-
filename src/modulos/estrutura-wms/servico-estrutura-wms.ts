@@ -1,6 +1,10 @@
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-auditoria.js'
-import { validarCodigoNivelEstruturaWms } from '../enderecos-wms/nomenclatura-endereco-wms.js'
+import {
+  ehCodigoPadraoEstruturaWms,
+  validarCodigoNivelEstruturaWms,
+} from '../enderecos-wms/nomenclatura-endereco-wms.js'
+import { repositorioDeEnderecosWms } from '../enderecos-wms/repositorio-enderecos-wms.js'
 import { repositorioDeEstruturaWms } from './repositorio-estrutura-wms.js'
 import type {
   DadosParaCriarNivelWms,
@@ -166,6 +170,62 @@ async function editarNivel(
   }
 }
 
+const CAMPO_ENDERECO: Record<NivelEstruturaWms, 'local' | 'area' | 'tipo' | 'rua' | 'andar'> = {
+  local: 'local',
+  area: 'area',
+  tipo: 'tipo',
+  rua: 'rua',
+  andar: 'andar',
+}
+
+async function excluirNivel(companyId: string, id: string, idDoAutor: string) {
+  const existente = await repositorioDeEstruturaWms.buscarPorId(companyId, id)
+  if (!existente) throw new ErroDaAplicacao('Item da estrutura WMS não encontrado', 404)
+
+  const nivel = existente.nivel as NivelEstruturaWms
+  if (ehCodigoPadraoEstruturaWms(nivel, existente.codigo)) {
+    throw new ErroDaAplicacao(
+      'O cadastro inicial da estrutura não pode ser excluído. Desative se não for usar.',
+      400
+    )
+  }
+
+  if (nivel === 'area') {
+    const ruas = await repositorioDeEstruturaWms.contarRuasDaArea(companyId, existente.codigo)
+    if (ruas > 0) {
+      throw new ErroDaAplicacao('Há ruas cadastradas nesta área. Exclua as ruas primeiro.', 409)
+    }
+  }
+
+  const usados = await repositorioDeEnderecosWms.contarPorComponente(
+    companyId,
+    CAMPO_ENDERECO[nivel],
+    existente.codigo
+  )
+  if (usados > 0) {
+    throw new ErroDaAplicacao(
+      `Há endereços WMS usando ${ROTULO_NIVEL[nivel].toLowerCase()} ${existente.codigo}`,
+      409
+    )
+  }
+
+  const apagou = await repositorioDeEstruturaWms.excluir(companyId, id)
+  if (!apagou) throw new ErroDaAplicacao('Item da estrutura WMS não encontrado', 404)
+
+  await registrarAuditoria({
+    usuarioId: idDoAutor,
+    acao: 'excluir',
+    entidade: 'nivel_endereco_wms',
+    entidadeId: id,
+    valoresAntes: {
+      nivel: existente.nivel,
+      codigo: existente.codigo,
+      nome: existente.nome,
+      paiCodigo: existente.paiCodigo,
+    },
+  })
+}
+
 async function exigirNiveisDoCatalogo(
   companyId: string,
   componentes: { local: string; area: string; tipo: string; rua: string; andar: string },
@@ -217,5 +277,6 @@ export const servicoDeEstruturaWms = {
   buscarPorId,
   criarNivel,
   editarNivel,
+  excluirNivel,
   exigirNiveisDoCatalogo,
 }

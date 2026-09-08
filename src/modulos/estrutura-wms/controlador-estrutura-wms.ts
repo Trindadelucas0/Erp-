@@ -60,9 +60,16 @@ async function editarNivel(requisicao: FastifyRequest, resposta: FastifyReply) {
   return resposta.send({ nivel })
 }
 
+async function excluirNivel(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id } = requisicao.params as { id: string }
+  await servicoDeEstruturaWms.excluirNivel(companyId(requisicao), id, requisicao.idDoUsuario!)
+  return resposta.status(204).send()
+}
+
 export const controladorDeEstruturaWms = {
   listarNiveis,
   buscarNivel,
   criarNivel,
   editarNivel,
+  excluirNivel,
 }
