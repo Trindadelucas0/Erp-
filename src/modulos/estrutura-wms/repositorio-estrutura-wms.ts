@@ -116,6 +116,22 @@ async function atualizar(
   return mapear(row)
 }
 
+async function excluir(companyId: string, id: string) {
+  const existente = await clientePrisma.nivelEnderecoWms.findFirst({
+    where: { id, companyId },
+    select: { id: true },
+  })
+  if (!existente) return false
+  await clientePrisma.nivelEnderecoWms.delete({ where: { id } })
+  return true
+}
+
+async function contarRuasDaArea(companyId: string, areaCodigo: string) {
+  return clientePrisma.nivelEnderecoWms.count({
+    where: { companyId, nivel: 'rua', paiCodigo: areaCodigo },
+  })
+}
+
 async function garantirAreasETiposPadrao(companyId: string) {
   const padrao = [
     ...PADRAO_LOCAIS_WMS.map((item) => ({
@@ -157,6 +173,8 @@ export const repositorioDeEstruturaWms = {
   buscarPorNivelCodigo,
   criar,
   atualizar,
+  excluir,
+  contarRuasDaArea,
   garantirAreasETiposPadrao,
   ehUnicidadePrisma,
 }

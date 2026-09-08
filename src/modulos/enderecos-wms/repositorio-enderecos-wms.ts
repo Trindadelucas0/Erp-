@@ -141,10 +141,32 @@ async function atualizar(
   return mapear(row)
 }
 
+async function excluir(companyId: string, id: string) {
+  const existente = await clientePrisma.enderecoWms.findFirst({
+    where: { id, companyId },
+    select: { id: true },
+  })
+  if (!existente) return false
+  await clientePrisma.enderecoWms.delete({ where: { id } })
+  return true
+}
+
+async function contarPorComponente(
+  companyId: string,
+  campo: 'local' | 'area' | 'tipo' | 'rua' | 'andar',
+  codigo: string
+) {
+  return clientePrisma.enderecoWms.count({
+    where: { companyId, [campo]: codigo },
+  })
+}
+
 export const repositorioDeEnderecosWms = {
   listarPorEmpresa,
   buscarPorId,
   buscarPorCodigo,
   criar,
   atualizar,
+  excluir,
+  contarPorComponente,
 }

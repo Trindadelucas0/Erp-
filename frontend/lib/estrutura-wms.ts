@@ -78,3 +78,16 @@ export function mapaNomesNivel(itens: ItemEstruturaWms[], nivel: NivelEstruturaW
   }
   return mapa
 }
+
+const CODIGOS_SEED_ESTRUTURA: Record<NivelEstruturaWms, readonly string[]> = {
+  local: ['A', 'B'],
+  area: ['RC', 'EX', 'CQ'],
+  tipo: ['PP', 'CX', 'CH', 'BC'],
+  rua: [],
+  andar: [],
+}
+
+export function ehNivelSeedEstruturaWms(nivel: string, codigo: string): boolean {
+  const lista = CODIGOS_SEED_ESTRUTURA[nivel as NivelEstruturaWms]
+  return lista ? lista.includes(codigo) : false
+}
