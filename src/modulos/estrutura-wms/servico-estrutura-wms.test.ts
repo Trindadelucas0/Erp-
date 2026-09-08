@@ -131,6 +131,19 @@ describe('servicoDeEstruturaWms', () => {
     })
   })
 
+  it('recusa código de local que não é letra', async () => {
+    await expect(
+      servicoDeEstruturaWms.criarNivel(
+        'company-001',
+        { nivel: 'local', codigo: '1', nome: 'Anexo', ativo: true },
+        'user-001'
+      )
+    ).rejects.toMatchObject({
+      message: 'Local deve ter 1 letra',
+      codigoHttp: 400,
+    })
+  })
+
   it('recusa letra no código da rua', async () => {
     await expect(
       servicoDeEstruturaWms.criarNivel(
@@ -172,6 +185,7 @@ describe('exigirNiveisDoCatalogo', () => {
 
     await expect(
       servicoDeEstruturaWms.exigirNiveisDoCatalogo('company-001', {
+        local: 'A',
         area: 'RC',
         tipo: 'CH',
         rua: '20',
@@ -191,6 +205,7 @@ describe('exigirNiveisDoCatalogo', () => {
 
     await expect(
       servicoDeEstruturaWms.exigirNiveisDoCatalogo('company-001', {
+        local: 'A',
         area: 'RC',
         tipo: 'CH',
         rua: '20',
@@ -210,6 +225,7 @@ describe('exigirNiveisDoCatalogo', () => {
 
     await expect(
       servicoDeEstruturaWms.exigirNiveisDoCatalogo('company-001', {
+        local: 'A',
         area: 'EX',
         tipo: 'CH',
         rua: '20',
@@ -229,6 +245,7 @@ describe('exigirNiveisDoCatalogo', () => {
 
     await expect(
       servicoDeEstruturaWms.exigirNiveisDoCatalogo('company-001', {
+        local: 'A',
         area: 'RC',
         tipo: 'CH',
         rua: '20',
@@ -249,9 +266,72 @@ describe('exigirNiveisDoCatalogo', () => {
     await expect(
       servicoDeEstruturaWms.exigirNiveisDoCatalogo(
         'company-001',
-        { area: 'RC', tipo: 'CH', rua: '20', andar: '2' },
-        { area: 'RC', tipo: 'CH', rua: '20', andar: '2' }
+        { local: 'A', area: 'RC', tipo: 'CH', rua: '20', andar: '2' },
+        { local: 'A', area: 'RC', tipo: 'CH', rua: '20', andar: '2' }
       )
     ).resolves.toBeUndefined()
+  })
+
+  it('recusa local fora do catálogo', async () => {
+    vi.mocked(repositorioDeEstruturaWms.buscarPorNivelCodigo).mockImplementation(
+      async (_c, nivel, codigo) => {
+        if (nivel === 'local') return null
+        return itemCatalogo(nivel, codigo)
+      }
+    )
+
+    await expect(
+      servicoDeEstruturaWms.exigirNiveisDoCatalogo('company-001', {
+        local: 'C',
+        area: 'RC',
+        tipo: 'CH',
+        rua: '20',
+        andar: '2',
+      })
+    ).rejects.toMatchObject({
+      message: 'Local não cadastrado na estrutura do depósito',
+      codigoHttp: 400,
+    })
+  })
+
+  it('aceita local inativo se o endereço já gravado o usa', async () => {
+    vi.mocked(repositorioDeEstruturaWms.buscarPorNivelCodigo).mockImplementation(
+      async (_c, nivel, codigo) =>
+        itemCatalogo(nivel, codigo, {
+          ativo: nivel !== 'local',
+          paiCodigo: nivel === 'rua' ? 'RC' : null,
+        })
+    )
+
+    await expect(
+      servicoDeEstruturaWms.exigirNiveisDoCatalogo(
+        'company-001',
+        { local: 'A', area: 'RC', tipo: 'CH', rua: '20', andar: '2' },
+        { local: 'A', area: 'RC', tipo: 'CH', rua: '20', andar: '2' }
+      )
+    ).resolves.toBeUndefined()
+  })
+
+  it('recusa local inativo em endereço novo', async () => {
+    vi.mocked(repositorioDeEstruturaWms.buscarPorNivelCodigo).mockImplementation(
+      async (_c, nivel, codigo) =>
+        itemCatalogo(nivel, codigo, {
+          ativo: nivel !== 'local',
+          paiCodigo: nivel === 'rua' ? 'RC' : null,
+        })
+    )
+
+    await expect(
+      servicoDeEstruturaWms.exigirNiveisDoCatalogo('company-001', {
+        local: 'A',
+        area: 'RC',
+        tipo: 'CH',
+        rua: '20',
+        andar: '2',
+      })
+    ).rejects.toMatchObject({
+      message: 'Local não cadastrado na estrutura do depósito',
+      codigoHttp: 400,
+    })
   })
 })

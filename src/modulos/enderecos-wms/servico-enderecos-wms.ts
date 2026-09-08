@@ -98,6 +98,7 @@ async function editarEndereco(
 
   const { componentes, codigo } = componentesOu400(dados)
   await servicoDeEstruturaWms.exigirNiveisDoCatalogo(companyId, componentes, {
+    local: existente.local,
     area: existente.area,
     tipo: existente.tipo,
     rua: existente.rua,

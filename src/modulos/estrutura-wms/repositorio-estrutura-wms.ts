@@ -1,7 +1,11 @@
 import { Prisma } from '@prisma/client'
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import type { NivelEstruturaWms } from './esquema-estrutura-wms.js'
-import { PADRAO_AREAS_WMS, PADRAO_TIPOS_WMS } from '../enderecos-wms/nomenclatura-endereco-wms.js'
+import {
+  PADRAO_AREAS_WMS,
+  PADRAO_LOCAIS_WMS,
+  PADRAO_TIPOS_WMS,
+} from '../enderecos-wms/nomenclatura-endereco-wms.js'
 
 export type NivelEnderecoWmsRegistro = {
   id: string
@@ -114,6 +118,13 @@ async function atualizar(
 
 async function garantirAreasETiposPadrao(companyId: string) {
   const padrao = [
+    ...PADRAO_LOCAIS_WMS.map((item) => ({
+      companyId,
+      nivel: 'local',
+      codigo: item.codigo,
+      nome: item.nome,
+      ativo: true,
+    })),
     ...PADRAO_AREAS_WMS.map((item) => ({
       companyId,
       nivel: 'area',

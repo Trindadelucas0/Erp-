@@ -1,4 +1,4 @@
-export const NIVEIS_ESTRUTURA_WMS = ['area', 'tipo', 'rua', 'andar'] as const
+export const NIVEIS_ESTRUTURA_WMS = ['local', 'area', 'tipo', 'rua', 'andar'] as const
 export type NivelEstruturaWms = (typeof NIVEIS_ESTRUTURA_WMS)[number]
 
 export type ItemEstruturaWms = {
@@ -11,6 +11,7 @@ export type ItemEstruturaWms = {
 }
 
 export const ROTULOS_NIVEL_ESTRUTURA_WMS: Record<NivelEstruturaWms, string> = {
+  local: 'Local',
   area: 'Área',
   tipo: 'Tipo de endereço',
   rua: 'Rua',
@@ -18,6 +19,12 @@ export const ROTULOS_NIVEL_ESTRUTURA_WMS: Record<NivelEstruturaWms, string> = {
 }
 
 export function mascaraCodigoNivelWms(nivel: NivelEstruturaWms, valor: string): string {
+  if (nivel === 'local') {
+    return String(valor ?? '')
+      .toUpperCase()
+      .replace(/[^A-Z]/g, '')
+      .slice(0, 1)
+  }
   if (nivel === 'area' || nivel === 'tipo') {
     return String(valor ?? '')
       .toUpperCase()

@@ -14,10 +14,15 @@ const MSG_AREA_CATALOGO = 'Área não cadastrada na estrutura do depósito'
 const MSG_RUA_AREA = 'Rua não pertence à área selecionada'
 
 const ROTULO_NIVEL: Record<NivelEstruturaWms, string> = {
+  local: 'Local',
   area: 'Área',
   tipo: 'Tipo de endereço',
   rua: 'Rua',
   andar: 'Andar',
+}
+
+function sufixoCadastrado(nivel: NivelEstruturaWms): 'o' | 'a' {
+  return nivel === 'area' || nivel === 'rua' ? 'a' : 'o'
 }
 
 function nomeOuCodigo(nome: string | undefined, codigo: string): string {
@@ -163,13 +168,14 @@ async function editarNivel(
 
 async function exigirNiveisDoCatalogo(
   companyId: string,
-  componentes: { area: string; tipo: string; rua: string; andar: string },
-  existentes?: { area: string; tipo: string; rua: string; andar: string }
+  componentes: { local: string; area: string; tipo: string; rua: string; andar: string },
+  existentes?: { local: string; area: string; tipo: string; rua: string; andar: string }
 ) {
   await repositorioDeEstruturaWms.garantirAreasETiposPadrao(companyId)
 
   const pares: { nivel: NivelEstruturaWms; codigo: string; campo: keyof typeof componentes }[] =
     [
+      { nivel: 'local', codigo: componentes.local, campo: 'local' },
       { nivel: 'area', codigo: componentes.area, campo: 'area' },
       { nivel: 'tipo', codigo: componentes.tipo, campo: 'tipo' },
       { nivel: 'rua', codigo: componentes.rua, campo: 'rua' },
@@ -186,17 +192,12 @@ async function exigirNiveisDoCatalogo(
     )
     const rotulo = ROTULO_NIVEL[par.nivel]
     const mesmoQueExistente = existentes?.[par.campo] === par.codigo
+    const mensagem = `${rotulo} não cadastrad${sufixoCadastrado(par.nivel)} na estrutura do depósito`
     if (!item) {
-      throw new ErroDaAplicacao(
-        `${rotulo} não cadastrad${par.nivel === 'andar' || par.nivel === 'tipo' ? 'o' : 'a'} na estrutura do depósito`,
-        400
-      )
+      throw new ErroDaAplicacao(mensagem, 400)
     }
     if (!item.ativo && !mesmoQueExistente) {
-      throw new ErroDaAplicacao(
-        `${rotulo} não cadastrad${par.nivel === 'andar' || par.nivel === 'tipo' ? 'o' : 'a'} na estrutura do depósito`,
-        400
-      )
+      throw new ErroDaAplicacao(mensagem, 400)
     }
     if (par.nivel === 'rua') itemRua = item
   }

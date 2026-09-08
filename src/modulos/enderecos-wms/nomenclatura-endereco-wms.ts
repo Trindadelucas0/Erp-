@@ -1,19 +1,16 @@
 /**
  * Padrão oficial do endereço WMS (§7.25):
- * LOCAL(1) + ÁREA(2 letras) + TIPO(2 letras) + RUA(2 dígitos) + ANDAR(1) + POSIÇÃO(2)
+ * LOCAL(1 letra) + ÁREA(2 letras) + TIPO(2 letras) + RUA(2 dígitos) + ANDAR(1) + POSIÇÃO(2)
  * Código canônico com hífen: A-RC-CH-20-2-05
- * Área, tipo, rua e andar vêm do catálogo Estrutura WMS (§6.17j); Local e Posição não.
+ * Local, área, tipo, rua e andar vêm do catálogo Estrutura WMS (§6.17j); Posição não.
  */
 
-export const LOCAIS_WMS = ['A', 'B'] as const
-export type LocalWms = (typeof LOCAIS_WMS)[number]
-
-export const ROTULOS_LOCAL_WMS: Record<LocalWms, string> = {
-  A: 'Prédio principal da fábrica',
-  B: 'Prédio secundário / Anexo II',
-}
-
 /** Valores iniciais sugeridos na Estrutura WMS (empresa nova). */
+export const PADRAO_LOCAIS_WMS = [
+  { codigo: 'A', nome: 'Prédio principal da fábrica' },
+  { codigo: 'B', nome: 'Prédio secundário / Anexo II' },
+] as const
+
 export const PADRAO_AREAS_WMS = [
   { codigo: 'RC', nome: 'Recebimento' },
   { codigo: 'EX', nome: 'Expedição' },
@@ -27,12 +24,16 @@ export const PADRAO_TIPOS_WMS = [
   { codigo: 'BC', nome: 'Bancada' },
 ] as const
 
+export const LOCAIS_WMS = PADRAO_LOCAIS_WMS.map((l) => l.codigo)
 export const AREAS_WMS = PADRAO_AREAS_WMS.map((a) => a.codigo)
 export const TIPOS_WMS = PADRAO_TIPOS_WMS.map((t) => t.codigo)
 
 export type AreaWms = (typeof PADRAO_AREAS_WMS)[number]['codigo']
 export type TipoWms = (typeof PADRAO_TIPOS_WMS)[number]['codigo']
 
+export const ROTULOS_LOCAL_WMS: Record<string, string> = Object.fromEntries(
+  PADRAO_LOCAIS_WMS.map((l) => [l.codigo, l.nome])
+)
 export const ROTULOS_AREA_WMS: Record<string, string> = Object.fromEntries(
   PADRAO_AREAS_WMS.map((a) => [a.codigo, a.nome])
 )
@@ -50,7 +51,7 @@ export type ComponentesEnderecoWms = {
 }
 
 export type ComponentesEnderecoWmsValidos = {
-  local: LocalWms
+  local: string
   area: string
   tipo: string
   rua: string
@@ -58,11 +59,12 @@ export type ComponentesEnderecoWmsValidos = {
   posicao: string
 }
 
+const REGEX_LOCAL = /^[A-Z]$/
 const REGEX_AREA_TIPO = /^[A-Z]{2}$/
 const REGEX_RUA = /^\d{2}$/
 const REGEX_ANDAR = /^\d$/
 const REGEX_POSICAO = /^\d{2}$/
-const REGEX_CODIGO = /^([AB])-([A-Z]{2})-([A-Z]{2})-(\d{2})-(\d)-(\d{2})$/
+const REGEX_CODIGO = /^([A-Z])-([A-Z]{2})-([A-Z]{2})-(\d{2})-(\d)-(\d{2})$/
 
 function soDigitos(valor: string, max: number): string {
   return String(valor ?? '').replace(/\D/g, '').slice(0, max)
@@ -82,11 +84,12 @@ function pad2(valor: string): string {
   return d.padStart(2, '0')
 }
 
-export function ehLocalWms(valor: string): valor is LocalWms {
-  return (LOCAIS_WMS as readonly string[]).includes(valor)
+export function ehLocalWms(valor: string): boolean {
+  return REGEX_LOCAL.test(valor)
 }
 
 export function normalizarCodigoNivelEstruturaWms(nivel: string, bruto: string): string {
+  if (nivel === 'local') return soLetras(bruto, 1)
   if (nivel === 'area' || nivel === 'tipo') return soLetras(bruto, 2)
   if (nivel === 'rua') return pad2(bruto)
   if (nivel === 'andar') return soDigitos(bruto, 1)
@@ -95,6 +98,10 @@ export function normalizarCodigoNivelEstruturaWms(nivel: string, bruto: string):
 
 export function validarCodigoNivelEstruturaWms(nivel: string, bruto: string): string {
   const codigo = normalizarCodigoNivelEstruturaWms(nivel, bruto)
+  if (nivel === 'local') {
+    if (!REGEX_LOCAL.test(codigo)) throw new Error('Local deve ter 1 letra')
+    return codigo
+  }
   if (nivel === 'area') {
     if (!REGEX_AREA_TIPO.test(codigo)) throw new Error('Área deve ter 2 letras')
     return codigo
@@ -118,7 +125,7 @@ export function normalizarComponentesEnderecoWms(
   bruto: ComponentesEnderecoWms
 ): ComponentesEnderecoWms {
   return {
-    local: String(bruto.local ?? '').trim().toUpperCase(),
+    local: soLetras(bruto.local, 1),
     area: soLetras(bruto.area, 2),
     tipo: soLetras(bruto.tipo, 2),
     rua: pad2(bruto.rua),
@@ -133,7 +140,7 @@ export function validarComponentesEnderecoWms(
   const n = normalizarComponentesEnderecoWms(bruto)
 
   if (!ehLocalWms(n.local)) {
-    throw new Error('Local deve ser A ou B')
+    throw new Error('Local deve ter 1 letra')
   }
   if (!REGEX_AREA_TIPO.test(n.area)) {
     throw new Error('Área deve ter 2 letras')
@@ -173,7 +180,7 @@ export function parsearCodigoEnderecoWms(
   const m = String(codigo ?? '').trim().toUpperCase().match(REGEX_CODIGO)
   if (!m) return null
   return {
-    local: m[1] as LocalWms,
+    local: m[1]!,
     area: m[2]!,
     tipo: m[3]!,
     rua: m[4]!,
@@ -187,7 +194,7 @@ export function rotuloCompletoEnderecoWms(
 ): string {
   return [
     componentes.local,
-    ROTULOS_LOCAL_WMS[componentes.local],
+    ROTULOS_LOCAL_WMS[componentes.local] ?? componentes.local,
     componentes.area,
     ROTULOS_AREA_WMS[componentes.area] ?? componentes.area,
     componentes.tipo,
@@ -206,7 +213,7 @@ function normalizarTextoBusca(valor: string): string {
 }
 
 export type ExtrasBuscaEnderecoWms = {
-  locais: LocalWms[]
+  locais: string[]
   areas: string[]
   tipos: string[]
 }
@@ -224,9 +231,9 @@ export function extrasBuscaEnderecoWms(token: string): ExtrasBuscaEnderecoWms {
   const vazios: ExtrasBuscaEnderecoWms = { locais: [], areas: [], tipos: [] }
   if (!tokenNorm) return vazios
 
-  const locais = LOCAIS_WMS.filter((c) =>
-    casarRotulo(tokenNorm, c, ROTULOS_LOCAL_WMS[c])
-  )
+  const locais = PADRAO_LOCAIS_WMS.filter((l) =>
+    casarRotulo(tokenNorm, l.codigo, l.nome)
+  ).map((l) => l.codigo)
   const areas = PADRAO_AREAS_WMS.filter((a) =>
     casarRotulo(tokenNorm, a.codigo, a.nome)
   ).map((a) => a.codigo)

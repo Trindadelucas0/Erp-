@@ -47,17 +47,29 @@ describe('validarComponentesEnderecoWms / montarCodigoEnderecoWms', () => {
     ).toThrow('Rua deve ter 2 números')
   })
 
-  it('rejeita local fora da lista', () => {
+  it('aceita local C (catálogo decide depois)', () => {
+    const c = validarComponentesEnderecoWms({
+      local: 'C',
+      area: 'RC',
+      tipo: 'CH',
+      rua: '20',
+      andar: '2',
+      posicao: '05',
+    })
+    expect(montarCodigoEnderecoWms(c)).toBe('C-RC-CH-20-2-05')
+  })
+
+  it('rejeita local que não é letra', () => {
     expect(() =>
       validarComponentesEnderecoWms({
-        local: 'C',
+        local: '1',
         area: 'RC',
         tipo: 'CH',
         rua: '20',
         andar: '2',
         posicao: '05',
       })
-    ).toThrow('Local deve ser A ou B')
+    ).toThrow('Local deve ter 1 letra')
   })
 
   it('rejeita área com tamanho errado', () => {
@@ -124,9 +136,9 @@ describe('parsearCodigoEnderecoWms', () => {
     })
   })
 
-  it('lê código com área/tipo fora do seed antigo', () => {
-    expect(parsearCodigoEnderecoWms('A-XX-ZZ-20-2-05')).toEqual({
-      local: 'A',
+  it('lê código com local/área/tipo fora do seed antigo', () => {
+    expect(parsearCodigoEnderecoWms('C-XX-ZZ-20-2-05')).toEqual({
+      local: 'C',
       area: 'XX',
       tipo: 'ZZ',
       rua: '20',

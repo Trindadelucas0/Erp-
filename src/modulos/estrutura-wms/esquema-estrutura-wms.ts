@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const NIVEIS_ESTRUTURA_WMS = ['area', 'tipo', 'rua', 'andar'] as const
+export const NIVEIS_ESTRUTURA_WMS = ['local', 'area', 'tipo', 'rua', 'andar'] as const
 export type NivelEstruturaWms = (typeof NIVEIS_ESTRUTURA_WMS)[number]
 
 const nivelWms = z.enum(NIVEIS_ESTRUTURA_WMS)

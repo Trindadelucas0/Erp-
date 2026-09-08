@@ -30,6 +30,7 @@ import {
 } from '@/lib/estrutura-wms'
 
 const ROTULOS_NOVO: Record<NivelEstruturaWms, string> = {
+  local: 'Novo local',
   area: 'Nova área',
   tipo: 'Novo tipo de endereço',
   rua: 'Nova rua',
@@ -61,7 +62,7 @@ function ConteudoEstruturaWms() {
   const podeCriar = usePermissao('estoque:create')
   const podeEditar = usePermissao('estoque:edit')
 
-  const [aba, setAba] = useState<NivelEstruturaWms>('area')
+  const [aba, setAba] = useState<NivelEstruturaWms>('local')
   const [lista, setLista] = useState<ItemEstruturaWms[]>([])
   const [areas, setAreas] = useState<ItemEstruturaWms[]>([])
   const [carregandoLista, setCarregandoLista] = useState(true)
@@ -174,9 +175,9 @@ function ConteudoEstruturaWms() {
   const rotuloNivel = ROTULOS_NIVEL_ESTRUTURA_WMS[aba]
   const podeSalvar = modoEdicao ? podeEditar : podeCriar
   const placeholderCodigo =
-    aba === 'area' || aba === 'tipo' ? 'RC' : aba === 'rua' ? '01' : '0'
-  const maxLengthCodigo = aba === 'andar' ? 1 : 2
-  const inputModeCodigo = aba === 'area' || aba === 'tipo' ? 'text' : 'numeric'
+    aba === 'local' ? 'A' : aba === 'area' || aba === 'tipo' ? 'RC' : aba === 'rua' ? '01' : '0'
+  const maxLengthCodigo = aba === 'local' || aba === 'andar' ? 1 : 2
+  const inputModeCodigo = aba === 'local' || aba === 'area' || aba === 'tipo' ? 'text' : 'numeric'
   const colunaMeio = aba === 'rua' ? 'Área' : 'Nome'
   const opcoesAreaRua = useMemo(
     () => opcoesSelectNivel(areas, 'area', { codigoAtual: form.paiCodigo }),
@@ -328,7 +329,13 @@ function ConteudoEstruturaWms() {
               value={form.nome}
               onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))}
               disabled={salvando}
-              placeholder={aba === 'andar' ? 'Opcional — usa o código se vazio' : 'Recebimento'}
+              placeholder={
+                aba === 'andar'
+                  ? 'Opcional — usa o código se vazio'
+                  : aba === 'local'
+                    ? 'Prédio principal'
+                    : 'Recebimento'
+              }
             />
           )}
 

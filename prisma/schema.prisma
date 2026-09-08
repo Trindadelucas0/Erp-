@@ -1520,13 +1520,13 @@ model PendenciaFornecedor {
   @@index([companyId, fornecedorPessoaId, resolvido])
 }
 
-/// Catálogo da estrutura do depósito (área, tipo, rua, andar) por empresa.
-/// Alimenta os selects de EnderecoWms; Local e Posição não entram aqui.
+/// Catálogo da estrutura do depósito (local, área, tipo, rua, andar) por empresa.
+/// Alimenta os selects de EnderecoWms; Posição não entra aqui.
 model NivelEnderecoWms {
   id        String   @id @default(uuid())
   companyId String
   company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  /// area | tipo | rua | andar
+  /// local | area | tipo | rua | andar
   nivel     String
   codigo    String
   nome      String

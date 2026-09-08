@@ -1,7 +1,10 @@
 import { z } from 'zod'
-import { LOCAIS_WMS } from './nomenclatura-endereco-wms.js'
 
-const localWms = z.enum(LOCAIS_WMS)
+const localWms = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z]$/, 'Local deve ter 1 letra')
 
 const componentes = {
   local: z.string().trim().min(1, 'Local obrigatório'),
