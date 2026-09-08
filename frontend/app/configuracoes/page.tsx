@@ -12,6 +12,7 @@ import { PainelConfiguracaoZapsign } from '@/components/assinatura-zapsign/paine
 import { ListaDocumentosZapsign } from '@/components/assinatura-zapsign/lista-documentos-zapsign'
 import { PainelConfiguracaoFocusNfe } from '@/components/focus-nfe/painel-configuracao-focus-nfe'
 import { PainelUnidadesMedida } from '@/components/configuracoes/painel-unidades-medida'
+import { PainelParametrizacaoCustos } from '@/components/configuracoes/painel-parametrizacao-custos'
 import { ConteudoDaPaginaCfops } from '@/app/cfops/conteudo-pagina-cfops'
 import { ConteudoDaPaginaPlanosFinanceiros } from '@/app/planos-financeiros/conteudo-pagina-planos-financeiros'
 import { PainelRecorrenciasFinanceiras } from '@/components/recorrencias-financeiras/painel-recorrencias-financeiras'
@@ -58,16 +59,6 @@ function extrairMensagemDeErro(erro: unknown, mensagemPadrao: string): string {
   const resposta = (erro as { response?: { data?: { message?: string } } })
     ?.response?.data?.message
   return resposta || mensagemPadrao
-}
-
-function PlaceholderAba({ nome }: { nome: string }) {
-  return (
-    <CardPadrao titulo={nome} descricao="Parâmetros desta área.">
-      <p className="text-sm text-muted-foreground">
-        Nenhuma configuração nesta aba ainda.
-      </p>
-    </CardPadrao>
-  )
 }
 
 function SecaoAssinaturaDigital() {
@@ -463,7 +454,7 @@ function ConteudoDaPaginaDeConfiguracoes() {
         </div>
       )}
 
-      {abaAtiva === 'vendas' && <PlaceholderAba nome="Vendas" />}
+      {abaAtiva === 'vendas' && ehAdmin && <PainelParametrizacaoCustos />}
 
       {abaAtiva === 'logistica' && podeLogistica && <PainelUnidadesMedida />}
 

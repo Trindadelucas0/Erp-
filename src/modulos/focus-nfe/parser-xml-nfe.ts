@@ -194,6 +194,8 @@ export type ItemXmlNfe = {
   valorUnitario: number | null
   valorTotal: number | null
   pesoKg?: number | null
+  /** IPI do item (vIPI do XML / valor_ipi do JSON Focus). */
+  valorIpi?: number | null
 }
 
 /**
@@ -231,6 +233,13 @@ export function extrairItensDoJsonFocusCompleta(
       ),
       valorTotal: parseValor(it.valor_bruto != null ? String(it.valor_bruto) : null),
       pesoKg: null,
+      valorIpi: parseValor(
+        it.valor_ipi != null
+          ? String(it.valor_ipi)
+          : it.ipi_valor != null
+            ? String(it.ipi_valor)
+            : null
+      ),
     }
   })
 }
@@ -701,10 +710,23 @@ export function extrairItensDoXml(xmlBruto: string): ItemXmlNfe[] {
       valorUnitario: parseValor(prod ? extrairCampoXml(prod, 'vUnCom') : null),
       valorTotal: parseValor(prod ? extrairCampoXml(prod, 'vProd') : null),
       pesoKg: parseValor(prod ? extrairCampoXml(prod, 'pesoL') ?? extrairCampoXml(prod, 'pesoB') : null),
+      valorIpi: parseValor(imposto ? extrairCampoXml(imposto, 'vIPI') : null),
     })
   }
 
   return itens
+}
+
+/** nItem → vIPI parseado (itens sem IPI não entram no mapa). */
+export function mapaValorIpiPorNItemDoXml(xmlBruto: string | null | undefined): Map<number, number> {
+  const mapa = new Map<number, number>()
+  if (!xmlBruto) return mapa
+  for (const item of extrairItensDoXml(xmlBruto)) {
+    if (item.valorIpi != null && Number.isFinite(item.valorIpi)) {
+      mapa.set(item.nItem, item.valorIpi)
+    }
+  }
+  return mapa
 }
 
 /**

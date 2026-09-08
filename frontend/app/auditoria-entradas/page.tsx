@@ -94,14 +94,15 @@ function ConteudoAuditoriaEntradas() {
                 <th className="px-3 py-2 font-medium">Chave</th>
                 <th className="px-3 py-2 font-medium">Valor</th>
                 <th className="px-3 py-2 font-medium">Sinal</th>
+                <th className="px-3 py-2 font-medium">Ações</th>
               </tr>
             </thead>
             <tbody>
               {carregando ? (
-                <LinhasSkeletonTabela colunas={6} linhas={6} />
+                <LinhasSkeletonTabela colunas={7} linhas={6} />
               ) : notas.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-3 py-6 text-muted-foreground">
+                  <td colSpan={7} className="px-3 py-6 text-muted-foreground">
                     Nenhuma NFe consolidada neste filtro.
                   </td>
                 </tr>
@@ -128,6 +129,18 @@ function ConteudoAuditoriaEntradas() {
                       </td>
                       <td className="px-3 py-2">
                         <BadgeStatus variante={sinal.variante}>{sinal.rotulo}</BadgeStatus>
+                      </td>
+                      <td className="px-3 py-2">
+                        <button
+                          type="button"
+                          className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            router.push(`/auditoria-entradas/${n.id}#itens-nf`)
+                          }}
+                        >
+                          Precificar
+                        </button>
                       </td>
                     </tr>
                   )

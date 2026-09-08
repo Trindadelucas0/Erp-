@@ -21,6 +21,9 @@ type ItemNota = {
   descricao: string | null
   quantidade: number | null
   valorUnitario: number | null
+  custoEntrada?: number | null
+  custoAnterior?: number | null
+  variacaoPercentual?: number | null
   produto: { nomeVenda: string; sku?: string | null } | null
 }
 
@@ -125,6 +128,14 @@ function formatarQtd(n: number | null | undefined): string {
   return n.toLocaleString('pt-BR', { maximumFractionDigits: 6 })
 }
 
+const LIMIAR_VARIACAO_CUSTO = 0.3
+
+function formatarVariacaoCusto(pct: number | null | undefined): string {
+  if (pct == null || !Number.isFinite(pct)) return '—'
+  const sinal = pct > 0 ? '+' : ''
+  return `${sinal}${(pct * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`
+}
+
 function extrairSerieNumero(chave: string): { serie: string | null; numero: string | null } {
   const digitos = chave.replace(/\D/g, '')
   if (digitos.length !== 44) return { serie: null, numero: null }
@@ -192,6 +203,12 @@ function ConteudoDetalheAuditoria() {
   useEffect(() => {
     void carregar()
   }, [carregar])
+
+  useEffect(() => {
+    if (!nota || typeof window === 'undefined') return
+    if (window.location.hash !== '#itens-nf') return
+    document.getElementById('itens-nf')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [nota])
 
   async function baixarAnexo(anexoId: string, nomeArquivo: string) {
     const resp = await clienteHttp.get(
@@ -512,45 +529,64 @@ function ConteudoDetalheAuditoria() {
         </CardPadrao>
       )}
 
+      <div id="itens-nf" className="scroll-mt-24">
       <CardPadrao titulo="Itens da NF">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[520px] text-left text-sm">
+          <table className="w-full min-w-[720px] text-left text-sm">
             <thead>
               <tr className="border-b text-xs text-muted-foreground">
                 <th className="px-3 py-2 font-medium">#</th>
-                <th className="px-3 py-2 font-medium">Descrição / produto</th>
+                <th className="px-3 py-2 font-medium">Descrição</th>
                 <th className="px-3 py-2 font-medium">Qtd</th>
-                <th className="px-3 py-2 font-medium">Unitário</th>
+                <th className="px-3 py-2 font-medium">Custo da entrada</th>
+                <th className="px-3 py-2 font-medium">Custo anterior</th>
+                <th className="px-3 py-2 font-medium">Variação</th>
               </tr>
             </thead>
             <tbody>
               {(nota.itens ?? []).length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-3 py-4 text-muted-foreground">
+                  <td colSpan={6} className="px-3 py-4 text-muted-foreground">
                     Nenhum item na nota.
                   </td>
                 </tr>
               ) : (
-                (nota.itens ?? []).map((i) => (
-                  <tr key={i.nItem} className="border-b last:border-0">
-                    <td className="px-3 py-2 tabular-nums">{i.nItem}</td>
-                    <td className="px-3 py-2">
-                      {i.produto?.nomeVenda || i.descricao || '—'}
-                      {i.produto?.sku ? (
-                        <span className="ml-1 text-xs text-muted-foreground">
-                          ({i.produto.sku})
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="px-3 py-2 tabular-nums">{formatarQtd(i.quantidade)}</td>
-                    <td className="px-3 py-2 tabular-nums">{formatarMoeda(i.valorUnitario)}</td>
-                  </tr>
-                ))
+                (nota.itens ?? []).map((i) => {
+                  const destaque =
+                    i.variacaoPercentual != null &&
+                    Number.isFinite(i.variacaoPercentual) &&
+                    Math.abs(i.variacaoPercentual) >= LIMIAR_VARIACAO_CUSTO
+                  return (
+                    <tr
+                      key={i.nItem}
+                      className={`border-b last:border-0 ${destaque ? 'bg-amber-500/10' : ''}`}
+                    >
+                      <td className="px-3 py-2 tabular-nums">{i.nItem}</td>
+                      <td className="px-3 py-2">
+                        {i.produto?.nomeVenda || i.descricao || '—'}
+                        {i.produto?.sku ? (
+                          <span className="ml-1 text-xs text-muted-foreground">
+                            ({i.produto.sku})
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-2 tabular-nums">{formatarQtd(i.quantidade)}</td>
+                      <td className="px-3 py-2 tabular-nums">{formatarMoeda(i.custoEntrada)}</td>
+                      <td className="px-3 py-2 tabular-nums">{formatarMoeda(i.custoAnterior)}</td>
+                      <td
+                        className={`px-3 py-2 tabular-nums ${destaque ? 'font-medium text-amber-800 dark:text-amber-300' : ''}`}
+                      >
+                        {formatarVariacaoCusto(i.variacaoPercentual)}
+                      </td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
           </table>
         </div>
       </CardPadrao>
+      </div>
 
       {teveBloqueio && (
         <CardPadrao titulo="Bloqueio / desbloqueio">

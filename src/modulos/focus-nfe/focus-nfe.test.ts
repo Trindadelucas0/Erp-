@@ -529,4 +529,10 @@ describe('xmlNfeTemItensParseaveis', () => {
     expect(xmlNfeTemItensParseaveis(nfe)).toBe(true)
     expect(extrairItensDoXml(nfe)).toHaveLength(1)
   })
+
+  it('lê vIPI do bloco imposto do item', () => {
+    const nfe =
+      '<nfeProc><NFe><infNFe><det nItem="1"><prod><cProd>1</cProd><xProd>X</xProd><qCom>2</qCom><vUnCom>10</vUnCom><vProd>20</vProd></prod><imposto><IPI><IPITrib><vIPI>4.50</vIPI></IPITrib></IPI></imposto></det></infNFe></NFe></nfeProc>'
+    expect(extrairItensDoXml(nfe)[0]?.valorIpi).toBe(4.5)
+  })
 })

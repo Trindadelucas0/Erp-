@@ -16,10 +16,12 @@ import {
   extrairItensDoJsonFocusCompleta,
   extrairItensDoXml,
   extrairSugestaoFinanceiroDoXmlCte,
+  mapaValorIpiPorNItemDoXml,
   normalizarXmlNfe,
   xmlNfeTemItensParseaveis,
   type ItemXmlNfe,
 } from '../focus-nfe/parser-xml-nfe.js'
+import { montarCustoComparativo, resolverValorIpi } from './custo-unitario-entrada.js'
 import { logFocus } from '../focus-nfe/logs-focus-nfe.js'
 import { analisarCadastro } from './analise-cadastro/analisar-cadastro.js'
 import { analisarFiscalItens } from './analise-fiscal/analisar-fiscal-itens.js'
@@ -2435,6 +2437,13 @@ async function obterDetalhe(
       })
     : null
 
+  const ultimaCustoPorProduto = await repositorioEntradaNotas.buscarUltimoPrecoConsolidadoPorProduto(
+    companyId,
+    nota.itens.map((i) => i.produtoId).filter((id): id is string => Boolean(id)),
+    nota.id
+  )
+  const ipiXmlPorItem = mapaValorIpiPorNItemDoXml(nota.xmlConteudo)
+
   return {
     nota: {
       id: nota.id,
@@ -2664,6 +2673,19 @@ async function obterDetalhe(
         )
         const qtdTotalUn =
           quantidade != null ? Math.round(quantidade * itensPorEmbalagem * 1e6) / 1e6 : null
+        const valorIpi = resolverValorIpi(
+          decimalNum((i as { valorIpi?: unknown }).valorIpi as never),
+          ipiXmlPorItem.get(i.nItem) ?? null
+        )
+        const custos = montarCustoComparativo({
+          quantidadeNf: quantidade,
+          valorUnitario: decimalNum(i.valorUnitario),
+          custoFreteRateado: decimalNum(i.custoFreteRateado),
+          valorIpi,
+          itensPorEmbalagem,
+          produtoId: i.produtoId,
+          ultimaPorProduto: ultimaCustoPorProduto,
+        })
         return {
           id: i.id,
           nItem: i.nItem,
@@ -2680,6 +2702,10 @@ async function obterDetalhe(
           valorTotal: decimalNum(i.valorTotal),
           pesoKg: decimalNum(i.pesoKg),
           custoFreteRateado: decimalNum(i.custoFreteRateado),
+          valorIpi,
+          custoEntrada: custos.custoEntrada,
+          custoAnterior: custos.custoAnterior,
+          variacaoPercentual: custos.variacaoPercentual,
           produtoId: i.produtoId,
           vinculoModo: i.vinculoModo,
           criticaCadastro: i.criticaCadastro,

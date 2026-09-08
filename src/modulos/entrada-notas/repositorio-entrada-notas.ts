@@ -7,9 +7,14 @@ import {
   variantesCodigoBarrasParaBusca,
 } from '../../compartilhado/validacoes/codigo-barras-gtin.js'
 import { normalizarDocumento } from '../../compartilhado/validacoes/documentos.js'
-import type { ItemXmlNfe } from '../focus-nfe/parser-xml-nfe.js'
+import { mapaValorIpiPorNItemDoXml, type ItemXmlNfe } from '../focus-nfe/parser-xml-nfe.js'
 import { randomUUID } from 'crypto'
 import type { Prisma } from '@prisma/client'
+import {
+  calcularCustoUnitarioEntrada,
+  resolverValorIpi,
+  type UltimoCustoConsolidado,
+} from './custo-unitario-entrada.js'
 import {
   SUBTIPO_CFOP_CONHECIMENTO_FRETE,
   cfopEhConhecimentoFrete,
@@ -168,6 +173,7 @@ async function substituirItensDoXml(nfeRecebidaId: string, itens: ItemXmlNfe[]) 
       valorUnitario: item.valorUnitario,
       valorTotal: item.valorTotal,
       pesoKg: item.pesoKg ?? null,
+      valorIpi: item.valorIpi ?? null,
       updatedAt: new Date(),
     })),
   })
@@ -263,9 +269,9 @@ async function buscarUltimoPrecoConsolidadoPorProduto(
   companyId: string,
   produtoIds: string[],
   notaIdExcluida: string
-): Promise<Map<string, { produtoId: string; precoUnitarioVenda: number }>> {
+): Promise<Map<string, UltimoCustoConsolidado>> {
   const ids = [...new Set(produtoIds.filter(Boolean))]
-  const mapa = new Map<string, { produtoId: string; precoUnitarioVenda: number }>()
+  const mapa = new Map<string, UltimoCustoConsolidado>()
   if (ids.length === 0) return mapa
 
   const itens = await clientePrisma.nfeRecebidaItem.findMany({
@@ -279,12 +285,18 @@ async function buscarUltimoPrecoConsolidadoPorProduto(
     },
     select: {
       produtoId: true,
+      nItem: true,
+      quantidade: true,
       valorUnitario: true,
+      custoFreteRateado: true,
+      valorIpi: true,
       nfeRecebida: {
         select: {
+          id: true,
           dataEmissao: true,
           createdAt: true,
           fornecedorPessoaId: true,
+          xmlConteudo: true,
         },
       },
       produto: {
@@ -298,6 +310,8 @@ async function buscarUltimoPrecoConsolidadoPorProduto(
     orderBy: [{ nfeRecebida: { dataEmissao: 'desc' } }, { nfeRecebida: { createdAt: 'desc' } }],
   })
 
+  const ipiXmlPorNota = new Map<string, Map<number, number>>()
+
   for (const item of itens) {
     if (!item.produtoId || mapa.has(item.produtoId)) continue
     const valor = item.valorUnitario != null ? Number(item.valorUnitario) : NaN
@@ -307,9 +321,33 @@ async function buscarUltimoPrecoConsolidadoPorProduto(
     )
     const multRaw = vinculo?.multiplicadorEntrada != null ? Number(vinculo.multiplicadorEntrada) : 1
     const mult = Number.isFinite(multRaw) && multRaw > 0 ? multRaw : 1
+    const xml = item.nfeRecebida.xmlConteudo
+    let ipiXml: number | undefined
+    if (xml) {
+      let mapaIpi = ipiXmlPorNota.get(item.nfeRecebida.id)
+      if (!mapaIpi) {
+        mapaIpi = mapaValorIpiPorNItemDoXml(xml)
+        ipiXmlPorNota.set(item.nfeRecebida.id, mapaIpi)
+      }
+      ipiXml = mapaIpi.get(item.nItem)
+    }
+    const valorIpi = resolverValorIpi(
+      item.valorIpi != null ? Number(item.valorIpi) : null,
+      ipiXml ?? null
+    )
+    const quantidade = item.quantidade != null ? Number(item.quantidade) : null
+    const custoFreteRateado =
+      item.custoFreteRateado != null ? Number(item.custoFreteRateado) : null
     mapa.set(item.produtoId, {
       produtoId: item.produtoId,
       precoUnitarioVenda: valor / mult,
+      custoEntrada: calcularCustoUnitarioEntrada({
+        quantidadeNf: quantidade,
+        valorUnitario: valor,
+        custoFreteRateado,
+        valorIpi,
+        itensPorEmbalagem: mult,
+      }),
     })
   }
   return mapa

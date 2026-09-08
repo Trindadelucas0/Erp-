@@ -215,7 +215,13 @@ function ligarRepositorioFake(estadoInicial: ReturnType<typeof buildNotaFixture>
   vi.mocked(repositorioEntradaNotas.backfillUnidadeItensDoXml).mockResolvedValue(0 as never)
   vi.mocked(repositorioEntradaNotas.listarPedidosAbertosFornecedor).mockResolvedValue([])
   vi.mocked(repositorioEntradaNotas.mapaCodigoOriginalPorProduto).mockResolvedValue(new Map())
-  vi.mocked(repositorioEntradaNotas.buscarFlagsFornecedorEntrada).mockResolvedValue(null)
+  vi.mocked(repositorioEntradaNotas.buscarFlagsFornecedorEntrada).mockResolvedValue({
+    tipoRevenda: true,
+    tipoConsumo: true,
+  } as never)
+  vi.mocked(repositorioEntradaNotas.buscarUltimoPrecoConsolidadoPorProduto).mockResolvedValue(
+    new Map()
+  )
 
   return {
     getEstado: () => notaEstado,
@@ -302,7 +308,7 @@ describe('servicoEntradaNotas.voltarEtapa', () => {
         },
         vinculosComoNfe: [],
         fornecedorPessoa: {
-          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor' } }],
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor', tipoRevenda: true } }],
         },
       })
     )
@@ -396,7 +402,7 @@ describe('servicoEntradaNotas.voltarEtapa', () => {
           },
         ],
         fornecedorPessoa: {
-          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor' } }],
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor', tipoRevenda: true } }],
         },
       })
     )
@@ -793,7 +799,7 @@ describe('servicoEntradaNotas.analisarNota — frete remetente', () => {
         analiseJson: null,
         vinculosComoNfe: [],
         fornecedorPessoa: {
-          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor' } }],
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor', tipoRevenda: true } }],
         },
       })
     )
@@ -834,7 +840,7 @@ describe('servicoEntradaNotas.analisarNota — frete remetente', () => {
           },
         ],
         fornecedorPessoa: {
-          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor' } }],
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor', tipoRevenda: true } }],
         },
       })
     )
@@ -875,7 +881,7 @@ describe('servicoEntradaNotas.analisarNota — frete remetente', () => {
           },
         ],
         fornecedorPessoa: {
-          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor' } }],
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor', tipoRevenda: true } }],
         },
       })
     )
@@ -921,7 +927,7 @@ describe('servicoEntradaNotas.analisarNota — frete remetente', () => {
           },
         ],
         fornecedorPessoa: {
-          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor' } }],
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor', tipoRevenda: true } }],
         },
       })
     )
@@ -977,7 +983,7 @@ describe('servicoEntradaNotas.analisarNota — frete remetente', () => {
           },
         ],
         fornecedorPessoa: {
-          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor' } }],
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor', tipoRevenda: true } }],
         },
       })
     )
@@ -1045,7 +1051,7 @@ describe('servicoEntradaNotas.analisarNota — frete remetente', () => {
           },
         ],
         fornecedorPessoa: {
-          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor' } }],
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor', tipoRevenda: true } }],
         },
         itens: [
           {
@@ -1144,7 +1150,7 @@ describe('servicoEntradaNotas.analisarNota — frete remetente', () => {
           },
         ],
         fornecedorPessoa: {
-          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor' } }],
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'valor', tipoRevenda: true } }],
         },
         itens: [
           {
@@ -1228,7 +1234,7 @@ describe('servicoEntradaNotas.analisarNota — frete remetente', () => {
           },
         ],
         fornecedorPessoa: {
-          papeis: [{ dadosFornecedor: { regraRateioFrete: 'peso' } }],
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'peso', tipoRevenda: true } }],
         },
         itens: [
           {
@@ -1344,7 +1350,7 @@ describe('servicoEntradaNotas.analisarNota — frete remetente', () => {
           },
         ],
         fornecedorPessoa: {
-          papeis: [{ dadosFornecedor: { regraRateioFrete: 'peso' } }],
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'peso', tipoRevenda: true } }],
         },
         itens: [
           {
@@ -1448,7 +1454,7 @@ describe('servicoEntradaNotas.analisarNota — frete remetente', () => {
           },
         ],
         fornecedorPessoa: {
-          papeis: [{ dadosFornecedor: { regraRateioFrete: 'peso' } }],
+          papeis: [{ dadosFornecedor: { regraRateioFrete: 'peso', tipoRevenda: true } }],
         },
         itens: [
           {
