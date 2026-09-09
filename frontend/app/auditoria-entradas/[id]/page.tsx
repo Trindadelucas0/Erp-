@@ -250,9 +250,14 @@ function ConteudoDetalheAuditoria() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <TituloPagina>Auditoria de entradas</TituloPagina>
-        <Button asChild variant="outline" size="sm">
-          <Link href="/auditoria-entradas">Voltar à lista</Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/auditoria-entradas/${id}/precificacao`}>Precificar</Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/auditoria-entradas">Voltar à lista</Link>
+          </Button>
+        </div>
       </div>
       {erro && (
         <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">

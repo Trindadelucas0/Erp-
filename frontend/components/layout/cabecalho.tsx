@@ -46,6 +46,9 @@ function resolverTituloRota(caminho: string | null): string {
   if (TITULOS_POR_ROTA[caminho]) {
     return TITULOS_POR_ROTA[caminho]
   }
+  if (/\/auditoria-entradas\/[^/]+\/precificacao\/?$/.test(caminho)) {
+    return 'Precificação'
+  }
 
   for (const { prefixo, titulo } of PREFIXOS_TITULO) {
     if (caminho.startsWith(prefixo) && caminho.length > prefixo.length) {

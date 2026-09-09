@@ -40,6 +40,7 @@ const includeNotaCompleta = {
           unidade: true,
           pesoKg: true,
           controlaEstoque: true,
+          precoVenda: true,
           fornecedores: {
             select: { fornecedorPessoaId: true, multiplicadorEntrada: true },
           },

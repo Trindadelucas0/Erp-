@@ -48,6 +48,7 @@ const formBase: FormProdutoDuplicavel = {
   enderecosEstoque: [{ endereco: 'A1' }],
   nomeCompra: 'COMPRA TESTE',
   precoCusto: '10.5',
+  precoVenda: '15',
   fornecedores: [
     {
       fornecedorPessoaId: '550e8400-e29b-41d4-a716-446655440000',

@@ -149,6 +149,7 @@ type FormProduto = {
   enderecosEstoque: EnderecoEstoqueForm[]
   nomeCompra: string
   precoCusto: string
+  precoVenda: string
   fornecedores: FornecedorProdutoForm[]
   similares: ProdutoSimilarItem[]
   agruparSimilaresRuptura: boolean
@@ -191,6 +192,7 @@ const formVazio: FormProduto = {
   enderecosEstoque: [],
   nomeCompra: '',
   precoCusto: '',
+  precoVenda: '',
   fornecedores: [],
   similares: [],
   agruparSimilaresRuptura: false,
@@ -699,6 +701,7 @@ function ConteudoDaPagina() {
       })),
       nomeCompra: (p.nomeCompra as string | null) ?? '',
       precoCusto: p.precoCusto != null ? String(p.precoCusto) : '',
+      precoVenda: p.precoVenda != null ? String(p.precoVenda) : '',
       fornecedores: ((p.fornecedores as Array<{
         fornecedorPessoaId: string
         codigoFornecedor: string | null
@@ -835,6 +838,7 @@ function ConteudoDaPagina() {
         })),
       nomeCompra: form.nomeCompra.trim() || undefined,
       precoCusto: num(form.precoCusto),
+      precoVenda: num(form.precoVenda),
       fornecedores: form.fornecedores
         .filter((f) => f.fornecedorPessoaId.trim())
         .map((f, ordem) => ({
@@ -1629,19 +1633,34 @@ function ConteudoDaPagina() {
                 disabled={camposDesabilitados}
                 placeholder="Opcional. Em branco, utiliza o nome de venda"
               />
-              <InputPadrao
-                rotulo="Preço de custo"
-                value={form.precoCusto}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    precoCusto: e.target.value.replace(/[^\d,.]/g, ''),
-                  }))
-                }
-                disabled={camposDesabilitados}
-                placeholder="Opcional. Sugere preço no pedido de compra"
-                inputMode="decimal"
-              />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <InputPadrao
+                  rotulo="Preço de custo"
+                  value={form.precoCusto}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      precoCusto: e.target.value.replace(/[^\d,.]/g, ''),
+                    }))
+                  }
+                  disabled={camposDesabilitados}
+                  placeholder="Opcional. Sugere preço no pedido de compra"
+                  inputMode="decimal"
+                />
+                <InputPadrao
+                  rotulo="Preço de venda"
+                  value={form.precoVenda}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      precoVenda: e.target.value.replace(/[^\d,.]/g, ''),
+                    }))
+                  }
+                  disabled={camposDesabilitados}
+                  placeholder="Opcional. Gravado pela Precificação"
+                  inputMode="decimal"
+                />
+              </div>
               <ListaFornecedoresProduto
                 itens={form.fornecedores}
                 opcoesFornecedores={fornecedores}

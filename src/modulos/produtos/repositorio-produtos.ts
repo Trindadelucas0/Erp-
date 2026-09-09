@@ -104,6 +104,7 @@ function mapearProduto(produto: ProdutoDb, companyId: string) {
     unidadeEntregaMultiploVenda: produto.unidadeEntregaMultiploVenda,
     nomeCompra: produto.nomeCompra,
     precoCusto: produto.precoCusto ? Number(produto.precoCusto) : null,
+    precoVenda: produto.precoVenda != null ? Number(produto.precoVenda) : null,
     agruparSimilaresRuptura: produto.agruparSimilaresRuptura,
     fornecedores: produto.fornecedores.map((f) => ({
       id: f.id,
@@ -180,6 +181,7 @@ function dadosEscalares(dados: DadosParaCriarProduto | DadosParaEditarProduto) {
     unidadeEntregaMultiploVenda: dados.unidadeEntregaMultiploVenda || null,
     nomeCompra: dados.nomeCompra || null,
     precoCusto: dados.precoCusto ?? null,
+    precoVenda: dados.precoVenda ?? null,
     agruparSimilaresRuptura: dados.agruparSimilaresRuptura ?? false,
     ncm: dados.ncm || null,
     codigoOrigem: dados.codigoOrigem || null,
@@ -279,6 +281,7 @@ function mapearProdutoLista(produto: ProdutoListaDb, companyId: string) {
     codigoBarras: produto.codigoBarras,
     codigoOrigem: produto.codigoOrigem,
     precoCusto: produto.precoCusto ? Number(produto.precoCusto) : null,
+    precoVenda: produto.precoVenda != null ? Number(produto.precoVenda) : null,
     bloqueadoCompra: produto.bloqueadoCompra,
     urlFotoPrincipal: principal
       ? urlPublicaFoto(companyId, produto.id, principal.arquivo)
@@ -581,6 +584,9 @@ async function atualizar(id: string, dados: DadosParaEditarProduto, companyId: s
     const escalares = { ...dadosEscalares(dados) } as Record<string, unknown>
     if (dados.precoCusto === undefined) {
       delete escalares.precoCusto
+    }
+    if (dados.precoVenda === undefined) {
+      delete escalares.precoVenda
     }
     await tx.produto.update({ where: { id }, data: escalares })
     await sincronizarRelacoes(tx, id, dados)

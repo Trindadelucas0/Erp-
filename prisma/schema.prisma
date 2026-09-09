@@ -1098,6 +1098,7 @@ model Produto {
 
   nomeCompra              String?
   precoCusto              Decimal? @db.Decimal(15, 4)
+  precoVenda              Decimal? @db.Decimal(15, 4)
   agruparSimilaresRuptura Boolean  @default(false)
 
   ncm          String?

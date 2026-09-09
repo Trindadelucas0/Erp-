@@ -255,6 +255,7 @@ const camposProduto = {
   ),
   nomeCompra: textoOpcionalNulavel(200),
   precoCusto: decimalOpcional,
+  precoVenda: decimalOpcional,
   agruparSimilaresRuptura: z.boolean().optional().default(false),
   fornecedores: z.array(esquemaProdutoFornecedor).optional().default([]),
   ncm: z.preprocess(

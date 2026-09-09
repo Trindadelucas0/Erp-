@@ -4,6 +4,7 @@
  */
 import { FastifyInstance } from 'fastify'
 import { middlewareDeAutenticacao } from '../../infraestrutura/autenticacao/middleware-de-autenticacao.js'
+import { middlewareDeAutorizacao } from '../../infraestrutura/autenticacao/middleware-de-autorizacao.js'
 import { middlewareEmpresaAtiva } from '../../infraestrutura/autenticacao/middleware-empresa-ativa.js'
 import { controladorEntradaNotas } from './controlador-entrada-notas.js'
 
@@ -28,6 +29,16 @@ export async function rotasEntradaNotas(aplicacao: FastifyInstance): Promise<voi
   )
 
   aplicacao.get('/:id', { preHandler: autenticado }, controladorEntradaNotas.detalhe)
+  aplicacao.get(
+    '/:id/precificacao',
+    { preHandler: autenticado },
+    controladorEntradaNotas.obterPrecificacao
+  )
+  aplicacao.put(
+    '/:id/precificacao',
+    { preHandler: [...autenticado, middlewareDeAutorizacao('produtos:edit')] },
+    controladorEntradaNotas.gravarPrecificacao
+  )
   aplicacao.post('/:id/analisar', { preHandler: autenticado }, controladorEntradaNotas.analisar)
   aplicacao.post('/:id/vincular-item', { preHandler: autenticado }, controladorEntradaNotas.vincularItem)
   aplicacao.post(

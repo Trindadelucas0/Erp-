@@ -136,7 +136,7 @@ function ConteudoAuditoriaEntradas() {
                           className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted"
                           onClick={(e) => {
                             e.stopPropagation()
-                            router.push(`/auditoria-entradas/${n.id}#itens-nf`)
+                            router.push(`/auditoria-entradas/${n.id}/precificacao`)
                           }}
                         >
                           Precificar

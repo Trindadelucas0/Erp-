@@ -31,7 +31,9 @@ import {
   esquemaVincularItem,
   esquemaVoltarEtapa,
   esquemaAnalisar,
+  esquemaGravarPrecificacao,
 } from './esquema-entrada-notas.js'
+import { servicoPrecificacaoEntrada } from './servico-precificacao-entrada.js'
 
 function companyIdDe(requisicao: FastifyRequest): string {
   const companyId = requisicao.empresaAtivaId || ''
@@ -453,6 +455,26 @@ async function ctesAguardandoNf(requisicao: FastifyRequest, resposta: FastifyRep
   return resposta.send({ itens, total: itens.length })
 }
 
+async function obterPrecificacao(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const dados = await servicoPrecificacaoEntrada.obterGrade(
+    companyIdDe(requisicao),
+    notaIdDe(requisicao)
+  )
+  return resposta.send(dados)
+}
+
+async function gravarPrecificacao(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parsed = esquemaGravarPrecificacao.safeParse(requisicao.body)
+  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
+  const dados = await servicoPrecificacaoEntrada.gravarPrecos(
+    companyIdDe(requisicao),
+    notaIdDe(requisicao),
+    usuarioIdDe(requisicao),
+    parsed.data.itens
+  )
+  return resposta.send(dados)
+}
+
 export const controladorEntradaNotas = {
   detalhe,
   analisar,
@@ -491,4 +513,6 @@ export const controladorEntradaNotas = {
   vincularFornecedoresPendentes,
   vincularCtesPendentes,
   ctesAguardandoNf,
+  obterPrecificacao,
+  gravarPrecificacao,
 }

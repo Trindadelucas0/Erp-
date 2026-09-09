@@ -171,3 +171,21 @@ export const esquemaFinanceiroDocumental = z
     },
     { message: 'Informe a data de vencimento de cada parcela', path: ['vencimento'] }
   )
+
+export const esquemaGravarPrecificacao = z.object({
+  itens: z
+    .array(
+      z.object({
+        produtoId: z.string().uuid('Produto inválido'),
+        precoVenda: z.coerce
+          .number({ invalid_type_error: 'Preço de venda inválido' })
+          .finite('Preço de venda inválido')
+          .positive('Preço de venda deve ser maior que zero'),
+        margemPercentual: z.coerce
+          .number({ invalid_type_error: 'Margem inválida' })
+          .finite('Margem inválida')
+          .optional(),
+      })
+    )
+    .min(1, 'Informe ao menos um produto para gravar'),
+})

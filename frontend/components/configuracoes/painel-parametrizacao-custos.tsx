@@ -141,7 +141,7 @@ export function PainelParametrizacaoCustos() {
   return (
     <CardPadrao
       titulo="Parametrização de custos"
-      descricao="Percentuais da empresa ativa, por competência (mês/ano). Nesta fase não entram no custo da Auditoria nem na formação de preço de venda."
+      descricao="Percentuais da empresa ativa, por competência (mês/ano). Alimentam só a grade de Precificação (Auditoria → Precificar). Não alteram o custo da Auditoria nem o kardex."
     >
       <div className="space-y-6">
         <div className="max-w-xs">
