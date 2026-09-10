@@ -8,6 +8,7 @@ import { normalizarDocumento } from '../../compartilhado/validacoes/documentos.j
 import { servicoDeAutenticacao } from '../autenticacao/servico-autenticacao.js'
 import { repositorioFocusNfe } from '../focus-nfe/repositorio-focus-nfe.js'
 import { clienteFocusNfe } from '../focus-nfe/cliente-focus-nfe.js'
+import { comContextoEmpresaFocus } from '../focus-nfe/protecao-focus-nfe.js'
 import {
   extrairCamposResumoDoXml,
   extrairCfopDoXmlCte,
@@ -386,6 +387,15 @@ async function sincronizarItensPendentesDoXml(
  * ainda voltar `resNFe`. Nesses casos usamos `completa=1` (`requisicao_nota_fiscal.itens`).
  */
 async function completarXmlNfeNaFocusSePreciso(
+  companyId: string,
+  notaId: string
+): Promise<{ ok: boolean; mensagem?: string; itensViaJson?: number }> {
+  return comContextoEmpresaFocus(companyId, () =>
+    completarXmlNfeNaFocusSePrecisoInterno(companyId, notaId)
+  )
+}
+
+async function completarXmlNfeNaFocusSePrecisoInterno(
   companyId: string,
   notaId: string
 ): Promise<{ ok: boolean; mensagem?: string; itensViaJson?: number }> {
@@ -3182,12 +3192,14 @@ async function manifestar(
   const tipoApi =
     tipo === 'desconhecimento' ? 'desconhecimento_da_operacao' : 'operacao_nao_realizada'
 
-  await clienteFocusNfe.manifestar(
-    cfg.apiToken,
-    cfg.homologacao,
-    nota.chaveNfe,
-    tipoApi,
-    justificativa
+  await comContextoEmpresaFocus(companyId, () =>
+    clienteFocusNfe.manifestar(
+      cfg.apiToken,
+      cfg.homologacao,
+      nota.chaveNfe,
+      tipoApi,
+      justificativa
+    )
   )
 
   const vinhaComProblema = nota.statusEntrada === 'com_problema'

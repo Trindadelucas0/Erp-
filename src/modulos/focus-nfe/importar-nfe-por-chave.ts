@@ -7,6 +7,7 @@ import { clienteFocusNfe } from './cliente-focus-nfe.js'
 import { logFocus } from './logs-focus-nfe.js'
 import { extrairCamposResumoDoXml, xmlNfeTemItensParseaveis } from './parser-xml-nfe.js'
 import { repositorioFocusNfe } from './repositorio-focus-nfe.js'
+import { comContextoEmpresaFocus } from './protecao-focus-nfe.js'
 
 export type ResultadoImportNfePorChave =
   | { ok: true; notaId: string; jaExistia: boolean }
@@ -71,6 +72,16 @@ export async function importarNfePorChave(
     return { ok: true, notaId: existente.id, jaExistia: true }
   }
 
+  return comContextoEmpresaFocus(companyId, () =>
+    importarNfePorChaveNaFocus(companyId, chave, existente)
+  )
+}
+
+async function importarNfePorChaveNaFocus(
+  companyId: string,
+  chave: string,
+  existente: Awaited<ReturnType<typeof repositorioFocusNfe.buscarPorChave>>
+): Promise<ResultadoImportNfePorChave> {
   let credenciais: { apiToken: string; homologacao: boolean }
   try {
     credenciais = await obterCredenciaisFocus(companyId)

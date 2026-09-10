@@ -11,6 +11,7 @@ import { clienteFocusNfe } from './cliente-focus-nfe.js'
 import { logFocus } from './logs-focus-nfe.js'
 import { extrairCamposResumoDoXml, extrairCnpjTomadorCte } from './parser-xml-nfe.js'
 import { repositorioFocusNfe } from './repositorio-focus-nfe.js'
+import { comContextoEmpresaFocus } from './protecao-focus-nfe.js'
 
 export type ResultadoImportCtePorChave =
   | { ok: true; cteId: string; jaExistia: boolean; criado: boolean }
@@ -195,7 +196,9 @@ export async function importarCtePorChave(
     }
   }
 
-  const xmlResp = await clienteFocusNfe.baixarXmlCte(apiToken, homologacao, chave)
+  const xmlResp = await comContextoEmpresaFocus(companyId, () =>
+    clienteFocusNfe.baixarXmlCte(apiToken, homologacao, chave)
+  )
   if (!xmlResp.sucesso || typeof xmlResp.dados !== 'string') {
     const rateLimit = xmlResp.sucesso === false && xmlResp.codigoHttp === 429
     const detalhe =

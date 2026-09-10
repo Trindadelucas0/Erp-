@@ -9,6 +9,7 @@ import { logFocus } from './logs-focus-nfe.js'
 import { repositorioFocusNfe } from './repositorio-focus-nfe.js'
 import { servicoFocusNfe } from './servico-focus-nfe.js'
 import { cotaEsgotadaParaAgendador } from './cota-focus-nfe.js'
+import { circuitoAbertoFocus, mensagemCircuitBreakerFocus } from './protecao-focus-nfe.js'
 
 const INTERVALO_MS = 120_000
 let timer: ReturnType<typeof setInterval> | null = null
@@ -22,6 +23,13 @@ async function tickAgendadorFocus() {
     for (const companyId of companyIds) {
       if (await servicoFocusNfe.syncEmAndamento(companyId)) continue
       try {
+        if (circuitoAbertoFocus(companyId)) {
+          logFocus('info', 'agendador_sync_circuit_breaker', {
+            companyId,
+            mensagem: mensagemCircuitBreakerFocus(companyId) ?? '',
+          })
+          continue
+        }
         if (await cotaEsgotadaParaAgendador(companyId)) {
           logFocus('info', 'agendador_sync_cota_esgotada', { companyId })
           continue
@@ -30,11 +38,12 @@ async function tickAgendadorFocus() {
         logFocus('info', 'agendador_sync', { companyId, jobId: job.jobId })
       } catch (erro) {
         const msg = erro instanceof Error ? erro.message : String(erro)
-        // 409 / sem token / cota — silencioso
+        // 409 / sem token / cota / circuit breaker — silencioso
         if (
           !msg.includes('em andamento') &&
           !msg.includes('não configurado') &&
-          !msg.includes('Cota mensal')
+          !msg.includes('Cota mensal') &&
+          !msg.includes('pausada temporariamente')
         ) {
           logFocus('warn', 'agendador_sync_falhou', { companyId, mensagem: msg })
         }

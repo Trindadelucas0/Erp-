@@ -15,14 +15,23 @@
  * Nunca lança — retorna objeto tipado.
  */
 import { logFocus, logFocusVerbose } from './logs-focus-nfe.js'
+import {
+  lerIntervaloMinMsFocus,
+  lerMaxTentativas429Focus,
+} from './config-rate-limit-focus-nfe.js'
+import {
+  aguardarOrcamentoRpmFocus,
+  companyIdContextoFocus,
+  inferirCategoriaRpmFocus,
+  mensagemCircuitBreakerFocus,
+  registrarRespostaCircuitBreakerFocus,
+  statusCircuitBreakerFocus,
+} from './protecao-focus-nfe.js'
 
 /** @see https://doc.focusnfe.com.br/reference/ambiente */
 const URL_HOMOLOG = 'https://homologacao.focusnfe.com.br/v2'
 const URL_PROD = 'https://api.focusnfe.com.br/v2'
 const TIMEOUT_MS = 20_000
-/** Intervalo mínimo entre chamadas (proteção local; Focus pagina 100 itens). */
-const INTERVALO_MIN_MS = 650
-const MAX_TENTATIVAS_429 = 3
 
 export type RespostaSucesso<T> = {
   sucesso: true
@@ -129,8 +138,9 @@ async function comFilaSerial<T>(fn: () => Promise<T>): Promise<T> {
   })
   await anterior.catch(() => undefined)
 
+  const intervaloMinMs = lerIntervaloMinMsFocus()
   const agora = Date.now()
-  const espera = INTERVALO_MIN_MS - (agora - ultimaFimEm)
+  const espera = intervaloMinMs - (agora - ultimaFimEm)
   if (espera > 0) {
     logFocusVerbose('rate_limit_espera', { ms: espera })
     await new Promise((r) => setTimeout(r, espera))
@@ -142,6 +152,43 @@ async function comFilaSerial<T>(fn: () => Promise<T>): Promise<T> {
     ultimaFimEm = Date.now()
     liberar()
   }
+}
+
+function erroCircuitBreakerSeAberto<T>(): RespostaFocus<T> | null {
+  const companyId = companyIdContextoFocus()
+  if (!companyId) return null
+  const st = statusCircuitBreakerFocus(companyId)
+  if (!st.aberto) return null
+  const mensagem =
+    mensagemCircuitBreakerFocus(companyId) ??
+    'Sincronização Focus pausada temporariamente (circuit breaker).'
+  return {
+    sucesso: false,
+    mensagem,
+    codigoHttp: 503,
+    codigo: 'CIRCUIT_BREAKER',
+  }
+}
+
+function registrarRespostaCliente(
+  resposta: { sucesso: boolean; codigoHttp?: number; mensagem?: string }
+): void {
+  const companyId = companyIdContextoFocus()
+  if (!companyId) return
+  if (resposta.sucesso) {
+    registrarRespostaCircuitBreakerFocus(companyId, { sucesso: true })
+    return
+  }
+  const comoErro = {
+    sucesso: false as const,
+    mensagem: resposta.mensagem ?? '',
+    codigoHttp: resposta.codigoHttp,
+  }
+  registrarRespostaCircuitBreakerFocus(companyId, {
+    sucesso: false,
+    codigoHttp: resposta.codigoHttp,
+    bloqueioAutenticacao: eh429BloqueioAutenticacaoFocus(comoErro),
+  })
 }
 
 function chaveGetEmVoo(
@@ -222,7 +269,16 @@ async function chamarUmaVez<T>(
   homologacao: boolean,
   opcoes?: { corpo?: unknown; query?: Record<string, string | number | undefined>; accept?: string }
 ): Promise<RespostaFocus<T>> {
+  const bloqueio = erroCircuitBreakerSeAberto<T>()
+  if (bloqueio) return bloqueio
+
+  const companyId = companyIdContextoFocus()
+  await aguardarOrcamentoRpmFocus(companyId, inferirCategoriaRpmFocus(caminho, metodo))
+
   return comFilaSerial(async () => {
+    const bloqueioDentro = erroCircuitBreakerSeAberto<T>()
+    if (bloqueioDentro) return bloqueioDentro
+
     const urlBase = baseUrl(homologacao)
     const params = new URLSearchParams()
     if (opcoes?.query) {
@@ -288,16 +344,19 @@ async function chamarUmaVez<T>(
           mensagem,
           ms,
         })
-        return {
+        const erro: RespostaErro = {
           sucesso: false,
           mensagem,
           codigoHttp: resposta.status,
           codigo: corpo?.codigo,
           ...(retryAfterSec != null ? { retryAfterSec } : {}),
         }
+        registrarRespostaCliente(erro)
+        return erro
       }
 
       logFocusVerbose('api_ok', { metodo, path: caminho, http: resposta.status, ms })
+      registrarRespostaCliente({ sucesso: true, codigoHttp: resposta.status })
       return { sucesso: true, dados: dados as T, headers, codigoHttp: resposta.status }
     } catch (erro) {
       clearTimeout(timer)
@@ -319,13 +378,15 @@ async function chamarComRetry<T>(
   homologacao: boolean,
   opcoes?: { corpo?: unknown; query?: Record<string, string | number | undefined>; accept?: string }
 ): Promise<RespostaFocus<T>> {
+  const maxTentativas = lerMaxTentativas429Focus()
   let ultima: RespostaFocus<T> | null = null
-  for (let tentativa = 1; tentativa <= MAX_TENTATIVAS_429; tentativa += 1) {
+  for (let tentativa = 1; tentativa <= maxTentativas; tentativa += 1) {
     ultima = await chamarUmaVez<T>(metodo, caminho, apiToken, homologacao, opcoes)
     if (ultima.sucesso || ultima.codigoHttp !== 429) return ultima
     if (ultima.sucesso === false && eh429BloqueioAutenticacaoFocus(ultima)) return ultima
+    if (ultima.sucesso === false && ultima.codigo === 'CIRCUIT_BREAKER') return ultima
 
-    if (tentativa >= MAX_TENTATIVAS_429) break
+    if (tentativa >= maxTentativas) break
 
     const esperaSec = segundosEspera429(
       ultima.mensagem,
@@ -376,7 +437,16 @@ async function baixarPdfUmaVez(
   caminho: string,
   query?: Record<string, string | undefined>
 ): Promise<RespostaFocus<Buffer>> {
+  const bloqueio = erroCircuitBreakerSeAberto<Buffer>()
+  if (bloqueio) return bloqueio
+
+  const companyId = companyIdContextoFocus()
+  await aguardarOrcamentoRpmFocus(companyId, inferirCategoriaRpmFocus(caminho, 'GET'))
+
   return comFilaSerial(async () => {
+    const bloqueioDentro = erroCircuitBreakerSeAberto<Buffer>()
+    if (bloqueioDentro) return bloqueioDentro
+
     const params = new URLSearchParams()
     if (query) {
       for (const [k, v] of Object.entries(query)) {
@@ -459,13 +529,15 @@ async function baixarPdfUmaVez(
           mensagem,
           ms,
         })
-        return {
+        const erro: RespostaErro = {
           sucesso: false,
           mensagem,
           codigoHttp: resposta.status,
           codigo,
           ...(retryAfterSec != null ? { retryAfterSec } : {}),
         }
+        registrarRespostaCliente(erro)
+        return erro
       }
 
       const ab = await resposta.arrayBuffer()
@@ -492,6 +564,7 @@ async function baixarPdfUmaVez(
         ms,
         bytes: buffer.length,
       })
+      registrarRespostaCliente({ sucesso: true, codigoHttp: resposta.status })
       return { sucesso: true, dados: buffer, headers, codigoHttp: resposta.status }
     } catch (erro) {
       clearTimeout(timer)
@@ -524,13 +597,15 @@ async function baixarPdfBinario(
     }
   }
 
+  const maxTentativas = lerMaxTentativas429Focus()
   const promessa = (async (): Promise<RespostaFocus<Buffer>> => {
     let ultima: RespostaFocus<Buffer> | null = null
-    for (let tentativa = 1; tentativa <= MAX_TENTATIVAS_429; tentativa += 1) {
+    for (let tentativa = 1; tentativa <= maxTentativas; tentativa += 1) {
       ultima = await baixarPdfUmaVez(apiToken, homologacao, caminho, query)
       if (ultima.sucesso || ultima.codigoHttp !== 429) return ultima
       if (ultima.sucesso === false && eh429BloqueioAutenticacaoFocus(ultima)) return ultima
-      if (tentativa >= MAX_TENTATIVAS_429) break
+      if (ultima.sucesso === false && ultima.codigo === 'CIRCUIT_BREAKER') return ultima
+      if (tentativa >= maxTentativas) break
       const esperaSec = segundosEspera429(
         ultima.mensagem,
         ultima.sucesso === false ? ultima.retryAfterSec : undefined

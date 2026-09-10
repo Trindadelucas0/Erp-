@@ -47,6 +47,20 @@ type CotaFocus = {
   restantes: number
   mesReferencia: string
   custoExtraCentavos: number
+  emissao?: {
+    habilitada: boolean
+    usados: number
+    cota: number
+    restantes: number
+    mesReferencia: string
+    stub: true
+  }
+  circuitBreaker?: {
+    aberto: boolean
+    liberacaoEm: string | null
+    motivo: string | null
+    mensagem: string | null
+  }
 }
 
 function formatarCustoExtraCentavos(centavos: number): string {
@@ -282,10 +296,23 @@ export function PainelConfiguracaoFocusNfe() {
         {!cotaFocus ? (
           <p className="text-sm text-muted-foreground">Não foi possível carregar a cota.</p>
         ) : !cotaFocus.habilitada ? (
-          <p className="text-sm text-muted-foreground">
-            Cota desligada no .env (<code>FOCUS_NFE_COTA_HABILITADA=false</code> ou{' '}
-            <code>FOCUS_NFE_COTA_MENSAL=0</code>).
-          </p>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Cota desligada no .env (<code>FOCUS_NFE_COTA_HABILITADA=false</code> ou{' '}
+              <code>FOCUS_NFE_COTA_MENSAL=0</code>).
+            </p>
+            {cotaFocus.emissao?.habilitada ? (
+              <p className="text-xs text-muted-foreground">
+                Emissão: reserva {cotaFocus.emissao.cota} no mês {cotaFocus.emissao.mesReferencia}{' '}
+                (ainda sem uso — módulo de emissão não ativo).
+              </p>
+            ) : null}
+            {cotaFocus.circuitBreaker?.aberto && cotaFocus.circuitBreaker.mensagem ? (
+              <p className="rounded-md bg-amber-500/15 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
+                {cotaFocus.circuitBreaker.mensagem}
+              </p>
+            ) : null}
+          </div>
         ) : (
           <div className="space-y-3">
             <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
@@ -327,6 +354,17 @@ export function PainelConfiguracaoFocusNfe() {
                 }}
               />
             </div>
+            {cotaFocus.emissao?.habilitada ? (
+              <p className="text-xs text-muted-foreground">
+                Emissão: reserva {cotaFocus.emissao.cota} no mês {cotaFocus.emissao.mesReferencia}{' '}
+                (ainda sem uso — módulo de emissão não ativo).
+              </p>
+            ) : null}
+            {cotaFocus.circuitBreaker?.aberto && cotaFocus.circuitBreaker.mensagem ? (
+              <p className="rounded-md bg-amber-500/15 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
+                {cotaFocus.circuitBreaker.mensagem}
+              </p>
+            ) : null}
           </div>
         )}
       </CardPadrao>

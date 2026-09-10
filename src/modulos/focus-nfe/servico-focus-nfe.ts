@@ -37,6 +37,14 @@ import { analisarFiscalBasico } from '../entrada-notas/analise-fiscal/analisar-f
 import { servicoEntradaNotas } from '../entrada-notas/servico-pipeline-entrada.js'
 import { repositorioContagens } from '../contagens/repositorio-contagens.js'
 import { lerConfigCotaFocus, saldoCotaFocus, contarUsoMesFocus } from './cota-focus-nfe.js'
+import { saldoCotaEmissaoFocus } from './cota-emissao-focus.js'
+import { lerLimiteLoteSyncFocus } from './config-rate-limit-focus-nfe.js'
+import {
+  circuitoAbertoFocus,
+  comContextoEmpresaFocus,
+  mensagemCircuitBreakerFocus,
+  statusCircuitBreakerFocus,
+} from './protecao-focus-nfe.js'
 import {
   obterRecursosEntradaNotas,
   type RecursosEntradaNotas,
@@ -203,10 +211,8 @@ async function testarConexao(companyId: string) {
     cnpj: cnpjMascarado,
   })
 
-  const resultado = await clienteFocusNfe.testarConexao(
-    credenciais.apiToken,
-    credenciais.homologacao,
-    cnpj
+  const resultado = await comContextoEmpresaFocus(companyId, () =>
+    clienteFocusNfe.testarConexao(credenciais.apiToken, credenciais.homologacao, cnpj)
   )
   const ms = Date.now() - inicio
 
@@ -327,8 +333,6 @@ async function avancarCursorCte(
   return max
 }
 
-const LIMITE_LOTE_SYNC = 10
-
 type ResultadoXml = {
   ok: boolean
   rateLimit: boolean
@@ -348,7 +352,9 @@ export function decisaoAvancoCursorCteAposXml(res: ResultadoXml): 'avancar' | 'p
  * (`src/compartilhado/jobs/`) — aqui só a sincronização em lote.
  */
 async function executarSync(companyId: string, contexto: ContextoJob) {
+  return comContextoEmpresaFocus(companyId, async () => {
   const pushLog = (msg: string) => contexto.log(msg)
+  const LIMITE_LOTE_SYNC = lerLimiteLoteSyncFocus()
 
   try {
     await contexto.progresso(5, 'Iniciando sincronização em lote…')
@@ -913,6 +919,7 @@ async function executarSync(companyId: string, contexto: ContextoJob) {
     logFocus('error', 'sync_falhou', { companyId, mensagem })
     throw erro
   }
+  })
 }
 
 async function completarXmlNfseDaFocus(
@@ -1039,6 +1046,17 @@ async function enfileirarSync(
   opcoes?: { completo?: boolean; liberarExtras?: boolean }
 ) {
   await obterCredenciais(companyId)
+
+  if (circuitoAbertoFocus(companyId)) {
+    const msg =
+      mensagemCircuitBreakerFocus(companyId) ??
+      'Sincronização Focus pausada temporariamente (circuit breaker).'
+    throw new ErroDaAplicacao(msg, 503, {
+      codigo: 'CIRCUIT_BREAKER',
+      detalhes: statusCircuitBreakerFocus(companyId),
+    })
+  }
+
   const saldo = await saldoCotaFocus(companyId)
   if (saldo.habilitada && saldo.restantes <= 0 && !opcoes?.liberarExtras) {
     throw new ErroDaAplicacao(
@@ -1088,7 +1106,21 @@ async function syncEmAndamento(companyId: string) {
 }
 
 async function buscarCota(companyId: string) {
-  return saldoCotaFocus(companyId)
+  const [recebimento, emissao] = await Promise.all([
+    saldoCotaFocus(companyId),
+    saldoCotaEmissaoFocus(companyId),
+  ])
+  const breaker = statusCircuitBreakerFocus(companyId)
+  return {
+    ...recebimento,
+    emissao,
+    circuitBreaker: {
+      aberto: breaker.aberto,
+      liberacaoEm: breaker.liberacaoEm?.toISOString() ?? null,
+      motivo: breaker.motivo,
+      mensagem: mensagemCircuitBreakerFocus(companyId),
+    },
+  }
 }
 
 async function statusJob(companyId: string, jobId: string) {
@@ -1223,6 +1255,16 @@ async function obterXmlNota(
 }
 
 async function obterXmlNotaInterno(
+  companyId: string,
+  id: string,
+  modo: 'visualizar' | 'download' = 'download'
+) {
+  return comContextoEmpresaFocus(companyId, () =>
+    obterXmlNotaInternoComContexto(companyId, id, modo)
+  )
+}
+
+async function obterXmlNotaInternoComContexto(
   companyId: string,
   id: string,
   modo: 'visualizar' | 'download' = 'download'
@@ -1416,6 +1458,10 @@ function lancarErroTokenOuBloqueioAuthFocus(
 }
 
 async function obterDanfeNota(companyId: string, id: string) {
+  return comContextoEmpresaFocus(companyId, () => obterDanfeNotaComContexto(companyId, id))
+}
+
+async function obterDanfeNotaComContexto(companyId: string, id: string) {
   const recursos = await obterRecursosEntradaNotas(companyId)
   if (!recursos.baixarPdfFocus) {
     throw new ErroDaAplicacao(
@@ -1821,6 +1867,10 @@ async function importarXml(companyId: string, xmlBruto: string) {
 }
 
 async function reprocessarXmlsLocais(companyId: string) {
+  return comContextoEmpresaFocus(companyId, () => reprocessarXmlsLocaisComContexto(companyId))
+}
+
+async function reprocessarXmlsLocaisComContexto(companyId: string) {
   const lista = await repositorioFocusNfe.listarComXmlPendenteCampos(companyId)
   let ok = 0
   let itensRecuperados = 0
