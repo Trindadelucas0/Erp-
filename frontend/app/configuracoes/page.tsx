@@ -357,10 +357,13 @@ function ConteudoDaPaginaDeConfiguracoes() {
   const podeConfig = usePermissao('configuracoes:view')
 
   const podeProdutos = usePermissao('produtos:view')
+  const podeEstoque = usePermissao('estoque:view')
   const podeGeral = ehAdmin || podeConfig
   const podeAssinatura = ehAdmin
   const podeAtalhos = ehAdmin || podeConfig
-  const podeLogistica = ehAdmin || podeConfig || podeProdutos
+  const podeUnidades = ehAdmin || podeConfig || podeProdutos
+  const podeEstruturaWms = ehAdmin || podeEstoque
+  const podeLogistica = podeUnidades || podeEstruturaWms
   const podeFinanceiroAba = ehAdmin || podeFinanceiro
   const podeFiscalCfop = ehAdmin || podeFinanceiro
   const podeBuscadorNf = ehAdmin
@@ -389,7 +392,7 @@ function ConteudoDaPaginaDeConfiguracoes() {
   ])
 
   const abaParam = searchParams.get('aba') as AbaConfig | null
-  const secaoParam = searchParams.get('secao') as SecaoFiscal | SecaoFinanceiro | null
+  const secaoParam = searchParams.get('secao')
 
   const abaAtiva: AbaConfig = useMemo(() => {
     if (abaParam && abasDisponiveis.some((a) => a.id === abaParam)) return abaParam
@@ -425,11 +428,31 @@ function ConteudoDaPaginaDeConfiguracoes() {
     return 'planos'
   }, [abaAtiva, secaoParam])
 
+  const secoesLogistica = useMemo(() => {
+    return ABAS_LOGISTICA.filter((s) => {
+      if (s.id === 'unidades') return podeUnidades
+      if (s.id === 'estrutura') return podeEstruturaWms
+      return false
+    })
+  }, [podeUnidades, podeEstruturaWms])
+
+  const secaoLogistica: SecaoLogistica = useMemo(() => {
+    if (
+      abaAtiva === 'logistica' &&
+      secaoParam &&
+      secoesLogistica.some((s) => s.id === secaoParam)
+    ) {
+      return secaoParam as SecaoLogistica
+    }
+    return (secoesLogistica[0]?.id as SecaoLogistica) ?? 'unidades'
+  }, [abaAtiva, secaoParam, secoesLogistica])
+
   function mudarAba(id: string) {
     const params = new URLSearchParams()
     params.set('aba', id)
     if (id === 'fiscal' && secaoFiscal) params.set('secao', secaoFiscal)
     if (id === 'financeiro') params.set('secao', secaoFinanceiro)
+    if (id === 'logistica' && secaoLogistica) params.set('secao', secaoLogistica)
     router.replace(`/configuracoes?${params.toString()}`)
   }
 
@@ -439,6 +462,10 @@ function ConteudoDaPaginaDeConfiguracoes() {
 
   function mudarSecaoFinanceiro(id: string) {
     router.replace(`/configuracoes?aba=financeiro&secao=${id}`)
+  }
+
+  function mudarSecaoLogistica(id: string) {
+    router.replace(`/configuracoes?aba=logistica&secao=${id}`)
   }
 
   return (
@@ -463,7 +490,21 @@ function ConteudoDaPaginaDeConfiguracoes() {
 
       {abaAtiva === 'vendas' && ehAdmin && <PainelParametrizacaoCustos />}
 
-      {abaAtiva === 'logistica' && podeLogistica && <PainelUnidadesMedida />}
+      {abaAtiva === 'logistica' && podeLogistica && (
+        <div className="space-y-4">
+          {secoesLogistica.length > 1 && (
+            <Abas
+              abas={secoesLogistica}
+              abaAtiva={secaoLogistica}
+              aoMudar={mudarSecaoLogistica}
+            />
+          )}
+          {secaoLogistica === 'unidades' && podeUnidades && <PainelUnidadesMedida />}
+          {secaoLogistica === 'estrutura' && podeEstruturaWms && (
+            <ConteudoDaPaginaEstruturaWms />
+          )}
+        </div>
+      )}
 
       {abaAtiva === 'financeiro' && podeFinanceiroAba && (
         <div className="space-y-4">

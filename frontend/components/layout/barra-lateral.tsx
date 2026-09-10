@@ -61,41 +61,48 @@ export function BarraLateral({ aoFecharMenuMobile, className }: Props) {
   const caminhoAtual = usePathname()
   const { perfil, estaAutenticado, encerrarSessao } = useSessaoDoUsuario()
 
-  const itensDoMenu = perfil?.paginasPermitidas ?? []
-  const entradas = useMemo(() => montarEntradasDoMenu(itensDoMenu), [itensDoMenu])
+  const entradas = useMemo(
+    () => montarEntradasDoMenu(perfil?.paginasPermitidas ?? []),
+    [perfil?.paginasPermitidas]
+  )
 
-  const idsAbertosPorRota = useMemo(() => {
-    const ids = new Set<string>()
-    for (const entrada of entradas) {
-      if (entrada.tipo !== 'grupo') continue
-      if (entrada.filhos.some((filho) => paginaEstaAtiva(caminhoAtual, filho))) {
-        ids.add(entrada.id)
-      }
-    }
-    return ids
+  const chaveGruposAtivos = useMemo(() => {
+    return entradas
+      .filter((entrada): entrada is GrupoMontadoDoMenu => entrada.tipo === 'grupo')
+      .filter((grupo) =>
+        grupo.filhos.some((filho) => paginaEstaAtiva(caminhoAtual, filho))
+      )
+      .map((grupo) => grupo.id)
+      .join(',')
   }, [entradas, caminhoAtual])
 
   const [gruposAbertos, setGruposAbertos] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
+    if (!chaveGruposAtivos) return
+    const ids = chaveGruposAtivos.split(',')
     setGruposAbertos((atual) => {
+      let mudou = false
       const proximo = { ...atual }
-      for (const id of idsAbertosPorRota) {
-        proximo[id] = true
+      for (const id of ids) {
+        if (!proximo[id]) {
+          proximo[id] = true
+          mudou = true
+        }
       }
-      return proximo
+      return mudou ? proximo : atual
     })
-  }, [idsAbertosPorRota])
+  }, [chaveGruposAtivos])
 
   function grupoEstaAberto(grupo: GrupoMontadoDoMenu) {
     if (gruposAbertos[grupo.id] !== undefined) return gruposAbertos[grupo.id]
-    return idsAbertosPorRota.has(grupo.id)
+    return chaveGruposAtivos.split(',').includes(grupo.id)
   }
 
   function alternarGrupo(id: string) {
     setGruposAbertos((atual) => ({
       ...atual,
-      [id]: !(atual[id] ?? idsAbertosPorRota.has(id)),
+      [id]: !(atual[id] ?? chaveGruposAtivos.split(',').includes(id)),
     }))
   }
 

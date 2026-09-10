@@ -1,6 +1,6 @@
 {
   "name": "erp-frontend",
-  "version": "1.17.3",
+  "version": "1.17.4",
   "private": true,
   "scripts": {
     "dev": "node ./scripts/dev-next.mjs",
