@@ -43,13 +43,18 @@ async function empresaEhTomadorDoCte(
   return { ok: tomador === cnpjEmpresa, tomador, cnpjEmpresa }
 }
 
-function nfeProntaParaVinculoAutomatico(nfe: {
+async function nfeProntaParaVinculoAutomatico(nfe: {
+  id: string
   tipoDocumento: string | null
   xmlConteudo: string | null
-  nfeCompleta: boolean
-}): boolean {
-  if (nfe.tipoDocumento !== 'nfe55' || !nfe.xmlConteudo) return false
-  return xmlNfeTemItensParseaveis(nfe.xmlConteudo)
+  _count?: { itens?: number }
+}): Promise<boolean> {
+  if (nfe.tipoDocumento !== 'nfe55') return false
+  if (nfe.xmlConteudo && xmlNfeTemItensParseaveis(nfe.xmlConteudo)) return true
+  const viaInclude = nfe._count?.itens
+  if (typeof viaInclude === 'number') return viaInclude >= 1
+  const qtd = await clientePrisma.nfeRecebidaItem.count({ where: { nfeRecebidaId: nfe.id } })
+  return qtd >= 1
 }
 
 function motivoCurtoPendente(
@@ -185,7 +190,7 @@ async function criarVinculo(params: {
  * Após XML de CT-e: grava chave referenciada e tenta vincular às NFs.
  * Focus só é chamado se houver chave de NF (nota de frete/mercadoria) e a NF
  * ainda não estiver no ERP — e se `importarFocusSeAusente` for true.
- * Auto-vínculo exige: NFe com itens parseáveis + tomador do CT-e = CNPJ da empresa.
+ * Auto-vínculo exige: NFe com itens (XML `<det>` ou linhas no banco) + tomador do CT-e = CNPJ da empresa.
  * 1 CT-e → 1 NF (primeira chave que conseguir vincular).
  */
 async function tentarVincularCteAutomatico(
@@ -258,7 +263,7 @@ async function tentarVincularCteAutomatico(
       where: { companyId_chaveNfe: { companyId, chaveNfe: chave } },
     })
 
-    if (!nfe || !nfeProntaParaVinculoAutomatico(nfe)) {
+    if (!nfe || !(await nfeProntaParaVinculoAutomatico(nfe))) {
       if (!importarFocusSeAusente) {
         ultimaFalhaImport =
           ultimaFalhaImport ??
@@ -301,7 +306,7 @@ async function tentarVincularCteAutomatico(
           where: { id: importacao.notaId, companyId },
         })
       }
-      if (!nfe || !nfeProntaParaVinculoAutomatico(nfe)) {
+      if (!nfe || !(await nfeProntaParaVinculoAutomatico(nfe))) {
         ultimaFalhaImport =
           ultimaFalhaImport ??
           `NF …${chave.slice(-8)} importada sem itens parseáveis — sem auto-vínculo.`
@@ -465,11 +470,17 @@ async function processarVinculosCtePendentes(
 
       const jaTinhaNfe = await clientePrisma.nfeRecebida.findUnique({
         where: { companyId_chaveNfe: { companyId, chaveNfe: chave } },
-        select: { id: true, nfeCompleta: true, xmlConteudo: true, tipoDocumento: true },
+        select: {
+          id: true,
+          nfeCompleta: true,
+          xmlConteudo: true,
+          tipoDocumento: true,
+          _count: { select: { itens: true } },
+        },
       })
 
       const precisaFocus =
-        !jaTinhaNfe || !nfeProntaParaVinculoAutomatico(jaTinhaNfe)
+        !jaTinhaNfe || !(await nfeProntaParaVinculoAutomatico(jaTinhaNfe))
       if (precisaFocus && focusRestantes <= 0) {
         pendentes += 1
         pushLinha(cte, 'Focus', '—', 'cota lote esgotada', 'Use BUSCAR de novo ou importe XML')
@@ -585,13 +596,13 @@ async function listarCtesAguardandoNf(companyId: string): Promise<CteAguardandoN
 /**
  * Após XML de NF-e (sync ou Importar XML): vincula **todos** os CT-es que
  * referenciam esta chave e reanalisa cada CT-e + a NF (gate frete).
- * Só auto-vincula se a NFe tiver itens parseáveis e o tomador do CT-e = empresa.
+ * Só auto-vincula se a NFe tiver itens (XML ou banco) e o tomador do CT-e = empresa.
  */
 async function tentarVincularNfesPendentesAoCte(companyId: string, nfeId: string): Promise<void> {
   const nfe = await clientePrisma.nfeRecebida.findFirst({
     where: { id: nfeId, companyId, tipoDocumento: 'nfe55' },
   })
-  if (!nfe || !nfeProntaParaVinculoAutomatico(nfe)) return
+  if (!nfe || !(await nfeProntaParaVinculoAutomatico(nfe))) return
 
   const cteIdsVinculados = new Set<string>()
   const linhasTabela: LinhaTabelaVinculoCte[] = []

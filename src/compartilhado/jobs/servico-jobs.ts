@@ -5,7 +5,11 @@
 import { ErroDaAplicacao } from '../erros/ErroDaAplicacao.js'
 import { repositorioJobs } from './repositorio-jobs.js'
 import { acordarWorkerJobs } from './worker-jobs.js'
-import type { JobView, TipoJob } from './tipos-job.js'
+import {
+  jobAtivoEstaTravado,
+  type JobView,
+  type TipoJob,
+} from './tipos-job.js'
 
 type DadosParaEnfileirar = {
   companyId: string
@@ -16,10 +20,17 @@ type DadosParaEnfileirar = {
   maxTentativas?: number
   /** Mensagem do 409 quando já existe job ativo para a mesma chave. */
   mensagemConflito?: string
+  /**
+   * Se já houver job ativo da mesma chave, devolve o id existente (sem 409).
+   * Usado no BUSCAR Focus para acompanhar o sync do agendador em vez de erro.
+   */
+  reusarAtivo?: boolean
 }
 
-async function enfileirar(dados: DadosParaEnfileirar): Promise<{ jobId: string; status: string }> {
-  const { job, criado } = await repositorioJobs.criarComDedupe({
+async function enfileirar(
+  dados: DadosParaEnfileirar
+): Promise<{ jobId: string; status: string; criado: boolean }> {
+  let { job, criado } = await repositorioJobs.criarComDedupe({
     companyId: dados.companyId,
     tipo: dados.tipo,
     chaveDedupe: dados.chaveDedupe ?? null,
@@ -27,7 +38,23 @@ async function enfileirar(dados: DadosParaEnfileirar): Promise<{ jobId: string; 
     maxTentativas: dados.maxTentativas,
   })
 
-  if (!criado) {
+  if (!criado && dados.reusarAtivo && jobAtivoEstaTravado(job)) {
+    await repositorioJobs.forcarErro(
+      job.id,
+      'Sincronização anterior não concluiu. Nova busca iniciada.'
+    )
+    const nova = await repositorioJobs.criarComDedupe({
+      companyId: dados.companyId,
+      tipo: dados.tipo,
+      chaveDedupe: dados.chaveDedupe ?? null,
+      payloadJson: dados.payload,
+      maxTentativas: dados.maxTentativas,
+    })
+    job = nova.job
+    criado = nova.criado
+  }
+
+  if (!criado && !dados.reusarAtivo) {
     throw new ErroDaAplicacao(
       dados.mensagemConflito ?? 'Já existe uma operação em andamento para este item.',
       409
@@ -35,7 +62,7 @@ async function enfileirar(dados: DadosParaEnfileirar): Promise<{ jobId: string; 
   }
 
   acordarWorkerJobs()
-  return { jobId: job.id, status: job.status }
+  return { jobId: job.id, status: job.status, criado }
 }
 
 async function statusJob(companyId: string, jobId: string): Promise<JobView> {

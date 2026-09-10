@@ -9,7 +9,7 @@ import { hostname } from 'node:os'
 import { ErroDaAplicacao } from '../erros/ErroDaAplicacao.js'
 import { obterHandlerJob } from './registro-handlers-job.js'
 import { repositorioJobs } from './repositorio-jobs.js'
-import type { ContextoJob, ResultadoJob } from './tipos-job.js'
+import { JOB_HANDLER_TIMEOUT_MS, type ContextoJob, type ResultadoJob } from './tipos-job.js'
 
 const INTERVALO_POLL_MS = 1_000
 const INTERVALO_HEARTBEAT_MS = 45_000
@@ -84,8 +84,21 @@ async function executarJob(job: {
 
   logJob('info', 'job_inicio', { id: job.id, tipo: job.tipo, companyId: job.companyId })
 
+  let timeoutHandler: ReturnType<typeof setTimeout> | undefined
   try {
-    const retorno = ((await handler(contexto)) ?? {}) as ResultadoJob
+    const retorno = (await Promise.race([
+      (async () => ((await handler(contexto)) ?? {}) as ResultadoJob)(),
+      new Promise<never>((_, reject) => {
+        timeoutHandler = setTimeout(() => {
+          reject(
+            new ErroDaAplicacao(
+              'Sincronização excedeu o tempo máximo. Clique em BUSCAR de novo.',
+              504
+            )
+          )
+        }, JOB_HANDLER_TIMEOUT_MS)
+      }),
+    ])) as ResultadoJob
     await repositorioJobs.finalizarComSucesso(job.id, {
       mensagem: retorno.mensagem ?? null,
       resultado: retorno.resultado,
@@ -104,6 +117,7 @@ async function executarJob(job: {
     })
     logJob('error', 'job_fim', { id: job.id, tipo: job.tipo, status, mensagem })
   } finally {
+    if (timeoutHandler) clearTimeout(timeoutHandler)
     clearInterval(heartbeat)
   }
 }

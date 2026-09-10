@@ -153,14 +153,28 @@ async function finalizarComSucesso(
   id: string,
   dados: { mensagem?: string | null; resultado?: unknown; logResumo?: string | null }
 ) {
-  await clientePrisma.job.update({
-    where: { id },
+  await clientePrisma.job.updateMany({
+    where: { id, status: 'rodando' },
     data: {
       status: 'ok',
       progresso: 100,
       mensagem: dados.mensagem ?? null,
       resultadoJson: (dados.resultado ?? undefined) as object | undefined,
       logResumo: dados.logResumo ?? null,
+      finalizadoEm: new Date(),
+      lockedAt: null,
+      lockedPor: null,
+    },
+  })
+}
+
+/** Encerra job ativo (pendente/rodando) para a fila poder criar outro. */
+async function forcarErro(id: string, mensagem: string) {
+  await clientePrisma.job.updateMany({
+    where: { id, status: { in: STATUS_JOB_ATIVO as unknown as string[] } },
+    data: {
+      status: 'erro',
+      mensagem,
       finalizadoEm: new Date(),
       lockedAt: null,
       lockedPor: null,
@@ -215,7 +229,10 @@ async function registrarFalha(
  * restart do `tsx watch`, deploy PM2). A reexecução não consome `tentativas`.
  */
 async function recuperarOrfaos(): Promise<number> {
-  const limite = new Date(Date.now() - LOCK_EXPIRA_MS)
+  // Comparar em UTC puro (igual ao claim): `lockedAt` é timestamp sem fuso gravado
+  // em UTC. Passar `Date` do Node aqui fazia o Postgres converter pelo fuso da
+  // sessão e o órfão nunca expirava (BUSCAR reusava o job `rodando` para sempre).
+  const limiteSegundos = Math.max(1, Math.ceil(LOCK_EXPIRA_MS / 1000))
   const afetados = await clientePrisma.$executeRaw`
     UPDATE "Job"
     SET status = CASE WHEN recuperacoes < ${MAX_RECUPERACOES} THEN 'pendente' ELSE 'erro' END,
@@ -234,7 +251,10 @@ async function recuperarOrfaos(): Promise<number> {
         "lockedPor" = NULL,
         "updatedAt" = (NOW() AT TIME ZONE 'UTC')
     WHERE status = 'rodando'
-      AND ("lockedAt" IS NULL OR "lockedAt" < ${limite})
+      AND (
+        "lockedAt" IS NULL
+        OR "lockedAt" < ((NOW() AT TIME ZONE 'UTC') - make_interval(secs => ${limiteSegundos}))
+      )
   `
   return afetados
 }
@@ -258,6 +278,7 @@ export const repositorioJobs = {
   atualizarProgresso,
   baterHeartbeat,
   finalizarComSucesso,
+  forcarErro,
   registrarFalha,
   recuperarOrfaos,
   buscarPorId,

@@ -129,8 +129,18 @@ export const PAGINAS_VINCULAVEIS: readonly PaginaDoSistema[] = [
 
 /** Páginas exclusivas do administrador (não aparecem no formulário de vínculo). */
 export const PAGINAS_SOMENTE_ADMIN: readonly PaginaDoSistema[] = [
-  { chave: 'usuarios', caminho: '/users', rotulo: 'Usuários' },
-  { chave: 'papeis', caminho: '/papeis', rotulo: 'Papéis' },
+  {
+    chave: 'usuarios',
+    caminho: '/configuracoes?aba=geral&secao=usuarios',
+    rotulo: 'Usuários',
+    exibirNoMenu: false,
+  },
+  {
+    chave: 'papeis',
+    caminho: '/configuracoes?aba=geral&secao=papeis',
+    rotulo: 'Papéis',
+    exibirNoMenu: false,
+  },
   { chave: 'auditoria', caminho: '/auditoria', rotulo: 'Auditoria' },
   { chave: 'clientes-aprovacao', caminho: '/clientes/aprovacao', rotulo: 'Aprovação de clientes' },
   { chave: 'configuracoes', caminho: '/configuracoes', rotulo: 'Configurações' },

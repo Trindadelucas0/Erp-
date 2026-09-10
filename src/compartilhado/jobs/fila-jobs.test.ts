@@ -24,6 +24,7 @@ import { clientePrisma } from '../banco-dados/cliente-prisma.js'
 import { ErroDaAplicacao } from '../erros/ErroDaAplicacao.js'
 import { repositorioJobs } from './repositorio-jobs.js'
 import { servicoJobs } from './servico-jobs.js'
+import { jobAtivoEstaTravado } from './tipos-job.js'
 
 /** `$transaction(callback)` executando contra o próprio mock do Prisma. */
 function transacaoDireta() {
@@ -39,6 +40,8 @@ const jobPendente = {
   status: 'pendente',
   tentativas: 0,
   maxTentativas: 1,
+  createdAt: new Date(),
+  iniciadoEm: null,
 }
 
 describe('enfileirar — dedupe por chave', () => {
@@ -57,7 +60,7 @@ describe('enfileirar — dedupe por chave', () => {
       chaveDedupe: 'sync',
     })
 
-    expect(resultado).toEqual({ jobId: 'job-1', status: 'pendente' })
+    expect(resultado).toEqual({ jobId: 'job-1', status: 'pendente', criado: true })
     expect(clientePrisma.job.create).toHaveBeenCalledTimes(1)
   })
 
@@ -79,6 +82,47 @@ describe('enfileirar — dedupe por chave', () => {
       message: 'Já existe uma sincronização Focus em andamento para esta empresa.',
     })
     expect(clientePrisma.job.create).not.toHaveBeenCalled()
+  })
+
+  it('reusa o job ativo quando reusarAtivo=true (BUSCAR acompanha o agendador)', async () => {
+    vi.mocked(clientePrisma.job.findFirst).mockResolvedValue(
+      { ...jobPendente, status: 'rodando', iniciadoEm: new Date() } as never
+    )
+
+    const resultado = await servicoJobs.enfileirar({
+      companyId: 'empresa-1',
+      tipo: 'focus_sync',
+      chaveDedupe: 'sync',
+      reusarAtivo: true,
+    })
+
+    expect(resultado).toEqual({ jobId: 'job-1', status: 'rodando', criado: false })
+    expect(clientePrisma.job.create).not.toHaveBeenCalled()
+  })
+
+  it('abandona job pendente travado e cria outro quando reusarAtivo', async () => {
+    const antigo = {
+      ...jobPendente,
+      createdAt: new Date(Date.now() - 120_000),
+    }
+    vi.mocked(clientePrisma.job.findFirst)
+      .mockResolvedValueOnce(antigo as never)
+      .mockResolvedValueOnce(null as never)
+    vi.mocked(clientePrisma.job.updateMany).mockResolvedValue({ count: 1 } as never)
+    vi.mocked(clientePrisma.job.create).mockResolvedValue({
+      ...jobPendente,
+      id: 'job-2',
+    } as never)
+
+    const resultado = await servicoJobs.enfileirar({
+      companyId: 'empresa-1',
+      tipo: 'focus_sync',
+      chaveDedupe: 'sync',
+      reusarAtivo: true,
+    })
+
+    expect(clientePrisma.job.updateMany).toHaveBeenCalled()
+    expect(resultado).toEqual({ jobId: 'job-2', status: 'pendente', criado: true })
   })
 
   it('serializa o dedupe com advisory lock antes de consultar', async () => {
@@ -149,18 +193,19 @@ describe('recuperarOrfaos — job interrompido por reinício da API', () => {
     const recuperados = await repositorioJobs.recuperarOrfaos()
 
     expect(recuperados).toBe(1)
-    const [fragmentos, maxRecuperacoes] = vi.mocked(clientePrisma.$executeRaw).mock.calls[0] as [
-      TemplateStringsArray,
-      number,
-    ]
+    const chamada = vi.mocked(clientePrisma.$executeRaw).mock.calls[0] as unknown as unknown[]
+    const fragmentos = chamada[0] as TemplateStringsArray
     const sql = fragmentos.join('?')
     expect(sql).toContain(`status = 'rodando'`)
-    expect(sql).toContain('"lockedAt" IS NULL OR "lockedAt" <')
+    expect(sql).toContain('make_interval(secs =>')
+    expect(sql).toContain(`(NOW() AT TIME ZONE 'UTC')`)
     // Volta para pendente sem consumir tentativa, para o worker reexecutar.
     expect(sql).toContain(`THEN 'pendente' ELSE 'erro'`)
     expect(sql).toContain('GREATEST(tentativas - 1, 0)')
     expect(sql).not.toMatch(/NOW\(\)(?! AT TIME ZONE)/)
-    expect(maxRecuperacoes).toBe(1)
+    // Prisma injeta MAX_RECUPERACOES várias vezes no CASE; o último param é o TTL em segundos.
+    expect(chamada.slice(1, -1).every((v) => v === 1)).toBe(true)
+    expect(chamada.at(-1)).toBe(180)
   })
 })
 
@@ -230,5 +275,27 @@ describe('statusJob', () => {
     await expect(servicoJobs.statusJob('empresa-2', 'job-1')).rejects.toMatchObject({
       codigoHttp: 404,
     })
+  })
+})
+
+describe('jobAtivoEstaTravado', () => {
+  const agora = Date.parse('2026-09-10T13:00:00.000Z')
+
+  it('marca pendente antigo como travado', () => {
+    expect(
+      jobAtivoEstaTravado(
+        { status: 'pendente', createdAt: new Date(agora - 60_000), iniciadoEm: null },
+        agora
+      )
+    ).toBe(true)
+  })
+
+  it('não marca pendente recente', () => {
+    expect(
+      jobAtivoEstaTravado(
+        { status: 'pendente', createdAt: new Date(agora - 5_000), iniciadoEm: null },
+        agora
+      )
+    ).toBe(false)
   })
 })

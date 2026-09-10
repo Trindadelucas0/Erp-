@@ -10,7 +10,7 @@ export async function buscarPerfilDoUsuario(): Promise<PerfilDoUsuario> {
 
 export function resolverRotaAposLogin(perfil: PerfilDoUsuario): string {
   if (perfil.ehAdmin) {
-    return '/users'
+    return '/configuracoes?aba=geral&secao=usuarios'
   }
 
   if (perfil.paginasPermitidas.length > 0) {

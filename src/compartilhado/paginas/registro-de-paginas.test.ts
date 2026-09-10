@@ -21,6 +21,16 @@ describe('montarPaginasPermitidasParaUsuario', () => {
     expect(paginas.some((p) => p.chave === 'configuracoes')).toBe(true)
   })
 
+  it('não lista Usuários nem Papéis no menu e mantém Aprovação de clientes', () => {
+    const paginas = montarPaginasPermitidasParaUsuario(true, [], [])
+    const chaves = paginas.map((p) => p.chave)
+
+    expect(chaves).not.toContain('usuarios')
+    expect(chaves).not.toContain('papeis')
+    expect(chaves).toContain('clientes-aprovacao')
+    expect(chaves).toContain('configuracoes')
+  })
+
   it('rótulo do item cadastros no menu é Empresas', () => {
     const pagina = listarPaginasVinculaveis().find((p) => p.chave === 'cadastros')
     expect(pagina?.rotulo).toBe('Empresas')

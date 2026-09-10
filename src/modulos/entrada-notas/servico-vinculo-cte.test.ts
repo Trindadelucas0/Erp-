@@ -14,6 +14,7 @@ const vinculoFindUnique = vi.fn()
 const vinculoFindMany = vi.fn()
 const vinculoCreate = vi.fn()
 const vinculoDelete = vi.fn()
+const itemCount = vi.fn()
 
 vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({
   clientePrisma: {
@@ -28,6 +29,9 @@ vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({
       findMany: (...a: unknown[]) => vinculoFindMany(...a),
       create: (...a: unknown[]) => vinculoCreate(...a),
       delete: (...a: unknown[]) => vinculoDelete(...a),
+    },
+    nfeRecebidaItem: {
+      count: (...a: unknown[]) => itemCount(...a),
     },
   },
 }))
@@ -106,6 +110,7 @@ function xmlNfeResumo() {
 beforeEach(() => {
   vi.clearAllMocks()
   update.mockResolvedValue({})
+  itemCount.mockResolvedValue(0)
   vinculoCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
     id: 'vinculo-1',
     ...data,
@@ -188,6 +193,34 @@ describe('servicoVinculoCte — caso Fortlev/KNA', () => {
 
     expect(r.vinculado).toBe(false)
     expect(vinculoCreate).not.toHaveBeenCalled()
+  })
+
+  it('auto-vincula NF com resumo DistDFe se já houver itens no banco', async () => {
+    findFirst.mockResolvedValue({
+      id: 'cte-1',
+      companyId: 'emp-1',
+      tipoDocumento: 'cte',
+      chaveNfe: CHAVE_CTE,
+      chaveNfeReferenciada: CHAVE_NFE,
+      xmlConteudo: xmlCteTomadorDestinatario(),
+      valorTotal: 638.71,
+    })
+    vinculoFindUnique.mockResolvedValue(null)
+    findUnique.mockResolvedValue({
+      id: 'nfe-1',
+      tipoDocumento: 'nfe55',
+      xmlConteudo: xmlNfeResumo(),
+      nfeCompleta: false,
+      chaveNfe: CHAVE_NFE,
+    })
+    itemCount.mockResolvedValue(1)
+
+    const r = await servicoVinculoCte.tentarVincularCteAutomatico('emp-1', 'cte-1', {
+      importarFocusSeAusente: false,
+    })
+
+    expect(r.vinculado).toBe(true)
+    expect(vinculoCreate).toHaveBeenCalled()
   })
 
   it('repararVinculosCteTomadorIndevido remove vínculo automático Fortlev↔KNA', async () => {

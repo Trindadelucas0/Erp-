@@ -461,41 +461,74 @@ function ConteudoEntradaNotas() {
     setMensagem('Sincronizando em lotes (NFe + NFS-e + CTe)…')
 
     const atualizarLista = opcoes?.atualizarLista !== false
+    const POLL_MS = 1500
+    const MAX_PENDENTE_MS = 45_000
+    const MAX_TOTAL_MS = 6 * 60_000
+    const inicio = Date.now()
 
     return new Promise((resolve) => {
-      pollRef.current = setInterval(async () => {
+      let encerrado = false
+      let viuRodando = false
+      let emVoo = false
+
+      const terminar = (resultado: 'ok' | 'erro') => {
+        if (encerrado) return
+        encerrado = true
+        if (pollRef.current) clearInterval(pollRef.current)
+        pollRef.current = null
+        setSincronizando(false)
+        resolve(resultado)
+      }
+
+      const tick = async () => {
+        if (encerrado || emVoo) return
+        emVoo = true
         try {
           const { data } = await clienteHttp.get<{ job: JobStatus }>(`/focus-nfe/jobs/${jobId}`)
+          if (encerrado) return
           setJob(data.job)
-          if (data.job.status === 'ok' || data.job.status === 'erro') {
-            if (pollRef.current) clearInterval(pollRef.current)
-            pollRef.current = null
-            setSincronizando(false)
-            if (data.job.status === 'ok') {
-              const msg =
-                data.job.mensagem ??
-                'Sincronização concluída. Use Ver todas (sem data) se o filtro esconder notas.'
-              setMensagem(msg)
-              if (opcoes?.limparFiltroData && (dataDe || dataAte)) {
-                setDataDe('')
-                setDataAte('')
-              } else if (atualizarLista) {
-                await carregar()
-              }
-              resolve('ok')
-            } else {
-              setErro(data.job.mensagem ?? 'Falha na sincronização.')
-              if (atualizarLista) await carregar({ silencioso: true })
-              resolve('erro')
+          if (data.job.status === 'ok') {
+            const msg =
+              data.job.mensagem ??
+              'Sincronização concluída. Use Ver todas (sem data) se o filtro esconder notas.'
+            setMensagem(msg)
+            if (opcoes?.limparFiltroData && (dataDe || dataAte)) {
+              setDataDe('')
+              setDataAte('')
+            } else if (atualizarLista) {
+              await carregar()
             }
+            terminar('ok')
+            return
+          }
+          if (data.job.status === 'erro') {
+            setErro(data.job.mensagem ?? 'Falha na sincronização.')
+            if (atualizarLista) await carregar({ silencioso: true })
+            terminar('erro')
+            return
+          }
+          if (data.job.status === 'rodando') viuRodando = true
+          const elapsed = Date.now() - inicio
+          if (!viuRodando && elapsed > MAX_PENDENTE_MS) {
+            setErro('A busca não iniciou. Clique em BUSCAR de novo.')
+            terminar('erro')
+            return
+          }
+          if (elapsed > MAX_TOTAL_MS) {
+            setErro('A busca demorou demais. Clique em BUSCAR de novo.')
+            terminar('erro')
           }
         } catch {
-          if (pollRef.current) clearInterval(pollRef.current)
-          pollRef.current = null
-          setSincronizando(false)
-          resolve('erro')
+          terminar('erro')
+        } finally {
+          emVoo = false
         }
-      }, 1500)
+      }
+
+      void tick()
+      pollRef.current = setInterval(() => {
+        void tick()
+      }, POLL_MS)
     })
   }
 
@@ -573,11 +606,19 @@ function ConteudoEntradaNotas() {
 
     try {
       try {
-        const { data } = await clienteHttp.post<{ jobId: string; status: string }>(
-          '/focus-nfe/jobs/sincronizar',
-          { completo: false, liberarExtras: opcoes?.liberarExtras === true }
+        const { data } = await clienteHttp.post<{
+          jobId: string
+          status: string
+          criado?: boolean
+        }>('/focus-nfe/jobs/sincronizar', {
+          completo: false,
+          liberarExtras: opcoes?.liberarExtras === true,
+        })
+        setMensagem(
+          data.criado === false
+            ? 'Busca já em andamento — acompanhando…'
+            : 'Buscando na Focus (NFe + NFS-e + CTe)…'
         )
-        setMensagem('Buscando na Focus (NFe + NFS-e + CTe)…')
         const resultado = await acompanharJob(data.jobId, { atualizarLista: false })
         if (resultado === 'erro') return
         syncOk = true

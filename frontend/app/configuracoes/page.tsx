@@ -16,6 +16,8 @@ import { PainelParametrizacaoCustos } from '@/components/configuracoes/painel-pa
 import { ConteudoDaPaginaEstruturaWms } from '@/app/estrutura-wms/conteudo-pagina-estrutura-wms'
 import { ConteudoDaPaginaCfops } from '@/app/cfops/conteudo-pagina-cfops'
 import { ConteudoDaPaginaPlanosFinanceiros } from '@/app/planos-financeiros/conteudo-pagina-planos-financeiros'
+import { ConteudoDaPaginaDeUsuarios } from '@/app/users/conteudo-pagina-usuarios'
+import { ConteudoDaPaginaDePapeis } from '@/app/papeis/conteudo-pagina-papeis'
 import { PainelRecorrenciasFinanceiras } from '@/components/recorrencias-financeiras/painel-recorrencias-financeiras'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { TituloPagina } from '@/components/ui/titulo-pagina'
@@ -38,9 +40,17 @@ import {
 import type { AtalhoConfigurado, ChaveDaAcao } from '@/lib/atalhos/tipos'
 
 type AbaConfig = 'geral' | 'vendas' | 'logistica' | 'financeiro' | 'fiscal'
+type SecaoGeral = 'usuarios' | 'papeis' | 'assinatura' | 'atalhos'
 type SecaoFiscal = 'cfop' | 'buscador'
 type SecaoFinanceiro = 'planos' | 'recorrencia'
 type SecaoLogistica = 'unidades' | 'estrutura'
+
+const ABAS_GERAL = [
+  { id: 'usuarios', rotulo: 'Usuários' },
+  { id: 'papeis', rotulo: 'Papéis' },
+  { id: 'assinatura', rotulo: 'Assinatura digital' },
+  { id: 'atalhos', rotulo: 'Atalhos' },
+]
 
 const ABAS_ASSINATURA = [
   { id: 'configuracao', rotulo: 'Configuração' },
@@ -447,13 +457,39 @@ function ConteudoDaPaginaDeConfiguracoes() {
     return (secoesLogistica[0]?.id as SecaoLogistica) ?? 'unidades'
   }, [abaAtiva, secaoParam, secoesLogistica])
 
+  const secoesGeral = useMemo(() => {
+    return ABAS_GERAL.filter((s) => {
+      if (s.id === 'usuarios' || s.id === 'papeis' || s.id === 'assinatura') {
+        return ehAdmin
+      }
+      if (s.id === 'atalhos') return podeAtalhos
+      return false
+    })
+  }, [ehAdmin, podeAtalhos])
+
+  const secaoGeral: SecaoGeral = useMemo(() => {
+    if (
+      abaAtiva === 'geral' &&
+      secaoParam &&
+      secoesGeral.some((s) => s.id === secaoParam)
+    ) {
+      return secaoParam as SecaoGeral
+    }
+    return (secoesGeral[0]?.id as SecaoGeral) ?? 'atalhos'
+  }, [abaAtiva, secaoParam, secoesGeral])
+
   function mudarAba(id: string) {
     const params = new URLSearchParams()
     params.set('aba', id)
+    if (id === 'geral' && secaoGeral) params.set('secao', secaoGeral)
     if (id === 'fiscal' && secaoFiscal) params.set('secao', secaoFiscal)
     if (id === 'financeiro') params.set('secao', secaoFinanceiro)
     if (id === 'logistica' && secaoLogistica) params.set('secao', secaoLogistica)
     router.replace(`/configuracoes?${params.toString()}`)
+  }
+
+  function mudarSecaoGeral(id: string) {
+    router.replace(`/configuracoes?aba=geral&secao=${id}`)
   }
 
   function mudarSecaoFiscal(id: string) {
@@ -477,10 +513,19 @@ function ConteudoDaPaginaDeConfiguracoes() {
       <Abas abas={abasDisponiveis} abaAtiva={abaAtiva} aoMudar={mudarAba} />
 
       {abaAtiva === 'geral' && (
-        <div className="space-y-6">
-          {podeAssinatura && <SecaoAssinaturaDigital />}
-          {podeAtalhos && <SecaoAtalhosTeclado />}
-          {!podeAssinatura && !podeAtalhos && (
+        <div className="space-y-4">
+          {secoesGeral.length > 1 && (
+            <Abas
+              abas={secoesGeral}
+              abaAtiva={secaoGeral}
+              aoMudar={mudarSecaoGeral}
+            />
+          )}
+          {secaoGeral === 'usuarios' && ehAdmin && <ConteudoDaPaginaDeUsuarios />}
+          {secaoGeral === 'papeis' && ehAdmin && <ConteudoDaPaginaDePapeis />}
+          {secaoGeral === 'assinatura' && podeAssinatura && <SecaoAssinaturaDigital />}
+          {secaoGeral === 'atalhos' && podeAtalhos && <SecaoAtalhosTeclado />}
+          {secoesGeral.length === 0 && (
             <p className="text-sm text-muted-foreground">
               Sem permissão para os parâmetros gerais.
             </p>

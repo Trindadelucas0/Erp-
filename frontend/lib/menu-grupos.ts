@@ -32,7 +32,14 @@ export const GRUPOS_DO_MENU: readonly GrupoDoMenu[] = [
   {
     id: 'cadastros',
     rotulo: 'Cadastros',
-    chaves: ['clientes', 'fornecedores', 'transportadoras', 'produtos', 'cadastros'],
+    chaves: [
+      'clientes',
+      'clientes-aprovacao',
+      'fornecedores',
+      'transportadoras',
+      'produtos',
+      'cadastros',
+    ],
   },
   {
     id: 'compras',
@@ -54,10 +61,7 @@ export const GRUPOS_DO_MENU: readonly GrupoDoMenu[] = [
 const CHAVES_AVULSAS = [
   'pendencias',
   'configuracoes',
-  'usuarios',
-  'papeis',
   'auditoria',
-  'clientes-aprovacao',
 ] as const
 
 const ICONES_POR_CHAVE: Record<string, LucideIcon> = {

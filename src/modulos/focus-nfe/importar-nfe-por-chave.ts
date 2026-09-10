@@ -1,17 +1,24 @@
 /**
- * Importa NFe 55 pela chave via Focus (ciência + XML), independente do DistDFe.
- * Usado quando CT-e referencia NF ainda ausente no ERP.
+ * Importa NFe 55 pela chave via Focus (ciência + XML + fallback JSON), independente do DistDFe.
+ * Usado quando CT-e referencia NF ainda ausente ou só com resumo `resNFe` no ERP.
  */
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
+import { repositorioEntradaNotas } from '../entrada-notas/repositorio-entrada-notas.js'
 import { clienteFocusNfe } from './cliente-focus-nfe.js'
 import { logFocus } from './logs-focus-nfe.js'
-import { extrairCamposResumoDoXml, xmlNfeTemItensParseaveis } from './parser-xml-nfe.js'
+import {
+  extrairCamposResumoDoXml,
+  extrairItensDoJsonFocusCompleta,
+  xmlNfeTemItensParseaveis,
+} from './parser-xml-nfe.js'
 import { repositorioFocusNfe } from './repositorio-focus-nfe.js'
 import { comContextoEmpresaFocus } from './protecao-focus-nfe.js'
 
 export type ResultadoImportNfePorChave =
   | { ok: true; notaId: string; jaExistia: boolean }
   | { ok: false; mensagem: string }
+
+const INTERVALO_RETRY_XML_MS = 2500
 
 function lerTokenEnvFocus(): string | null {
   const token = process.env.FOCUS_NFE_TOKEN?.trim()
@@ -53,9 +60,16 @@ function mensagemFocus404(chave: string): string {
   )
 }
 
+function mensagemResumoDistDfe(chave: string): string {
+  return (
+    `Focus ainda devolveu resumo DistDFe (sem itens) para a NF …${chave.slice(-8)}. ` +
+    `Importe o XML completo ou tente Reanalisar / BUSCAR mais tarde.`
+  )
+}
+
 /**
  * Garante NFe 55 local a partir da chave (44 dígitos).
- * Se já houver XML completo, só devolve o id.
+ * Se já houver XML completo ou itens no banco, só devolve o id.
  */
 export async function importarNfePorChave(
   companyId: string,
@@ -67,9 +81,14 @@ export async function importarNfePorChave(
   }
 
   const existente = await repositorioFocusNfe.buscarPorChave(companyId, chave)
-  // Não confiar só no boolean do banco (legado podia marcar completa sem <det>).
   if (existente?.xmlConteudo && xmlNfeTemItensParseaveis(existente.xmlConteudo)) {
     return { ok: true, notaId: existente.id, jaExistia: true }
+  }
+  if (existente) {
+    const qtd = await repositorioEntradaNotas.contarItens(existente.id)
+    if (qtd > 0) {
+      return { ok: true, notaId: existente.id, jaExistia: true }
+    }
   }
 
   return comContextoEmpresaFocus(companyId, () =>
@@ -94,12 +113,13 @@ async function importarNfePorChaveNaFocus(
   const empresa = await repositorioFocusNfe.buscarEmpresaCnpj(companyId)
   const cnpjEmpresa = empresa?.cnpj ?? null
 
-  // Consulta individual (com CNPJ) — 404 não aborta: ainda tenta ciência + XML pela chave
-  const consulta = await clienteFocusNfe.consultarNfeRecebida(apiToken, homologacao, chave, {
-    cnpj: cnpjEmpresa,
-    completa: true,
-  })
-  if (!consulta.sucesso && consulta.codigoHttp === 404) {
+  const consultaInicial = await clienteFocusNfe.consultarNfeRecebida(
+    apiToken,
+    homologacao,
+    chave,
+    { cnpj: cnpjEmpresa, completa: true }
+  )
+  if (!consultaInicial.sucesso && consultaInicial.codigoHttp === 404) {
     logFocus('warn', 'import_chave_consulta_404_continua_xml', {
       companyId,
       chave: chave.slice(-8),
@@ -107,77 +127,116 @@ async function importarNfePorChaveNaFocus(
         ? `**********${cnpjEmpresa.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(-4)}`
         : null,
     })
-  } else if (!consulta.sucesso && consulta.codigoHttp === 429) {
+  } else if (!consultaInicial.sucesso && consultaInicial.codigoHttp === 429) {
     return {
       ok: false,
       mensagem: `Focus rate limit (429) ao consultar NF …${chave.slice(-8)}. Tente novamente em instantes.`,
     }
   }
 
-  // Ciência quando ainda não houve manifesto (mesmo padrão do sync)
-  const manFocus =
-    consulta.sucesso && consulta.dados && typeof consulta.dados === 'object'
-      ? String(
-          (consulta.dados as { manifestacao_destinatario?: string }).manifestacao_destinatario ?? ''
-        ).toLowerCase()
-      : ''
-  const manLocal = (existente?.manifestacaoDestinatario ?? '').toLowerCase()
-  const man = manFocus || manLocal
-  if (!man || man === 'nulo' || man === 'null') {
-    const manResp = await clienteFocusNfe.manifestar(
-      apiToken,
-      homologacao,
-      chave,
-      'ciencia',
-      undefined,
-      cnpjEmpresa
-    )
-    if (!manResp.sucesso) {
-      logFocus('warn', 'import_chave_ciencia_falhou', {
-        companyId,
-        chave: chave.slice(-8),
-        mensagem: manResp.mensagem,
-        codigoHttp: manResp.codigoHttp,
-      })
-      if (manResp.codigoHttp === 429) {
-        return {
-          ok: false,
-          mensagem: `Focus rate limit (429) na ciência da NF …${chave.slice(-8)}. Tente novamente em instantes.`,
-        }
+  // Ciência sempre enquanto o XML local ainda é resumo (Focus 573 = duplicidade ok).
+  const manResp = await clienteFocusNfe.manifestar(
+    apiToken,
+    homologacao,
+    chave,
+    'ciencia',
+    undefined,
+    cnpjEmpresa
+  )
+  if (manResp && !manResp.sucesso) {
+    logFocus('warn', 'import_chave_ciencia_falhou', {
+      companyId,
+      chave: chave.slice(-8),
+      mensagem: manResp.mensagem,
+      codigoHttp: manResp.codigoHttp,
+    })
+    if (manResp.codigoHttp === 429) {
+      return {
+        ok: false,
+        mensagem: `Focus rate limit (429) na ciência da NF …${chave.slice(-8)}. Tente novamente em instantes.`,
       }
-      // 404 ou outro erro: continua — XML pode estar disponível sem ciência
     }
   }
 
-  const xmlResp = await clienteFocusNfe.baixarXml(apiToken, homologacao, chave, cnpjEmpresa)
-  if (!xmlResp.sucesso || typeof xmlResp.dados !== 'string') {
-    const rateLimit = xmlResp.sucesso === false && xmlResp.codigoHttp === 429
-    const notFound = xmlResp.sucesso === false && xmlResp.codigoHttp === 404
-    const detalhe =
-      xmlResp.sucesso === false ? xmlResp.mensagem : 'XML vazio ou indisponível na Focus'
+  async function baixarXmlAtual(): Promise<
+    | { ok: true; xml: string }
+    | { ok: false; codigoHttp?: number; mensagem: string }
+  > {
+    const xmlResp = await clienteFocusNfe.baixarXml(apiToken, homologacao, chave, cnpjEmpresa)
+    if (!xmlResp.sucesso || typeof xmlResp.dados !== 'string') {
+      return {
+        ok: false,
+        codigoHttp: xmlResp.sucesso === false ? xmlResp.codigoHttp : undefined,
+        mensagem:
+          xmlResp.sucesso === false ? xmlResp.mensagem : 'XML vazio ou indisponível na Focus',
+      }
+    }
+    return { ok: true, xml: xmlResp.dados }
+  }
+
+  const xml1 = await baixarXmlAtual()
+  if (!xml1.ok) {
     logFocus('warn', 'import_chave_xml_falhou', {
       companyId,
       chave: chave.slice(-8),
-      mensagem: detalhe,
-      codigoHttp: xmlResp.sucesso === false ? xmlResp.codigoHttp : undefined,
+      mensagem: xml1.mensagem,
+      codigoHttp: xml1.codigoHttp,
     })
-    if (rateLimit) {
+    if (xml1.codigoHttp === 429) {
       return {
         ok: false,
         mensagem: `Focus rate limit (429) ao baixar XML da NF …${chave.slice(-8)}. Tente novamente em instantes.`,
       }
     }
-    if (notFound) {
+    if (xml1.codigoHttp === 404) {
       return { ok: false, mensagem: mensagemFocus404(chave) }
     }
     return {
       ok: false,
-      mensagem: `Falha ao importar NF …${chave.slice(-8)} pela Focus: ${detalhe}`,
+      mensagem: `Falha ao importar NF …${chave.slice(-8)} pela Focus: ${xml1.mensagem}`,
     }
   }
 
-  const campos = extrairCamposResumoDoXml(xmlResp.dados)
-  const xmlCompleto = xmlNfeTemItensParseaveis(xmlResp.dados)
+  let xml = xml1.xml
+  if (!xmlNfeTemItensParseaveis(xml)) {
+    await new Promise((r) => setTimeout(r, INTERVALO_RETRY_XML_MS))
+    const xml2 = await baixarXmlAtual()
+    if (xml2.ok) xml = xml2.xml
+  }
+
+  let itensJson: ReturnType<typeof extrairItensDoJsonFocusCompleta> = []
+  let modFreteJson: string | null = null
+  if (!xmlNfeTemItensParseaveis(xml)) {
+    const consulta = await clienteFocusNfe.consultarNfeRecebida(apiToken, homologacao, chave, {
+      cnpj: cnpjEmpresa,
+      completa: true,
+    })
+    if (consulta?.sucesso && consulta.dados && typeof consulta.dados === 'object') {
+      const dados = consulta.dados as Record<string, unknown>
+      itensJson = extrairItensDoJsonFocusCompleta(dados)
+      const req = dados.requisicao_nota_fiscal
+      if (req && typeof req === 'object') {
+        const mf = (req as { modalidade_frete?: unknown }).modalidade_frete
+        if (mf != null && String(mf).trim() !== '') modFreteJson = String(mf).trim()
+      }
+      logFocus('info', 'import_chave_fallback_json', {
+        companyId,
+        chave: chave.slice(-8),
+        itensJson: itensJson.length,
+        nfeCompletaFocus: dados.nfe_completa ?? null,
+      })
+    } else if (consulta && !consulta.sucesso) {
+      logFocus('warn', 'import_chave_consulta_completa_falhou', {
+        companyId,
+        chave: chave.slice(-8),
+        mensagem: consulta.mensagem,
+        codigoHttp: consulta.codigoHttp,
+      })
+    }
+  }
+
+  const xmlCompleto = xmlNfeTemItensParseaveis(xml)
+  const campos = extrairCamposResumoDoXml(xml)
 
   const { registro } = await repositorioFocusNfe.upsertNfeRecebida({
     companyId,
@@ -188,39 +247,48 @@ async function importarNfePorChaveNaFocus(
     cnpjDestinatario: campos.cnpjDestinatario,
     dataEmissao: campos.dataEmissao,
     valorTotal: campos.valorTotal,
-    xmlConteudo: xmlResp.dados,
+    xmlConteudo: xml,
     nfeCompleta: xmlCompleto,
     origem: 'focus',
     situacao: existente?.situacao ?? 'autorizada',
     manifestacaoDestinatario: existente?.manifestacaoDestinatario ?? 'ciencia',
-    modFrete: campos.modFrete ?? null,
+    modFrete: campos.modFrete ?? modFreteJson ?? null,
     etapaAtual: 'cadastro',
   })
 
-  if (!xmlCompleto) {
-    logFocus('warn', 'import_chave_nfe_ainda_resumo', {
+  if (xmlCompleto) {
+    const { servicoEntradaNotas } = await import('../entrada-notas/servico-pipeline-entrada.js')
+    await servicoEntradaNotas.processarAposXml(companyId, registro.id)
+    logFocus('info', 'import_chave_nfe_ok', {
       companyId,
       chave: chave.slice(-8),
       notaId: registro.id,
-      bytes: xmlResp.dados.length,
     })
-    return {
-      ok: false,
-      mensagem:
-        `Focus ainda devolveu resumo DistDFe (sem itens) para a NF …${chave.slice(-8)}. ` +
-        `Importe o XML completo ou tente Reanalisar / BUSCAR mais tarde.`,
-    }
+    return { ok: true, notaId: registro.id, jaExistia: false }
   }
 
-  // Dynamic import evita ciclo focus ↔ pipeline ↔ vinculo-cte
-  const { servicoEntradaNotas } = await import('../entrada-notas/servico-pipeline-entrada.js')
-  await servicoEntradaNotas.processarAposXml(companyId, registro.id)
+  if (itensJson.length > 0) {
+    const qtd = await repositorioEntradaNotas.contarItens(registro.id)
+    if (qtd === 0) {
+      await repositorioEntradaNotas.substituirItensDoXml(registro.id, itensJson)
+    }
+    if (modFreteJson && !existente?.modFrete) {
+      await repositorioEntradaNotas.atualizarNota(registro.id, { modFrete: modFreteJson })
+    }
+    logFocus('info', 'import_chave_nfe_ok_json', {
+      companyId,
+      chave: chave.slice(-8),
+      notaId: registro.id,
+      itensJson: itensJson.length,
+    })
+    return { ok: true, notaId: registro.id, jaExistia: false }
+  }
 
-  logFocus('info', 'import_chave_nfe_ok', {
+  logFocus('warn', 'import_chave_nfe_ainda_resumo', {
     companyId,
     chave: chave.slice(-8),
     notaId: registro.id,
+    bytes: xml.length,
   })
-
-  return { ok: true, notaId: registro.id, jaExistia: false }
+  return { ok: false, mensagem: mensagemResumoDistDfe(chave) }
 }

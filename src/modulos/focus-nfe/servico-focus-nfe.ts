@@ -1039,7 +1039,8 @@ async function completarXmlDaFocus(
 
 /**
  * Valida credenciais e cota (erro imediato na tela) e coloca a sync na fila.
- * O dedupe por empresa é do banco: segunda chamada com job ativo devolve 409.
+ * O dedupe por empresa é do banco: segunda chamada (BUSCAR) **reusa** o job
+ * do agendador em vez de 409 — a tela acompanha o mesmo `jobId`.
  */
 async function enfileirarSync(
   companyId: string,
@@ -1083,9 +1084,9 @@ async function enfileirarSync(
         completo: opcoes?.completo === true,
         liberarExtras: opcoes?.liberarExtras === true,
       },
-      mensagemConflito: 'Já existe uma sincronização Focus em andamento para esta empresa.',
+      reusarAtivo: true,
     })
-    logFocus('info', 'job_criado', {
+    logFocus('info', job.criado ? 'job_criado' : 'job_reusado', {
       id: job.jobId,
       tipo: TIPO_JOB_FOCUS_SYNC,
       companyId,
