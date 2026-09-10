@@ -11,7 +11,7 @@ import { textoVersaoSistema } from '@/lib/versao-sistema'
 const TITULOS_POR_ROTA: Record<string, string> = {
   '/login': 'Login',
   '/inicio': 'Início',
-  '/cadastros': 'Cadastros',
+  '/cadastros': 'Empresas',
   '/users': 'Usuários',
   '/papeis': 'Gerenciar papéis',
   '/auditoria': 'Auditoria',

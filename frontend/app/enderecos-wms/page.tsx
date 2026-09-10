@@ -335,7 +335,7 @@ function ConteudoEnderecosWms() {
                 {opcoesFormLocal.length === 0 && (
                   <p className="text-xs text-muted-foreground">
                     Cadastre locais em{' '}
-                    <Link href="/estrutura-wms" className="underline underline-offset-2">
+                    <Link href="/configuracoes?aba=logistica&secao=estrutura" className="underline underline-offset-2">
                       Estrutura WMS
                     </Link>
                     .
@@ -384,7 +384,7 @@ function ConteudoEnderecosWms() {
                 {form.area && opcoesFormRua.length === 0 && (
                   <p className="text-xs text-muted-foreground">
                     Cadastre ruas desta área em{' '}
-                    <Link href="/estrutura-wms" className="underline underline-offset-2">
+                    <Link href="/configuracoes?aba=logistica&secao=estrutura" className="underline underline-offset-2">
                       Estrutura WMS
                     </Link>
                     .
@@ -404,7 +404,7 @@ function ConteudoEnderecosWms() {
                 {opcoesFormAndar.length === 0 && (
                   <p className="text-xs text-muted-foreground">
                     Cadastre andares em{' '}
-                    <Link href="/estrutura-wms" className="underline underline-offset-2">
+                    <Link href="/configuracoes?aba=logistica&secao=estrutura" className="underline underline-offset-2">
                       Estrutura WMS
                     </Link>
                     .
