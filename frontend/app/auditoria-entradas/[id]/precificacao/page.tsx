@@ -15,7 +15,7 @@ import {
   valorAdicionalReais,
 } from '@/lib/formacao-preco-venda'
 import { CardPadrao } from '@/components/ui/card-padrao'
-import { LinhaRolavel } from '@/components/ui/grade-rolavel'
+import { GradeRolavel } from '@/components/ui/grade-rolavel'
 import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
@@ -455,24 +455,23 @@ function ConteudoPrecificacao() {
 
       <CardPadrao titulo="Grade da nota">
         <p className="mb-3 text-sm text-muted-foreground">
-          Cada produto tem a própria barra embaixo. Arraste só aquele item — os outros não se mexem.
+          Arraste a barra embaixo para ver as colunas — todos os produtos deslizam juntos. Nome e SKU
+          ficam fixos à esquerda.
         </p>
         {linhas.length === 0 ? (
           <p className="px-2 py-6 text-sm text-muted-foreground">Nenhum item nesta nota.</p>
         ) : (
-          <div className="min-w-0 w-full overflow-x-hidden divide-y rounded-md border">
-            {linhas.map((linha) => {
-              const destaque =
-                linha.variacaoPercentual != null &&
-                Math.abs(linha.variacaoPercentual) >= LIMIAR_VARIACAO
-              const editavel = linha.vinculado && podeGravar && !salvando
-              const vrAdic = parseDecimal(linha.vrAdicTexto) ?? linha.vrAdicPercentual ?? 0
-              return (
-                <LinhaRolavel
-                  key={linha.itemId}
-                  ariaLabel={`Deslizar colunas de ${linha.produtoNome || linha.descricao || `item ${linha.nItem}`}`}
-                  fixoEsquerda={
-                    <>
+          <GradeRolavel>
+            <div className="min-w-0 divide-y rounded-md border">
+              {linhas.map((linha) => {
+                const destaque =
+                  linha.variacaoPercentual != null &&
+                  Math.abs(linha.variacaoPercentual) >= LIMIAR_VARIACAO
+                const editavel = linha.vinculado && podeGravar && !salvando
+                const vrAdic = parseDecimal(linha.vrAdicTexto) ?? linha.vrAdicPercentual ?? 0
+                return (
+                  <div key={linha.itemId} className="flex w-max min-w-full items-stretch">
+                    <div className="grade-fixo-esquerda w-52 shrink-0 border-r border-border px-2 py-2">
                       <div className="font-medium leading-snug">
                         {linha.produtoNome || linha.descricao || '—'}
                       </div>
@@ -482,94 +481,93 @@ function ConteudoPrecificacao() {
                       {linha.recusaLocal && (
                         <p className="mt-1 text-xs text-destructive">{linha.recusaLocal}</p>
                       )}
-                    </>
-                  }
-                >
-                  <div className="flex w-max items-start py-1">
-                    <CelulaLinha rotulo="Qtd">{formatarQtd(linha.quantidade)}</CelulaLinha>
-                    <CelulaLinha rotulo="Tipo frete" alinhamento="left">
-                      {linha.tipoFreteRotulo || '—'}
-                    </CelulaLinha>
-                    <CelulaLinha rotulo="Frete lançado">
-                      {formatarMoeda(linha.custoFreteRateado)}
-                    </CelulaLinha>
-                    <CelulaLinha rotulo="Créd. ICMS">{formatarMoeda(linha.creditoIcms)}</CelulaLinha>
-                    <CelulaLinha rotulo="Créd. PIS">{formatarMoeda(linha.creditoPis)}</CelulaLinha>
-                    <CelulaLinha rotulo="Créd. COFINS">
-                      {formatarMoeda(linha.creditoCofins)}
-                    </CelulaLinha>
-                    <CelulaLinha rotulo="% ICMS">{formatarPercentual(linha.aliquotaIcms)}</CelulaLinha>
-                    <CelulaLinha rotulo="% PIS">{formatarPercentual(linha.aliquotaPis)}</CelulaLinha>
-                    <CelulaLinha rotulo="% COFINS">
-                      {formatarPercentual(linha.aliquotaCofins)}
-                    </CelulaLinha>
-                    <CelulaLinha rotulo="Custo comercial">
-                      <span className="font-medium">{formatarMoeda(linha.custoComercial)}</span>
-                    </CelulaLinha>
-                    <CelulaLinha rotulo="Custo da entrada">
-                      {formatarMoeda(linha.custoEntrada)}
-                    </CelulaLinha>
-                    <CelulaLinha rotulo="Custo anterior">
-                      <div className="tabular-nums">{formatarMoeda(linha.custoAnterior)}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {formatarData(linha.custoAnteriorData)}
-                      </div>
-                    </CelulaLinha>
-                    <CelulaLinha rotulo="Variação">
-                      <span
-                        className={cn(
-                          'tabular-nums',
-                          destaque && 'font-semibold text-amber-700 dark:text-amber-400'
-                        )}
-                      >
-                        {formatarPct(linha.variacaoPercentual)}
-                      </span>
-                    </CelulaLinha>
-                    <CelulaLinha rotulo="Encargos %">
-                      {formatarPercentual(linha.encargosPercentual)}
-                    </CelulaLinha>
-                    <CelulaLinha rotulo="% Vr.adic">
-                      <Input
-                        aria-label={`% Vr.adic do item ${linha.nItem}`}
-                        className={CLASSE_INPUT_GRADE}
-                        inputMode="decimal"
-                        value={linha.vrAdicTexto}
-                        disabled={!editavel}
-                        onChange={(e) => atualizarVrAdic(linha.itemId, e.target.value)}
-                      />
-                    </CelulaLinha>
-                    <CelulaLinha rotulo="Vr.adic R$">
-                      {formatarMoeda(valorAdicionalReais(linha.custoComercial, vrAdic))}
-                    </CelulaLinha>
-                    <CelulaLinha rotulo="% Marg">
-                      <Input
-                        aria-label={`Margem % do item ${linha.nItem}`}
-                        className={CLASSE_INPUT_GRADE}
-                        inputMode="decimal"
-                        value={linha.margemTexto}
-                        disabled={!editavel}
-                        onChange={(e) => atualizarMargem(linha.itemId, e.target.value)}
-                      />
-                    </CelulaLinha>
-                    <CelulaLinha rotulo="Preço formado">
-                      <Input
-                        aria-label={`Preço formado do item ${linha.nItem}`}
-                        className={CLASSE_INPUT_GRADE}
-                        inputMode="decimal"
-                        value={linha.precoTexto}
-                        disabled={!editavel}
-                        onChange={(e) => atualizarPreco(linha.itemId, e.target.value)}
-                      />
-                    </CelulaLinha>
-                    <CelulaLinha rotulo="Preço atual">{formatarMoeda(linha.precoAtual)}</CelulaLinha>
-                    <CelulaLinha rotulo="Estoque disp.">
-                      {formatarQtd(linha.estoqueDisponivel)}
-                    </CelulaLinha>
+                    </div>
+                    <div className="flex w-max items-start py-1">
+                      <CelulaLinha rotulo="Qtd">{formatarQtd(linha.quantidade)}</CelulaLinha>
+                      <CelulaLinha rotulo="Tipo frete" alinhamento="left">
+                        {linha.tipoFreteRotulo || '—'}
+                      </CelulaLinha>
+                      <CelulaLinha rotulo="Frete lançado">
+                        {formatarMoeda(linha.custoFreteRateado)}
+                      </CelulaLinha>
+                      <CelulaLinha rotulo="Créd. ICMS">{formatarMoeda(linha.creditoIcms)}</CelulaLinha>
+                      <CelulaLinha rotulo="Créd. PIS">{formatarMoeda(linha.creditoPis)}</CelulaLinha>
+                      <CelulaLinha rotulo="Créd. COFINS">
+                        {formatarMoeda(linha.creditoCofins)}
+                      </CelulaLinha>
+                      <CelulaLinha rotulo="% ICMS">{formatarPercentual(linha.aliquotaIcms)}</CelulaLinha>
+                      <CelulaLinha rotulo="% PIS">{formatarPercentual(linha.aliquotaPis)}</CelulaLinha>
+                      <CelulaLinha rotulo="% COFINS">
+                        {formatarPercentual(linha.aliquotaCofins)}
+                      </CelulaLinha>
+                      <CelulaLinha rotulo="Custo comercial">
+                        <span className="font-medium">{formatarMoeda(linha.custoComercial)}</span>
+                      </CelulaLinha>
+                      <CelulaLinha rotulo="Custo da entrada">
+                        {formatarMoeda(linha.custoEntrada)}
+                      </CelulaLinha>
+                      <CelulaLinha rotulo="Custo anterior">
+                        <div className="tabular-nums">{formatarMoeda(linha.custoAnterior)}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {formatarData(linha.custoAnteriorData)}
+                        </div>
+                      </CelulaLinha>
+                      <CelulaLinha rotulo="Variação">
+                        <span
+                          className={cn(
+                            'tabular-nums',
+                            destaque && 'font-semibold text-amber-700 dark:text-amber-400'
+                          )}
+                        >
+                          {formatarPct(linha.variacaoPercentual)}
+                        </span>
+                      </CelulaLinha>
+                      <CelulaLinha rotulo="Encargos %">
+                        {formatarPercentual(linha.encargosPercentual)}
+                      </CelulaLinha>
+                      <CelulaLinha rotulo="% Vr.adic">
+                        <Input
+                          aria-label={`% Vr.adic do item ${linha.nItem}`}
+                          className={CLASSE_INPUT_GRADE}
+                          inputMode="decimal"
+                          value={linha.vrAdicTexto}
+                          disabled={!editavel}
+                          onChange={(e) => atualizarVrAdic(linha.itemId, e.target.value)}
+                        />
+                      </CelulaLinha>
+                      <CelulaLinha rotulo="Vr.adic R$">
+                        {formatarMoeda(valorAdicionalReais(linha.custoComercial, vrAdic))}
+                      </CelulaLinha>
+                      <CelulaLinha rotulo="% Marg">
+                        <Input
+                          aria-label={`Margem % do item ${linha.nItem}`}
+                          className={CLASSE_INPUT_GRADE}
+                          inputMode="decimal"
+                          value={linha.margemTexto}
+                          disabled={!editavel}
+                          onChange={(e) => atualizarMargem(linha.itemId, e.target.value)}
+                        />
+                      </CelulaLinha>
+                      <CelulaLinha rotulo="Preço formado">
+                        <Input
+                          aria-label={`Preço formado do item ${linha.nItem}`}
+                          className={CLASSE_INPUT_GRADE}
+                          inputMode="decimal"
+                          value={linha.precoTexto}
+                          disabled={!editavel}
+                          onChange={(e) => atualizarPreco(linha.itemId, e.target.value)}
+                        />
+                      </CelulaLinha>
+                      <CelulaLinha rotulo="Preço atual">{formatarMoeda(linha.precoAtual)}</CelulaLinha>
+                      <CelulaLinha rotulo="Estoque disp.">
+                        {formatarQtd(linha.estoqueDisponivel)}
+                      </CelulaLinha>
+                    </div>
                   </div>
-                </LinhaRolavel>
-              )
-            })}
-          </div>
+                )
+              })}
+            </div>
+          </GradeRolavel>
         )}
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <BotaoPrimario

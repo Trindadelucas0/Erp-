@@ -177,7 +177,7 @@
   z-index: 3;
 }
 
-/* Uma faixa por item (Precificar): esconde a barra nativa; o trilho aparece no hover. */
+/* Uma faixa por item (Precificar legado / LinhaRolavel): esconde a barra nativa. */
 .grade-linha-viewport {
   min-width: 0;
   width: 100%;
@@ -189,4 +189,13 @@
 .grade-linha-viewport::-webkit-scrollbar {
   display: none;
   height: 0;
+}
+
+/* Coluna produto fixa na Grade da nota (Precificar) com GradeRolavel única. */
+.grade-rolavel-viewport .grade-fixo-esquerda {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--card);
+  box-shadow: 4px 0 8px -4px color-mix(in oklch, var(--foreground) 18%, transparent);
 }
