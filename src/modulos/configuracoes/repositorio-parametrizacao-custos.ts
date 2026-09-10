@@ -7,16 +7,13 @@ function decimalOuNull(valor: number | null | undefined): number | null {
   return valor
 }
 
-async function buscarPorCompetencia(companyId: string, competencia: string) {
+async function buscarDaEmpresa(companyId: string) {
   return clientePrisma.parametrizacaoCustoVenda.findUnique({
-    where: { companyId_competencia: { companyId, competencia } },
+    where: { companyId },
   })
 }
 
-async function upsert(
-  companyId: string,
-  dados: DadosParametrizacaoCustos
-) {
+async function upsert(companyId: string, dados: DadosParametrizacaoCustos) {
   const campos = {
     pis: decimalOuNull(dados.pis),
     cofins: decimalOuNull(dados.cofins),
@@ -30,11 +27,10 @@ async function upsert(
   }
 
   return clientePrisma.parametrizacaoCustoVenda.upsert({
-    where: { companyId_competencia: { companyId, competencia: dados.competencia } },
+    where: { companyId },
     create: {
       id: randomUUID(),
       companyId,
-      competencia: dados.competencia,
       ...campos,
     },
     update: campos,
@@ -42,6 +38,6 @@ async function upsert(
 }
 
 export const repositorioParametrizacaoCustos = {
-  buscarPorCompetencia,
+  buscarDaEmpresa,
   upsert,
 }

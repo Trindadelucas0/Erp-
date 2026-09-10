@@ -17,7 +17,7 @@ export const PAGINAS_VINCULAVEIS: readonly PaginaDoSistema[] = [
   {
     chave: 'cadastros',
     caminho: '/cadastros',
-    rotulo: 'Cadastros',
+    rotulo: 'Empresas',
     modulo: 'cadastros',
   },
   {
@@ -82,9 +82,10 @@ export const PAGINAS_VINCULAVEIS: readonly PaginaDoSistema[] = [
   },
   {
     chave: 'estrutura-wms',
-    caminho: '/estrutura-wms',
+    caminho: '/configuracoes?aba=logistica&secao=estrutura',
     rotulo: 'Estrutura WMS',
     modulo: 'estoque',
+    exibirNoMenu: false,
   },
   {
     chave: 'contas-a-pagar',
@@ -205,7 +206,10 @@ export function montarPaginasPermitidasParaUsuario(
     paginasPorChave.has('cfops') ||
     paginasPorChave.has('planos-financeiros') ||
     permissoesEfetivas.includes('financeiro:view')
-  const temParametroLogistica = permissoesEfetivas.includes('produtos:view')
+  const temParametroLogistica =
+    paginasPorChave.has('estrutura-wms') ||
+    permissoesEfetivas.includes('produtos:view') ||
+    permissoesEfetivas.includes('estoque:view')
   if (
     (temParametroFinanceiro || temParametroLogistica) &&
     !paginasPorChave.has('configuracoes')

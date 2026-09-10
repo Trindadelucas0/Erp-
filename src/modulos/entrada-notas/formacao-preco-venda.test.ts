@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   MSG_CARGA_INVALIDA,
+  MSG_CUSTO_COMERCIAL_INVALIDO,
   calcularDiferencaPercentualPreco,
   calcularMargemDePreco,
   calcularPrecoSugerido,
@@ -16,12 +17,12 @@ describe('calcularPrecoSugerido', () => {
     }
   })
 
-  it('soma encargos e margem no divisor', () => {
-    const r = calcularPrecoSugerido(63.6, 25.25, 11.15)
+  it('soma encargos, vr.adic e margem no divisor', () => {
+    const r = calcularPrecoSugerido(63.6, 25.25, 11.15, 5)
     expect(r.ok).toBe(true)
     if (r.ok) {
-      expect(r.cargaPercentual).toBeCloseTo(36.4)
-      expect(r.precoSugerido).toBeCloseTo(63.6 / (1 - 0.364), 4)
+      expect(r.cargaPercentual).toBeCloseTo(41.4)
+      expect(r.precoSugerido).toBeCloseTo(63.6 / (1 - 0.414), 4)
     }
   })
 
@@ -31,9 +32,12 @@ describe('calcularPrecoSugerido', () => {
     if (!r.ok) expect(r.motivo).toBe(MSG_CARGA_INVALIDA)
   })
 
-  it('recusa custo inválido', () => {
+  it('recusa custo comercial inválido', () => {
     expect(calcularPrecoSugerido(null, 10, 0).ok).toBe(false)
     expect(calcularPrecoSugerido(0, 10, 0).ok).toBe(false)
+    const r = calcularPrecoSugerido(-1, 10, 0)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.motivo).toBe(MSG_CUSTO_COMERCIAL_INVALIDO)
   })
 })
 

@@ -131,6 +131,33 @@ function limparGtin(valor: string | null): string | null {
   return limpo
 }
 
+function impostosVazios(): Omit<ImpostosItemXmlNfe, 'nItem'> {
+  return {
+    valorIcms: null,
+    aliquotaIcms: null,
+    valorPis: null,
+    aliquotaPis: null,
+    valorCofins: null,
+    aliquotaCofins: null,
+  }
+}
+
+/** Impostos do item a partir do bloco `det/imposto` — não usa ICMSTot nem inventa p% × base. */
+function extrairImpostosDoImposto(imposto: string | null): Omit<ImpostosItemXmlNfe, 'nItem'> {
+  if (!imposto) return impostosVazios()
+  const icms = blocoTag(imposto, 'ICMS') ?? imposto
+  const pis = blocoTag(imposto, 'PIS')
+  const cofins = blocoTag(imposto, 'COFINS')
+  return {
+    valorIcms: parseValor(extrairCampoXml(icms, 'vICMS')),
+    aliquotaIcms: parseValor(extrairCampoXml(icms, 'pICMS')),
+    valorPis: pis ? parseValor(extrairCampoXml(pis, 'vPIS')) : null,
+    aliquotaPis: pis ? parseValor(extrairCampoXml(pis, 'pPIS')) : null,
+    valorCofins: cofins ? parseValor(extrairCampoXml(cofins, 'vCOFINS')) : null,
+    aliquotaCofins: cofins ? parseValor(extrairCampoXml(cofins, 'pCOFINS')) : null,
+  }
+}
+
 function extrairCstOrigem(blocoImposto: string | null): { cst: string | null; origem: string | null } {
   if (!blocoImposto) return { cst: null, origem: null }
   const candidatos = [
@@ -196,6 +223,22 @@ export type ItemXmlNfe = {
   pesoKg?: number | null
   /** IPI do item (vIPI do XML / valor_ipi do JSON Focus). */
   valorIpi?: number | null
+  valorIcms?: number | null
+  aliquotaIcms?: number | null
+  valorPis?: number | null
+  aliquotaPis?: number | null
+  valorCofins?: number | null
+  aliquotaCofins?: number | null
+}
+
+export type ImpostosItemXmlNfe = {
+  nItem: number
+  valorIcms: number | null
+  aliquotaIcms: number | null
+  valorPis: number | null
+  aliquotaPis: number | null
+  valorCofins: number | null
+  aliquotaCofins: number | null
 }
 
 /**
@@ -711,10 +754,31 @@ export function extrairItensDoXml(xmlBruto: string): ItemXmlNfe[] {
       valorTotal: parseValor(prod ? extrairCampoXml(prod, 'vProd') : null),
       pesoKg: parseValor(prod ? extrairCampoXml(prod, 'pesoL') ?? extrairCampoXml(prod, 'pesoB') : null),
       valorIpi: parseValor(imposto ? extrairCampoXml(imposto, 'vIPI') : null),
+      ...extrairImpostosDoImposto(imposto),
     })
   }
 
   return itens
+}
+
+/** nItem → vICMS/vPIS/vCOFINS e alíquotas do XML (sem inventar p% × base). */
+export function mapaImpostosPorNItemDoXml(
+  xmlBruto: string | null | undefined
+): Map<number, ImpostosItemXmlNfe> {
+  const mapa = new Map<number, ImpostosItemXmlNfe>()
+  if (!xmlBruto) return mapa
+  for (const item of extrairItensDoXml(xmlBruto)) {
+    mapa.set(item.nItem, {
+      nItem: item.nItem,
+      valorIcms: item.valorIcms ?? null,
+      aliquotaIcms: item.aliquotaIcms ?? null,
+      valorPis: item.valorPis ?? null,
+      aliquotaPis: item.aliquotaPis ?? null,
+      valorCofins: item.valorCofins ?? null,
+      aliquotaCofins: item.aliquotaCofins ?? null,
+    })
+  }
+  return mapa
 }
 
 /** nItem → vIPI parseado (itens sem IPI não entram no mapa). */

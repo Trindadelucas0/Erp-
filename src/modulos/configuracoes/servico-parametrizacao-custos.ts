@@ -17,11 +17,9 @@ function decimalNum(valor: unknown): number | null {
 }
 
 function paraResposta(
-  competencia: string,
   registro: {
     id: string
     companyId: string
-    competencia: string
     pis: unknown
     cofins: unknown
     impRendaSupSimples: unknown
@@ -46,27 +44,20 @@ function paraResposta(
   }
   return {
     id: registro?.id ?? null,
-    competencia,
     ...campos,
     totalVenda: somarTotalVenda(campos),
   }
 }
 
-async function obter(companyId: string, competencia: string) {
+async function obter(companyId: string) {
   exigirEmpresa(companyId)
-  const registro = await repositorioParametrizacaoCustos.buscarPorCompetencia(
-    companyId,
-    competencia
-  )
-  return paraResposta(competencia, registro)
+  const registro = await repositorioParametrizacaoCustos.buscarDaEmpresa(companyId)
+  return paraResposta(registro)
 }
 
 async function gravar(companyId: string, dados: DadosParametrizacaoCustos, usuarioId: string) {
   exigirEmpresa(companyId)
-  const antes = await repositorioParametrizacaoCustos.buscarPorCompetencia(
-    companyId,
-    dados.competencia
-  )
+  const antes = await repositorioParametrizacaoCustos.buscarDaEmpresa(companyId)
   const registro = await repositorioParametrizacaoCustos.upsert(companyId, dados)
   await registrarAuditoria({
     usuarioId,
@@ -75,18 +66,18 @@ async function gravar(companyId: string, dados: DadosParametrizacaoCustos, usuar
     entidadeId: registro.id,
     valoresAntes: antes
       ? {
-          competencia: antes.competencia,
           pis: decimalNum(antes.pis),
           cofins: decimalNum(antes.cofins),
+          custoFixo: decimalNum(antes.custoFixo),
         }
       : null,
     valoresDepois: {
-      competencia: registro.competencia,
       pis: decimalNum(registro.pis),
       cofins: decimalNum(registro.cofins),
+      custoFixo: decimalNum(registro.custoFixo),
     },
   })
-  return paraResposta(dados.competencia, registro)
+  return paraResposta(registro)
 }
 
 export const servicoParametrizacaoCustos = {

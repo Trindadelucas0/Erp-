@@ -7,6 +7,7 @@ import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { GradeRolavel } from '@/components/ui/grade-rolavel'
 import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { LinhasSkeletonTabela } from '@/components/ui/linhas-skeleton-tabela'
 import { BadgeStatus } from '@/components/ui/badge-status'
@@ -84,7 +85,7 @@ function ConteudoAuditoriaEntradas() {
         </p>
       )}
       <CardPadrao titulo="Entradas consolidadas">
-        <div className="overflow-x-auto">
+        <GradeRolavel>
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead>
               <tr className="border-b text-xs text-muted-foreground">
@@ -148,7 +149,7 @@ function ConteudoAuditoriaEntradas() {
               )}
             </tbody>
           </table>
-        </div>
+        </GradeRolavel>
       </CardPadrao>
       <p className="text-xs text-muted-foreground">
         Painel operacional:{' '}

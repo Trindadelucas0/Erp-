@@ -60,7 +60,7 @@ model Company {
   recorrenciasFinanceiras     RecorrenciaFinanceira[]
   enderecosWms                EnderecoWms[]
   niveisEnderecoWms           NivelEnderecoWms[]
-  parametrizacoesCustoVenda   ParametrizacaoCustoVenda[]
+  parametrizacaoCustoVenda    ParametrizacaoCustoVenda?
   createdAt                   DateTime                     @default(now())
 }
 
@@ -1536,6 +1536,8 @@ model NivelEnderecoWms {
   nome      String
   /// Código da área quando nivel=rua; demais níveis ficam nulos.
   paiCodigo String?
+  /// Código do local quando nivel=rua; demais níveis ficam nulos.
+  localCodigo String?
   ativo     Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1543,16 +1545,15 @@ model NivelEnderecoWms {
   @@unique([companyId, nivel, codigo])
   @@index([companyId, nivel, ativo])
   @@index([companyId, nivel, paiCodigo])
+  @@index([companyId, nivel, localCodigo])
 }
 
-/// Percentuais de formação de custo/venda por empresa e competência (YYYY-MM).
-/// Nesta fase não alimentam o custo da Auditoria nem o preço de venda.
+/// Determinante permanente de formação de preço da empresa (Configurações → Vendas).
+/// Um registro por empresa. Não alimenta o custo da Auditoria nem o kardex.
 model ParametrizacaoCustoVenda {
   id                           String   @id @default(uuid())
-  companyId                    String
+  companyId                    String   @unique
   company                      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  /// Competência YYYY-MM
-  competencia                  String
   pis                          Decimal? @db.Decimal(18, 4)
   cofins                       Decimal? @db.Decimal(18, 4)
   impRendaSupSimples           Decimal? @db.Decimal(18, 4)
@@ -1564,9 +1565,6 @@ model ParametrizacaoCustoVenda {
   aliquotaIbs                  Decimal? @db.Decimal(18, 4)
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
-
-  @@unique([companyId, competencia])
-  @@index([companyId])
 }
 
 /// Cadastro mestre de endereço WMS (LOCAL-ÁREA-TIPO-RUA-ANDAR-POSIÇÃO).

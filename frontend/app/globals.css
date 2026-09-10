@@ -139,3 +139,54 @@
     color: var(--foreground);
   }
 }
+
+/* Viewport da GradeRolavel: esconde a barra nativa (overlay do Windows) e deixa a barra desenhada. */
+.grade-rolavel-viewport {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.grade-rolavel-viewport::-webkit-scrollbar {
+  display: none;
+  height: 0;
+  width: 0;
+}
+
+/* Primeira coluna (produto) fica visível enquanto desliza as outras. */
+.grade-rolavel-viewport table th:first-child,
+.grade-rolavel-viewport table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--card);
+  box-shadow: 4px 0 8px -4px color-mix(in oklch, var(--foreground) 18%, transparent);
+}
+
+.grade-rolavel-viewport table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--card);
+}
+
+.grade-rolavel-viewport table thead th:first-child {
+  z-index: 3;
+}
+
+/* Uma faixa por item (Precificar): esconde a barra nativa; o trilho aparece no hover. */
+.grade-linha-viewport {
+  min-width: 0;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.grade-linha-viewport::-webkit-scrollbar {
+  display: none;
+  height: 0;
+}

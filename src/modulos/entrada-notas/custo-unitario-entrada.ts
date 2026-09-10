@@ -17,6 +17,7 @@ export type UltimoCustoConsolidado = {
   precoUnitarioVenda: number
   /** Mesma fórmula de custo da Auditoria (frete + IPI + embalagem). */
   custoEntrada: number | null
+  dataEmissao?: Date | null
 }
 
 export type EntradaCustoUnitario = {

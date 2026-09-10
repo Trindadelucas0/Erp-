@@ -1,16 +1,18 @@
 /**
- * Formação de preço de venda a partir do custo da entrada (grade Precificação).
+ * Formação de preço de venda a partir do custo comercial (grade Precificação).
  * Fonte: DOCUMENTACAO-SISTEMA.md §7.26.
  *
- * carga% = encargosVenda% + margem%
+ * carga% = TotalVenda% + vrAdic% + margem%
  * se carga% >= 100 → recusa
- * precoSugerido = custoEntrada / (1 − carga% / 100)
+ * precoFormado = custoComercial / (1 − carga% / 100)
  *
  * CBS, IBS e juros mensais não entram no divisor nesta fase.
  */
 
 export const MSG_CARGA_INVALIDA =
-  'Carga (encargos + margem) deve ser menor que 100%.'
+  'Carga (encargos + vr.adic + margem) deve ser menor que 100%.'
+
+export const MSG_CUSTO_COMERCIAL_INVALIDO = 'Custo comercial inválido.'
 
 export type ResultadoFormacaoPreco = {
   ok: true
@@ -31,20 +33,24 @@ function arred4(n: number): number {
 }
 
 export function calcularPrecoSugerido(
-  custoEntrada: number | null | undefined,
+  custoComercial: number | null | undefined,
   encargosPercentual: number,
-  margemPercentual: number
+  margemPercentual: number,
+  vrAdicPercentual = 0
 ): ResultadoFormacaoPreco {
-  if (!finitoPositivo(custoEntrada)) {
-    return { ok: false, motivo: 'Custo da entrada inválido.' }
+  if (!finitoPositivo(custoComercial)) {
+    return { ok: false, motivo: MSG_CUSTO_COMERCIAL_INVALIDO }
   }
   if (!Number.isFinite(encargosPercentual) || encargosPercentual < 0) {
     return { ok: false, motivo: 'Encargos inválidos.' }
   }
+  if (!Number.isFinite(vrAdicPercentual) || vrAdicPercentual < 0) {
+    return { ok: false, motivo: 'Valor adicional inválido.' }
+  }
   if (!Number.isFinite(margemPercentual)) {
     return { ok: false, motivo: 'Margem inválida.' }
   }
-  const carga = encargosPercentual + margemPercentual
+  const carga = encargosPercentual + vrAdicPercentual + margemPercentual
   if (carga >= 100) {
     return { ok: false, motivo: MSG_CARGA_INVALIDA }
   }
@@ -54,31 +60,35 @@ export function calcularPrecoSugerido(
   }
   return {
     ok: true,
-    precoSugerido: arred4(custoEntrada / divisor),
+    precoSugerido: arred4(custoComercial / divisor),
     margemPercentual,
     cargaPercentual: carga,
   }
 }
 
-/** Recalcula a margem quando o operador edita o preço sugerido. */
+/** Recalcula a margem quando o operador edita o preço formado. */
 export function calcularMargemDePreco(
-  custoEntrada: number | null | undefined,
+  custoComercial: number | null | undefined,
   encargosPercentual: number,
-  precoDigitado: number
+  precoDigitado: number,
+  vrAdicPercentual = 0
 ): ResultadoFormacaoPreco {
-  if (!finitoPositivo(custoEntrada)) {
-    return { ok: false, motivo: 'Custo da entrada inválido.' }
+  if (!finitoPositivo(custoComercial)) {
+    return { ok: false, motivo: MSG_CUSTO_COMERCIAL_INVALIDO }
   }
   if (!Number.isFinite(encargosPercentual) || encargosPercentual < 0) {
     return { ok: false, motivo: 'Encargos inválidos.' }
+  }
+  if (!Number.isFinite(vrAdicPercentual) || vrAdicPercentual < 0) {
+    return { ok: false, motivo: 'Valor adicional inválido.' }
   }
   if (!Number.isFinite(precoDigitado) || precoDigitado <= 0) {
     return { ok: false, motivo: 'Preço de venda deve ser maior que zero.' }
   }
   const margemPercentual = arred4(
-    (1 - encargosPercentual / 100 - custoEntrada / precoDigitado) * 100
+    (1 - (encargosPercentual + vrAdicPercentual) / 100 - custoComercial / precoDigitado) * 100
   )
-  const carga = encargosPercentual + margemPercentual
+  const carga = encargosPercentual + vrAdicPercentual + margemPercentual
   if (carga >= 100) {
     return { ok: false, motivo: MSG_CARGA_INVALIDA }
   }
@@ -97,4 +107,13 @@ export function calcularDiferencaPercentualPreco(
   if (precoSugerido == null || !Number.isFinite(precoSugerido)) return null
   if (precoAtual == null || !Number.isFinite(precoAtual) || precoAtual === 0) return null
   return (precoSugerido - precoAtual) / precoAtual
+}
+
+export function valorAdicionalReais(
+  custoComercial: number | null | undefined,
+  vrAdicPercentual: number
+): number | null {
+  if (custoComercial == null || !Number.isFinite(custoComercial)) return null
+  if (!Number.isFinite(vrAdicPercentual)) return null
+  return arred4((custoComercial * vrAdicPercentual) / 100)
 }

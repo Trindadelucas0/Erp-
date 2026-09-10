@@ -47,9 +47,10 @@ export function CardPadrao({
         </CardHeader>
       )}
       <CardContent
-        className={
+        className={cn(
+          'min-w-0',
           !titulo && !descricao && !acoes ? (compacto ? 'pt-4' : 'pt-6') : undefined
-        }
+        )}
       >
         {children}
       </CardContent>

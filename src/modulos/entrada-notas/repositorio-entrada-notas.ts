@@ -47,7 +47,7 @@ const includeNotaCompleta = {
         },
       },
       cfopEntrada: {
-        select: { id: true, codigo: true, nome: true },
+        select: { id: true, codigo: true, nome: true, aproveitarCreditoIcms: true },
       },
     },
   },
@@ -349,6 +349,7 @@ async function buscarUltimoPrecoConsolidadoPorProduto(
         valorIpi,
         itensPorEmbalagem: mult,
       }),
+      dataEmissao: item.nfeRecebida.dataEmissao,
     })
   }
   return mapa

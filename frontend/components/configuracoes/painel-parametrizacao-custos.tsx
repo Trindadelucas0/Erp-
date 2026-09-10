@@ -9,7 +9,6 @@ import { BotaoPrimario } from '@/components/ui/botao-primario'
 
 type ParametrizacaoCustos = {
   id: string | null
-  competencia: string
   pis: number | null
   cofins: number | null
   impRendaSupSimples: number | null
@@ -20,12 +19,6 @@ type ParametrizacaoCustos = {
   aliquotaCbs: number | null
   aliquotaIbs: number | null
   totalVenda: number
-}
-
-function competenciaAtual(): string {
-  const agora = new Date()
-  const mes = String(agora.getMonth() + 1).padStart(2, '0')
-  return `${agora.getFullYear()}-${mes}`
 }
 
 function textoPercentual(valor: number | null): string {
@@ -45,7 +38,6 @@ function formatarTotal(valor: number): string {
 }
 
 export function PainelParametrizacaoCustos() {
-  const [competencia, setCompetencia] = useState(competenciaAtual)
   const [form, setForm] = useState({
     pis: '',
     cofins: '',
@@ -77,14 +69,13 @@ export function PainelParametrizacaoCustos() {
     }, 0)
   }, [form])
 
-  const carregar = useCallback(async (comp: string) => {
+  const carregar = useCallback(async () => {
     setCarregando(true)
     setErro('')
     setMensagem('')
     try {
       const { data } = await clienteHttp.get<{ parametrizacao: ParametrizacaoCustos }>(
-        '/configuracoes/parametrizacao-custos',
-        { params: { competencia: comp } }
+        '/configuracoes/parametrizacao-custos'
       )
       const p = data.parametrizacao
       setForm({
@@ -106,8 +97,8 @@ export function PainelParametrizacaoCustos() {
   }, [])
 
   useEffect(() => {
-    void carregar(competencia)
-  }, [carregar, competencia])
+    void carregar()
+  }, [carregar])
 
   function alterarCampo(campo: keyof typeof form, valor: string) {
     setForm((atual) => ({ ...atual, [campo]: valor }))
@@ -119,7 +110,6 @@ export function PainelParametrizacaoCustos() {
     setMensagem('')
     try {
       await clienteHttp.put('/configuracoes/parametrizacao-custos', {
-        competencia,
         pis: parsePercentual(form.pis),
         cofins: parsePercentual(form.cofins),
         impRendaSupSimples: parsePercentual(form.impRendaSupSimples),
@@ -141,19 +131,9 @@ export function PainelParametrizacaoCustos() {
   return (
     <CardPadrao
       titulo="Parametrização de custos"
-      descricao="Percentuais da empresa ativa, por competência (mês/ano). Alimentam só a grade de Precificação (Auditoria → Precificar). Não alteram o custo da Auditoria nem o kardex."
+      descricao="Determinante permanente da empresa ativa: estes percentuais valem para todos os produtos até o administrador alterar. Alimentam só a formação de preço (Auditoria → Precificar). Não alteram o custo da Auditoria nem o kardex. Mudar 10% para 11% não reescreve o catálogo — o preço no produto só muda no Gravar da grade."
     >
       <div className="space-y-6">
-        <div className="max-w-xs">
-          <InputPadrao
-            rotulo="Competência"
-            type="month"
-            value={competencia}
-            onChange={(e) => setCompetencia(e.target.value)}
-            disabled={carregando || salvando}
-          />
-        </div>
-
         {erro && (
           <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
             {erro}

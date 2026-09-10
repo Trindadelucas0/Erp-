@@ -1,10 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { servicoParametrizacaoCustos } from './servico-parametrizacao-custos.js'
-import {
-  esquemaConsultaParametrizacaoCustos,
-  esquemaGravarParametrizacaoCustos,
-} from './esquema-parametrizacao-custos.js'
+import { esquemaGravarParametrizacaoCustos } from './esquema-parametrizacao-custos.js'
 
 function companyIdOu400(requisicao: FastifyRequest): string {
   const id = requisicao.empresaAtivaId
@@ -13,14 +10,7 @@ function companyIdOu400(requisicao: FastifyRequest): string {
 }
 
 async function obter(requisicao: FastifyRequest, resposta: FastifyReply) {
-  const parse = esquemaConsultaParametrizacaoCustos.safeParse(requisicao.query)
-  if (!parse.success) {
-    throw new ErroDaAplicacao(parse.error.errors[0]?.message ?? 'Competência inválida', 400)
-  }
-  const parametrizacao = await servicoParametrizacaoCustos.obter(
-    companyIdOu400(requisicao),
-    parse.data.competencia
-  )
+  const parametrizacao = await servicoParametrizacaoCustos.obter(companyIdOu400(requisicao))
   return resposta.send({ parametrizacao })
 }
 

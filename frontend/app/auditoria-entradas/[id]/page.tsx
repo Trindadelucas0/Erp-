@@ -8,6 +8,7 @@ import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import { dispararDownloadArquivo } from '@/lib/disparar-download-arquivo'
 import { CardPadrao } from '@/components/ui/card-padrao'
+import { GradeRolavel } from '@/components/ui/grade-rolavel'
 import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { Button } from '@/components/ui/button'
 import { BadgeStatus } from '@/components/ui/badge-status'
@@ -394,7 +395,7 @@ function ConteudoDetalheAuditoria() {
               {contagem.observacao}
             </p>
           )}
-          <div className="overflow-x-auto">
+          <GradeRolavel>
             <table className="w-full min-w-[640px] text-left text-sm">
               <thead>
                 <tr className="border-b text-xs text-muted-foreground">
@@ -441,7 +442,7 @@ function ConteudoDetalheAuditoria() {
                 })}
               </tbody>
             </table>
-          </div>
+          </GradeRolavel>
         </CardPadrao>
       ) : (
         <CardPadrao titulo="Resultado da contagem">
@@ -462,7 +463,7 @@ function ConteudoDetalheAuditoria() {
           {achadosPreco.length > 0 && (
             <div className="mb-4">
               <h3 className="mb-2 text-sm font-medium">Preço</h3>
-              <div className="overflow-x-auto">
+              <GradeRolavel>
                 <table className="w-full min-w-[560px] text-left text-sm">
                   <thead>
                     <tr className="border-b text-xs text-muted-foreground">
@@ -492,14 +493,14 @@ function ConteudoDetalheAuditoria() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </GradeRolavel>
             </div>
           )}
 
           {achadosNome.length > 0 && (
             <div>
               <h3 className="mb-2 text-sm font-medium">Nome</h3>
-              <div className="overflow-x-auto">
+              <GradeRolavel>
                 <table className="w-full min-w-[560px] text-left text-sm">
                   <thead>
                     <tr className="border-b text-xs text-muted-foreground">
@@ -520,7 +521,7 @@ function ConteudoDetalheAuditoria() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </GradeRolavel>
             </div>
           )}
 
@@ -536,7 +537,7 @@ function ConteudoDetalheAuditoria() {
 
       <div id="itens-nf" className="scroll-mt-24">
       <CardPadrao titulo="Itens da NF">
-        <div className="overflow-x-auto">
+        <GradeRolavel>
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead>
               <tr className="border-b text-xs text-muted-foreground">
@@ -589,7 +590,7 @@ function ConteudoDetalheAuditoria() {
               )}
             </tbody>
           </table>
-        </div>
+        </GradeRolavel>
       </CardPadrao>
       </div>
 
@@ -632,7 +633,7 @@ function ConteudoDetalheAuditoria() {
                 Quantidade retida no disponível após Bloquear estoque (não circula até
                 desbloquear).
               </p>
-              <div className="overflow-x-auto">
+              <GradeRolavel>
                 <table className="w-full min-w-[560px] text-left text-sm">
                   <thead>
                     <tr className="border-b text-xs text-muted-foreground">
@@ -683,7 +684,7 @@ function ConteudoDetalheAuditoria() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </GradeRolavel>
             </div>
           )}
 

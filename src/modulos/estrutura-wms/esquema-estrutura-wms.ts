@@ -15,6 +15,7 @@ export const esquemaDeCriacaoDeNivelWms = z.object({
   codigo: z.string().trim().min(1, 'Código obrigatório'),
   nome: z.string().trim().optional().default(''),
   paiCodigo: z.string().trim().optional(),
+  localCodigo: z.string().trim().optional(),
   ativo: z.boolean().optional().default(true),
 })
 
@@ -22,6 +23,7 @@ export const esquemaDeEdicaoDeNivelWms = z.object({
   codigo: z.string().trim().min(1, 'Código obrigatório'),
   nome: z.string().trim().optional().default(''),
   paiCodigo: z.string().trim().optional(),
+  localCodigo: z.string().trim().optional(),
   ativo: z.boolean(),
 })
 

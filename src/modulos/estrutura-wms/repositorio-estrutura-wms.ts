@@ -13,6 +13,7 @@ export type NivelEnderecoWmsRegistro = {
   codigo: string
   nome: string
   paiCodigo: string | null
+  localCodigo: string | null
   ativo: boolean
   createdAt: Date
 }
@@ -23,6 +24,7 @@ function mapear(row: {
   codigo: string
   nome: string
   paiCodigo: string | null
+  localCodigo: string | null
   ativo: boolean
   createdAt: Date
 }): NivelEnderecoWmsRegistro {
@@ -32,6 +34,7 @@ function mapear(row: {
     codigo: row.codigo,
     nome: row.nome,
     paiCodigo: row.paiCodigo,
+    localCodigo: row.localCodigo,
     ativo: row.ativo,
     createdAt: row.createdAt,
   }
@@ -77,6 +80,7 @@ async function criar(
     codigo: string
     nome: string
     paiCodigo: string | null
+    localCodigo: string | null
     ativo: boolean
   }
 ) {
@@ -87,6 +91,7 @@ async function criar(
       codigo: dados.codigo,
       nome: dados.nome,
       paiCodigo: dados.paiCodigo,
+      localCodigo: dados.localCodigo,
       ativo: dados.ativo,
     },
   })
@@ -96,7 +101,13 @@ async function criar(
 async function atualizar(
   companyId: string,
   id: string,
-  dados: { codigo: string; nome: string; paiCodigo: string | null; ativo: boolean }
+  dados: {
+    codigo: string
+    nome: string
+    paiCodigo: string | null
+    localCodigo: string | null
+    ativo: boolean
+  }
 ) {
   const existente = await clientePrisma.nivelEnderecoWms.findFirst({
     where: { id, companyId },
@@ -110,6 +121,7 @@ async function atualizar(
       codigo: dados.codigo,
       nome: dados.nome,
       paiCodigo: dados.paiCodigo,
+      localCodigo: dados.localCodigo,
       ativo: dados.ativo,
     },
   })
@@ -129,6 +141,12 @@ async function excluir(companyId: string, id: string) {
 async function contarRuasDaArea(companyId: string, areaCodigo: string) {
   return clientePrisma.nivelEnderecoWms.count({
     where: { companyId, nivel: 'rua', paiCodigo: areaCodigo },
+  })
+}
+
+async function contarRuasDoLocal(companyId: string, localCodigo: string) {
+  return clientePrisma.nivelEnderecoWms.count({
+    where: { companyId, nivel: 'rua', localCodigo },
   })
 }
 
@@ -180,6 +198,7 @@ export const repositorioDeEstruturaWms = {
   atualizar,
   excluir,
   contarRuasDaArea,
+  contarRuasDoLocal,
   garantirAreasETiposPadrao,
   ehUnicidadePrisma,
 }

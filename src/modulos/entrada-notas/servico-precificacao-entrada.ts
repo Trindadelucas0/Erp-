@@ -5,16 +5,32 @@
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-auditoria.js'
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
-import { mapaValorIpiPorNItemDoXml } from '../focus-nfe/parser-xml-nfe.js'
+import {
+  mapaImpostosPorNItemDoXml,
+  mapaValorIpiPorNItemDoXml,
+} from '../focus-nfe/parser-xml-nfe.js'
 import { servicoParametrizacaoCustos } from '../configuracoes/servico-parametrizacao-custos.js'
 import { calcularQtdDisponivel } from '../estoque/tipos-estoque.js'
 import { repositorioDeEstoque } from '../estoque/repositorio-estoque.js'
 import { repositorioEntradaNotas } from './repositorio-entrada-notas.js'
 import { montarCustoComparativo, resolverValorIpi } from './custo-unitario-entrada.js'
 import {
+  calcularCustoComercialEntrada,
+  creditoIcmsComercial,
+} from './custo-comercial-entrada.js'
+import {
   calcularDiferencaPercentualPreco,
   calcularPrecoSugerido,
 } from './formacao-preco-venda.js'
+
+const ROTULO_MOD_FRETE: Record<string, string> = {
+  '0': 'Remetente',
+  '1': 'Destinatário',
+  '2': 'Terceiros',
+  '3': 'Próprio remetente',
+  '4': 'Próprio destinatário',
+  '9': 'Sem frete',
+}
 
 function decimalNum(valor: unknown): number | null {
   if (valor == null) return null
@@ -22,17 +38,9 @@ function decimalNum(valor: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-function competenciaDeEmissao(data: Date | null | undefined): string {
-  const d = data ?? new Date()
-  const partes = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Sao_Paulo',
-    year: 'numeric',
-    month: '2-digit',
-  }).formatToParts(d)
-  const ano = partes.find((p) => p.type === 'year')?.value
-  const mes = partes.find((p) => p.type === 'month')?.value
-  if (!ano || !mes) throw new ErroDaAplicacao('Competência da emissão inválida', 400)
-  return `${ano}-${mes}`
+function rotuloModFrete(modFrete: string | null | undefined): string | null {
+  if (!modFrete) return null
+  return ROTULO_MOD_FRETE[modFrete] ?? modFrete
 }
 
 function resolverItensPorEmbalagem(
@@ -73,8 +81,7 @@ async function mapaEstoqueDisponivel(companyId: string, produtoIds: string[]) {
 
 async function obterGrade(companyId: string, notaId: string) {
   const nota = await exigirNotaPrecificavel(companyId, notaId)
-  const competencia = competenciaDeEmissao(nota.dataEmissao)
-  const parametrizacao = await servicoParametrizacaoCustos.obter(companyId, competencia)
+  const parametrizacao = await servicoParametrizacaoCustos.obter(companyId)
   const encargosPercentual = parametrizacao.totalVenda ?? 0
   const parametrizacaoCadastrada = Boolean(parametrizacao.id)
 
@@ -84,6 +91,9 @@ async function obterGrade(companyId: string, notaId: string) {
     mapaEstoqueDisponivel(companyId, produtoIds),
   ])
   const ipiXmlPorItem = mapaValorIpiPorNItemDoXml(nota.xmlConteudo)
+  const impostosPorItem = mapaImpostosPorNItemDoXml(nota.xmlConteudo)
+  const tipoFrete = nota.modFrete ?? null
+  const tipoFreteRotulo = rotuloModFrete(nota.modFrete)
 
   const itens = nota.itens.map((i) => {
     const quantidade = decimalNum(i.quantidade)
@@ -95,22 +105,40 @@ async function obterGrade(companyId: string, notaId: string) {
       decimalNum((i as { valorIpi?: unknown }).valorIpi),
       ipiXmlPorItem.get(i.nItem) ?? null
     )
+    const custoFreteRateado = decimalNum(i.custoFreteRateado) ?? 0
+    const impostos = impostosPorItem.get(i.nItem)
+    const aproveitarIcms = Boolean(
+      (i.cfopEntrada as { aproveitarCreditoIcms?: boolean } | null)?.aproveitarCreditoIcms
+    )
+    const creditoIcms = creditoIcmsComercial(impostos?.valorIcms, aproveitarIcms)
+    const creditoPis = impostos?.valorPis != null && Number.isFinite(impostos.valorPis) ? impostos.valorPis : 0
+    const creditoCofins =
+      impostos?.valorCofins != null && Number.isFinite(impostos.valorCofins) ? impostos.valorCofins : 0
     const custos = montarCustoComparativo({
       quantidadeNf: quantidade,
       valorUnitario: decimalNum(i.valorUnitario),
-      custoFreteRateado: decimalNum(i.custoFreteRateado),
+      custoFreteRateado,
       valorIpi,
       itensPorEmbalagem,
       produtoId: i.produtoId,
       ultimaPorProduto: ultimaCustoPorProduto,
     })
+    const custoComercial = calcularCustoComercialEntrada({
+      quantidadeNf: quantidade,
+      valorUnitario: decimalNum(i.valorUnitario),
+      custoFreteRateado,
+      valorIpi,
+      itensPorEmbalagem,
+      creditoIcms,
+      creditoPis,
+      creditoCofins,
+    })
     const vinculado = Boolean(i.produtoId && i.produto)
-    const formacao = vinculado
-      ? calcularPrecoSugerido(custos.custoEntrada, encargosPercentual, 0)
-      : { ok: false as const, motivo: 'Item sem produto vinculado.' }
-    const precoAtual =
-      i.produto?.precoVenda != null ? decimalNum(i.produto.precoVenda) : null
-    const precoSugerido = formacao.ok ? formacao.precoSugerido : null
+    const formacao = calcularPrecoSugerido(custoComercial, encargosPercentual, 0, 0)
+    const formacaoLinha = vinculado ? formacao : { ok: false as const, motivo: 'Item sem produto vinculado.' }
+    const precoAtual = i.produto?.precoVenda != null ? decimalNum(i.produto.precoVenda) : null
+    const precoSugerido = formacaoLinha.ok ? formacaoLinha.precoSugerido : null
+    const ultima = i.produtoId ? ultimaCustoPorProduto.get(i.produtoId) : undefined
     return {
       itemId: i.id,
       nItem: i.nItem,
@@ -120,16 +148,28 @@ async function obterGrade(companyId: string, notaId: string) {
       produtoNome: i.produto?.nomeVenda ?? null,
       sku: i.produto?.sku ?? null,
       vinculado,
+      tipoFrete,
+      tipoFreteRotulo,
+      custoFreteRateado,
+      creditoIcms,
+      creditoPis,
+      creditoCofins,
+      aliquotaIcms: impostos?.aliquotaIcms ?? null,
+      aliquotaPis: impostos?.aliquotaPis ?? null,
+      aliquotaCofins: impostos?.aliquotaCofins ?? null,
+      custoComercial,
       custoEntrada: custos.custoEntrada,
       custoAnterior: custos.custoAnterior,
+      custoAnteriorData: ultima?.dataEmissao ?? null,
       variacaoPercentual: custos.variacaoPercentual,
       encargosPercentual,
-      margemPercentual: formacao.ok ? formacao.margemPercentual : 0,
+      vrAdicPercentual: 0,
+      margemPercentual: formacaoLinha.ok ? formacaoLinha.margemPercentual : 0,
       precoSugerido,
       precoAtual,
       diferencaPercentual: calcularDiferencaPercentualPreco(precoSugerido, precoAtual),
       estoqueDisponivel: i.produtoId ? (estoquePorProduto.get(i.produtoId) ?? 0) : null,
-      recusa: formacao.ok ? null : formacao.motivo,
+      recusa: formacaoLinha.ok ? null : formacaoLinha.motivo,
     }
   })
 
@@ -142,7 +182,6 @@ async function obterGrade(companyId: string, notaId: string) {
       dataEmissao: nota.dataEmissao,
       valorTotal: decimalNum(nota.valorTotal),
     },
-    competencia,
     parametrizacaoCadastrada,
     encargosPercentual,
     parametrizacao: {
@@ -171,10 +210,10 @@ async function gravarPrecos(
   const produtosDaNota = new Set(
     nota.itens.map((i) => i.produtoId).filter((id): id is string => Boolean(id))
   )
-  const competencia = competenciaDeEmissao(nota.dataEmissao)
-  const parametrizacao = await servicoParametrizacaoCustos.obter(companyId, competencia)
+  const parametrizacao = await servicoParametrizacaoCustos.obter(companyId)
   const encargosPercentual = parametrizacao.totalVenda ?? 0
   const ipiXmlPorItem = mapaValorIpiPorNItemDoXml(nota.xmlConteudo)
+  const impostosPorItem = mapaImpostosPorNItemDoXml(nota.xmlConteudo)
   const vistos = new Set<string>()
   for (const linha of linhas) {
     if (vistos.has(linha.produtoId)) {
@@ -194,7 +233,11 @@ async function gravarPrecos(
       item.produto.fornecedores,
       nota.fornecedorPessoaId
     )
-    const custos = montarCustoComparativo({
+    const impostos = impostosPorItem.get(item.nItem)
+    const aproveitarIcms = Boolean(
+      (item.cfopEntrada as { aproveitarCreditoIcms?: boolean } | null)?.aproveitarCreditoIcms
+    )
+    const custoComercial = calcularCustoComercialEntrada({
       quantidadeNf: quantidade,
       valorUnitario: decimalNum(item.valorUnitario),
       custoFreteRateado: decimalNum(item.custoFreteRateado),
@@ -203,13 +246,15 @@ async function gravarPrecos(
         ipiXmlPorItem.get(item.nItem) ?? null
       ),
       itensPorEmbalagem,
-      produtoId: item.produtoId,
-      ultimaPorProduto: new Map(),
+      creditoIcms: creditoIcmsComercial(impostos?.valorIcms, aproveitarIcms),
+      creditoPis: impostos?.valorPis,
+      creditoCofins: impostos?.valorCofins,
     })
     const formacao = calcularPrecoSugerido(
-      custos.custoEntrada,
+      custoComercial,
       encargosPercentual,
-      linha.margemPercentual
+      linha.margemPercentual,
+      0
     )
     if (!formacao.ok) {
       throw new ErroDaAplicacao(formacao.motivo, 400)
