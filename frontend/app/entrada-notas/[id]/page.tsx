@@ -21,6 +21,7 @@ import {
   type VisualizacaoNota,
 } from '@/components/entrada-notas/conteudo-visualizacao-nota'
 import { BarraCarregamentoDownload } from '@/components/entrada-notas/barra-carregamento-download'
+import { ModalConciliarProduto } from '@/components/entrada-notas/modal-conciliar-produto'
 import {
   ItemVinculoCadastroGrid,
   MSG_GRAVAR_CODIGO_ORIGINAL_SEM_FORNECEDOR,
@@ -386,6 +387,9 @@ type ProdutoBusca = {
   sku?: string | null
   codigoBarras?: string | null
   marca?: string | null
+  unidade?: string | null
+  caracteristicas?: string | null
+  nomeCompra?: string | null
 }
 
 type AbaId = 'cadastro' | 'fiscal' | 'negociacao' | 'frete' | 'lancamento'
@@ -932,8 +936,10 @@ function ConteudoDetalheEntrada() {
   const [textoTratativa, setTextoTratativa] = useState('')
   const [prazo, setPrazo] = useState('')
   const [buscaProduto, setBuscaProduto] = useState('')
+  const [buscaMarca, setBuscaMarca] = useState('')
   const [produtos, setProdutos] = useState<ProdutoBusca[]>([])
   const [carregandoBuscaProduto, setCarregandoBuscaProduto] = useState(false)
+  const [erroBuscaProduto, setErroBuscaProduto] = useState<string | null>(null)
   const [itemVinculando, setItemVinculando] = useState<string | null>(null)
   const buscaProdutoSeq = useRef(0)
   const [acao, setAcao] = useState(false)
@@ -1532,34 +1538,46 @@ function ConteudoDetalheEntrada() {
     }
   }
 
-  function termoBuscaProdutoItem(item: ItemNota): string {
-    const descricao = item.descricao?.trim() ?? ''
-    if (descricao.length >= 2) return descricao
-    const cProd = item.codigoProduto?.trim() ?? ''
-    if (cProd.length >= 2) return cProd
-    const gtin = item.gtin?.trim() ?? ''
-    if (gtin.length >= 2) return gtin
-    return descricao || cProd || gtin
+  function fecharBuscaProduto() {
+    setItemVinculando(null)
+    setProdutos([])
+    setBuscaProduto('')
+    setBuscaMarca('')
+    setCarregandoBuscaProduto(false)
+    setErroBuscaProduto(null)
   }
 
-  async function buscarProdutos(termo?: string) {
-    const q = (termo ?? buscaProduto).trim()
-    if (q.length < 2) {
+  async function buscarProdutos(termoProduto?: string, termoMarca?: string) {
+    const q = (termoProduto ?? buscaProduto).trim()
+    const marca = (termoMarca ?? buscaMarca).trim()
+    const qOk = q.length >= 2
+    const marcaOk = marca.length >= 2
+    if (!qOk && !marcaOk) {
       setProdutos([])
       setCarregandoBuscaProduto(false)
+      setErroBuscaProduto(null)
       return
     }
     const seq = ++buscaProdutoSeq.current
     setCarregandoBuscaProduto(true)
+    setErroBuscaProduto(null)
     try {
+      const params: Record<string, string | number> = {
+        pagina: 1,
+        limite: 20,
+        resumo: 'true',
+      }
+      if (qOk) params.q = q
+      if (marcaOk) params.marca = marca
       const { data } = await clienteHttp.get<{ produtos?: ProdutoBusca[] }>('/produtos', {
-        params: { q, pagina: 1, limite: 20, resumo: 'true' },
+        params,
       })
       if (seq !== buscaProdutoSeq.current) return
       setProdutos(data.produtos ?? [])
     } catch {
       if (seq !== buscaProdutoSeq.current) return
       setProdutos([])
+      setErroBuscaProduto('Não foi possível buscar produtos. Tente de novo.')
     } finally {
       if (seq === buscaProdutoSeq.current) setCarregandoBuscaProduto(false)
     }
@@ -1568,19 +1586,20 @@ function ConteudoDetalheEntrada() {
   useEffect(() => {
     if (!itemVinculando) return
     const timer = setTimeout(() => {
-      void buscarProdutos(buscaProduto)
+      void buscarProdutos(buscaProduto, buscaMarca)
     }, 250)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- debounce ao digitar
-  }, [buscaProduto, itemVinculando])
+  }, [buscaProduto, buscaMarca, itemVinculando])
 
   function abrirBuscaProduto(item: ItemNota) {
     if (item.produtoId) return
-    const termo = termoBuscaProdutoItem(item)
     setItemVinculando(item.id)
-    setBuscaProduto(termo)
+    setBuscaProduto('')
+    setBuscaMarca('')
     setProdutos([])
-    setCarregandoBuscaProduto(termo.trim().length >= 2)
+    setCarregandoBuscaProduto(false)
+    setErroBuscaProduto(null)
   }
 
   const finalizada =
@@ -1627,15 +1646,21 @@ function ConteudoDetalheEntrada() {
   const revendaHabilitada = Boolean(nota?.fornecedor?.tipoRevenda)
   const usoConsumoHabilitado =
     Boolean(nota?.fornecedor?.tipoConsumo) || Boolean(nota?.fornecedor?.tipoPrestadorServico)
+  const finalidadeUnica =
+    (revendaHabilitada && !usoConsumoHabilitado) || (!revendaHabilitada && usoConsumoHabilitado)
   function escolherFinalidade(valor: 'revenda' | 'uso_consumo') {
     const habilitada = valor === 'revenda' ? revendaHabilitada : usoConsumoHabilitado
     if (!podeEditarFinalidade || !habilitada || acao) return
     if (nota?.finalidadeEntrada === valor) {
+      if (finalidadeUnica) return
       void postAcao('/finalidade-entrada', { finalidade: null })
       return
     }
     void postAcao('/finalidade-entrada', { finalidade: valor })
   }
+  const textoAjudaFinalidade = finalidadeUnica
+    ? 'Definida pelo cadastro do fornecedor (único tipo). Para trocar, habilite o outro tipo em Fornecedores > Outros.'
+    : 'Vale para a nota inteira. Clique para definir. Clique de novo na opção marcada para desmarcar (volta ao vazio).'
   const exigirVinculoDocumental =
     modoDocumentalNfe && Boolean(nota?.fornecedor?.exigirItensEntrada)
   const serieNumero = nota ? extrairSerieNumeroChave(nota.chaveNfe) : { serie: null, numero: null }
@@ -1949,8 +1974,9 @@ function ConteudoDetalheEntrada() {
           {modoDocumentalNfe && (
             <CardPadrao titulo="Finalidade da entrada">
               <p className="text-xs text-muted-foreground">
-                Vale para a nota inteira. Clique de novo em Uso e Consumo para desmarcar e voltar ao
-                fluxo de Revenda (abas).
+                {finalidadeUnica
+                  ? textoAjudaFinalidade
+                  : 'Vale para a nota inteira. Clique de novo em Uso e Consumo para desmarcar e voltar ao fluxo de Revenda (abas).'}
               </p>
               <fieldset className="mt-3 space-y-1" disabled={!podeEditarFinalidade || acao}>
                 <legend className="sr-only">Finalidade da entrada</legend>
@@ -2107,10 +2133,7 @@ function ConteudoDetalheEntrada() {
         {ehNfe55 && (
           <div className="mt-3 space-y-2 border-t pt-3">
             <p className="text-sm font-medium">Finalidade da entrada</p>
-            <p className="text-xs text-muted-foreground">
-              Vale para a nota inteira. Clique para definir. Clique de novo na opção marcada para
-              desmarcar (volta ao vazio).
-            </p>
+            <p className="text-xs text-muted-foreground">{textoAjudaFinalidade}</p>
             {!nota.fornecedor && (
               <p className="text-sm text-amber-700 dark:text-amber-400">
                 Vincule o fornecedor para escolher a finalidade.
@@ -2307,10 +2330,6 @@ function ConteudoDetalheEntrada() {
                     item={item}
                     finalizada={pipelineBloqueado}
                     acao={acao}
-                    buscando={itemVinculando === item.id}
-                    carregandoBusca={itemVinculando === item.id && carregandoBuscaProduto}
-                    buscaProduto={buscaProduto}
-                    produtos={produtos}
                     permitirAcoesVinculo={
                       !modoDocumentalNfe ||
                       Boolean(nota.fornecedor?.permitirVinculoManual) ||
@@ -2319,24 +2338,6 @@ function ConteudoDetalheEntrada() {
                     vinculoNaoExigido={modoDocumentalNfe && !exigirVinculoDocumental}
                     fornecedorVinculado={Boolean(nota.fornecedor)}
                     onAbrirBusca={() => abrirBuscaProduto(item)}
-                    onFecharBusca={() => {
-                      setItemVinculando(null)
-                      setProdutos([])
-                      setBuscaProduto('')
-                      setCarregandoBuscaProduto(false)
-                    }}
-                    onBuscaChange={setBuscaProduto}
-                    onBuscar={() => void buscarProdutos()}
-                    onVincular={async (produtoId) => {
-                      await postAcao('/vincular-item', {
-                        itemId: item.id,
-                        produtoId,
-                      })
-                      setItemVinculando(null)
-                      setProdutos([])
-                      setBuscaProduto('')
-                      setCarregandoBuscaProduto(false)
-                    }}
                     codigoOriginalGravado={
                       Boolean(item.codigoOriginalGravado) ||
                       Boolean(codigosOriginaisGravados[item.id])
@@ -2363,6 +2364,29 @@ function ConteudoDetalheEntrada() {
                     }
                   />
                 ))}
+                <ModalConciliarProduto
+                  aberto={Boolean(itemVinculando)}
+                  item={
+                    (nota.itens ?? []).find((itemNota) => itemNota.id === itemVinculando) ?? null
+                  }
+                  buscaProduto={buscaProduto}
+                  buscaMarca={buscaMarca}
+                  produtos={produtos}
+                  carregando={carregandoBuscaProduto}
+                  acao={acao}
+                  erroBusca={erroBuscaProduto}
+                  onBuscaProdutoChange={setBuscaProduto}
+                  onBuscaMarcaChange={setBuscaMarca}
+                  onFechar={fecharBuscaProduto}
+                  onVincular={async (produtoId) => {
+                    if (!itemVinculando) return
+                    const ok = await postAcao('/vincular-item', {
+                      itemId: itemVinculando,
+                      produtoId,
+                    })
+                    if (ok) fecharBuscaProduto()
+                  }}
+                />
                 {(nota.itens ?? []).length === 0 && (
                   <p className="text-sm text-muted-foreground">Sem itens. Reanalisar ou reimporte o XML.</p>
                 )}

@@ -148,15 +148,15 @@ describe('servicoDeCfops.planoFinanceiroPadrao', () => {
     vi.clearAllMocks()
   })
 
-  it('rejeita plano financeiro padrão em CFOP de entrada', async () => {
+  it('rejeita plano financeiro padrão em CFOP de saída', async () => {
     vi.mocked(repositorioDeCfops.buscarPorCodigo).mockResolvedValue(null)
 
     await expect(
       servicoDeCfops.criarCfop(
         'company-001',
         {
-          codigo: '1.101',
-          nome: 'Entrada teste',
+          codigo: '5.101',
+          nome: 'Saída teste',
           descricao: '',
           subtipoCfop: null,
           aproveitarCreditoIcms: false,
@@ -164,25 +164,25 @@ describe('servicoDeCfops.planoFinanceiroPadrao', () => {
         },
         'user-001'
       )
-    ).rejects.toThrow('Plano financeiro padrão só se aplica a CFOP de saída')
+    ).rejects.toThrow('Plano financeiro padrão só se aplica a CFOP de entrada')
 
     expect(repositorioDeCfops.validarPlanoFinanceiroAtivo).not.toHaveBeenCalled()
   })
 
-  it('permite CFOP de saída com plano financeiro ativo', async () => {
+  it('permite CFOP de entrada com plano financeiro ativo', async () => {
     vi.mocked(repositorioDeCfops.buscarPorCodigo).mockResolvedValue(null)
     vi.mocked(repositorioDeCfops.validarPlanoFinanceiroAtivo).mockResolvedValue(undefined)
     vi.mocked(repositorioDeCfops.criar).mockResolvedValue({
-      id: 'cfop-saida-001',
-      codigo: '5.101',
-      nome: 'Saída teste',
+      id: 'cfop-entrada-001',
+      codigo: '1.101',
+      nome: 'Entrada teste',
       descricao: '',
-      tipoCfop: '02',
-      natureza: 'saida',
+      tipoCfop: '01',
+      natureza: 'entrada',
       abrangencia: 'estadual',
       subtipoCfop: null,
       aproveitarCreditoIcms: false,
-      tipo: 'saida',
+      tipo: 'entrada',
       ativo: true,
       cfopSugestaoEntradaId: null,
       cfopSugestaoEntrada: null,
@@ -198,8 +198,8 @@ describe('servicoDeCfops.planoFinanceiroPadrao', () => {
     const resultado = await servicoDeCfops.criarCfop(
       'company-001',
       {
-        codigo: '5.101',
-        nome: 'Saída teste',
+        codigo: '1.101',
+        nome: 'Entrada teste',
         descricao: '',
         subtipoCfop: null,
         aproveitarCreditoIcms: false,
@@ -214,8 +214,8 @@ describe('servicoDeCfops.planoFinanceiroPadrao', () => {
       'plano-001'
     )
     expect(repositorioDeCfops.criar).toHaveBeenCalledWith('company-001', {
-      codigo: '5.101',
-      nome: 'Saída teste',
+      codigo: '1.101',
+      nome: 'Entrada teste',
       descricao: '',
       subtipoCfop: null,
       aproveitarCreditoIcms: false,
@@ -224,15 +224,61 @@ describe('servicoDeCfops.planoFinanceiroPadrao', () => {
     })
   })
 
-  it('rejeita plano financeiro em CFOP de importação', async () => {
+  it('permite CFOP de importação com plano financeiro ativo', async () => {
+    vi.mocked(repositorioDeCfops.buscarPorCodigo).mockResolvedValue(null)
+    vi.mocked(repositorioDeCfops.validarPlanoFinanceiroAtivo).mockResolvedValue(undefined)
+    vi.mocked(repositorioDeCfops.criar).mockResolvedValue({
+      id: 'cfop-importacao-001',
+      codigo: '3.101',
+      nome: 'Importação teste',
+      descricao: '',
+      tipoCfop: '01',
+      natureza: 'importacao',
+      abrangencia: null,
+      subtipoCfop: null,
+      aproveitarCreditoIcms: false,
+      tipo: 'entrada',
+      ativo: true,
+      cfopSugestaoEntradaId: null,
+      cfopSugestaoEntrada: null,
+      planoFinanceiroPadraoId: 'plano-001',
+      planoFinanceiroPadrao: {
+        id: 'plano-001',
+        codigo: '2.01.01',
+        descricao: 'Compras',
+      },
+      createdAt: new Date(),
+    })
+
+    const resultado = await servicoDeCfops.criarCfop(
+      'company-001',
+      {
+        codigo: '3.101',
+        nome: 'Importação teste',
+        descricao: '',
+        subtipoCfop: null,
+        aproveitarCreditoIcms: false,
+        planoFinanceiroPadraoId: 'plano-001',
+      },
+      'user-001'
+    )
+
+    expect(resultado.planoFinanceiroPadraoId).toBe('plano-001')
+    expect(repositorioDeCfops.validarPlanoFinanceiroAtivo).toHaveBeenCalledWith(
+      'company-001',
+      'plano-001'
+    )
+  })
+
+  it('rejeita plano financeiro em CFOP de exportação', async () => {
     vi.mocked(repositorioDeCfops.buscarPorCodigo).mockResolvedValue(null)
 
     await expect(
       servicoDeCfops.criarCfop(
         'company-001',
         {
-          codigo: '3.101',
-          nome: 'Importação teste',
+          codigo: '7.101',
+          nome: 'Exportação teste',
           descricao: '',
           subtipoCfop: null,
           aproveitarCreditoIcms: false,
@@ -240,7 +286,7 @@ describe('servicoDeCfops.planoFinanceiroPadrao', () => {
         },
         'user-001'
       )
-    ).rejects.toThrow('Plano financeiro padrão só se aplica a CFOP de saída')
+    ).rejects.toThrow('Plano financeiro padrão só se aplica a CFOP de entrada')
 
     expect(repositorioDeCfops.validarPlanoFinanceiroAtivo).not.toHaveBeenCalled()
   })
@@ -255,8 +301,8 @@ describe('servicoDeCfops.planoFinanceiroPadrao', () => {
       servicoDeCfops.criarCfop(
         'company-001',
         {
-          codigo: '5.101',
-          nome: 'Saída teste',
+          codigo: '1.101',
+          nome: 'Entrada teste',
           descricao: '',
           subtipoCfop: null,
           aproveitarCreditoIcms: false,
@@ -267,18 +313,18 @@ describe('servicoDeCfops.planoFinanceiroPadrao', () => {
     ).rejects.toThrow('Plano financeiro não encontrado ou inativo')
   })
 
-  it('zera plano na edição de CFOP de entrada', async () => {
+  it('zera plano na edição de CFOP de saída', async () => {
     vi.mocked(repositorioDeCfops.buscarPorId).mockResolvedValue({
-      id: 'cfop-entrada-001',
-      codigo: '1.101',
-      nome: 'Entrada teste',
+      id: 'cfop-saida-001',
+      codigo: '5.101',
+      nome: 'Saída teste',
       descricao: '',
-      tipoCfop: '01',
-      natureza: 'entrada',
+      tipoCfop: '02',
+      natureza: 'saida',
       abrangencia: 'estadual',
       subtipoCfop: null,
       aproveitarCreditoIcms: false,
-      tipo: 'entrada',
+      tipo: 'saida',
       ativo: true,
       cfopSugestaoEntradaId: null,
       companyId: 'company-001',
@@ -292,16 +338,16 @@ describe('servicoDeCfops.planoFinanceiroPadrao', () => {
       },
     } as never)
     vi.mocked(repositorioDeCfops.atualizar).mockResolvedValue({
-      id: 'cfop-entrada-001',
-      codigo: '1.101',
-      nome: 'Entrada editada',
+      id: 'cfop-saida-001',
+      codigo: '5.101',
+      nome: 'Saída editada',
       descricao: '',
-      tipoCfop: '01',
-      natureza: 'entrada',
+      tipoCfop: '02',
+      natureza: 'saida',
       abrangencia: 'estadual',
       subtipoCfop: null,
       aproveitarCreditoIcms: false,
-      tipo: 'entrada',
+      tipo: 'saida',
       ativo: true,
       cfopSugestaoEntradaId: null,
       cfopSugestaoEntrada: null,
@@ -312,9 +358,9 @@ describe('servicoDeCfops.planoFinanceiroPadrao', () => {
 
     await servicoDeCfops.editarCfop(
       'company-001',
-      'cfop-entrada-001',
+      'cfop-saida-001',
       {
-        nome: 'Entrada editada',
+        nome: 'Saída editada',
         descricao: '',
         subtipoCfop: null,
         aproveitarCreditoIcms: false,
@@ -325,9 +371,9 @@ describe('servicoDeCfops.planoFinanceiroPadrao', () => {
 
     expect(repositorioDeCfops.atualizar).toHaveBeenCalledWith(
       'company-001',
-      'cfop-entrada-001',
+      'cfop-saida-001',
       expect.objectContaining({ planoFinanceiroPadraoId: null }),
-      '1.101'
+      '5.101'
     )
   })
 })

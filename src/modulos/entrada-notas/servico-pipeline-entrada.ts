@@ -63,7 +63,9 @@ import { resolverPlanoFinanceiroEntrada } from '../contas-a-pagar/resolver-plano
 import {
   extrairFlagsFornecedorDaNota,
   finalidadeHabilitadaNoFornecedor,
+  finalidadeUnicaDoFornecedor,
   MSG_FINALIDADE_ENTRADA,
+  MSG_FINALIDADE_UNICA_NAO_DESMARCA,
   resolverFinalidadePreMarcacao,
   resolverModoDocumentalEntrada,
   statusPermiteTrocaFinalidade,
@@ -199,8 +201,8 @@ async function obterFlagsFornecedorEntrada(
 }
 
 /**
- * NFe 55 em análise: nunca pré-marca. Só limpa finalidade inválida para o cadastro.
- * criarFornecedor / reanálise por CNPJ não grava finalidade.
+ * NFe 55 em análise: pré-marca o tipo único do cadastro (vazio ou inválido).
+ * Dois tipos: não grava. criarFornecedor / reanálise por CNPJ não grava finalidade.
  */
 async function aplicarFinalidadePreMarcacao(
   companyId: string,
@@ -2217,7 +2219,7 @@ async function obterDetalhe(
     if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
   }
 
-  // Só limpa finalidade inválida (nunca pré-marca tipo único).
+  // Pré-marca tipo único; só limpa inválida quando o cadastro não tem tipo único.
   if (
     statusesAbertos.includes(nota.statusEntrada) &&
     (nota.tipoDocumento === 'nfe55' || !nota.tipoDocumento) &&
@@ -3043,9 +3045,10 @@ async function definirCfopEntradaCte(companyId: string, cteId: string, cfopId: s
 }
 
 /**
- * Finalidade da NFe 55 (Revenda vs Uso e Consumo). Sempre clique do operador;
- * `null` desmarca mesmo com tipo único. criarFornecedor / reanálise por CNPJ
- * não grava finalidade. Recusa após lançamento. Flags só habilitam opções.
+ * Finalidade da NFe 55 (Revenda vs Uso e Consumo). Tipo único no cadastro
+ * pré-marca; dois tipos exigem clique. `null` desmarca só com dois tipos.
+ * criarFornecedor / reanálise por CNPJ não grava finalidade. Recusa após
+ * lançamento. Flags habilitam opções e, se únicas, definem a pré-marca.
  */
 async function definirFinalidadeEntrada(
   companyId: string,
@@ -3069,16 +3072,18 @@ async function definirFinalidadeEntrada(
       400
     )
   }
-  if (finalidade !== null) {
-    const flags = await obterFlagsFornecedorEntrada(companyId, nota)
-    if (!finalidadeHabilitadaNoFornecedor(finalidade, flags)) {
-      throw new ErroDaAplicacao(
-        finalidade === 'revenda'
-          ? 'O cadastro do fornecedor não habilita Revenda. Marque o tipo Revenda no cadastro.'
-          : 'O cadastro do fornecedor não habilita Uso e Consumo. Marque Consumo ou Prestador de serviço no cadastro.',
-        400
-      )
+  const flags = await obterFlagsFornecedorEntrada(companyId, nota)
+  if (finalidade === null) {
+    if (finalidadeUnicaDoFornecedor(flags)) {
+      throw new ErroDaAplicacao(MSG_FINALIDADE_UNICA_NAO_DESMARCA, 400)
     }
+  } else if (!finalidadeHabilitadaNoFornecedor(finalidade, flags)) {
+    throw new ErroDaAplicacao(
+      finalidade === 'revenda'
+        ? 'O cadastro do fornecedor não habilita Revenda. Marque o tipo Revenda no cadastro.'
+        : 'O cadastro do fornecedor não habilita Uso e Consumo. Marque Consumo ou Prestador de serviço no cadastro.',
+      400
+    )
   }
 
   await repositorioEntradaNotas.atualizarNota(notaId, { finalidadeEntrada: finalidade })

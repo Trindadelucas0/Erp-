@@ -411,7 +411,7 @@ describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)'
     expect(String(detalhe.nota.analise?.cadastro?.bloqueios?.[0] ?? '')).toMatch(/finalidade/i)
   })
 
-  it('só Revenda no cadastro sem finalidade → não pré-marca; Cadastro bloqueia', async () => {
+  it('só Revenda no cadastro sem finalidade → pré-marca revenda e segue o fluxo', async () => {
     ligarAnaliseSempreOk()
     const fake = ligarRepositorioFake(notaEmAnalise({ finalidadeEntrada: null }))
 
@@ -419,17 +419,18 @@ describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)'
       importarFocusSeAusente: false,
     })
 
-    expect(fake.getEstado().finalidadeEntrada).toBe(null)
-    expect(fake.getEstado().statusEntrada).toBe('em_analise')
-    expect(detalhe.nota.analise?.cadastro?.status).toBe('bloqueante')
-    expect(String(detalhe.nota.analise?.cadastro?.bloqueios?.[0] ?? '')).toMatch(/finalidade/i)
+    expect(fake.getEstado().finalidadeEntrada).toBe('revenda')
+    expect(fake.getEstado().statusEntrada).toBe('aguardando_chegada')
+    expect(detalhe.nota.statusEntrada).toBe('aguardando_chegada')
+    expect(String(detalhe.nota.analise?.cadastro?.bloqueios?.[0] ?? '')).not.toMatch(/finalidade/i)
   })
 
-  it('só Consumo no cadastro sem finalidade → não pré-marca; Cadastro bloqueia (não entra no dossiê)', async () => {
+  it('só Consumo no cadastro sem finalidade → pré-marca uso_consumo e entra no dossiê', async () => {
     ligarAnaliseSempreOk()
     const fake = ligarRepositorioFake(
       notaEmAnalise({
         finalidadeEntrada: null,
+        cfopEntradaId: 'cfop-ent',
         fornecedorPessoa: {
           id: 'pessoa-a',
           nome: 'Fornecedor A',
@@ -455,11 +456,9 @@ describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)'
       importarFocusSeAusente: false,
     })
 
-    expect(fake.getEstado().finalidadeEntrada).toBe(null)
-    expect(fake.getEstado().statusEntrada).toBe('em_analise')
-    expect(detalhe.nota.statusEntrada).toBe('em_analise')
-    expect(detalhe.nota.analise?.cadastro?.status).toBe('bloqueante')
-    expect(String(detalhe.nota.analise?.cadastro?.bloqueios?.[0] ?? '')).toMatch(/finalidade/i)
+    expect(fake.getEstado().finalidadeEntrada).toBe('uso_consumo')
+    expect(fake.getEstado().statusEntrada).toBe('pronta_para_consolidar')
+    expect(detalhe.nota.statusEntrada).toBe('pronta_para_consolidar')
     expect(analisarFiscalItens).not.toHaveBeenCalled()
     expect(analisarNegociacao).not.toHaveBeenCalled()
   })
@@ -531,11 +530,12 @@ describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)'
     expect(analisarFiscalItens).not.toHaveBeenCalled()
   })
 
-  it('finalidade revenda inválida + só Consumo no cadastro → limpa (não pré-marca uso_consumo)', async () => {
+  it('finalidade revenda inválida + só Consumo no cadastro → grava uso_consumo', async () => {
     ligarAnaliseSempreOk()
     const fake = ligarRepositorioFake(
       notaEmAnalise({
         finalidadeEntrada: 'revenda',
+        cfopEntradaId: 'cfop-ent',
         fornecedorPessoa: {
           id: 'pessoa-a',
           nome: 'Fornecedor A',
@@ -561,10 +561,9 @@ describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)'
       importarFocusSeAusente: false,
     })
 
-    expect(fake.getEstado().finalidadeEntrada).toBe(null)
-    expect(fake.getEstado().statusEntrada).toBe('em_analise')
-    expect(detalhe.nota.statusEntrada).toBe('em_analise')
-    expect(detalhe.nota.analise?.cadastro?.status).toBe('bloqueante')
+    expect(fake.getEstado().finalidadeEntrada).toBe('uso_consumo')
+    expect(fake.getEstado().statusEntrada).toBe('pronta_para_consolidar')
+    expect(detalhe.nota.statusEntrada).toBe('pronta_para_consolidar')
     expect(analisarFiscalItens).not.toHaveBeenCalled()
   })
 
@@ -981,12 +980,11 @@ describe('definirFinalidadeEntrada', () => {
     expect(fake.getEstado().finalidadeEntrada).toBe(null)
   })
 
-  it('desmarcar com único tipo no cadastro → permanece null (não pré-marca de novo)', async () => {
-    ligarAnaliseSempreOk()
-    const fake = ligarRepositorioFake(notaEmAnalise({ finalidadeEntrada: 'revenda' }))
+  it('desmarcar com único tipo no cadastro → recusa (400)', async () => {
+    ligarRepositorioFake(notaEmAnalise({ finalidadeEntrada: 'revenda' }))
 
-    await servicoEntradaNotas.definirFinalidadeEntrada('c1', 'nota-1', null)
-
-    expect(fake.getEstado().finalidadeEntrada).toBe(null)
+    await expect(
+      servicoEntradaNotas.definirFinalidadeEntrada('c1', 'nota-1', null)
+    ).rejects.toMatchObject({ statusCode: 400 })
   })
 })

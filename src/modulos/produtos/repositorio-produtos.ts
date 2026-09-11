@@ -21,12 +21,15 @@ import {
   tokensBusca,
 } from '../../compartilhado/utilitarios/filtro-busca-textual.js'
 import {
+  andWhereProduto,
   escaparCuringasLike,
+  filtroMarcaProduto,
   orProdutoPorToken,
 } from './filtro-busca-produto.js'
 
 export type FiltrosListagemProdutos = {
   busca?: string
+  marca?: string
   incluirInativos?: boolean
   resumo?: boolean
   pagina?: number
@@ -351,12 +354,13 @@ async function montarWhereListagem(
   const filtroBusca = montarFiltroBuscaTextual(filtros.busca, (token) =>
     orProdutoPorToken(token, idsPorToken[indiceToken++] ?? [])
   )
+  const filtroMarca = filtroMarcaProduto(filtros.marca)
 
   return {
     companyId,
     ...(ids.length ? { id: { in: ids } } : {}),
     ...(filtros.incluirInativos ? {} : { ativo: true }),
-    ...(filtroBusca ?? {}),
+    ...andWhereProduto(filtroBusca, filtroMarca),
   }
 }
 
@@ -365,6 +369,50 @@ function montarOrderBy(
   direcao: DirecaoOrdenacaoProdutos
 ): Prisma.ProdutoOrderByWithRelationInput {
   return { [ordenarPor]: direcao }
+}
+
+const selectResumo = {
+  id: true,
+  sku: true,
+  ativo: true,
+  nomeVenda: true,
+  marca: true,
+  unidade: true,
+  caracteristicas: true,
+  nomeCompra: true,
+  fotos: {
+    where: { tipo: 'miniatura' as const },
+    take: 1,
+    select: { arquivo: true },
+  },
+} as const
+
+type ProdutoResumoDb = {
+  id: string
+  sku: string | null
+  ativo: boolean
+  nomeVenda: string
+  marca: string
+  unidade: string
+  caracteristicas: string | null
+  nomeCompra: string | null
+  fotos: { arquivo: string }[]
+}
+
+function mapearProdutoResumo(produto: ProdutoResumoDb, companyId: string) {
+  return {
+    id: produto.id,
+    sku: produto.sku,
+    ativo: produto.ativo,
+    nomeVenda: produto.nomeVenda,
+    marca: produto.marca,
+    unidade: produto.unidade,
+    caracteristicas: produto.caracteristicas,
+    nomeCompra: produto.nomeCompra,
+    urlFotoMiniatura: produto.fotos[0]
+      ? urlPublicaFoto(companyId, produto.id, produto.fotos[0].arquivo)
+      : null,
+  }
 }
 
 async function listarPorEmpresa(
@@ -385,19 +433,7 @@ async function listarPorEmpresa(
       filtros.resumo
         ? clientePrisma.produto.findMany({
             where,
-            select: {
-              id: true,
-              sku: true,
-              ativo: true,
-              nomeVenda: true,
-              marca: true,
-              unidade: true,
-              fotos: {
-                where: { tipo: 'miniatura' },
-                take: 1,
-                select: { arquivo: true },
-              },
-            },
+            select: selectResumo,
             orderBy,
           })
         : clientePrisma.produto.findMany({
@@ -409,27 +445,7 @@ async function listarPorEmpresa(
     ])
 
     const produtos = filtros.resumo
-      ? (
-          produtosDb as Array<{
-            id: string
-            sku: string | null
-            ativo: boolean
-            nomeVenda: string
-            marca: string
-            unidade: string
-            fotos: { arquivo: string }[]
-          }>
-        ).map((p) => ({
-          id: p.id,
-          sku: p.sku,
-          ativo: p.ativo,
-          nomeVenda: p.nomeVenda,
-          marca: p.marca,
-          unidade: p.unidade,
-          urlFotoMiniatura: p.fotos[0]
-            ? urlPublicaFoto(companyId, p.id, p.fotos[0].arquivo)
-            : null,
-        }))
+      ? (produtosDb as ProdutoResumoDb[]).map((p) => mapearProdutoResumo(p, companyId))
       : (produtosDb as ProdutoListaDb[]).map((p) => mapearProdutoLista(p, companyId))
 
     return {
@@ -448,19 +464,7 @@ async function listarPorEmpresa(
     filtros.resumo
       ? clientePrisma.produto.findMany({
           where,
-          select: {
-            id: true,
-            sku: true,
-            ativo: true,
-            nomeVenda: true,
-            marca: true,
-            unidade: true,
-            fotos: {
-              where: { tipo: 'miniatura' },
-              take: 1,
-              select: { arquivo: true },
-            },
-          },
+          select: selectResumo,
           orderBy,
           take: limite,
           skip,
@@ -476,27 +480,7 @@ async function listarPorEmpresa(
   ])
 
   const produtos = filtros.resumo
-    ? (
-        produtosDb as Array<{
-          id: string
-          sku: string | null
-          ativo: boolean
-          nomeVenda: string
-          marca: string
-          unidade: string
-          fotos: { arquivo: string }[]
-        }>
-      ).map((p) => ({
-        id: p.id,
-        sku: p.sku,
-        ativo: p.ativo,
-        nomeVenda: p.nomeVenda,
-        marca: p.marca,
-        unidade: p.unidade,
-        urlFotoMiniatura: p.fotos[0]
-          ? urlPublicaFoto(companyId, p.id, p.fotos[0].arquivo)
-          : null,
-      }))
+    ? (produtosDb as ProdutoResumoDb[]).map((p) => mapearProdutoResumo(p, companyId))
     : (produtosDb as ProdutoListaDb[]).map((p) => mapearProdutoLista(p, companyId))
 
   return { produtos, total, pagina, limite }

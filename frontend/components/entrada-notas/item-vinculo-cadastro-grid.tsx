@@ -3,10 +3,6 @@
 import { useState, type ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  CabecalhoOpcaoProduto,
-  LinhaOpcaoProduto,
-} from '@/components/produtos/linha-opcao-produto'
 import { cn } from '@/lib/utils'
 
 export type ItemVinculoCadastro = {
@@ -36,14 +32,6 @@ export type ItemVinculoCadastro = {
     marca?: string | null
     unidade?: string | null
   } | null
-}
-
-export type ProdutoBuscaVinculo = {
-  id: string
-  nomeVenda: string
-  sku?: string | null
-  codigoBarras?: string | null
-  marca?: string | null
 }
 
 export const MSG_GRAVAR_CODIGO_ORIGINAL_SEM_FORNECEDOR =
@@ -133,15 +121,7 @@ type Props = {
   item: ItemVinculoCadastro
   finalizada: boolean
   acao: boolean
-  buscando: boolean
-  carregandoBusca?: boolean
-  buscaProduto: string
-  produtos: ProdutoBuscaVinculo[]
   onAbrirBusca: () => void
-  onFecharBusca: () => void
-  onBuscaChange: (valor: string) => void
-  onBuscar: () => void
-  onVincular: (produtoId: string) => void | Promise<void>
   onGravarCodigoOriginal?: () => void | Promise<void>
   /** Após gravar com sucesso nesta sessão da tela */
   codigoOriginalGravado?: boolean
@@ -160,15 +140,7 @@ export function ItemVinculoCadastroGrid({
   item,
   finalizada,
   acao,
-  buscando,
-  carregandoBusca = false,
-  buscaProduto,
-  produtos,
   onAbrirBusca,
-  onFecharBusca,
-  onBuscaChange,
-  onBuscar,
-  onVincular,
   onGravarCodigoOriginal,
   codigoOriginalGravado = false,
   permitirAcoesVinculo = true,
@@ -417,86 +389,6 @@ export function ItemVinculoCadastroGrid({
             <Button type="button" size="sm" disabled={acao} onClick={onAbrirBusca}>
               Conciliar produto
             </Button>
-          </div>
-        )}
-
-        {buscando && permitirAcoesVinculo && !item.produtoId && (
-          <div className="mt-1 space-y-2 rounded-md border border-dashed p-3">
-            <p className="text-[11px] text-muted-foreground">
-              Digite palavras-chave — a lista atualiza sozinha enquanto você digita.
-            </p>
-            <div className="flex gap-2">
-              <input
-                autoFocus
-                className="min-w-0 flex-1 rounded-md border bg-background px-3 py-2 text-sm"
-                placeholder="Ex.: esgoto 75 ou ESG…"
-                aria-label="Buscar produto para conciliar"
-                aria-busy={carregandoBusca}
-                value={buscaProduto}
-                onFocus={(e) => e.currentTarget.select()}
-                onChange={(e) => onBuscaChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') onBuscar()
-                }}
-              />
-              {carregandoBusca ? (
-                <span
-                  className="inline-flex items-center px-2 text-muted-foreground"
-                  aria-live="polite"
-                >
-                  <Loader2 className="size-4 animate-spin" aria-hidden />
-                  <span className="sr-only">Buscando…</span>
-                </span>
-              ) : null}
-              <Button type="button" size="sm" variant="ghost" onClick={onFecharBusca}>
-                Fechar
-              </Button>
-            </div>
-            <ul className="max-h-40 space-y-1 overflow-y-auto">
-              {produtos.length > 0 ? (
-                <li className="px-2 py-0.5" aria-hidden>
-                  <CabecalhoOpcaoProduto className="border-0 px-0 py-0.5" />
-                </li>
-              ) : null}
-              {produtos.map((p) => (
-                <li
-                  key={p.id}
-                  className="flex items-center justify-between gap-2 rounded px-2 py-1 hover:bg-muted"
-                >
-                  <LinhaOpcaoProduto
-                    sku={p.sku}
-                    nome={p.nomeVenda}
-                    termoBusca={buscaProduto}
-                    complemento={
-                      p.marca?.trim() ? (
-                        <span className="ml-1.5 text-xs text-muted-foreground">
-                          · {p.marca.trim()}
-                        </span>
-                      ) : null
-                    }
-                    className="text-left"
-                  />
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={acao}
-                    onClick={() => void onVincular(p.id)}
-                  >
-                    Conciliar
-                  </Button>
-                </li>
-              ))}
-              {!carregandoBusca && produtos.length === 0 && (
-                <li className="px-2 py-1 text-xs text-muted-foreground">
-                  {buscaProduto.trim().length < 2
-                    ? 'Digite pelo menos 2 caracteres para buscar.'
-                    : 'Nenhum produto ainda — continue digitando ou refine as palavras-chave.'}
-                </li>
-              )}
-              {carregandoBusca && produtos.length === 0 && (
-                <li className="px-2 py-1 text-xs text-muted-foreground">Buscando…</li>
-              )}
-            </ul>
           </div>
         )}
       </div>

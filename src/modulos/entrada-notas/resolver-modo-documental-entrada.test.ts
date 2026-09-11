@@ -97,9 +97,9 @@ describe('finalidadeUnicaDoFornecedor', () => {
 })
 
 describe('resolverFinalidadePreMarcacao', () => {
-  it('null + único tipo → não grava (clique obrigatório)', () => {
-    expect(resolverFinalidadePreMarcacao(null, { tipoRevenda: true })).toBeUndefined()
-    expect(resolverFinalidadePreMarcacao(null, { tipoConsumo: true })).toBeUndefined()
+  it('null + único tipo → grava o único', () => {
+    expect(resolverFinalidadePreMarcacao(null, { tipoRevenda: true })).toBe('revenda')
+    expect(resolverFinalidadePreMarcacao(null, { tipoConsumo: true })).toBe('uso_consumo')
   })
 
   it('null + dois tipos → não grava', () => {
@@ -115,8 +115,8 @@ describe('resolverFinalidadePreMarcacao', () => {
     ).toBeUndefined()
   })
 
-  it('marcada inválida + único tipo → limpa (não pré-marca o único)', () => {
-    expect(resolverFinalidadePreMarcacao('revenda', { tipoConsumo: true })).toBe(null)
+  it('marcada inválida + único tipo → grava o único', () => {
+    expect(resolverFinalidadePreMarcacao('revenda', { tipoConsumo: true })).toBe('uso_consumo')
   })
 
   it('marcada inválida sem único → limpa', () => {

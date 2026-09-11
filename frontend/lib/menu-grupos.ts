@@ -44,12 +44,12 @@ export const GRUPOS_DO_MENU: readonly GrupoDoMenu[] = [
   {
     id: 'compras',
     rotulo: 'Compras',
-    chaves: ['pedidos-compra', 'entrada-notas', 'contagens', 'auditoria-entradas'],
+    chaves: ['pedidos-compra', 'entrada-notas', 'auditoria-entradas'],
   },
   {
-    id: 'estoque',
-    rotulo: 'Estoque',
-    chaves: ['estoque', 'enderecos-wms'],
+    id: 'logistica',
+    rotulo: 'Logística',
+    chaves: ['contagens', 'estoque', 'enderecos-wms'],
   },
   {
     id: 'financeiro',

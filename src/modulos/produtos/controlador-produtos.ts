@@ -37,6 +37,7 @@ async function listarProdutos(requisicao: FastifyRequest, resposta: FastifyReply
   const companyId = requisicao.empresaAtivaId || ''
   const {
     q,
+    marca,
     incluirInativos,
     resumo,
     pagina,
@@ -46,6 +47,7 @@ async function listarProdutos(requisicao: FastifyRequest, resposta: FastifyReply
     direcao,
   } = requisicao.query as {
     q?: string
+    marca?: string
     incluirInativos?: string
     resumo?: string
     pagina?: string
@@ -57,6 +59,7 @@ async function listarProdutos(requisicao: FastifyRequest, resposta: FastifyReply
 
   const resultado = await servicoDeProdutos.listarProdutos(companyId, {
     busca: q,
+    marca,
     incluirInativos: incluirInativos === 'true',
     resumo: resumo === 'true',
     pagina: pagina ? parseInt(pagina, 10) : undefined,

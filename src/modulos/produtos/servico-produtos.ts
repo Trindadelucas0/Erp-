@@ -117,6 +117,7 @@ async function listarProdutos(
   companyId: string,
   filtros: {
     busca?: string
+    marca?: string
     incluirInativos?: boolean
     resumo?: boolean
     pagina?: number

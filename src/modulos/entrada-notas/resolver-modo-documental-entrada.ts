@@ -1,7 +1,7 @@
 /**
  * Modo documental da Entrada: NFS-e sempre; NFe 55 só com finalidade da nota
- * `uso_consumo`. Flags do fornecedor só habilitam as opções. Sempre clique
- * explícito — nunca pré-marca, mesmo com um só tipo. Clique na marcada desmarca.
+ * `uso_consumo`. Flags do fornecedor habilitam as opções. Tipo único no cadastro
+ * pré-marca a nota; dois tipos exigem clique. Desmarcar só com dois tipos.
  */
 export type FlagsFornecedorEntrada = {
   tipoRevenda?: boolean | null
@@ -15,6 +15,9 @@ export const FINALIDADES_ENTRADA = ['revenda', 'uso_consumo'] as const
 export type FinalidadeEntrada = (typeof FINALIDADES_ENTRADA)[number]
 
 export const MSG_FINALIDADE_ENTRADA = 'Defina a finalidade da entrada'
+
+export const MSG_FINALIDADE_UNICA_NAO_DESMARCA =
+  'O cadastro do fornecedor tem um só tipo. Para trocar, habilite o outro tipo em Fornecedores.'
 
 export const STATUS_PERMITE_TROCA_FINALIDADE = [
   'pendente',
@@ -49,8 +52,8 @@ export function finalidadeHabilitadaNoFornecedor(
 }
 
 /**
- * Quando o cadastro habilita exatamente uma finalidade. Só consulta — o pipeline
- * **não** grava esse valor na nota (clique obrigatório).
+ * Quando o cadastro habilita exatamente uma finalidade. O pipeline grava esse
+ * valor na nota se ela estiver vazia ou inválida.
  */
 export function finalidadeUnicaDoFornecedor(
   flags: FlagsFornecedorEntrada | null | undefined
@@ -64,18 +67,21 @@ export function finalidadeUnicaDoFornecedor(
 }
 
 /**
- * Ajuste de finalidade a partir do cadastro: **nunca** pré-marca o tipo único.
- * Só limpa valor inválido para as flags atuais (força novo clique).
+ * Ajuste de finalidade a partir do cadastro: grava o tipo único se a nota
+ * estiver vazia ou inválida. Dois tipos: não grava; inválida sem único → limpa.
  */
 export function resolverFinalidadePreMarcacao(
   finalidadeAtual: string | null | undefined,
   flags: FlagsFornecedorEntrada | null | undefined
 ): FinalidadeEntrada | null | undefined {
   const atual = ehFinalidadeEntrada(finalidadeAtual) ? finalidadeAtual : null
+  const unica = finalidadeUnicaDoFornecedor(flags)
 
-  if (atual && !finalidadeHabilitadaNoFornecedor(atual, flags)) {
-    return null
+  if (atual && finalidadeHabilitadaNoFornecedor(atual, flags)) {
+    return undefined
   }
+  if (unica) return unica
+  if (atual) return null
   return undefined
 }
 

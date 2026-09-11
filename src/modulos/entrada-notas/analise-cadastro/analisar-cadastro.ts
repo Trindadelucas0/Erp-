@@ -52,8 +52,8 @@ export async function analisarCadastro(params: {
    */
   exigirVinculoProduto?: boolean
   /**
-   * NFe 55 sem finalidade escolhida: Cadastro bloqueante; não assume revenda
-   * (não exige vínculo de produto até o operador clicar).
+   * NFe 55 sem finalidade na nota: Cadastro bloqueante; não assume revenda
+   * (não exige vínculo de produto até haver finalidade).
    */
   finalidadePendente?: boolean
   /**

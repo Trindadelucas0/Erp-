@@ -96,6 +96,7 @@ export function ConteudoDaPaginaCfops() {
   )
 
   const cfopEhSaida = classificacaoAtual?.tipo === 'saida'
+  const cfopEhEntrada = classificacaoAtual?.tipo === 'entrada'
 
   useEffect(() => {
     const timer = setTimeout(() => setBuscaDebounced(busca), 300)
@@ -215,7 +216,7 @@ export function ConteudoDaPaginaCfops() {
         subtipoCfop: form.subtipoCfop,
         aproveitarCreditoIcms: form.aproveitarCreditoIcms,
         cfopSugestaoEntradaId: cfopEhSaida ? form.cfopSugestaoEntrada?.id ?? null : null,
-        planoFinanceiroPadraoId: cfopEhSaida ? form.planoFinanceiroPadraoId || null : null,
+        planoFinanceiroPadraoId: cfopEhEntrada ? form.planoFinanceiroPadraoId || null : null,
       }
 
       if (modoEdicao) {
@@ -392,7 +393,7 @@ export function ConteudoDaPaginaCfops() {
                 cfopSugestaoEntrada:
                   classificacao?.tipo === 'saida' ? f.cfopSugestaoEntrada : null,
                 planoFinanceiroPadraoId:
-                  classificacao?.tipo === 'saida' ? f.planoFinanceiroPadraoId : '',
+                  classificacao?.tipo === 'entrada' ? f.planoFinanceiroPadraoId : '',
               }))
             }}
             aoMudarNome={(v) => setForm((f) => ({ ...f, nome: v }))}
@@ -434,33 +435,34 @@ export function ConteudoDaPaginaCfops() {
               </SecaoFormularioErp>
 
               {cfopEhSaida && (
-                <>
-                  <CampoLookupCatalogo
-                    rotulo="CFOP de sugestão na entrada de notas"
-                    endpoint="/cfops"
-                    queryParams="tipo=entrada"
-                    valor={form.cfopSugestaoEntrada}
-                    aoSelecionar={(v) => setForm((f) => ({ ...f, cfopSugestaoEntrada: v }))}
+                <CampoLookupCatalogo
+                  rotulo="CFOP de sugestão na entrada de notas"
+                  endpoint="/cfops"
+                  queryParams="tipo=entrada"
+                  valor={form.cfopSugestaoEntrada}
+                  aoSelecionar={(v) => setForm((f) => ({ ...f, cfopSugestaoEntrada: v }))}
+                  disabled={salvando}
+                />
+              )}
+
+              {cfopEhEntrada && (
+                <SecaoFormularioErp titulo="Financeiro">
+                  <p className="mb-3 text-xs text-muted-foreground">
+                    Plano financeiro padrão associado a este CFOP de entrada. O campo só aparece
+                    para códigos de entrada (1, 2 ou 3).
+                  </p>
+                  <ComboboxPlanoFinanceiro
+                    rotulo="Plano financeiro padrão"
+                    planos={planosFinanceiros}
+                    valor={form.planoFinanceiroPadraoId}
+                    aoMudar={(planoId) =>
+                      setForm((f) => ({ ...f, planoFinanceiroPadraoId: planoId }))
+                    }
                     disabled={salvando}
+                    permitirVazio
+                    obrigatorio={false}
                   />
-                  <SecaoFormularioErp titulo="Financeiro">
-                    <p className="mb-3 text-xs text-muted-foreground">
-                      Plano financeiro padrão associado a este CFOP de saída. O campo só aparece
-                      para códigos de saída (5, 6 ou 7).
-                    </p>
-                    <ComboboxPlanoFinanceiro
-                      rotulo="Plano financeiro padrão"
-                      planos={planosFinanceiros}
-                      valor={form.planoFinanceiroPadraoId}
-                      aoMudar={(planoId) =>
-                        setForm((f) => ({ ...f, planoFinanceiroPadraoId: planoId }))
-                      }
-                      disabled={salvando}
-                      permitirVazio
-                      obrigatorio={false}
-                    />
-                  </SecaoFormularioErp>
-                </>
+                </SecaoFormularioErp>
               )}
 
               <SecaoFormularioErp titulo="Características opcionais">
