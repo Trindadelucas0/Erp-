@@ -27,7 +27,8 @@ import {
 import { BarraCarregamentoDownload } from '@/components/entrada-notas/barra-carregamento-download'
 import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { classesCampoLista, classesCampoBase } from '@/components/ui/classes-campo'
-import { atributosCampoBuscaLista } from '@/lib/atributos-campo-busca-lista'
+import { CampoBuscaLista } from '@/components/compartilhado/campo-busca-lista'
+import { buscaListaPareceEmail } from '@/lib/atributos-campo-busca-lista'
 import { cn } from '@/lib/utils'
 import { Loader2 } from 'lucide-react'
 
@@ -212,7 +213,10 @@ function lerFiltrosSalvos(): FiltrosEntradaSalvos | null {
       painel: painelValidos.includes(parsed.painel as PainelEntrada)
         ? (parsed.painel as PainelEntrada)
         : 'analise',
-      busca: typeof parsed.busca === 'string' ? parsed.busca : '',
+      busca:
+        typeof parsed.busca === 'string' && !buscaListaPareceEmail(parsed.busca)
+          ? parsed.busca
+          : '',
     }
   } catch {
     return null
@@ -375,8 +379,19 @@ function ConteudoEntradaNotas() {
 
   useEffect(() => {
     if (!filtrosProntos) return
-    gravarFiltrosSalvos({ dataDe, dataAte, painel, busca })
+    gravarFiltrosSalvos({
+      dataDe,
+      dataAte,
+      painel,
+      busca: buscaListaPareceEmail(busca) ? '' : busca,
+    })
   }, [dataDe, dataAte, painel, busca, filtrosProntos])
+
+  useEffect(() => {
+    if (!buscaListaPareceEmail(busca)) return
+    setBusca('')
+    setBuscaDebounced('')
+  }, [busca])
 
   useEffect(() => {
     const t = setTimeout(() => setBuscaDebounced(busca.trim()), 300)
@@ -584,7 +599,7 @@ function ConteudoEntradaNotas() {
       }
       if ((loteCte.ctesCanceladosTomador ?? 0) > 0) {
         partes.push(
-          `${loteCte.ctesCanceladosTomador} CT-e(s) cancelado(s) (tomador ≠ empresa).`
+          `${loteCte.ctesCanceladosTomador} CT-e(s) fora do fluxo (tomador ≠ empresa).`
         )
       }
       setMensagem(partes.length > 0 ? partes.join(' ') : 'Busca concluída.')
@@ -1096,13 +1111,12 @@ function ConteudoEntradaNotas() {
         <div className="mb-3 flex min-w-0 flex-wrap items-end gap-3">
           <div className="min-w-0 w-full flex-1 space-y-1 sm:min-w-[12rem]">
             <Label htmlFor="filtro-busca">Pesquisar na lista</Label>
-            <input
+            <CampoBuscaLista
               id="filtro-busca"
-              {...atributosCampoBuscaLista('busca-lista-entrada-notas')}
+              nomeCampo="busca-lista-entrada-notas"
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               placeholder="Emitente, valor ou chave (banco local)…"
-              className={classesCampoLista}
             />
           </div>
           <div className="min-w-0 w-full space-y-1 sm:w-auto">
@@ -1539,6 +1553,7 @@ function ConteudoEntradaNotas() {
           <input
             id="senha-baixar-lista"
             type="password"
+            autoComplete="new-password"
             className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm"
             value={senhaBaixar}
             onChange={(e) => setSenhaBaixar(e.target.value)}

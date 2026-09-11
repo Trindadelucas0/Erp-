@@ -1221,11 +1221,43 @@ async function analisarNotaDocumental(
     return await obterDetalhe(companyId, notaId)
   }
 
+  // Recorrência casada: grava vínculo + sugere plano, mas NÃO consolida sem CFOP (§7.12 / §7.23).
   if (decisaoRec.acao === 'casou') {
     await repositorioEntradaNotas.atualizarNota(notaId, {
       recorrenciaFinanceiraId: decisaoRec.recorrenciaId,
     })
     await sugerirPlanoFinanceiroNaNota(companyId, notaId)
+  }
+
+  nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+
+  if (!nota.cfopEntradaId) {
+    analise.autoLancado = false
+    analise.motivoParada = 'fiscal'
+    analise.fiscal = {
+      status: 'bloqueante',
+      avisos: [],
+      bloqueios: [MSG_CFOP_ENTRADA_DOCUMENTO],
+    }
+    if (decisaoRec.acao === 'casou') {
+      analise.negociacao = {
+        status: 'ok',
+        avisos: [
+          'Recorrência casada — defina o CFOP de entrada para consolidar e gerar o título.',
+        ],
+        bloqueios: [],
+      }
+    }
+    await repositorioEntradaNotas.atualizarNota(notaId, {
+      analiseJson: asJson(analise),
+      etapaAtual: 'servico',
+      statusEntrada: 'em_analise',
+    })
+    return await obterDetalhe(companyId, notaId)
+  }
+
+  if (decisaoRec.acao === 'casou') {
     await consolidarDocumentalPorRecorrencia(companyId, notaId)
     analise.motivoParada = null
     analise.negociacao = {
@@ -1240,25 +1272,6 @@ async function analisarNotaDocumental(
     await repositorioEntradaNotas.atualizarNota(notaId, {
       analiseJson: asJson(analise),
       etapaAtual: 'lancamento',
-    })
-    return await obterDetalhe(companyId, notaId)
-  }
-
-  nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
-  if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
-
-  if (!nota.cfopEntradaId) {
-    analise.autoLancado = false
-    analise.motivoParada = 'fiscal'
-    analise.fiscal = {
-      status: 'bloqueante',
-      avisos: [],
-      bloqueios: [MSG_CFOP_ENTRADA_DOCUMENTO],
-    }
-    await repositorioEntradaNotas.atualizarNota(notaId, {
-      analiseJson: asJson(analise),
-      etapaAtual: 'servico',
-      statusEntrada: 'em_analise',
     })
     return await obterDetalhe(companyId, notaId)
   }
@@ -1806,17 +1819,35 @@ async function analisarNota(
     await lancarContagem(notaId, 'automatica', statusDestino)
   }
 
+  // Auto-consolidar só com CFOP do documento (§7.12) — mesmo se a rota documental
+  // já tiver passado; financeiro/vencimento já foi validado em avaliarRecorrenciaNoPipeline.
   if (decisaoRecNfe.acao === 'casou' && decisaoRecNfe.autoConsolidar) {
-    await consolidarDocumentalPorRecorrencia(companyId, notaId)
-    analise.negociacao = {
-      status: 'ok',
-      avisos: [
-        ...(analise.negociacao?.avisos ?? []),
-        decisaoRecNfe.produtoNome
-          ? `Recorrência casada (${decisaoRecNfe.produtoNome}) — entrada consolidada e título gerado.`
-          : 'Recorrência casada — entrada consolidada e título gerado.',
-      ],
-      bloqueios: [],
+    nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+    if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
+    if (!nota.cfopEntradaId) {
+      analise.autoLancado = false
+      analise.motivoParada = 'fiscal'
+      analise.fiscal = {
+        status: 'bloqueante',
+        avisos: [],
+        bloqueios: [MSG_CFOP_ENTRADA_DOCUMENTO],
+      }
+      await repositorioEntradaNotas.atualizarNota(notaId, {
+        statusEntrada: 'em_analise',
+        etapaAtual: 'servico',
+      })
+    } else {
+      await consolidarDocumentalPorRecorrencia(companyId, notaId)
+      analise.negociacao = {
+        status: 'ok',
+        avisos: [
+          ...(analise.negociacao?.avisos ?? []),
+          decisaoRecNfe.produtoNome
+            ? `Recorrência casada (${decisaoRecNfe.produtoNome}) — entrada consolidada e título gerado.`
+            : 'Recorrência casada — entrada consolidada e título gerado.',
+        ],
+        bloqueios: [],
+      }
     }
   }
 

@@ -4,6 +4,7 @@ import {
   normalizarTermoBusca,
   segmentarTextoPorTermo,
   textoContemTermo,
+  textoContemTermoIgnorandoPontos,
   textoContemTodosTermos,
   textosContemTodosTermos,
   tokensBusca,
@@ -36,6 +37,13 @@ describe('normalizar-busca', () => {
 
   it('ignora acentos', () => {
     expect(textoContemTermo('São Paulo', 'sao')).toBe(true)
+  })
+
+  it('ignora ponto visual no SKU e no nome', () => {
+    expect(textoContemTermoIgnorandoPontos('9325', '9.325')).toBe(true)
+    expect(textoContemTermoIgnorandoPontos('9.325', '9325')).toBe(true)
+    expect(textoContemTermoIgnorandoPontos('LAMPADA LED 6.500K', '6500')).toBe(true)
+    expect(textoContemTermo('9325', '9.325')).toBe(false)
   })
 
   it('retorna true para termo vazio', () => {

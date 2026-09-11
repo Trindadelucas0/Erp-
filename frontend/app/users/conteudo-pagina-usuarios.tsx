@@ -36,12 +36,10 @@ import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-orden
 import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
 import { ordenarLista } from '@/lib/ordenacao-lista'
 import { textosContemTodosTermos } from '@/lib/normalizar-busca'
-import { cn } from '@/lib/utils'
 import { Checkbox } from '@/components/ui/checkbox'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Select, classesOption } from '@/components/ui/select'
-import { classesCampoLista } from '@/components/ui/classes-campo'
-import { atributosCampoBuscaLista } from '@/lib/atributos-campo-busca-lista'
+import { CampoBuscaLista } from '@/components/compartilhado/campo-busca-lista'
 import { Modal } from '@/components/ui/modal'
 import { Abas } from '@/components/ui/abas'
 import { Separator } from '@/components/ui/separator'
@@ -1080,13 +1078,13 @@ export function ConteudoDaPaginaDeUsuarios() {
       >
         {/* Barra de busca e filtros */}
         <div className="mb-4 flex flex-wrap gap-2">
-          <input
+          <CampoBuscaLista
             ref={refBusca}
-            {...atributosCampoBuscaLista('busca-lista-usuarios')}
+            nomeCampo="busca-lista-usuarios"
             value={termoBusca}
             onChange={(e) => setTermoBusca(e.target.value)}
             placeholder="Buscar por nome ou e-mail..."
-            className={cn(classesCampoLista, 'min-w-[200px] flex-1')}
+            className="min-w-[200px] flex-1"
           />
           <Select
             className="h-9 w-auto"

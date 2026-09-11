@@ -26,6 +26,22 @@ const produtos: ProdutoOpcao[] = [
     codigoBarras: null,
     codigosBarrasEmbalagem: [],
   },
+  {
+    id: '4',
+    nomeVenda: 'LAMPADA LED 6.500K',
+    sku: '9325',
+    unidade: 'UN',
+    codigoBarras: null,
+    codigosBarrasEmbalagem: [],
+  },
+  {
+    id: '5',
+    nomeVenda: 'CHAVE FENDA 1.1/2',
+    sku: '9.325',
+    unidade: 'UN',
+    codigoBarras: null,
+    codigosBarrasEmbalagem: [],
+  },
 ]
 
 function gerarProdutos(quantidade: number): ProdutoOpcao[] {
@@ -88,5 +104,15 @@ describe('filtrarProdutos', () => {
   it('permite tokens em campos diferentes (nome + sku)', () => {
     expect(filtrarProdutos(produtos, 'tubo esg75')).toHaveLength(1)
     expect(filtrarProdutos(produtos, 'tubo esg75')[0]?.id).toBe('3')
+  })
+
+  it('acha SKU digitando com ou sem ponto', () => {
+    expect(filtrarProdutos(produtos, '9.325').map((p) => p.id).sort()).toEqual(['4', '5'])
+    expect(filtrarProdutos(produtos, '9325').map((p) => p.id).sort()).toEqual(['4', '5'])
+  })
+
+  it('acha nome com ponto de milhar ou polegada sem digitar o ponto', () => {
+    expect(filtrarProdutos(produtos, '6500')[0]?.id).toBe('4')
+    expect(filtrarProdutos(produtos, '11/2')[0]?.id).toBe('5')
   })
 })

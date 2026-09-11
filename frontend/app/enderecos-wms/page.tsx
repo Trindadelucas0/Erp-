@@ -21,7 +21,7 @@ import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-orden
 import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
 import { ordenarLista } from '@/lib/ordenacao-lista'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
-import { atributosCampoBuscaLista } from '@/lib/atributos-campo-busca-lista'
+import { CampoBuscaLista } from '@/components/compartilhado/campo-busca-lista'
 import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
 import {
   completarDoisDigitos,
@@ -464,12 +464,12 @@ function ConteudoEnderecosWms() {
         }
       >
         <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <InputPadrao
+          <CampoBuscaLista
             rotulo="Buscar"
+            nomeCampo="busca-lista-enderecos-wms"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Código, RC, recebimento…"
-            {...atributosCampoBuscaLista('busca-lista-enderecos-wms')}
           />
           <SelectPadrao
             rotulo="Local"

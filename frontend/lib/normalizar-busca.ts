@@ -94,6 +94,14 @@ export function textoContemTermo(texto: string, termo: string): boolean {
   return normalizarTermoBusca(texto).includes(termoNormalizado)
 }
 
+/** Como textoContemTermo, mas `9.325` casa `9325` e `6.500K` casa `6500`. */
+export function textoContemTermoIgnorandoPontos(texto: string, termo: string): boolean {
+  if (textoContemTermo(texto, termo)) return true
+  const termoSemPonto = normalizarTermoBusca(termo).replace(/\./g, '')
+  if (!termoSemPonto) return true
+  return normalizarTermoBusca(texto).replace(/\./g, '').includes(termoSemPonto)
+}
+
 /**
  * Regra §7.11 — todas as palavras do termo devem aparecer no texto
  * (AND; ordem irrelevante; trecho parcial).

@@ -206,10 +206,14 @@ async function listarNfesPorPainel(
     buscaFiltro = { OR: or }
   }
 
+  /** Canceladas: só NFe/NFS-e. CT-e tomador ≠ empresa fica cancelado no banco, sem painel. */
+  const tipoFiltro = painel === 'cancelada' ? { tipoDocumento: { not: 'cte' } } : {}
+
   return clientePrisma.nfeRecebida.findMany({
     where: {
       companyId,
       statusEntrada: { in: statuses },
+      ...tipoFiltro,
       ...dataFiltro,
       ...buscaFiltro,
     },
@@ -250,6 +254,7 @@ async function contarCtesForaDoFiltroData(
   }
 ): Promise<number> {
   if (!filtros.dataDe && !filtros.dataAte) return 0
+  if (filtros.painel === 'cancelada') return 0
 
   const painel = filtros.painel ?? 'analise'
   const statusPorPainel: Record<string, string[]> = {

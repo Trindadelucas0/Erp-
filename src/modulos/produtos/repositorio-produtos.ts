@@ -5,7 +5,7 @@ import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js
 import type { Prisma } from '@prisma/client'
 import type { DadosParaCriarProduto, DadosParaEditarProduto } from './esquema-produtos.js'
 import { urlPublicaFoto } from './armazenamento-foto-produto.js'
-import { normalizarSkuProduto } from './normalizar-sku.js'
+import { normalizarSkuProduto, tokenExigeBuscaSemPonto } from './normalizar-sku.js'
 import { proximoSkuNumerico } from './sku-sequencial.js'
 import {
   calcularSkipProdutos,
@@ -16,7 +16,14 @@ import {
   type CampoOrdenacaoProdutos,
   type DirecaoOrdenacaoProdutos,
 } from './paginacao-produtos.js'
-import { montarFiltroBuscaTextual } from '../../compartilhado/utilitarios/filtro-busca-textual.js'
+import {
+  montarFiltroBuscaTextual,
+  tokensBusca,
+} from '../../compartilhado/utilitarios/filtro-busca-textual.js'
+import {
+  escaparCuringasLike,
+  orProdutoPorToken,
+} from './filtro-busca-produto.js'
 
 export type FiltrosListagemProdutos = {
   busca?: string
@@ -313,30 +320,37 @@ function mapearProdutoLista(produto: ProdutoListaDb, companyId: string) {
   }
 }
 
-function orProdutoPorToken(token: string): Prisma.ProdutoWhereInput {
-  return {
-    OR: [
-      { nomeVenda: { contains: token, mode: 'insensitive' } },
-      { sku: { contains: token, mode: 'insensitive' } },
-      { codigoBarras: { contains: token, mode: 'insensitive' } },
-      { marca: { contains: token, mode: 'insensitive' } },
-      {
-        embalagensMaster: {
-          some: {
-            codigoBarras: { contains: token, mode: 'insensitive' },
-          },
-        },
-      },
-    ],
-  }
+async function idsProdutoCamposSemPonto(
+  companyId: string,
+  token: string
+): Promise<string[]> {
+  const semPonto = escaparCuringasLike(token.replace(/\./g, ''))
+  if (!semPonto || !tokenExigeBuscaSemPonto(token)) return []
+  const like = `%${semPonto}%`
+  const linhas = await clientePrisma.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "Produto"
+    WHERE "companyId" = ${companyId}
+      AND (
+        replace(coalesce("sku", ''), '.', '') ILIKE ${like}
+        OR replace("nomeVenda", '.', '') ILIKE ${like}
+      )
+  `
+  return linhas.map((linha) => linha.id)
 }
 
-function montarWhereListagem(
+async function montarWhereListagem(
   companyId: string,
   filtros: FiltrosListagemProdutos
-): Prisma.ProdutoWhereInput {
+): Promise<Prisma.ProdutoWhereInput> {
   const ids = parseIdsProdutos(filtros.ids)
-  const filtroBusca = montarFiltroBuscaTextual(filtros.busca, orProdutoPorToken)
+  const tokens = tokensBusca(filtros.busca)
+  const idsPorToken = await Promise.all(
+    tokens.map((token) => idsProdutoCamposSemPonto(companyId, token))
+  )
+  let indiceToken = 0
+  const filtroBusca = montarFiltroBuscaTextual(filtros.busca, (token) =>
+    orProdutoPorToken(token, idsPorToken[indiceToken++] ?? [])
+  )
 
   return {
     companyId,
@@ -357,7 +371,7 @@ async function listarPorEmpresa(
   companyId: string,
   filtros: FiltrosListagemProdutos = {}
 ): Promise<ResultadoListagemProdutos> {
-  const where = montarWhereListagem(companyId, filtros)
+  const where = await montarWhereListagem(companyId, filtros)
   const ids = parseIdsProdutos(filtros.ids)
   const { ordenarPor, direcao } = normalizarOrdenacaoProdutos(
     filtros.ordenarPor,

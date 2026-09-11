@@ -25,6 +25,7 @@ import {
   xmlNfeTemItensParseaveis,
 } from './parser-xml-nfe.js'
 import { repositorioFocusNfe } from './repositorio-focus-nfe.js'
+import type { PainelEntradaListagem } from './paineis-entrada-listagem.js'
 import {
   detectarPdfAuxiliarLegado,
   lerDanfePorCaminho,
@@ -1133,7 +1134,7 @@ async function listarPendentes(
   filtros?: {
     dataDe?: string
     dataAte?: string
-    painel?: 'analise' | 'aguardando_chegada' | 'contagem' | 'consolidada' | 'problemas' | 'cancelada'
+    painel?: PainelEntradaListagem
     busca?: string
   }
 ) {
@@ -1976,7 +1977,7 @@ async function reprocessarXmlsLocaisComContexto(companyId: string) {
       xmlCompletadosFocus > 0 ||
       vinculosReparados > 0 ||
       ctesCanceladosTomador > 0
-        ? `${ok} nota(s) reprocessada(s); ${xmlCompletadosFocus} XML Focus; ${vinculadas} fornecedor(es); ${vinculosCte.vinculados} CT-e(s) vinculado(s); ${ctesCanceladosTomador} CT-e(s) cancelado(s) (tomador); ${vinculosReparados} vínculo(s) CT-e corrigido(s)${vinculosCte.importadosFocus > 0 ? ` (${vinculosCte.importadosFocus} NF via Focus)` : ''}.`
+        ? `${ok} nota(s) reprocessada(s); ${xmlCompletadosFocus} XML Focus; ${vinculadas} fornecedor(es); ${vinculosCte.vinculados} CT-e(s) vinculado(s); ${ctesCanceladosTomador} CT-e(s) fora do fluxo (tomador ≠ empresa); ${vinculosReparados} vínculo(s) CT-e corrigido(s)${vinculosCte.importadosFocus > 0 ? ` (${vinculosCte.importadosFocus} NF via Focus)` : ''}.`
         : `${ok} nota(s) reprocessada(s) a partir do XML salvo (emitente, data, valor).`,
   }
 }

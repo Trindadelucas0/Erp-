@@ -15,7 +15,7 @@ import {
   useInstanciaDropdownCatalogo,
   useOuvirFechamentoDropdownCatalogo,
 } from '@/lib/dropdown-catalogo'
-import { textoContemTermo, tokensBusca } from '@/lib/normalizar-busca'
+import { textoContemTermo, textoContemTermoIgnorandoPontos, tokensBusca } from '@/lib/normalizar-busca'
 import { resolverUrlUpload } from '@/lib/resolver-url-upload'
 import { normalizarCodigoBarrasGtin } from '@/lib/validar-codigo-barras-gtin'
 import { cn } from '@/lib/utils'
@@ -72,8 +72,8 @@ export function filtrarProdutos(produtos: ProdutoOpcao[], termo: string) {
   return produtos.filter((p) =>
     tokens.every(
       (token) =>
-        textoContemTermo(p.nomeVenda, token) ||
-        (p.sku ? textoContemTermo(p.sku, token) : false) ||
+        textoContemTermoIgnorandoPontos(p.nomeVenda, token) ||
+        (p.sku ? textoContemTermoIgnorandoPontos(p.sku, token) : false) ||
         codigoBarrasCorresponde(p.codigoBarras, token) ||
         Boolean(
           p.codigosBarrasEmbalagem?.some((codigo) => codigoBarrasCorresponde(codigo, token))

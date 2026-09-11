@@ -93,6 +93,13 @@ vi.mock('../recorrencias-financeiras/repositorio-recorrencias-financeiras.js', (
   },
 }))
 
+vi.mock('../contas-a-pagar/resolver-parcelas-recorrencia.js', () => ({
+  resolverParcelasRecorrencia: vi.fn().mockResolvedValue({
+    ok: true,
+    parcelas: [{ vencimento: '2026-09-15', valor: 100 }],
+  }),
+}))
+
 vi.mock('../contas-a-pagar/resolver-plano-financeiro-entrada.js', () => ({
   resolverPlanoFinanceiroEntrada: vi.fn().mockResolvedValue(null),
   cfopEntradaPrevalenteDosItens: vi.fn(),
@@ -117,6 +124,7 @@ import { servicoEntradaNotas } from './servico-pipeline-entrada.js'
 import { gerarTitulosContasPagarDaEntrada } from '../contas-a-pagar/gerar-titulos-entrada.js'
 import { servicoDeEstoque } from '../estoque/servico-estoque.js'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
+import { repositorioDeRecorrenciasFinanceiras } from '../recorrencias-financeiras/repositorio-recorrencias-financeiras.js'
 
 function itemComProduto(produtoId: string, quantidade: number, overrides: Record<string, unknown> = {}) {
   return {
@@ -246,15 +254,19 @@ function notaLancada(overrides: Record<string, unknown> = {}) {
 function ligarRepositorioFake(estadoInicial: Record<string, unknown>) {
   let notaEstado = { ...estadoInicial }
 
-  vi.mocked(repositorioEntradaNotas.buscarNotaCompleta).mockImplementation(
-    async () => JSON.parse(JSON.stringify(notaEstado)) as never
-  )
-  vi.mocked(repositorioEntradaNotas.buscarNotaPorId).mockImplementation(
-    async () => JSON.parse(JSON.stringify(notaEstado)) as never
-  )
+  function snapshot() {
+    const copia = JSON.parse(JSON.stringify(notaEstado)) as Record<string, unknown>
+    if (typeof copia.dataEmissao === 'string') {
+      copia.dataEmissao = new Date(copia.dataEmissao)
+    }
+    return copia as never
+  }
+
+  vi.mocked(repositorioEntradaNotas.buscarNotaCompleta).mockImplementation(async () => snapshot())
+  vi.mocked(repositorioEntradaNotas.buscarNotaPorId).mockImplementation(async () => snapshot())
   vi.mocked(repositorioEntradaNotas.atualizarNota).mockImplementation(async (_id, dados) => {
     notaEstado = { ...notaEstado, ...dados } as typeof notaEstado
-    return JSON.parse(JSON.stringify(notaEstado)) as never
+    return snapshot()
   })
   vi.mocked(repositorioEntradaNotas.atualizarItem).mockResolvedValue(undefined as never)
   vi.mocked(repositorioEntradaNotas.contarItens).mockResolvedValue(1)
@@ -278,6 +290,19 @@ function ligarAnaliseSempreOk() {
     resultado: { status: 'ok', avisos: [], bloqueios: [] },
     itensCritica: [],
   } as never)
+}
+
+function ligarRecorrenciaCasada(valor = 100) {
+  vi.mocked(repositorioDeRecorrenciasFinanceiras.listarAtivasPorFornecedor).mockResolvedValue([
+    {
+      id: 'rec-1',
+      valor,
+      periodicidade: 'mensal',
+      competenciaInicio: '2026-01',
+      competenciaFim: null,
+      diaVencimento: 10,
+    },
+  ] as never)
 }
 
 describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)', () => {
@@ -607,6 +632,78 @@ describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)'
 
     expect(fake.getEstado().statusEntrada).toBe('em_analise')
     expect(detalhe.nota.statusEntrada).toBe('em_analise')
+  })
+
+  it('NFS-e com recorrência casada sem CFOP permanece em análise (não pula para consolidadas)', async () => {
+    ligarAnaliseSempreOk()
+    ligarRecorrenciaCasada(150)
+    const fake = ligarRepositorioFake(
+      notaNfse({
+        cfopEntradaId: null,
+        valorTotal: 150,
+        dataEmissao: new Date('2026-09-05T12:00:00-03:00'),
+        fornecedorPessoaId: 'pessoa-a',
+      })
+    )
+
+    const detalhe = await servicoEntradaNotas.analisarNota('c1', 'nota-1', {
+      importarFocusSeAusente: false,
+    })
+
+    expect(fake.getEstado().statusEntrada).toBe('em_analise')
+    expect(fake.getEstado().recorrenciaFinanceiraId).toBe('rec-1')
+    expect(detalhe.nota.statusEntrada).toBe('em_analise')
+    expect(gerarTitulosContasPagarDaEntrada).not.toHaveBeenCalled()
+  })
+
+  it('NFS-e com recorrência casada + CFOP auto-consolida', async () => {
+    ligarAnaliseSempreOk()
+    ligarRecorrenciaCasada(150)
+    const fake = ligarRepositorioFake(
+      notaNfse({
+        cfopEntradaId: 'cfop-ent',
+        valorTotal: 150,
+        dataEmissao: new Date('2026-09-05T12:00:00-03:00'),
+        fornecedorPessoaId: 'pessoa-a',
+      })
+    )
+
+    const detalhe = await servicoEntradaNotas.analisarNota('c1', 'nota-1', {
+      importarFocusSeAusente: false,
+    })
+
+    expect(fake.getEstado().statusEntrada).toBe('entrada_consolidada')
+    expect(fake.getEstado().recorrenciaFinanceiraId).toBe('rec-1')
+    expect(detalhe.nota.statusEntrada).toBe('entrada_consolidada')
+    expect(gerarTitulosContasPagarDaEntrada).toHaveBeenCalled()
+  })
+
+  it('definirCfopEntradaNota após recorrência casada sem CFOP consolida a NFS-e', async () => {
+    ligarAnaliseSempreOk()
+    ligarRecorrenciaCasada(150)
+    const fake = ligarRepositorioFake(
+      notaNfse({
+        cfopEntradaId: null,
+        valorTotal: 150,
+        dataEmissao: new Date('2026-09-05T12:00:00-03:00'),
+        fornecedorPessoaId: 'pessoa-a',
+      })
+    )
+    await servicoEntradaNotas.analisarNota('c1', 'nota-1', { importarFocusSeAusente: false })
+    expect(fake.getEstado().statusEntrada).toBe('em_analise')
+
+    vi.mocked(repositorioEntradaNotas.buscarCfopEntradaAtivo).mockResolvedValue({
+      id: 'cfop-doc',
+      codigo: '1933',
+      nome: 'Aquisição de serviço',
+      subtipoCfop: null,
+    } as never)
+
+    const detalhe = await servicoEntradaNotas.definirCfopEntradaNota('c1', 'nota-1', 'cfop-doc')
+
+    expect(fake.getEstado().cfopEntradaId).toBe('cfop-doc')
+    expect(fake.getEstado().statusEntrada).toBe('entrada_consolidada')
+    expect(detalhe.nota.statusEntrada).toBe('entrada_consolidada')
   })
 
   it('definirCfopEntradaNota em NFe uso_consumo libera para pronta_para_consolidar (sem fiscal por item)', async () => {

@@ -10,6 +10,7 @@ import {
   esquemaImportarXml,
   esquemaRegrasFiscais,
 } from './esquema-focus-nfe.js'
+import { normalizarPainelEntradaListagem } from './paineis-entrada-listagem.js'
 
 function companyIdDe(requisicao: FastifyRequest): string {
   const companyId = requisicao.empresaAtivaId || ''
@@ -75,19 +76,7 @@ async function listarPendentes(requisicao: FastifyRequest, resposta: FastifyRepl
     painel?: string
     busca?: string
   }
-  const painelRaw = (q.painel ?? 'analise').toLowerCase()
-  const painelValidos = [
-    'analise',
-    'aguardando_chegada',
-    'contagem',
-    'consolidada',
-    'problemas',
-    'cancelada',
-  ] as const
-  type Painel = (typeof painelValidos)[number]
-  const painel: Painel = painelValidos.includes(painelRaw as Painel)
-    ? (painelRaw as Painel)
-    : 'analise'
+  const painel = normalizarPainelEntradaListagem(q.painel)
 
   const resultado = await servicoFocusNfe.listarPendentes(companyIdDe(requisicao), {
     dataDe: q.dataDe,
