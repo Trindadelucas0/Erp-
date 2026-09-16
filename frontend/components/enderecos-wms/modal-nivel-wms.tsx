@@ -121,7 +121,7 @@ export function ModalNivelWms({
         <p className="text-xs text-muted-foreground">
           {ehAp
             ? 'O código completo é montado automaticamente.'
-            : `Nível: ${nivel === 'apartamento' ? 'Apartamento' : ROTULOS_NIVEL_ESTRUTURA_WMS[nivel]}`}
+            : `Nível: ${ROTULOS_NIVEL_ESTRUTURA_WMS[nivel]}`}
         </p>
       </form>
     </Modal>
