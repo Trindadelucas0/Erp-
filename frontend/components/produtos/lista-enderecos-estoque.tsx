@@ -55,7 +55,7 @@ export function ListaEnderecosEstoque({
         )}
       </div>
       <p className="text-xs text-muted-foreground">
-        Só o apartamento (código completo, ex.: A-RC-20-01-2-05). Local e área da árvore não entram.
+        Só o apartamento (código completo). A lista e o campo mostram local, área, rua, bloco, andar, AP e tipo.
       </p>
 
       {itens.length === 0 && (

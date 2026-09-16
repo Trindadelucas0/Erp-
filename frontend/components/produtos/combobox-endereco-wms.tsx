@@ -102,7 +102,7 @@ export function ComboboxEnderecoWms({
     setPosicao({
       top: rect.bottom + 4,
       left: rect.left,
-      width: rect.width,
+      width: Math.max(rect.width, 320),
       maxHeight: Math.min(ALTURA_MAXIMA_LISTA, Math.max(espacoAbaixo, 160)),
     })
   }, [])
@@ -265,10 +265,10 @@ export function ComboboxEnderecoWms({
                 type="button"
                 className="flex w-full flex-col items-start px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground"
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => selecionar(item.codigoCompleto)}
+                onClick={() => selecionar(item)}
               >
-                <TextoDestaqueBusca texto={item.codigoCompleto} termo={busca} className="truncate" />
-                <span className="text-xs text-muted-foreground">{rotuloTipo(item.tipoEndereco)}</span>
+                <TextoDestaqueBusca texto={item.codigoCompleto} termo={busca} className="font-medium" />
+                <LinhasDetalheEndereco dados={item} className="mt-1 space-y-0.5 text-xs text-muted-foreground" />
               </button>
             </li>
           ))}
@@ -316,6 +316,12 @@ export function ComboboxEnderecoWms({
         </div>
       </div>
       {montado && listaDropdown ? createPortal(listaDropdown, document.body) : null}
+      {!aberto && valor.trim() ? (
+        <LinhasDetalheEndereco
+          dados={escolhido?.codigoCompleto === valor ? escolhido : { codigoCompleto: valor }}
+          className="space-y-0.5 text-xs text-muted-foreground"
+        />
+      ) : null}
       {mensagemDeErro && <p className="text-sm text-destructive">{mensagemDeErro}</p>}
     </div>
   )
