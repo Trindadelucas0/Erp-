@@ -14,13 +14,12 @@ import {
   useInstanciaDropdownCatalogo,
   useOuvirFechamentoDropdownCatalogo,
 } from '@/lib/dropdown-catalogo'
-import { TIPOS_ENDERECO_WMS } from '@/lib/endereco-wms'
+import { montarDetalheEnderecoWms, type DadosDetalheEnderecoWms } from '@/lib/endereco-wms'
 import { cn } from '@/lib/utils'
 
-type EnderecoOpcao = {
+type EnderecoOpcao = DadosDetalheEnderecoWms & {
   id: string
   codigoCompleto: string
-  tipoEndereco: string
 }
 
 type PosicaoDropdown = {
@@ -39,10 +38,19 @@ type Props = {
 }
 
 const LIMITE = 80
-const ALTURA_MAXIMA_LISTA = 240
+const ALTURA_MAXIMA_LISTA = 280
 
-function rotuloTipo(tipo: string) {
-  return TIPOS_ENDERECO_WMS.find((t) => t.value === tipo)?.label ?? tipo
+function LinhasDetalheEndereco({ dados, className }: { dados: DadosDetalheEnderecoWms; className?: string }) {
+  const detalhe = montarDetalheEnderecoWms(dados)
+  if (!detalhe) return null
+  return (
+    <div className={className}>
+      {detalhe.local ? <p>{detalhe.local}</p> : null}
+      {detalhe.area ? <p>{detalhe.area}</p> : null}
+      {detalhe.caminho ? <p>{detalhe.caminho}</p> : null}
+      {detalhe.tipo ? <p>{detalhe.tipo}</p> : null}
+    </div>
+  )
 }
 
 function statusHttp(erro: unknown): number | undefined {
@@ -64,6 +72,7 @@ export function ComboboxEnderecoWms({
   const [carregando, setCarregando] = useState(false)
   const [semPermissao, setSemPermissao] = useState(false)
   const [erroRede, setErroRede] = useState(false)
+  const [escolhido, setEscolhido] = useState<EnderecoOpcao | null>(null)
   const [posicao, setPosicao] = useState<PosicaoDropdown | null>(null)
   const [montado, setMontado] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -118,7 +127,7 @@ export function ComboboxEnderecoWms({
       params.set('q', termo.trim())
       params.set('take', String(LIMITE))
       const { data } = await clienteHttp.get(`/enderecos-wms?${params}`)
-      setOpcoes((data.enderecos ?? []).slice(0, LIMITE))
+      setOpcoes((data.enderecos ?? []).slice(0, LIMITE) as EnderecoOpcao[])
       setSemPermissao(false)
     } catch (erro: unknown) {
       setOpcoes([])
@@ -173,15 +182,46 @@ export function ComboboxEnderecoWms({
     }
   }, [busca, aberto, carregar])
 
-  function selecionar(codigoCompleto: string) {
-    aoMudar(codigoCompleto)
+  function selecionar(item: EnderecoOpcao) {
+    setEscolhido(item)
+    aoMudar(item.codigoCompleto)
     fechar()
   }
 
   function limpar() {
+    setEscolhido(null)
     aoMudar('')
     setBusca('')
   }
+
+  useEffect(() => {
+    if (!valor.trim()) {
+      setEscolhido(null)
+      return
+    }
+    if (escolhido?.codigoCompleto === valor) return
+    const daLista = opcoes.find((o) => o.codigoCompleto === valor)
+    if (daLista) {
+      setEscolhido(daLista)
+      return
+    }
+    let cancelado = false
+    void (async () => {
+      try {
+        const params = new URLSearchParams()
+        params.set('q', valor.trim())
+        params.set('take', '5')
+        const { data } = await clienteHttp.get(`/enderecos-wms?${params}`)
+        const hit = (data.enderecos as EnderecoOpcao[] | undefined)?.find((e) => e.codigoCompleto === valor)
+        if (!cancelado && hit) setEscolhido(hit)
+      } catch {
+        /* detalhe fica só pelo código */
+      }
+    })()
+    return () => {
+      cancelado = true
+    }
+  }, [valor, opcoes, escolhido?.codigoCompleto])
 
   const listaDropdown = aberto && posicao && montado && (
     <div
