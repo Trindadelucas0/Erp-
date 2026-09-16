@@ -13,6 +13,18 @@ export async function rotasDeEstruturaWms(aplicacao: FastifyInstance) {
     controladorDeEstruturaWms.listarNiveis
   )
 
+  aplicacao.post(
+    '/gerar-preview',
+    { preHandler: [...auth, middlewareDeAutorizacao('estoque:create')] },
+    controladorDeEstruturaWms.previewGerar
+  )
+
+  aplicacao.post(
+    '/gerar',
+    { preHandler: [...auth, middlewareDeAutorizacao('estoque:create')] },
+    controladorDeEstruturaWms.gerar
+  )
+
   aplicacao.get(
     '/:id',
     { preHandler: [...auth, middlewareDeAutorizacao('estoque:view')] },
@@ -29,6 +41,12 @@ export async function rotasDeEstruturaWms(aplicacao: FastifyInstance) {
     '/:id',
     { preHandler: [...auth, middlewareDeAutorizacao('estoque:edit')] },
     controladorDeEstruturaWms.editarNivel
+  )
+
+  aplicacao.patch(
+    '/:id/mover',
+    { preHandler: [...auth, middlewareDeAutorizacao('estoque:edit')] },
+    controladorDeEstruturaWms.moverNivel
   )
 
   aplicacao.delete(

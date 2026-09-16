@@ -186,6 +186,21 @@ export const esquemaEnderecoEstoque = z.object({
   ordem: z.number().int().optional(),
 })
 
+export const esquemaSubstituirEnderecosEstoque = z
+  .object({
+    enderecosEstoque: z.array(esquemaEnderecoEstoque).default([]),
+  })
+  .superRefine((dados, ctx) => {
+    const chaves = dados.enderecosEstoque.map((e) => e.endereco.trim().toUpperCase()).filter(Boolean)
+    if (new Set(chaves).size !== chaves.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Este endereço já está em outra linha.',
+        path: ['enderecosEstoque'],
+      })
+    }
+  })
+
 export const esquemaProdutoFornecedor = z.object({
   fornecedorPessoaId: z.string().uuid('Fornecedor obrigatório'),
   codigoFornecedor: textoOpcionalNulavel(50),
@@ -349,6 +364,7 @@ export const esquemaDeUploadFotoProduto = z.object({
 export type DadosParaCriarProduto = z.infer<typeof esquemaDeCriacaoDeProduto>
 export type DadosParaEditarProduto = z.infer<typeof esquemaDeEdicaoDeProduto>
 export type DadosUploadFotoProduto = z.infer<typeof esquemaDeUploadFotoProduto>
+export type DadosSubstituirEnderecosEstoque = z.infer<typeof esquemaSubstituirEnderecosEstoque>
 
 export function mensagemErroZod(erro: z.ZodError): string {
   return (

@@ -1,7 +1,6 @@
 'use client'
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import { Plus } from 'lucide-react'
 import { clienteHttp } from '@/services/api'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
@@ -12,51 +11,59 @@ import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { LinhasSkeletonTabela } from '@/components/ui/linhas-skeleton-tabela'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import { InputPadrao } from '@/components/ui/input-padrao'
 import { SelectPadrao } from '@/components/ui/select-padrao'
-import { Label } from '@/components/ui/label'
-import { BadgeStatus } from '@/components/ui/badge-status'
-import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
-import { useOrdenacaoColunas } from '@/hooks/use-ordenacao-colunas'
-import { ordenarLista } from '@/lib/ordenacao-lista'
-import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import { CampoBuscaLista } from '@/components/compartilhado/campo-busca-lista'
-import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
+import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
+import { textosContemTodosTermos } from '@/lib/normalizar-busca'
 import {
-  completarDoisDigitos,
-  mascaraRuaOuPosicao,
-  montarCodigoEnderecoWms,
-  rotuloNivelWms,
-} from '@/lib/endereco-wms'
-import {
-  mapaNomesNivel,
-  opcoesSelectNivel,
+  completarCodigoNivelWms,
+  coletarIdsCaminho,
+  corpoGerarEstruturaWms,
+  cadastroWmsProntoParaPreview,
+  FILHO_NIVEL,
+  FORM_GERAR_WMS_VAZIO,
+  ROTULO_NOVO_FILHO,
+  type FormGerarWms,
   type ItemEstruturaWms,
+  type NivelEstruturaWms,
 } from '@/lib/estrutura-wms'
+import { ArvoreEnderecosWms, type ApartamentoWms } from '@/components/enderecos-wms/arvore-enderecos-wms'
+import { ModalNivelWms } from '@/components/enderecos-wms/modal-nivel-wms'
+import { ModalGerarEstruturaWms } from '@/components/enderecos-wms/modal-gerar-estrutura-wms'
 
-type ColunaEndereco = 'codigo' | 'local' | 'area' | 'tipo' | 'rua' | 'andar' | 'posicao' | 'situacao'
-
-type EnderecoWms = {
-  id: string
-  codigo: string
-  local: string
-  area: string
-  tipo: string
-  rua: string
-  andar: string
-  posicao: string
-  ativo: boolean
+function acharNo(nos: ItemEstruturaWms[], id: string): ItemEstruturaWms | null {
+  for (const no of nos) {
+    if (no.id === id) return no
+    const filhos = no.filhos ?? []
+    const achou = acharNo(filhos, id)
+    if (achou) return achou
+  }
+  return null
 }
 
-const formVazio = {
-  local: '',
-  area: '',
-  tipo: '',
-  rua: '',
-  andar: '',
-  posicao: '',
-  ativo: true,
+function breadcrumb(nos: ItemEstruturaWms[], id: string): string {
+  const ids = coletarIdsCaminho(nos, id) ?? []
+  const codigos: string[] = []
+  let lista = nos
+  for (const nid of ids) {
+    const no = lista.find((n) => n.id === nid)
+    if (!no) break
+    codigos.push(no.codigo)
+    lista = no.filhos ?? []
+  }
+  return codigos.join(' / ')
+}
+
+function idsQueCasam(nos: ItemEstruturaWms[], termo: string, prefixo: string[] = []): string[] {
+  const ids: string[] = []
+  for (const no of nos) {
+    const caminho = [...prefixo, no.id]
+    const filhos = no.filhos ?? []
+    const bate = textosContemTodosTermos([no.codigo, no.nome], termo)
+    const abaixo = idsQueCasam(filhos, termo, caminho)
+    if (bate || abaixo.length) ids.push(...caminho, ...abaixo)
+  }
+  return [...new Set(ids)]
 }
 
 export default function PaginaEnderecosWms() {
@@ -72,535 +79,429 @@ function ConteudoEnderecosWms() {
   const podeCriar = usePermissao('estoque:create')
   const podeEditar = usePermissao('estoque:edit')
 
-  const [lista, setLista] = useState<EnderecoWms[]>([])
-  const [niveis, setNiveis] = useState<ItemEstruturaWms[]>([])
-  const [carregandoLista, setCarregandoLista] = useState(true)
+  const [arvore, setArvore] = useState<ItemEstruturaWms[]>([])
+  const [aps, setAps] = useState<Record<string, ApartamentoWms[]>>({})
+  const [carregando, setCarregando] = useState(true)
   const [busca, setBusca] = useState('')
-  const [buscaDebounced, setBuscaDebounced] = useState('')
-  const [filtroLocal, setFiltroLocal] = useState('')
-  const [filtroArea, setFiltroArea] = useState('')
-  const [filtroTipo, setFiltroTipo] = useState('')
-  const [incluirInativos, setIncluirInativos] = useState(true)
-  const [formAberto, setFormAberto] = useState(false)
-  const [modoEdicao, setModoEdicao] = useState(false)
-  const [idEmEdicao, setIdEmEdicao] = useState('')
-  const [form, setForm] = useState(formVazio)
-  const [salvando, setSalvando] = useState(false)
-  const [mensagem, setMensagem] = useState('')
+  const [filtroStatus, setFiltroStatus] = useState<'todos' | 'ativo' | 'bloqueado' | 'inativo'>('todos')
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set())
   const [erro, setErro] = useState('')
-  const [idParaExcluir, setIdParaExcluir] = useState('')
-  const [codigoParaExcluir, setCodigoParaExcluir] = useState('')
-  const [excluindo, setExcluindo] = useState(false)
-  const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<ColunaEndereco>()
+  const [mensagem, setMensagem] = useState('')
 
-  useEffect(() => {
-    const timer = setTimeout(() => setBuscaDebounced(busca), 300)
-    return () => clearTimeout(timer)
-  }, [busca])
+  const [modalNivel, setModalNivel] = useState(false)
+  const [editando, setEditando] = useState(false)
+  const [nivelForm, setNivelForm] = useState<NivelEstruturaWms | 'apartamento'>('local')
+  const [parentId, setParentId] = useState<string | null>(null)
+  const [idEdicao, setIdEdicao] = useState('')
+  const [codigo, setCodigo] = useState('')
+  const [nome, setNome] = useState('')
+  const [status, setStatus] = useState('ativo')
+  const [tipoEndereco, setTipoEndereco] = useState('CH')
+  const [hierarquia, setHierarquia] = useState('')
+  const [salvando, setSalvando] = useState(false)
+  const [erroModal, setErroModal] = useState('')
 
-  const carregarNiveis = useCallback(async () => {
-    try {
-      const { data } = await clienteHttp.get('/estrutura-wms?incluirInativos=true')
-      setNiveis(data.niveis ?? [])
-    } catch (err: unknown) {
-      setErro(extrairMensagemApi(err, 'Erro ao carregar a estrutura WMS.'))
-    }
-  }, [])
+  const [modalGerar, setModalGerar] = useState(false)
+  const [formGerar, setFormGerar] = useState<FormGerarWms>(FORM_GERAR_WMS_VAZIO)
+  const [preview, setPreview] = useState<{ total: number; exemplos: string[] } | null>(null)
 
   const carregar = useCallback(async () => {
-    setCarregandoLista(true)
+    setCarregando(true)
     try {
-      const params = new URLSearchParams()
-      if (incluirInativos) params.set('incluirInativos', 'true')
-      if (buscaDebounced.trim()) params.set('q', buscaDebounced.trim())
-      if (filtroLocal) params.set('local', filtroLocal)
-      if (filtroArea) params.set('area', filtroArea)
-      if (filtroTipo) params.set('tipo', filtroTipo)
-      const { data } = await clienteHttp.get(`/enderecos-wms?${params}`)
-      setLista(data.enderecos ?? [])
+      const { data } = await clienteHttp.get('/estrutura-wms?incluirInativos=true')
+      setArvore(data.arvore ?? [])
       setErro('')
     } catch (err: unknown) {
-      setErro(extrairMensagemApi(err, 'Erro ao carregar endereços WMS.'))
+      setErro(extrairMensagemApi(err, 'Erro ao carregar a estrutura WMS.'))
     } finally {
-      setCarregandoLista(false)
+      setCarregando(false)
     }
-  }, [buscaDebounced, filtroLocal, filtroArea, filtroTipo, incluirInativos])
-
-  useEffect(() => {
-    if (!estaAutenticado || carregandoSessao) return
-    void carregarNiveis()
-  }, [estaAutenticado, carregandoSessao, carregarNiveis])
+  }, [])
 
   useEffect(() => {
     if (!estaAutenticado || carregandoSessao) return
     void carregar()
   }, [estaAutenticado, carregandoSessao, carregar])
 
-  function abrirNovo() {
-    setModoEdicao(false)
-    setIdEmEdicao('')
-    setForm(formVazio)
-    setErro('')
-    setFormAberto(true)
-  }
-
-  function abrirEdicao(item: EnderecoWms) {
-    setModoEdicao(true)
-    setIdEmEdicao(item.id)
-    setForm({
-      local: item.local,
-      area: item.area,
-      tipo: item.tipo,
-      rua: item.rua,
-      andar: item.andar,
-      posicao: item.posicao,
-      ativo: item.ativo,
+  useEffect(() => {
+    if (!busca.trim()) return
+    setExpandidos((prev) => {
+      const prox = new Set(prev)
+      for (const id of idsQueCasam(arvore, busca)) prox.add(id)
+      return prox
     })
-    setErro('')
-    setFormAberto(true)
+  }, [busca, arvore])
+
+  async function carregarAps(andarId: string) {
+    try {
+      const { data } = await clienteHttp.get(
+        `/enderecos-wms?andarId=${encodeURIComponent(andarId)}&incluirInativos=true`
+      )
+      setAps((prev) => ({ ...prev, [andarId]: data.enderecos ?? [] }))
+    } catch {
+      setAps((prev) => ({ ...prev, [andarId]: [] }))
+    }
   }
 
-  function fecharFormulario() {
-    setFormAberto(false)
-    setForm(formVazio)
-    setIdEmEdicao('')
-    setModoEdicao(false)
-    setErro('')
+  function aoAlternarExpansao(id: string) {
+    setExpandidos((prev) => {
+      const prox = new Set(prev)
+      if (prox.has(id)) prox.delete(id)
+      else {
+        prox.add(id)
+        const no = acharNo(arvore, id)
+        if (no?.nivel === 'andar') void carregarAps(id)
+      }
+      return prox
+    })
   }
 
-  const codigoPreview = useMemo(() => montarCodigoEnderecoWms(form), [form])
+  function abrirNovoLocal() {
+    setEditando(false)
+    setNivelForm('local')
+    setParentId(null)
+    setIdEdicao('')
+    setCodigo('')
+    setNome('')
+    setStatus('ativo')
+    setHierarquia('')
+    setErroModal('')
+    setModalNivel(true)
+  }
 
-  async function aoSalvar(evento: FormEvent) {
+  function aoNovoFilho(no: ItemEstruturaWms) {
+    const filho = FILHO_NIVEL[no.nivel as NivelEstruturaWms]
+    if (!filho) return
+    setEditando(false)
+    setNivelForm(filho)
+    setParentId(no.id)
+    setIdEdicao('')
+    setCodigo('')
+    setNome('')
+    setStatus('ativo')
+    setTipoEndereco('CH')
+    setHierarquia(breadcrumb(arvore, no.id))
+    setErroModal('')
+    setModalNivel(true)
+  }
+
+  function aoEditarNo(no: ItemEstruturaWms) {
+    setEditando(true)
+    setNivelForm(no.nivel as NivelEstruturaWms)
+    setParentId(no.parentId ?? null)
+    setIdEdicao(no.id)
+    setCodigo(no.codigo)
+    setNome(no.nome)
+    setStatus(no.status ?? (no.ativo ? 'ativo' : 'inativo'))
+    setHierarquia(breadcrumb(arvore, no.id))
+    setErroModal('')
+    setModalNivel(true)
+  }
+
+  function aoEditarAp(ap: ApartamentoWms) {
+    setEditando(true)
+    setNivelForm('apartamento')
+    setParentId(ap.andarId)
+    setIdEdicao(ap.id)
+    setCodigo(ap.codigo)
+    setNome('')
+    setStatus(ap.status)
+    setTipoEndereco(ap.tipoEndereco)
+    setHierarquia(ap.codigoCompleto)
+    setErroModal('')
+    setModalNivel(true)
+  }
+
+  async function aoSalvarNivel(evento: FormEvent) {
     evento.preventDefault()
-    if (!codigoPreview) {
-      setErro('Preencha Local, Área, Tipo, Rua, Andar e Posição no padrão A-RC-CH-20-2-05.')
+    const codigoOk = completarCodigoNivelWms(nivelForm, codigo)
+    if (!codigoOk) {
+      setErroModal('Preencha o código.')
       return
     }
     setSalvando(true)
-    setErro('')
-    const payload = {
-      local: form.local,
-      area: form.area,
-      tipo: form.tipo,
-      rua: form.rua,
-      andar: form.andar,
-      posicao: completarDoisDigitos(form.posicao),
-      ativo: form.ativo,
-    }
+    setErroModal('')
     try {
-      if (modoEdicao) {
-        await clienteHttp.put(`/enderecos-wms/${idEmEdicao}`, payload)
-        setMensagem('Endereço atualizado.')
+      if (nivelForm === 'apartamento') {
+        if (editando) {
+          await clienteHttp.put(`/enderecos-wms/${idEdicao}`, {
+            codigo: codigoOk,
+            tipoEndereco,
+            status,
+          })
+        } else {
+          await clienteHttp.post('/enderecos-wms', {
+            andarId: parentId,
+            codigo: codigoOk,
+            tipoEndereco,
+            status,
+          })
+        }
+        if (parentId) await carregarAps(parentId)
+      } else if (editando) {
+        await clienteHttp.put(`/estrutura-wms/${idEdicao}`, {
+          codigo: codigoOk,
+          nome: nome.trim() || codigoOk,
+          status,
+        })
+        await carregar()
       } else {
-        await clienteHttp.post('/enderecos-wms', payload)
-        setMensagem('Endereço criado.')
+        await clienteHttp.post('/estrutura-wms', {
+          parentId: parentId || undefined,
+          nivel: parentId ? undefined : 'local',
+          codigo: codigoOk,
+          nome: nome.trim() || codigoOk,
+          status,
+        })
+        await carregar()
       }
-      fecharFormulario()
-      await carregar()
-      await carregarNiveis()
+      setModalNivel(false)
+      setMensagem('Registro salvo.')
     } catch (err: unknown) {
-      setErro(extrairMensagemApi(err, 'Erro ao salvar endereço WMS'))
+      setErroModal(extrairMensagemApi(err, 'Não foi possível salvar.'))
     } finally {
       setSalvando(false)
     }
   }
 
-  async function aoExcluir() {
-    if (!idParaExcluir) return
-    setExcluindo(true)
-    setErro('')
+  async function aoStatusNo(no: ItemEstruturaWms, novo: string) {
     try {
-      await clienteHttp.delete(`/enderecos-wms/${idParaExcluir}`)
-      setMensagem('Endereço excluído.')
-      if (idEmEdicao === idParaExcluir) fecharFormulario()
-      setIdParaExcluir('')
-      setCodigoParaExcluir('')
+      await clienteHttp.put(`/estrutura-wms/${no.id}`, {
+        codigo: no.codigo,
+        nome: no.nome,
+        status: novo,
+      })
       await carregar()
     } catch (err: unknown) {
-      setErro(extrairMensagemApi(err, 'Erro ao excluir endereço WMS'))
-      setIdParaExcluir('')
-      setCodigoParaExcluir('')
-    } finally {
-      setExcluindo(false)
+      setErro(extrairMensagemApi(err, 'Não foi possível alterar a situação.'))
     }
   }
 
-  const nomesLocal = useMemo(() => mapaNomesNivel(niveis, 'local'), [niveis])
-  const nomesArea = useMemo(() => mapaNomesNivel(niveis, 'area'), [niveis])
-  const nomesTipo = useMemo(() => mapaNomesNivel(niveis, 'tipo'), [niveis])
-  const opcoesFiltroLocal = useMemo(
-    () => opcoesSelectNivel(niveis, 'local', { incluirInativos: true }),
-    [niveis]
-  )
-  const opcoesFiltroArea = useMemo(
-    () => opcoesSelectNivel(niveis, 'area', { incluirInativos: true }),
-    [niveis]
-  )
-  const opcoesFiltroTipo = useMemo(
-    () => opcoesSelectNivel(niveis, 'tipo', { incluirInativos: true }),
-    [niveis]
-  )
-  const opcoesFormLocal = useMemo(
-    () => opcoesSelectNivel(niveis, 'local', { codigoAtual: form.local }),
-    [niveis, form.local]
-  )
-  const opcoesFormArea = useMemo(
-    () => opcoesSelectNivel(niveis, 'area', { codigoAtual: form.area }),
-    [niveis, form.area]
-  )
-  const opcoesFormTipo = useMemo(
-    () => opcoesSelectNivel(niveis, 'tipo', { codigoAtual: form.tipo }),
-    [niveis, form.tipo]
-  )
-  const opcoesFormRua = useMemo(() => {
-    if (!form.area) return []
-    return opcoesSelectNivel(niveis, 'rua', { codigoAtual: form.rua, paiCodigo: form.area })
-  }, [niveis, form.rua, form.area])
-  const opcoesFormAndar = useMemo(
-    () => opcoesSelectNivel(niveis, 'andar', { codigoAtual: form.andar }),
-    [niveis, form.andar]
-  )
+  async function aoStatusAp(ap: ApartamentoWms, novo: string) {
+    try {
+      await clienteHttp.put(`/enderecos-wms/${ap.id}`, {
+        codigo: ap.codigo,
+        tipoEndereco: ap.tipoEndereco,
+        status: novo,
+      })
+      await carregarAps(ap.andarId)
+    } catch (err: unknown) {
+      setErro(extrairMensagemApi(err, 'Não foi possível alterar a situação.'))
+    }
+  }
 
-  const listaExibida = useMemo(
-    () =>
-      ordenarLista(lista, ordenacao, (item, coluna) => {
-        switch (coluna) {
-          case 'codigo':
-            return item.codigo
-          case 'local':
-            return rotuloNivelWms(item.local, nomesLocal)
-          case 'area':
-            return rotuloNivelWms(item.area, nomesArea)
-          case 'tipo':
-            return rotuloNivelWms(item.tipo, nomesTipo)
-          case 'rua':
-            return item.rua
-          case 'andar':
-            return item.andar
-          case 'posicao':
-            return item.posicao
-          case 'situacao':
-            return item.ativo ? 'Ativo' : 'Inativo'
-        }
-      }),
-    [lista, ordenacao, nomesLocal, nomesArea, nomesTipo]
-  )
+  async function aoMoverNo(id: string, alvoId: string, posicao: 'antes' | 'depois' | 'dentro') {
+    try {
+      await clienteHttp.patch(`/estrutura-wms/${id}/mover`, { alvoId, posicao })
+      await carregar()
+    } catch (err: unknown) {
+      setErro(extrairMensagemApi(err, 'Não foi possível mover.'))
+    }
+  }
 
-  const podeSalvar = modoEdicao ? podeEditar : podeCriar
+  async function aoMoverAp(id: string, alvoId: string, posicao: 'antes' | 'depois') {
+    try {
+      await clienteHttp.patch(`/enderecos-wms/${id}/mover`, { alvoId, posicao })
+      const ap = Object.values(aps).flat().find((a) => a.id === id)
+      if (ap) await carregarAps(ap.andarId)
+    } catch (err: unknown) {
+      setErro(extrairMensagemApi(err, 'Não foi possível mover.'))
+    }
+  }
+
+  const locais = useMemo(() => arvore.filter((n) => n.nivel === 'local'), [arvore])
+  const areas = useMemo(() => {
+    if (formGerar.novoLocal) return []
+    const local = locais.find((l) => l.id === formGerar.localId)
+    return local?.filhos ?? []
+  }, [locais, formGerar.localId, formGerar.novoLocal])
+  const ruas = useMemo(() => {
+    if (formGerar.novaArea) return []
+    const area = areas.find((a) => a.id === formGerar.areaId)
+    return area?.filhos ?? []
+  }, [areas, formGerar.areaId, formGerar.novaArea])
+
+  useEffect(() => {
+    if (!modalGerar) return
+    if (!cadastroWmsProntoParaPreview(formGerar)) {
+      setPreview(null)
+      return
+    }
+    const corpo = corpoGerarEstruturaWms(formGerar)
+    const timer = window.setTimeout(async () => {
+      try {
+        const { data } = await clienteHttp.post('/estrutura-wms/gerar-preview', corpo)
+        setPreview({ total: data.total, exemplos: data.exemplos ?? [] })
+        setErroModal('')
+      } catch (err: unknown) {
+        setErroModal(extrairMensagemApi(err, 'Não foi possível calcular a prévia.'))
+        setPreview(null)
+      }
+    }, 300)
+    return () => window.clearTimeout(timer)
+  }, [modalGerar, formGerar])
+
+  async function aoPreviewGerar(evento: FormEvent) {
+    evento.preventDefault()
+  }
+
+  async function aoConfirmarGerar() {
+    setSalvando(true)
+    setErroModal('')
+    try {
+      const { data } = await clienteHttp.post('/estrutura-wms/gerar', corpoGerarEstruturaWms(formGerar))
+      const ids: string[] = data.idsParaExpandir ?? []
+      const andares: string[] = data.andarIds ?? []
+      setModalGerar(false)
+      setPreview(null)
+      setMensagem(
+        `${data.criados} endereço${data.criados === 1 ? '' : 's'} criado${data.criados === 1 ? '' : 's'}, ${data.pulados} já existiam.`
+      )
+      setExpandidos(new Set(ids))
+      await carregar()
+      await Promise.all(andares.map((id) => carregarAps(id)))
+    } catch (err: unknown) {
+      setErroModal(extrairMensagemApi(err, 'Não foi possível gerar.'))
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  function abrirCadastrarEnderecos() {
+    const localRaiz = arvore.find((n) => n.nivel === 'local')
+    const inicial: FormGerarWms = { ...FORM_GERAR_WMS_VAZIO, localId: localRaiz?.id ?? '' }
+    if (inicial.localId) {
+      const primeiraArea = localRaiz?.filhos?.find((f) => f.nivel === 'area') ?? localRaiz?.filhos?.[0]
+      if (primeiraArea) inicial.areaId = primeiraArea.id
+    } else {
+      inicial.novoLocal = true
+    }
+    setFormGerar(inicial)
+    setPreview(null)
+    setErroModal('')
+    setModalGerar(true)
+  }
 
   return (
     <div className="min-w-0 space-y-6">
-      <TituloPagina caminho="Estoque > Endereços WMS">Endereços WMS</TituloPagina>
-
+      <TituloPagina caminho="Logística > Endereços WMS">Endereços WMS</TituloPagina>
+      <p className="text-sm text-muted-foreground">
+        Formato: <span className="font-mono">LOCAL-ÁREA-RUA-BLOCO-ANDAR-AP</span> (ex.:{' '}
+        <span className="font-mono">A-RC-20-01-2-05</span>). Use <strong>Cadastrar endereços</strong>{' '}
+        para um apartamento ou uma faixa. O tipo (PP/CX/CH/BC) fica no apartamento.
+      </p>
       {mensagem && (
         <p className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">{mensagem}</p>
       )}
-      {erro && !formAberto && (
+      {erro && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{erro}</p>
       )}
 
-      {formAberto && (
-        <CardPadrao
-          titulo={modoEdicao ? 'Editar endereço WMS' : 'Novo endereço WMS'}
-          permitirOverflow
-        >
-          <form id="form-endereco-wms" onSubmit={aoSalvar} className="space-y-5">
-            {erro && (
-              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{erro}</p>
-            )}
-
-            <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
-              <p className="text-xs text-muted-foreground">Código (montado automaticamente)</p>
-              <p className="font-mono text-lg font-semibold tracking-wide">
-                {codigoPreview ?? 'A-RC-CH-20-2-05'}
-              </p>
-              {!codigoPreview && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Escolha os seis campos. O código não é digitado.
-                </p>
-              )}
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="space-y-1">
-                <SelectPadrao
-                  rotulo="Local"
-                  valor={form.local}
-                  aoMudar={(v) => setForm((f) => ({ ...f, local: v }))}
-                  opcoes={opcoesFormLocal}
-                  placeholder="Selecione"
-                  obrigatorio
-                  disabled={salvando}
-                />
-                {opcoesFormLocal.length === 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    Cadastre locais em{' '}
-                    <Link href="/configuracoes?aba=logistica&secao=estrutura" className="underline underline-offset-2">
-                      Estrutura WMS
-                    </Link>
-                    .
-                  </p>
-                )}
-              </div>
-              <SelectPadrao
-                rotulo="Área"
-                valor={form.area}
-                aoMudar={(v) =>
-                  setForm((f) => {
-                    const ruaAindaVale = niveis.some(
-                      (item) =>
-                        item.nivel === 'rua' && item.codigo === f.rua && item.paiCodigo === v
-                    )
-                    return { ...f, area: v, rua: ruaAindaVale ? f.rua : '' }
-                  })
-                }
-                opcoes={opcoesFormArea}
-                placeholder="Selecione"
-                obrigatorio
-                disabled={salvando}
-              />
-              <SelectPadrao
-                rotulo="Tipo de endereço"
-                valor={form.tipo}
-                aoMudar={(v) => setForm((f) => ({ ...f, tipo: v }))}
-                opcoes={opcoesFormTipo}
-                placeholder="Selecione"
-                obrigatorio
-                disabled={salvando}
-              />
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="space-y-1">
-                <SelectPadrao
-                  rotulo="Rua"
-                  valor={form.rua}
-                  aoMudar={(v) => setForm((f) => ({ ...f, rua: v }))}
-                  opcoes={opcoesFormRua}
-                  placeholder={form.area ? 'Selecione' : 'Selecione a área primeiro'}
-                  obrigatorio
-                  disabled={salvando || !form.area}
-                />
-                {form.area && opcoesFormRua.length === 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    Cadastre ruas desta área em{' '}
-                    <Link href="/configuracoes?aba=logistica&secao=estrutura" className="underline underline-offset-2">
-                      Estrutura WMS
-                    </Link>
-                    .
-                  </p>
-                )}
-              </div>
-              <div className="space-y-1">
-                <SelectPadrao
-                  rotulo="Andar"
-                  valor={form.andar}
-                  aoMudar={(v) => setForm((f) => ({ ...f, andar: v }))}
-                  opcoes={opcoesFormAndar}
-                  placeholder="Selecione"
-                  obrigatorio
-                  disabled={salvando}
-                />
-                {opcoesFormAndar.length === 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    Cadastre andares em{' '}
-                    <Link href="/configuracoes?aba=logistica&secao=estrutura" className="underline underline-offset-2">
-                      Estrutura WMS
-                    </Link>
-                    .
-                  </p>
-                )}
-              </div>
-              <InputPadrao
-                rotulo="Posição"
-                obrigatorio
-                value={form.posicao}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, posicao: mascaraRuaOuPosicao(e.target.value) }))
-                }
-                onBlur={() => setForm((f) => ({ ...f, posicao: completarDoisDigitos(f.posicao) }))}
-                disabled={salvando}
-                inputMode="numeric"
-                maxLength={2}
-                placeholder="05"
-                className="font-mono"
-              />
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="endereco-wms-ativo"
-                  checked={form.ativo}
-                  onCheckedChange={(checked) => setForm((f) => ({ ...f, ativo: checked === true }))}
-                  disabled={salvando || (modoEdicao ? !podeEditar : !podeCriar)}
-                />
-                <Label htmlFor="endereco-wms-ativo" className="cursor-pointer font-medium">
-                  Ativo
-                </Label>
-              </div>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={fecharFormulario} disabled={salvando}>
-                  Cancelar
-                </Button>
-                <BotaoPrimario type="submit" disabled={salvando || !podeSalvar}>
-                  {salvando ? 'Salvando...' : 'Salvar'}
-                </BotaoPrimario>
-              </div>
-            </div>
-          </form>
-        </CardPadrao>
-      )}
-
       <CardPadrao
-        titulo="Endereços do depósito"
+        titulo="Estrutura do depósito"
         acoes={
-          podeCriar && (
-            <BotaoPrimario type="button" onClick={abrirNovo}>
-              <Plus className="mr-1 inline size-4" />
-              Novo endereço
-            </BotaoPrimario>
-          )
+          <div className="flex flex-wrap gap-2">
+            {podeCriar && (
+              <>
+                <BotaoPrimario type="button" onClick={abrirCadastrarEnderecos}>
+                  <Plus className="mr-1 inline size-4" />
+                  Cadastrar endereços
+                </BotaoPrimario>
+                <Button type="button" variant="outline" onClick={abrirNovoLocal}>
+                  Novo local
+                </Button>
+              </>
+            )}
+          </div>
         }
       >
-        <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="mb-4 grid gap-3 sm:grid-cols-2">
           <CampoBuscaLista
             rotulo="Buscar"
             nomeCampo="busca-lista-enderecos-wms"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Código, RC, recebimento…"
+            placeholder="Código, RC, 20-01…"
           />
           <SelectPadrao
-            rotulo="Local"
-            valor={filtroLocal}
-            aoMudar={setFiltroLocal}
-            opcoes={opcoesFiltroLocal}
-            placeholder="Todos"
+            rotulo="Situação"
+            valor={filtroStatus}
+            aoMudar={(v) => setFiltroStatus(v as typeof filtroStatus)}
+            opcoes={[
+              { value: 'todos', label: 'Todos' },
+              { value: 'ativo', label: 'Ativo' },
+              { value: 'bloqueado', label: 'Bloqueado' },
+              { value: 'inativo', label: 'Inativo' },
+            ]}
           />
-          <SelectPadrao
-            rotulo="Área"
-            valor={filtroArea}
-            aoMudar={setFiltroArea}
-            opcoes={opcoesFiltroArea}
-            placeholder="Todas"
-          />
-          <SelectPadrao
-            rotulo="Tipo"
-            valor={filtroTipo}
-            aoMudar={setFiltroTipo}
-            opcoes={opcoesFiltroTipo}
-            placeholder="Todos"
-          />
-          <div className="flex items-end pb-1">
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="incluir-inativos-wms"
-                checked={incluirInativos}
-                onCheckedChange={(checked) => setIncluirInativos(checked === true)}
-              />
-              <Label htmlFor="incluir-inativos-wms" className="cursor-pointer font-medium">
-                Incluir inativos
-              </Label>
-            </div>
-          </div>
         </div>
-
-        <div className="overflow-x-auto rounded-lg border border-border bg-card">
-          <table className="w-full min-w-[720px] text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
-                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Código" coluna="codigo" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
-                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Local" coluna="local" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
-                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Área" coluna="area" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
-                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Tipo" coluna="tipo" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
-                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Rua" coluna="rua" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
-                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Andar" coluna="andar" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
-                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Posição" coluna="posicao" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
-                <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Situação" coluna="situacao" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
-                <th className="px-2 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {carregandoLista && <LinhasSkeletonTabela colunas={9} />}
-              {!carregandoLista && listaExibida.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                    Nenhum endereço cadastrado.
-                  </td>
-                </tr>
-              )}
-              {!carregandoLista &&
-                listaExibida.map((item) => (
-                  <tr key={item.id} className="border-b border-border/60 last:border-0 hover:bg-muted/20">
-                    <td className="px-4 py-3 font-mono font-medium">{item.codigo}</td>
-                    <td className="px-4 py-3" title={rotuloNivelWms(item.local, nomesLocal)}>
-                      {item.local}
-                    </td>
-                    <td className="px-4 py-3" title={rotuloNivelWms(item.area, nomesArea)}>
-                      {item.area}
-                    </td>
-                    <td className="px-4 py-3" title={rotuloNivelWms(item.tipo, nomesTipo)}>
-                      {item.tipo}
-                    </td>
-                    <td className="px-4 py-3 font-mono">{item.rua}</td>
-                    <td className="px-4 py-3 font-mono">{item.andar}</td>
-                    <td className="px-4 py-3 font-mono">{item.posicao}</td>
-                    <td className="px-4 py-3">
-                      <BadgeStatus variante={item.ativo ? 'ativo' : 'inativo'}>
-                        {item.ativo ? 'Ativo' : 'Inativo'}
-                      </BadgeStatus>
-                    </td>
-                    <td className="px-2 py-3">
-                      <div className="flex flex-wrap items-center gap-1">
-                        {podeEditar && (
-                          <Button type="button" variant="ghost" size="sm" onClick={() => abrirEdicao(item)}>
-                            Editar
-                          </Button>
-                        )}
-                        {podeEditar && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => {
-                              setErro('')
-                              setIdParaExcluir(item.id)
-                              setCodigoParaExcluir(item.codigo)
-                            }}
-                          >
-                            Excluir
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
+        {carregando ? (
+          <LinhasSkeletonTabela colunas={4} linhas={6} />
+        ) : (
+          <ArvoreEnderecosWms
+            arvore={arvore}
+            apartamentosPorAndar={aps}
+            busca={busca}
+            filtroStatus={filtroStatus}
+            podeEditar={podeEditar}
+            podeCriar={podeCriar}
+            expandidos={expandidos}
+            aoAlternarExpansao={aoAlternarExpansao}
+            aoEditarNo={aoEditarNo}
+            aoEditarAp={aoEditarAp}
+            aoNovoFilho={aoNovoFilho}
+            aoStatusNo={aoStatusNo}
+            aoStatusAp={aoStatusAp}
+            aoMoverNo={aoMoverNo}
+            aoMoverAp={aoMoverAp}
+          />
+        )}
       </CardPadrao>
 
-      <ModalConfirmacao
-        aberto={Boolean(idParaExcluir)}
-        titulo="Excluir endereço?"
-        mensagem={
-          codigoParaExcluir
-            ? `O endereço ${codigoParaExcluir} será removido da lista.`
-            : 'O endereço será removido da lista.'
+      <ModalNivelWms
+        aberto={modalNivel}
+        titulo={
+          editando
+            ? 'Editar'
+            : nivelForm === 'apartamento'
+              ? 'Novo apartamento'
+              : nivelForm === 'local'
+                ? 'Novo local'
+                : ROTULO_NOVO_FILHO[acharNo(arvore, parentId ?? '')?.nivel ?? 'local'] ?? 'Novo'
         }
-        textoConfirmar={excluindo ? 'Excluindo...' : 'Excluir'}
-        textoCancelar="Cancelar"
-        aoConfirmar={() => {
-          if (!excluindo) void aoExcluir()
+        nivel={nivelForm}
+        hierarquia={hierarquia}
+        codigo={codigo}
+        nome={nome}
+        status={status}
+        tipoEndereco={tipoEndereco}
+        salvando={salvando}
+        erro={erroModal}
+        aoMudarCodigo={setCodigo}
+        aoMudarNome={setNome}
+        aoMudarStatus={setStatus}
+        aoMudarTipo={setTipoEndereco}
+        aoFechar={() => setModalNivel(false)}
+        aoSalvar={aoSalvarNivel}
+      />
+
+      <ModalGerarEstruturaWms
+        aberto={modalGerar}
+        form={formGerar}
+        locais={locais}
+        areas={areas}
+        ruas={ruas}
+        total={preview?.total}
+        exemplos={preview?.exemplos}
+        salvando={salvando}
+        erro={erroModal}
+        aoMudar={(f) => {
+          setFormGerar(f)
+          setPreview(null)
         }}
-        aoCancelar={() => {
-          if (!excluindo) {
-            setIdParaExcluir('')
-            setCodigoParaExcluir('')
-          }
-        }}
+        aoFechar={() => setModalGerar(false)}
+        aoPreview={aoPreviewGerar}
+        aoConfirmar={aoConfirmarGerar}
       />
     </div>
   )

@@ -27,6 +27,7 @@ function Meta({ rotulo, valor }: { rotulo: string; valor: string | null | undefi
 
 export function PainelProdutoKardex({ produto, fornecedores }: Props) {
   const hrefCadastro = `/produtos?id=${encodeURIComponent(produto.id)}`
+  const enderecos = (produto.enderecosEstoque ?? []).filter((e) => e.endereco.trim())
 
   return (
     <div className="space-y-3 rounded-lg border bg-card p-4 shadow-xs">
@@ -84,6 +85,31 @@ export function PainelProdutoKardex({ produto, fornecedores }: Props) {
           rotulo="Múltiplo venda"
           valor={formatarQtdEstoque(produto.multiploVenda)}
         />
+      </div>
+
+      <div>
+        <p className="mb-2 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+          Endereços de estoque
+        </p>
+        {enderecos.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Nenhum endereço cadastrado.{' '}
+            <Link href={hrefCadastro} className="text-primary hover:underline">
+              Abrir cadastro
+            </Link>
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            {enderecos.map((item) => (
+              <li
+                key={item.id}
+                className="min-w-0 break-all rounded-md border bg-muted/20 px-2 py-1 font-mono text-xs sm:w-auto"
+              >
+                {item.endereco}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div className="grid gap-3 rounded-md border border-dashed bg-muted/20 p-3 sm:grid-cols-3">

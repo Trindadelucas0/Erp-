@@ -11,6 +11,7 @@ import {
   esquemaDeCriacaoDeProduto,
   esquemaDeEdicaoDeProduto,
   esquemaDeUploadFotoProduto,
+  esquemaSubstituirEnderecosEstoque,
   mensagemErroZod,
 } from './esquema-produtos.js'
 
@@ -168,6 +169,22 @@ async function removerFotoDoProduto(requisicao: FastifyRequest, resposta: Fastif
   return resposta.send({ produto })
 }
 
+async function substituirEnderecosEstoque(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id } = requisicao.params as { id: string }
+  const resultado = esquemaSubstituirEnderecosEstoque.safeParse(requisicao.body)
+  if (!resultado.success) {
+    throw new ErroDaAplicacao(mensagemErroZod(resultado.error), 400)
+  }
+  const companyId = requisicao.empresaAtivaId || ''
+  const produto = await servicoDeProdutos.substituirEnderecosEstoque(
+    id,
+    resultado.data,
+    companyId,
+    requisicao.idDoUsuario!
+  )
+  return resposta.send({ produto })
+}
+
 async function listarUnidadesMedida(requisicao: FastifyRequest, resposta: FastifyReply) {
   const companyId = requisicao.empresaAtivaId || ''
   const unidades = await servicoDeUnidadesMedida.listarUnidades(companyId)
@@ -197,4 +214,5 @@ export const controladorDeProdutos = {
   removerFotoDoProduto,
   listarUnidadesMedida,
   criarUnidadeMedida,
+  substituirEnderecosEstoque,
 }

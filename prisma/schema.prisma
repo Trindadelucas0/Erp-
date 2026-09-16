@@ -1524,28 +1524,59 @@ model PendenciaFornecedor {
   @@index([companyId, fornecedorPessoaId, resolvido])
 }
 
-/// Catálogo da estrutura do depósito (local, área, tipo, rua, andar) por empresa.
-/// Alimenta os selects de EnderecoWms; Posição não entra aqui.
+/// Catálogo hierárquico do depósito (local → área → rua → bloco → andar) por empresa.
 model NivelEnderecoWms {
   id        String   @id @default(uuid())
   companyId String
   company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  /// local | area | tipo | rua | andar
+  /// local | area | rua | bloco | andar
   nivel     String
   codigo    String
   nome      String
-  /// Código da área quando nivel=rua; demais níveis ficam nulos.
-  paiCodigo String?
-  /// Código do local quando nivel=rua; demais níveis ficam nulos.
-  localCodigo String?
+  parentId  String?
+  parent    NivelEnderecoWms?  @relation("HierarquiaEnderecoWms", fields: [parentId], references: [id], onDelete: Restrict)
+  children  NivelEnderecoWms[] @relation("HierarquiaEnderecoWms")
+  sequencia Int      @default(0)
+  /// ativo | bloqueado | inativo
+  status    String   @default("ativo")
   ativo     Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  apartamentos EnderecoWms[]
 
-  @@unique([companyId, nivel, codigo])
-  @@index([companyId, nivel, ativo])
-  @@index([companyId, nivel, paiCodigo])
-  @@index([companyId, nivel, localCodigo])
+  @@index([companyId, parentId, sequencia])
+  @@index([companyId, nivel, status])
+  @@index([companyId, ativo])
+}
+
+/// Cadastro mestre de endereço WMS (LOCAL-ÁREA-RUA-BLOCO-ANDAR-AP).
+/// Não vincula produto nem kardex nesta fase.
+model EnderecoWms {
+  id             String   @id @default(uuid())
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  andarId        String
+  andarRef       NivelEnderecoWms @relation(fields: [andarId], references: [id], onDelete: Restrict)
+  /// Segmento do apartamento (ex. 05)
+  codigo         String
+  codigoCompleto String
+  local          String
+  area           String
+  rua            String
+  bloco          String
+  andar          String
+  posicao        String
+  tipoEndereco   String
+  sequencia      Int      @default(0)
+  /// ativo | bloqueado | inativo
+  status         String   @default("ativo")
+  ativo          Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  @@unique([companyId, codigoCompleto])
+  @@unique([andarId, codigo])
+  @@index([companyId, andarId])
+  @@index([companyId, local, area])
 }
 
 /// Determinante permanente de formação de preço da empresa (Configurações → Vendas).
@@ -1565,24 +1596,4 @@ model ParametrizacaoCustoVenda {
   aliquotaIbs                  Decimal? @db.Decimal(18, 4)
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
-}
-
-/// Cadastro mestre de endereço WMS (LOCAL-ÁREA-TIPO-RUA-ANDAR-POSIÇÃO).
-/// Não vincula produto nem kardex nesta fase.
-model EnderecoWms {
-  id        String   @id @default(uuid())
-  companyId String
-  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  codigo    String
-  local     String
-  area      String
-  tipo      String
-  rua       String
-  andar     String
-  posicao   String
-  ativo     Boolean  @default(true)
-  createdAt DateTime @default(now())
-
-  @@unique([companyId, codigo])
-  @@index([companyId, local, area, tipo])
 }

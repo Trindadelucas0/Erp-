@@ -76,6 +76,12 @@ function mapearProdutoKardex(produto: ProdutoKardexRow) {
     permiteEstoqueNegativo: produto.permiteEstoqueNegativo,
     bloqueadoVenda: produto.bloqueadoVenda,
     ativo: produto.ativo,
+    enderecosEstoque: (produto.enderecosEstoque ?? [])
+      .map((e) => ({
+        id: e.id,
+        endereco: e.endereco.trim(),
+      }))
+      .filter((e) => e.endereco.length > 0),
   }
 }
 

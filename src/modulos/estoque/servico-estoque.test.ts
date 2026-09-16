@@ -49,6 +49,7 @@ function produtoMock(extra: Record<string, unknown> = {}) {
     bloqueadoVenda: false,
     ativo: true,
     fornecedores: [],
+    enderecosEstoque: [],
     ...extra,
   }
 }
@@ -732,5 +733,37 @@ describe('aplicarEntradaNotaFiscal', () => {
         ],
       })
     ).rejects.toMatchObject({ statusCode: 400 })
+  })
+})
+
+describe('obterSaldosAtuais', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('inclui endereços de estoque no DTO do produto, na ordem e sem vazios', async () => {
+    vi.mocked(repositorioDeEstoque.buscarProdutoEstoque).mockResolvedValue(
+      produtoMock({
+        enderecosEstoque: [
+          { id: 'e1', endereco: '  A-RC-20-01-2-05  ', ordem: 0 },
+          { id: 'e2', endereco: '   ', ordem: 1 },
+          { id: 'e3', endereco: 'A-RC-20-01-2-06', ordem: 2 },
+        ],
+      }) as never
+    )
+    vi.mocked(repositorioDeEstoque.buscarSaldo).mockResolvedValue({
+      id: 's1',
+      qtdFisica: 10,
+      qtdReservada: 0,
+      qtdBloqueada: 0,
+      qtdFiscal: 10,
+    } as never)
+
+    const resultado = await servicoDeEstoque.obterSaldosAtuais('c1', 'p1')
+
+    expect(resultado.produto.enderecosEstoque).toEqual([
+      { id: 'e1', endereco: 'A-RC-20-01-2-05' },
+      { id: 'e3', endereco: 'A-RC-20-01-2-06' },
+    ])
   })
 })

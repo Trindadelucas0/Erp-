@@ -49,6 +49,7 @@ import {
   ListaEnderecosEstoque,
   type EnderecoEstoqueForm,
 } from '@/components/produtos/lista-enderecos-estoque'
+import { haEnderecoEstoqueDuplicado } from '@/lib/enderecos-estoque-produto'
 import {
   SelecaoProdutosSimilares,
   type ProdutoSimilarItem,
@@ -326,6 +327,8 @@ function ConteudoDaPagina() {
   const [form, setForm] = useState<FormProduto>(formVazio)
   const [abaAtiva, setAbaAtiva] = useState('principal')
   const [salvando, setSalvando] = useState(false)
+  const [salvandoEnderecosProduto, setSalvandoEnderecosProduto] = useState(false)
+  const [mensagemEnderecosProduto, setMensagemEnderecosProduto] = useState('')
   const [mensagem, setMensagem] = useState('')
   const [erro, setErro] = useState('')
   const [fotoComprimida, setFotoComprimida] = useState<ResultadoCompressaoProduto | null>(null)
@@ -400,7 +403,8 @@ function ConteudoDaPagina() {
               const qtd = num(e.quantidade)
               return qtd !== undefined && qtd > 0
             }) &&
-            form.enderecosEstoque.every((e) => !e.endereco.trim() || e.endereco.trim().length >= 1)
+            form.enderecosEstoque.every((e) => !e.endereco.trim() || e.endereco.trim().length >= 1) &&
+            !haEnderecoEstoqueDuplicado(form.enderecosEstoque)
           )
         },
       },
@@ -511,6 +515,7 @@ function ConteudoDaPagina() {
     setRemoverFoto(false)
     setUrlFotoAtual(null)
     setErro('')
+    setMensagemEnderecosProduto('')
     resetarStatus()
     setModalAberto(true)
     void clienteHttp
@@ -529,6 +534,7 @@ function ConteudoDaPagina() {
     setVeioDeDuplicacao(false)
     setProdutoIdFotoOrigem('')
     setErro('')
+    setMensagemEnderecosProduto('')
   }
 
   async function abrirModalDuplicarDoHeader() {
@@ -733,6 +739,7 @@ function ConteudoDaPagina() {
     setRemoverFoto(false)
     setUrlFotoAtual(p.urlFotoPrincipal ?? null)
     setErro('')
+    setMensagemEnderecosProduto('')
     resetarStatus()
     return p
   }
@@ -922,6 +929,28 @@ function ConteudoDaPagina() {
       setErro(extrairMensagemApi(err, 'Erro ao salvar produto'))
     } finally {
       setSalvando(false)
+    }
+  }
+
+  async function aoSalvarEnderecosNesteProduto() {
+    if (!modoEdicao || !idEmEdicao || camposDesabilitados) return
+    if (haEnderecoEstoqueDuplicado(form.enderecosEstoque)) {
+      setErro('Este endereço já está em outra linha.')
+      return
+    }
+    setSalvandoEnderecosProduto(true)
+    setMensagemEnderecosProduto('')
+    setErro('')
+    try {
+      const enderecosEstoque = form.enderecosEstoque
+        .filter((e) => e.endereco.trim())
+        .map((e, ordem) => ({ endereco: e.endereco.trim(), ordem }))
+      await clienteHttp.put(`/produtos/${idEmEdicao}/enderecos-estoque`, { enderecosEstoque })
+      setMensagemEnderecosProduto('Gravado neste produto.')
+    } catch (err: unknown) {
+      setErro(extrairMensagemApi(err, 'Não foi possível salvar os endereços neste produto.'))
+    } finally {
+      setSalvandoEnderecosProduto(false)
     }
   }
 
@@ -1618,8 +1647,15 @@ function ConteudoDaPagina() {
 
               <ListaEnderecosEstoque
                 itens={form.enderecosEstoque}
-                aoMudar={(itens) => setForm((f) => ({ ...f, enderecosEstoque: itens }))}
+                aoMudar={(itens) => {
+                  setForm((f) => ({ ...f, enderecosEstoque: itens }))
+                  setMensagemEnderecosProduto('')
+                }}
                 disabled={camposDesabilitados}
+                podeSalvarNesteProduto={modoEdicao && podeEditar && !modoVisualizacao}
+                salvandoNesteProduto={salvandoEnderecosProduto}
+                mensagemNesteProduto={mensagemEnderecosProduto}
+                aoSalvarNesteProduto={aoSalvarEnderecosNesteProduto}
               />
             </div>
           )}

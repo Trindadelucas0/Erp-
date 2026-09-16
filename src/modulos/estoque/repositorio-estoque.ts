@@ -29,6 +29,14 @@ const selectProdutoKardex = {
   permiteEstoqueNegativo: true,
   bloqueadoVenda: true,
   ativo: true,
+  enderecosEstoque: {
+    orderBy: { ordem: 'asc' as const },
+    select: {
+      id: true,
+      endereco: true,
+      ordem: true,
+    },
+  },
   fornecedores: {
     orderBy: { ordem: 'asc' as const },
     select: {

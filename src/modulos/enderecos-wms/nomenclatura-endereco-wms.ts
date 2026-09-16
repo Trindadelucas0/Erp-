@@ -1,11 +1,9 @@
 /**
  * Padrão oficial do endereço WMS (§7.25):
- * LOCAL(1 letra) + ÁREA(2 letras) + TIPO(2 letras) + RUA(2 dígitos) + ANDAR(1) + POSIÇÃO(2)
- * Código canônico com hífen: A-RC-CH-20-2-05
- * Local, área, tipo, rua e andar vêm do catálogo Estrutura WMS (§6.17j); Posição não.
+ * LOCAL-ÁREA-RUA-BLOCO-ANDAR-AP (ex.: A-RC-20-01-2-05)
+ * Tipo de estrutura (PP/CX/CH/BC) é atributo do apartamento, não segmento do código.
  */
 
-/** Valores iniciais sugeridos na Estrutura WMS (empresa nova). */
 export const PADRAO_LOCAIS_WMS = [
   { codigo: 'A', nome: 'Prédio principal da fábrica' },
   { codigo: 'B', nome: 'Prédio secundário / Anexo II' },
@@ -28,9 +26,6 @@ export const LOCAIS_WMS = PADRAO_LOCAIS_WMS.map((l) => l.codigo)
 export const AREAS_WMS = PADRAO_AREAS_WMS.map((a) => a.codigo)
 export const TIPOS_WMS = PADRAO_TIPOS_WMS.map((t) => t.codigo)
 
-export type AreaWms = (typeof PADRAO_AREAS_WMS)[number]['codigo']
-export type TipoWms = (typeof PADRAO_TIPOS_WMS)[number]['codigo']
-
 export const ROTULOS_LOCAL_WMS: Record<string, string> = Object.fromEntries(
   PADRAO_LOCAIS_WMS.map((l) => [l.codigo, l.nome])
 )
@@ -41,82 +36,99 @@ export const ROTULOS_TIPO_WMS: Record<string, string> = Object.fromEntries(
   PADRAO_TIPOS_WMS.map((t) => [t.codigo, t.nome])
 )
 
+export const NIVEIS_HIERARQUIA_WMS = ['local', 'area', 'rua', 'bloco', 'andar'] as const
+export type NivelHierarquiaWms = (typeof NIVEIS_HIERARQUIA_WMS)[number]
+
+export const FILHO_DO_NIVEL: Record<NivelHierarquiaWms, NivelHierarquiaWms | null> = {
+  local: 'area',
+  area: 'rua',
+  rua: 'bloco',
+  bloco: 'andar',
+  andar: null,
+}
+
+export const PAI_DO_NIVEL: Record<NivelHierarquiaWms, NivelHierarquiaWms | null> = {
+  local: null,
+  area: 'local',
+  rua: 'area',
+  bloco: 'rua',
+  andar: 'bloco',
+}
+
 export type ComponentesEnderecoWms = {
   local: string
   area: string
-  tipo: string
   rua: string
+  bloco: string
   andar: string
   posicao: string
 }
 
-export type ComponentesEnderecoWmsValidos = {
-  local: string
-  area: string
-  tipo: string
-  rua: string
-  andar: string
-  posicao: string
-}
+export type ComponentesEnderecoWmsValidos = ComponentesEnderecoWms
 
-const REGEX_LOCAL = /^[A-Z]$/
-const REGEX_AREA_TIPO = /^[A-Z]{2}$/
-const REGEX_RUA = /^\d{2}$/
-const REGEX_ANDAR = /^\d$/
-const REGEX_POSICAO = /^\d{2}$/
-const REGEX_CODIGO = /^([A-Z])-([A-Z]{2})-([A-Z]{2})-(\d{2})-(\d)-(\d{2})$/
+const REGEX_SEGMENTO = /^[A-Z0-9]{1,6}$/
+const REGEX_NUMERICO = /^\d{1,4}$/
+const REGEX_ANDAR = /^\d{1,2}$/
+const REGEX_CODIGO =
+  /^([A-Z0-9]{1,6})-([A-Z0-9]{1,6})-(\d{1,4})-(\d{1,4})-(\d{1,2})-(\d{1,4})$/
+const REGEX_CODIGO_LEGADO =
+  /^([A-Z])-([A-Z]{2})-([A-Z]{2})-(\d{2})-(\d)-(\d{2})$/
+
+function soAlfanumerico(valor: string, max: number): string {
+  return String(valor ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, max)
+}
 
 function soDigitos(valor: string, max: number): string {
   return String(valor ?? '').replace(/\D/g, '').slice(0, max)
 }
 
-function soLetras(valor: string, max: number): string {
-  return String(valor ?? '')
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z]/g, '')
-    .slice(0, max)
-}
-
 function pad2(valor: string): string {
-  const d = soDigitos(valor, 2)
+  const d = soDigitos(valor, 4)
   if (d.length === 0) return ''
-  return d.padStart(2, '0')
+  if (d.length === 1) return d.padStart(2, '0')
+  return d
 }
 
-export function ehLocalWms(valor: string): boolean {
-  return REGEX_LOCAL.test(valor)
+export function ehTipoEnderecoWms(valor: string): boolean {
+  return TIPOS_WMS.includes(valor as (typeof TIPOS_WMS)[number]) || /^[A-Z]{2}$/.test(valor)
 }
 
 export function normalizarCodigoNivelEstruturaWms(nivel: string, bruto: string): string {
-  if (nivel === 'local') return soLetras(bruto, 1)
-  if (nivel === 'area' || nivel === 'tipo') return soLetras(bruto, 2)
-  if (nivel === 'rua') return pad2(bruto)
-  if (nivel === 'andar') return soDigitos(bruto, 1)
-  return String(bruto ?? '').trim()
+  if (nivel === 'local' || nivel === 'area') return soAlfanumerico(bruto, 6)
+  if (nivel === 'rua' || nivel === 'bloco' || nivel === 'apartamento') return pad2(bruto)
+  if (nivel === 'andar') return soDigitos(bruto, 2)
+  return String(bruto ?? '').trim().toUpperCase()
 }
 
 export function validarCodigoNivelEstruturaWms(nivel: string, bruto: string): string {
   const codigo = normalizarCodigoNivelEstruturaWms(nivel, bruto)
   if (nivel === 'local') {
-    if (!REGEX_LOCAL.test(codigo)) throw new Error('Local deve ter 1 letra')
+    if (!REGEX_SEGMENTO.test(codigo)) throw new Error('Local deve ter 1 a 6 letras ou números')
     return codigo
   }
   if (nivel === 'area') {
-    if (!REGEX_AREA_TIPO.test(codigo)) throw new Error('Área deve ter 2 letras')
-    return codigo
-  }
-  if (nivel === 'tipo') {
-    if (!REGEX_AREA_TIPO.test(codigo)) throw new Error('Tipo de endereço deve ter 2 letras')
+    if (!REGEX_SEGMENTO.test(codigo)) throw new Error('Área deve ter 1 a 6 letras ou números')
     return codigo
   }
   if (nivel === 'rua') {
-    if (!REGEX_RUA.test(codigo)) throw new Error('Rua deve ter 2 números (00 a 99)')
-    return codigo
+    if (!REGEX_NUMERICO.test(codigo)) throw new Error('Rua deve ter números (ex.: 01)')
+    return pad2(codigo)
+  }
+  if (nivel === 'bloco') {
+    if (!REGEX_NUMERICO.test(codigo)) throw new Error('Bloco deve ter números (ex.: 01)')
+    return pad2(codigo)
   }
   if (nivel === 'andar') {
-    if (!REGEX_ANDAR.test(codigo)) throw new Error('Andar deve ter 1 número (0 a 9)')
+    if (!REGEX_ANDAR.test(codigo)) throw new Error('Andar deve ter 1 ou 2 números')
     return codigo
+  }
+  if (nivel === 'apartamento') {
+    if (!REGEX_NUMERICO.test(codigo)) throw new Error('Apartamento deve ter números (ex.: 05)')
+    return pad2(codigo)
   }
   throw new Error('Nível da estrutura inválido')
 }
@@ -125,11 +137,11 @@ export function normalizarComponentesEnderecoWms(
   bruto: ComponentesEnderecoWms
 ): ComponentesEnderecoWms {
   return {
-    local: soLetras(bruto.local, 1),
-    area: soLetras(bruto.area, 2),
-    tipo: soLetras(bruto.tipo, 2),
+    local: soAlfanumerico(bruto.local, 6),
+    area: soAlfanumerico(bruto.area, 6),
     rua: pad2(bruto.rua),
-    andar: soDigitos(bruto.andar, 1),
+    bloco: pad2(bruto.bloco),
+    andar: soDigitos(bruto.andar, 2),
     posicao: pad2(bruto.posicao),
   }
 }
@@ -138,71 +150,75 @@ export function validarComponentesEnderecoWms(
   bruto: ComponentesEnderecoWms
 ): ComponentesEnderecoWmsValidos {
   const n = normalizarComponentesEnderecoWms(bruto)
-
-  if (!ehLocalWms(n.local)) {
-    throw new Error('Local deve ter 1 letra')
-  }
-  if (!REGEX_AREA_TIPO.test(n.area)) {
-    throw new Error('Área deve ter 2 letras')
-  }
-  if (!REGEX_AREA_TIPO.test(n.tipo)) {
-    throw new Error('Tipo de endereço deve ter 2 letras')
-  }
-  if (!REGEX_RUA.test(n.rua)) {
-    throw new Error('Rua deve ter 2 números (00 a 99)')
-  }
-  if (!REGEX_ANDAR.test(n.andar)) {
-    throw new Error('Andar deve ter 1 número (0 a 9)')
-  }
-  if (!REGEX_POSICAO.test(n.posicao)) {
-    throw new Error('Posição deve ter 2 números (00 a 99)')
-  }
-
+  validarCodigoNivelEstruturaWms('local', n.local)
+  validarCodigoNivelEstruturaWms('area', n.area)
+  validarCodigoNivelEstruturaWms('rua', n.rua)
+  validarCodigoNivelEstruturaWms('bloco', n.bloco)
+  validarCodigoNivelEstruturaWms('andar', n.andar)
+  validarCodigoNivelEstruturaWms('apartamento', n.posicao)
   return {
     local: n.local,
     area: n.area,
-    tipo: n.tipo,
     rua: n.rua,
+    bloco: n.bloco,
     andar: n.andar,
     posicao: n.posicao,
   }
 }
 
-export function montarCodigoEnderecoWms(
-  componentes: ComponentesEnderecoWmsValidos
-): string {
-  return `${componentes.local}-${componentes.area}-${componentes.tipo}-${componentes.rua}-${componentes.andar}-${componentes.posicao}`
+export function montarCodigoEnderecoWms(componentes: ComponentesEnderecoWmsValidos): string {
+  return `${componentes.local}-${componentes.area}-${componentes.rua}-${componentes.bloco}-${componentes.andar}-${componentes.posicao}`
 }
 
-export function parsearCodigoEnderecoWms(
-  codigo: string
-): ComponentesEnderecoWmsValidos | null {
-  const m = String(codigo ?? '').trim().toUpperCase().match(REGEX_CODIGO)
+export function parsearCodigoEnderecoWms(codigo: string): ComponentesEnderecoWmsValidos | null {
+  const bruto = String(codigo ?? '').trim().toUpperCase()
+  const m = bruto.match(REGEX_CODIGO)
   if (!m) return null
-  return {
-    local: m[1]!,
-    area: m[2]!,
-    tipo: m[3]!,
-    rua: m[4]!,
-    andar: m[5]!,
-    posicao: m[6]!,
+  try {
+    return validarComponentesEnderecoWms({
+      local: m[1]!,
+      area: m[2]!,
+      rua: m[3]!,
+      bloco: m[4]!,
+      andar: m[5]!,
+      posicao: m[6]!,
+    })
+  } catch {
+    return null
   }
 }
 
-export function rotuloCompletoEnderecoWms(
+/** Só para migração / testes de legado A-RC-CH-20-2-05. */
+export function parsearCodigoLegadoComTipo(codigo: string): {
   componentes: ComponentesEnderecoWmsValidos
-): string {
-  return [
-    componentes.local,
-    ROTULOS_LOCAL_WMS[componentes.local] ?? componentes.local,
-    componentes.area,
-    ROTULOS_AREA_WMS[componentes.area] ?? componentes.area,
-    componentes.tipo,
-    ROTULOS_TIPO_WMS[componentes.tipo] ?? componentes.tipo,
-    `Rua ${componentes.rua}`,
-    `Andar ${componentes.andar}`,
-    `Posição ${componentes.posicao}`,
-  ].join(' ')
+  tipoEndereco: string
+} | null {
+  const m = String(codigo ?? '').trim().toUpperCase().match(REGEX_CODIGO_LEGADO)
+  if (!m) return null
+  return {
+    tipoEndereco: m[3]!,
+    componentes: {
+      local: m[1]!,
+      area: m[2]!,
+      rua: m[4]!,
+      bloco: '01',
+      andar: m[5]!,
+      posicao: m[6]!,
+    },
+  }
+}
+
+export function faixaNumerica(inicio: string, fim: string, nivel: string): string[] {
+  const a = Number(soDigitos(inicio, 4))
+  const b = Number(soDigitos(fim, 4))
+  if (!Number.isFinite(a) || !Number.isFinite(b) || a > b) {
+    throw new Error('Faixa inválida: inicial deve ser menor ou igual ao final')
+  }
+  const lista: string[] = []
+  for (let i = a; i <= b; i++) {
+    lista.push(validarCodigoNivelEstruturaWms(nivel, String(i)))
+  }
+  return lista
 }
 
 function normalizarTextoBusca(valor: string): string {
@@ -225,7 +241,6 @@ function casarRotulo(tokenNorm: string, codigo: string, rotulo: string): boolean
   return normalizarTextoBusca(rotulo).includes(tokenNorm)
 }
 
-/** Expande um token de busca para códigos de nomenclatura (ex.: "recebimento" → RC). */
 export function extrasBuscaEnderecoWms(token: string): ExtrasBuscaEnderecoWms {
   const tokenNorm = normalizarTextoBusca(token.trim())
   const vazios: ExtrasBuscaEnderecoWms = { locais: [], areas: [], tipos: [] }
@@ -242,4 +257,23 @@ export function extrasBuscaEnderecoWms(token: string): ExtrasBuscaEnderecoWms {
   ).map((t) => t.codigo)
 
   return { locais, areas, tipos }
+}
+
+export const TETO_GERAR_ENDERECOS_WMS = 10_000
+export const LIMITE_LISTAGEM_ENDERECO_WMS_BUSCA = 80
+export const TETO_TAKE_LISTAGEM_ENDERECO_WMS = 200
+export const MSG_DUPLICATA_AP = (codigo: string) =>
+  `Já existe um apartamento ${codigo} neste andar.`
+
+/** Teto só na busca textual sem andar (picker). Árvore por andarId não limita. */
+export function resolverTakeListagemEnderecoWms(opcoes?: {
+  q?: string
+  andarId?: string
+  take?: number
+}): number | undefined {
+  if (opcoes?.andarId?.trim()) return undefined
+  if (!opcoes?.q?.trim()) return undefined
+  const bruto = opcoes.take ?? LIMITE_LISTAGEM_ENDERECO_WMS_BUSCA
+  if (!Number.isFinite(bruto)) return LIMITE_LISTAGEM_ENDERECO_WMS_BUSCA
+  return Math.min(Math.max(1, Math.trunc(bruto)), TETO_TAKE_LISTAGEM_ENDERECO_WMS)
 }

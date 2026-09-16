@@ -59,6 +59,12 @@ export async function rotasDeProdutos(aplicacao: FastifyInstance): Promise<void>
   )
 
   aplicacao.put(
+    '/:id/enderecos-estoque',
+    { preHandler: [...auth, middlewareDeAutorizacao('produtos:edit')] },
+    controladorDeProdutos.substituirEnderecosEstoque
+  )
+
+  aplicacao.put(
     '/:id',
     { preHandler: [...auth, middlewareDeAutorizacao('produtos:edit')] },
     controladorDeProdutos.editarProduto

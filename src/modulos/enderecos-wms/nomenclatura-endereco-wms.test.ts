@@ -1,155 +1,116 @@
 import { describe, expect, it } from 'vitest'
 import {
   extrasBuscaEnderecoWms,
+  LIMITE_LISTAGEM_ENDERECO_WMS_BUSCA,
   montarCodigoEnderecoWms,
   parsearCodigoEnderecoWms,
+  parsearCodigoLegadoComTipo,
+  resolverTakeListagemEnderecoWms,
   validarComponentesEnderecoWms,
 } from './nomenclatura-endereco-wms.js'
 
 describe('validarComponentesEnderecoWms / montarCodigoEnderecoWms', () => {
-  it('monta A-RC-CH-20-2-05', () => {
+  it('monta A-RC-20-01-2-05', () => {
     const c = validarComponentesEnderecoWms({
       local: 'A',
       area: 'RC',
-      tipo: 'CH',
       rua: '20',
+      bloco: '01',
       andar: '2',
       posicao: '05',
     })
-    expect(montarCodigoEnderecoWms(c)).toBe('A-RC-CH-20-2-05')
+    expect(montarCodigoEnderecoWms(c)).toBe('A-RC-20-01-2-05')
   })
 
-  it('completa zero à esquerda em rua e posição', () => {
+  it('completa zero à esquerda em rua, bloco e apartamento', () => {
     const c = validarComponentesEnderecoWms({
       local: 'b',
       area: 'ex',
-      tipo: 'pp',
       rua: '5',
+      bloco: '1',
       andar: '0',
       posicao: '7',
     })
     expect(c.local).toBe('B')
     expect(c.rua).toBe('05')
+    expect(c.bloco).toBe('01')
     expect(c.posicao).toBe('07')
-    expect(montarCodigoEnderecoWms(c)).toBe('B-EX-PP-05-0-07')
+    expect(montarCodigoEnderecoWms(c)).toBe('B-EX-05-01-0-07')
   })
 
-  it('rejeita letra no lugar da rua (caso A RC CH C 20 2)', () => {
+  it('rejeita letra no lugar da rua', () => {
     expect(() =>
       validarComponentesEnderecoWms({
         local: 'A',
         area: 'RC',
-        tipo: 'CH',
         rua: 'C',
-        andar: '20',
-        posicao: '2',
+        bloco: '01',
+        andar: '2',
+        posicao: '05',
       })
-    ).toThrow('Rua deve ter 2 números')
+    ).toThrow('Rua deve ter números')
   })
 
-  it('aceita local C (catálogo decide depois)', () => {
+  it('aceita local alfanumérico (catálogo decide depois)', () => {
     const c = validarComponentesEnderecoWms({
-      local: 'C',
+      local: 'C1',
       area: 'RC',
-      tipo: 'CH',
       rua: '20',
+      bloco: '01',
       andar: '2',
       posicao: '05',
     })
-    expect(montarCodigoEnderecoWms(c)).toBe('C-RC-CH-20-2-05')
+    expect(montarCodigoEnderecoWms(c)).toBe('C1-RC-20-01-2-05')
   })
 
-  it('rejeita local que não é letra', () => {
-    expect(() =>
-      validarComponentesEnderecoWms({
-        local: '1',
-        area: 'RC',
-        tipo: 'CH',
-        rua: '20',
-        andar: '2',
-        posicao: '05',
-      })
-    ).toThrow('Local deve ter 1 letra')
-  })
-
-  it('rejeita área com tamanho errado', () => {
+  it('rejeita área vazia', () => {
     expect(() =>
       validarComponentesEnderecoWms({
         local: 'A',
-        area: 'R',
-        tipo: 'CH',
+        area: '',
         rua: '20',
+        bloco: '01',
         andar: '2',
         posicao: '05',
       })
-    ).toThrow('Área deve ter 2 letras')
-  })
-
-  it('aceita área com 2 letras fora da lista antiga (catálogo decide depois)', () => {
-    const c = validarComponentesEnderecoWms({
-      local: 'A',
-      area: 'XX',
-      tipo: 'ZZ',
-      rua: '20',
-      andar: '2',
-      posicao: '05',
-    })
-    expect(montarCodigoEnderecoWms(c)).toBe('A-XX-ZZ-20-2-05')
-  })
-
-  it('rejeita tipo com tamanho errado', () => {
-    expect(() =>
-      validarComponentesEnderecoWms({
-        local: 'A',
-        area: 'RC',
-        tipo: 'Z',
-        rua: '20',
-        andar: '2',
-        posicao: '05',
-      })
-    ).toThrow('Tipo de endereço deve ter 2 letras')
-  })
-
-  it('rejeita tamanho errado de andar e posição', () => {
-    expect(() =>
-      validarComponentesEnderecoWms({
-        local: 'A',
-        area: 'RC',
-        tipo: 'CH',
-        rua: '20',
-        andar: '',
-        posicao: '05',
-      })
-    ).toThrow('Andar deve ter 1 número')
+    ).toThrow('Área deve ter 1 a 6 letras ou números')
   })
 })
 
 describe('parsearCodigoEnderecoWms', () => {
-  it('lê o código canônico', () => {
-    expect(parsearCodigoEnderecoWms('A-RC-CH-20-2-05')).toEqual({
+  it('lê o código canônico novo', () => {
+    expect(parsearCodigoEnderecoWms('A-RC-20-01-2-05')).toEqual({
       local: 'A',
       area: 'RC',
-      tipo: 'CH',
       rua: '20',
+      bloco: '01',
       andar: '2',
       posicao: '05',
     })
   })
 
-  it('lê código com local/área/tipo fora do seed antigo', () => {
-    expect(parsearCodigoEnderecoWms('C-XX-ZZ-20-2-05')).toEqual({
-      local: 'C',
-      area: 'XX',
-      tipo: 'ZZ',
-      rua: '20',
-      andar: '2',
-      posicao: '05',
-    })
+  it('não interpreta o legado com tipo no meio como canônico', () => {
+    expect(parsearCodigoEnderecoWms('A-RC-CH-20-2-05')).toBeNull()
   })
 
-  it('rejeita compacto e formato antigo com letra na rua', () => {
+  it('rejeita compacto', () => {
     expect(parsearCodigoEnderecoWms('ARCCH20205')).toBeNull()
-    expect(parsearCodigoEnderecoWms('A-RC-CH-C-20-2')).toBeNull()
+  })
+})
+
+describe('parsearCodigoLegadoComTipo', () => {
+  it('migra A-RC-CH-20-2-05 para A-RC-20-01-2-05 com tipo CH', () => {
+    expect(parsearCodigoLegadoComTipo('A-RC-CH-20-2-05')).toEqual({
+      tipoEndereco: 'CH',
+      componentes: {
+        local: 'A',
+        area: 'RC',
+        rua: '20',
+        bloco: '01',
+        andar: '2',
+        posicao: '05',
+      },
+    })
   })
 })
 
@@ -162,8 +123,22 @@ describe('extrasBuscaEnderecoWms', () => {
     expect(extrasBuscaEnderecoWms('chao').tipos).toEqual(['CH'])
   })
 
-  it('casa código curto EXATO (RC) e não trecho de 1 letra em rótulo', () => {
+  it('casa código curto EXATO (RC)', () => {
     expect(extrasBuscaEnderecoWms('RC').areas).toEqual(['RC'])
-    expect(extrasBuscaEnderecoWms('a').locais).toEqual(['A'])
+  })
+})
+
+describe('resolverTakeListagemEnderecoWms', () => {
+  it('limita busca por q sem andar', () => {
+    expect(resolverTakeListagemEnderecoWms({ q: 'RC 20' })).toBe(LIMITE_LISTAGEM_ENDERECO_WMS_BUSCA)
+    expect(resolverTakeListagemEnderecoWms({ q: 'RC', take: 10 })).toBe(10)
+  })
+
+  it('não limita listagem por andar', () => {
+    expect(resolverTakeListagemEnderecoWms({ andarId: 'andar-1', q: '05', take: 10 })).toBeUndefined()
+  })
+
+  it('não limita listagem sem termo', () => {
+    expect(resolverTakeListagemEnderecoWms({})).toBeUndefined()
   })
 })

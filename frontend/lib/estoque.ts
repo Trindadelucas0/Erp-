@@ -26,6 +26,7 @@ export type ProdutoKardex = {
   permiteEstoqueNegativo: boolean
   bloqueadoVenda: boolean
   ativo: boolean
+  enderecosEstoque: { id: string; endereco: string }[]
 }
 
 export type FornecedorVinculoKardex = {

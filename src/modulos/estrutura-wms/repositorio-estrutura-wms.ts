@@ -1,10 +1,10 @@
 import { Prisma } from '@prisma/client'
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import type { NivelEstruturaWms } from './esquema-estrutura-wms.js'
+import { statusParaAtivo } from './status-efetivo-wms.js'
 import {
   PADRAO_AREAS_WMS,
   PADRAO_LOCAIS_WMS,
-  PADRAO_TIPOS_WMS,
 } from '../enderecos-wms/nomenclatura-endereco-wms.js'
 
 export type NivelEnderecoWmsRegistro = {
@@ -12,29 +12,22 @@ export type NivelEnderecoWmsRegistro = {
   nivel: string
   codigo: string
   nome: string
-  paiCodigo: string | null
-  localCodigo: string | null
+  parentId: string | null
+  sequencia: number
+  status: string
   ativo: boolean
   createdAt: Date
 }
 
-function mapear(row: {
-  id: string
-  nivel: string
-  codigo: string
-  nome: string
-  paiCodigo: string | null
-  localCodigo: string | null
-  ativo: boolean
-  createdAt: Date
-}): NivelEnderecoWmsRegistro {
+function mapear(row: NivelEnderecoWmsRegistro): NivelEnderecoWmsRegistro {
   return {
     id: row.id,
     nivel: row.nivel,
     codigo: row.codigo,
     nome: row.nome,
-    paiCodigo: row.paiCodigo,
-    localCodigo: row.localCodigo,
+    parentId: row.parentId,
+    sequencia: row.sequencia,
+    status: row.status,
     ativo: row.ativo,
     createdAt: row.createdAt,
   }
@@ -42,15 +35,16 @@ function mapear(row: {
 
 async function listarPorEmpresa(
   companyId: string,
-  opcoes?: { nivel?: NivelEstruturaWms; incluirInativos?: boolean }
+  opcoes?: { nivel?: NivelEstruturaWms; incluirInativos?: boolean; status?: string }
 ) {
   const rows = await clientePrisma.nivelEnderecoWms.findMany({
     where: {
       companyId,
       ...(opcoes?.nivel ? { nivel: opcoes.nivel } : {}),
-      ...(!opcoes?.incluirInativos ? { ativo: true } : {}),
+      ...(opcoes?.status && opcoes.status !== 'todos' ? { status: opcoes.status } : {}),
+      ...(!opcoes?.incluirInativos && !opcoes?.status ? { ativo: true } : {}),
     },
-    orderBy: [{ nivel: 'asc' }, { codigo: 'asc' }],
+    orderBy: [{ sequencia: 'asc' }, { codigo: 'asc' }],
   })
   return rows.map(mapear)
 }
@@ -62,15 +56,31 @@ async function buscarPorId(companyId: string, id: string) {
   return row ? mapear(row) : null
 }
 
-async function buscarPorNivelCodigo(
-  companyId: string,
-  nivel: string,
-  codigo: string
-) {
+async function buscarFilhoPorCodigo(companyId: string, parentId: string | null, codigo: string) {
   const row = await clientePrisma.nivelEnderecoWms.findFirst({
-    where: { companyId, nivel, codigo },
+    where: { companyId, parentId, codigo },
   })
   return row ? mapear(row) : null
+}
+
+async function listarFilhos(companyId: string, parentId: string) {
+  const rows = await clientePrisma.nivelEnderecoWms.findMany({
+    where: { companyId, parentId },
+    orderBy: [{ sequencia: 'asc' }, { codigo: 'asc' }],
+  })
+  return rows.map(mapear)
+}
+
+async function contarFilhos(companyId: string, parentId: string) {
+  return clientePrisma.nivelEnderecoWms.count({ where: { companyId, parentId } })
+}
+
+async function proximaSequencia(companyId: string, parentId: string | null) {
+  const agg = await clientePrisma.nivelEnderecoWms.aggregate({
+    where: { companyId, parentId },
+    _max: { sequencia: true },
+  })
+  return (agg._max.sequencia ?? -1) + 1
 }
 
 async function criar(
@@ -79,9 +89,9 @@ async function criar(
     nivel: string
     codigo: string
     nome: string
-    paiCodigo: string | null
-    localCodigo: string | null
-    ativo: boolean
+    parentId: string | null
+    sequencia: number
+    status: string
   }
 ) {
   const row = await clientePrisma.nivelEnderecoWms.create({
@@ -90,9 +100,10 @@ async function criar(
       nivel: dados.nivel,
       codigo: dados.codigo,
       nome: dados.nome,
-      paiCodigo: dados.paiCodigo,
-      localCodigo: dados.localCodigo,
-      ativo: dados.ativo,
+      parentId: dados.parentId,
+      sequencia: dados.sequencia,
+      status: dados.status,
+      ativo: statusParaAtivo(dados.status),
     },
   })
   return mapear(row)
@@ -102,11 +113,11 @@ async function atualizar(
   companyId: string,
   id: string,
   dados: {
-    codigo: string
-    nome: string
-    paiCodigo: string | null
-    localCodigo: string | null
-    ativo: boolean
+    codigo?: string
+    nome?: string
+    parentId?: string | null
+    sequencia?: number
+    status?: string
   }
 ) {
   const existente = await clientePrisma.nivelEnderecoWms.findFirst({
@@ -118,11 +129,13 @@ async function atualizar(
   const row = await clientePrisma.nivelEnderecoWms.update({
     where: { id },
     data: {
-      codigo: dados.codigo,
-      nome: dados.nome,
-      paiCodigo: dados.paiCodigo,
-      localCodigo: dados.localCodigo,
-      ativo: dados.ativo,
+      ...(dados.codigo != null ? { codigo: dados.codigo } : {}),
+      ...(dados.nome != null ? { nome: dados.nome } : {}),
+      ...(dados.parentId !== undefined ? { parentId: dados.parentId } : {}),
+      ...(dados.sequencia != null ? { sequencia: dados.sequencia } : {}),
+      ...(dados.status != null
+        ? { status: dados.status, ativo: statusParaAtivo(dados.status) }
+        : {}),
     },
   })
   return mapear(row)
@@ -138,52 +151,73 @@ async function excluir(companyId: string, id: string) {
   return true
 }
 
-async function contarRuasDaArea(companyId: string, areaCodigo: string) {
-  return clientePrisma.nivelEnderecoWms.count({
-    where: { companyId, nivel: 'rua', paiCodigo: areaCodigo },
-  })
-}
+async function garantirCatalogoPadrao(companyId: string) {
+  const jaTem = await clientePrisma.nivelEnderecoWms.count({ where: { companyId } })
+  if (jaTem > 0) return
 
-async function contarRuasDoLocal(companyId: string, localCodigo: string) {
-  return clientePrisma.nivelEnderecoWms.count({
-    where: { companyId, nivel: 'rua', localCodigo },
-  })
-}
+  const locais = []
+  for (const [i, item] of PADRAO_LOCAIS_WMS.entries()) {
+    locais.push(
+      await clientePrisma.nivelEnderecoWms.create({
+        data: {
+          companyId,
+          nivel: 'local',
+          codigo: item.codigo,
+          nome: item.nome,
+          parentId: null,
+          sequencia: i,
+          status: 'ativo',
+          ativo: true,
+        },
+      })
+    )
+  }
+  const localA = locais.find((l) => l.codigo === 'A') ?? locais[0]
+  if (!localA) return
 
-async function garantirAreasETiposPadrao(companyId: string) {
-  const jaTemCatalogo = await clientePrisma.nivelEnderecoWms.count({
-    where: { companyId },
-  })
-  if (jaTemCatalogo > 0) return
-
-  const padrao = [
-    ...PADRAO_LOCAIS_WMS.map((item) => ({
-      companyId,
-      nivel: 'local',
-      codigo: item.codigo,
-      nome: item.nome,
-      ativo: true,
-    })),
-    ...PADRAO_AREAS_WMS.map((item) => ({
+  await clientePrisma.nivelEnderecoWms.createMany({
+    data: PADRAO_AREAS_WMS.map((item, i) => ({
       companyId,
       nivel: 'area',
       codigo: item.codigo,
       nome: item.nome,
+      parentId: localA.id,
+      sequencia: i,
+      status: 'ativo',
       ativo: true,
     })),
-    ...PADRAO_TIPOS_WMS.map((item) => ({
-      companyId,
-      nivel: 'tipo',
-      codigo: item.codigo,
-      nome: item.nome,
-      ativo: true,
-    })),
-  ]
-
-  await clientePrisma.nivelEnderecoWms.createMany({
-    data: padrao,
     skipDuplicates: true,
   })
+}
+
+async function coletarIdsSubarvore(companyId: string, raizId: string): Promise<string[]> {
+  const todos = await listarPorEmpresa(companyId, { incluirInativos: true })
+  const ids = new Set<string>([raizId])
+  let mudou = true
+  while (mudou) {
+    mudou = false
+    for (const no of todos) {
+      if (no.parentId && ids.has(no.parentId) && !ids.has(no.id)) {
+        ids.add(no.id)
+        mudou = true
+      }
+    }
+  }
+  return [...ids]
+}
+
+async function ancestrais(companyId: string, id: string): Promise<NivelEnderecoWmsRegistro[]> {
+  const cadeia: NivelEnderecoWmsRegistro[] = []
+  let atual = await buscarPorId(companyId, id)
+  const vistos = new Set<string>()
+  while (atual?.parentId && !vistos.has(atual.parentId)) {
+    vistos.add(atual.parentId)
+    const pai = await buscarPorId(companyId, atual.parentId)
+    if (!pai) break
+    cadeia.push(pai)
+    atual = pai
+  }
+  return cadeia
 }
 
 function ehUnicidadePrisma(erro: unknown): boolean {
@@ -193,12 +227,16 @@ function ehUnicidadePrisma(erro: unknown): boolean {
 export const repositorioDeEstruturaWms = {
   listarPorEmpresa,
   buscarPorId,
-  buscarPorNivelCodigo,
+  buscarFilhoPorCodigo,
+  listarFilhos,
+  contarFilhos,
+  proximaSequencia,
   criar,
   atualizar,
   excluir,
-  contarRuasDaArea,
-  contarRuasDoLocal,
-  garantirAreasETiposPadrao,
+  garantirCatalogoPadrao,
+  garantirAreasETiposPadrao: garantirCatalogoPadrao,
+  coletarIdsSubarvore,
+  ancestrais,
   ehUnicidadePrisma,
 }

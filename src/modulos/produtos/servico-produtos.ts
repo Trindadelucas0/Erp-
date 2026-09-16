@@ -353,6 +353,37 @@ async function removerFotoDoProduto(id: string, companyId: string, idDoAutor: st
   return buscarProduto(id, companyId)
 }
 
+async function substituirEnderecosEstoque(
+  id: string,
+  dados: { enderecosEstoque: { endereco: string; apelido?: string | null; ordem?: number }[] },
+  companyId: string,
+  idDoAutor: string
+) {
+  const existente = await repositorioDeProdutos.buscarPorId(id)
+  if (!existente || existente.companyId !== companyId) {
+    throw new ErroDaAplicacao('Produto não encontrado', 404)
+  }
+
+  const produto = await repositorioDeProdutos.substituirEnderecosEstoque(
+    id,
+    companyId,
+    dados.enderecosEstoque
+  )
+  if (!produto) {
+    throw new ErroDaAplicacao('Produto não encontrado', 404)
+  }
+
+  await registrarAuditoria({
+    usuarioId: idDoAutor,
+    acao: 'editar',
+    entidade: 'produto',
+    entidadeId: id,
+    valoresDepois: { enderecosEstoque: dados.enderecosEstoque.length },
+  })
+
+  return produto
+}
+
 export const servicoDeProdutos = {
   listarProdutos,
   sugerirProximoSku,
@@ -363,4 +394,5 @@ export const servicoDeProdutos = {
   salvarFotoDoProduto,
   copiarFotoDeProduto,
   removerFotoDoProduto,
+  substituirEnderecosEstoque,
 }

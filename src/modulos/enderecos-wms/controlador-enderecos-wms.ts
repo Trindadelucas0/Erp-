@@ -4,6 +4,7 @@ import { servicoDeEnderecosWms } from './servico-enderecos-wms.js'
 import {
   esquemaDeCriacaoDeEnderecoWms,
   esquemaDeEdicaoDeEnderecoWms,
+  esquemaDeMoverEnderecoWms,
   esquemaFiltroListagemEnderecoWms,
 } from './esquema-enderecos-wms.js'
 
@@ -16,13 +17,12 @@ async function listarEnderecos(requisicao: FastifyRequest, resposta: FastifyRepl
   if (!query.success) {
     throw new ErroDaAplicacao(query.error.errors[0]?.message ?? 'Filtro inválido', 400)
   }
-
   const enderecos = await servicoDeEnderecosWms.listar(companyId(requisicao), {
     q: query.data.q,
-    local: query.data.local || undefined,
-    area: query.data.area || undefined,
-    tipo: query.data.tipo || undefined,
+    andarId: query.data.andarId,
     incluirInativos: query.data.incluirInativos === 'true',
+    status: query.data.status || undefined,
+    take: query.data.take,
   })
   return resposta.send({ enderecos })
 }
@@ -38,7 +38,6 @@ async function criarEndereco(requisicao: FastifyRequest, resposta: FastifyReply)
   if (!resultado.success) {
     throw new ErroDaAplicacao(resultado.error.errors[0]?.message ?? 'Dados inválidos', 400)
   }
-
   const endereco = await servicoDeEnderecosWms.criarEndereco(
     companyId(requisicao),
     resultado.data,
@@ -53,8 +52,22 @@ async function editarEndereco(requisicao: FastifyRequest, resposta: FastifyReply
   if (!resultado.success) {
     throw new ErroDaAplicacao(resultado.error.errors[0]?.message ?? 'Dados inválidos', 400)
   }
-
   const endereco = await servicoDeEnderecosWms.editarEndereco(
+    companyId(requisicao),
+    id,
+    resultado.data,
+    requisicao.idDoUsuario!
+  )
+  return resposta.send({ endereco })
+}
+
+async function moverEndereco(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id } = requisicao.params as { id: string }
+  const resultado = esquemaDeMoverEnderecoWms.safeParse(requisicao.body)
+  if (!resultado.success) {
+    throw new ErroDaAplicacao(resultado.error.errors[0]?.message ?? 'Dados inválidos', 400)
+  }
+  const endereco = await servicoDeEnderecosWms.moverEndereco(
     companyId(requisicao),
     id,
     resultado.data,
@@ -74,5 +87,6 @@ export const controladorDeEnderecosWms = {
   buscarEndereco,
   criarEndereco,
   editarEndereco,
+  moverEndereco,
   excluirEndereco,
 }

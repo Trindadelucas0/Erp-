@@ -596,6 +596,36 @@ async function atualizar(id: string, dados: DadosParaEditarProduto, companyId: s
   })
 }
 
+async function substituirEnderecosEstoque(
+  id: string,
+  companyId: string,
+  linhas: { endereco: string; apelido?: string | null; ordem?: number }[]
+) {
+  return clientePrisma.$transaction(async (tx) => {
+    const existente = await tx.produto.findFirst({
+      where: { id, companyId },
+      select: { id: true },
+    })
+    if (!existente) return null
+    await tx.produtoEnderecoEstoque.deleteMany({ where: { produtoId: id } })
+    if (linhas.length) {
+      await tx.produtoEnderecoEstoque.createMany({
+        data: linhas.map((e, ordem) => ({
+          produtoId: id,
+          apelido: e.apelido || null,
+          endereco: e.endereco.trim(),
+          ordem: e.ordem ?? ordem,
+        })),
+      })
+    }
+    const completo = await tx.produto.findUniqueOrThrow({
+      where: { id },
+      include: includeCompleto,
+    })
+    return mapearProduto(completo, companyId)
+  })
+}
+
 async function alterarStatus(id: string, ativo: boolean) {
   return clientePrisma.produto.update({
     where: { id },
@@ -653,6 +683,7 @@ export const repositorioDeProdutos = {
   buscarConflitosCodigoBarras,
   criar,
   atualizar,
+  substituirEnderecosEstoque,
   alterarStatus,
   sincronizarFotos,
   removerFotosDoBanco,

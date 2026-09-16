@@ -7,18 +7,25 @@ vi.mock('../../compartilhado/auditoria/registrar-auditoria.js', () => ({
 
 vi.mock('./repositorio-enderecos-wms.js', () => ({
   repositorioDeEnderecosWms: {
+    buscarPorCodigoCompleto: vi.fn(),
     buscarPorCodigo: vi.fn(),
+    buscarPorAndarCodigo: vi.fn(),
     buscarPorId: vi.fn(),
     criar: vi.fn(),
     atualizar: vi.fn(),
     listarPorEmpresa: vi.fn(),
+    listarPorAndar: vi.fn(),
+    proximaSequencia: vi.fn(),
     excluir: vi.fn(),
+    ehUnicidadePrisma: vi.fn(() => false),
   },
 }))
 
 vi.mock('../estrutura-wms/servico-estrutura-wms.js', () => ({
   servicoDeEstruturaWms: {
-    exigirNiveisDoCatalogo: vi.fn(),
+    buscarPorId: vi.fn(),
+    statusEfetivoBloqueante: vi.fn(),
+    caminhoComponentes: vi.fn(),
   },
 }))
 
@@ -26,153 +33,133 @@ import { repositorioDeEnderecosWms } from './repositorio-enderecos-wms.js'
 import { servicoDeEstruturaWms } from '../estrutura-wms/servico-estrutura-wms.js'
 import { servicoDeEnderecosWms } from './servico-enderecos-wms.js'
 
-const componentesValidos = {
-  local: 'A' as const,
-  area: 'RC' as const,
-  tipo: 'CH' as const,
+const caminho = {
+  local: 'A',
+  area: 'RC',
   rua: '20',
+  bloco: '01',
+  andar: '2',
+  no: { id: 'andar-2', nivel: 'andar' },
+  cadeia: [],
+}
+
+const apCriado = {
+  id: 'end-1',
+  andarId: 'andar-2',
+  codigo: '05',
+  codigoCompleto: 'A-RC-20-01-2-05',
+  local: 'A',
+  area: 'RC',
+  rua: '20',
+  bloco: '01',
   andar: '2',
   posicao: '05',
+  tipoEndereco: 'CH',
+  sequencia: 0,
+  status: 'ativo',
+  ativo: true,
+  createdAt: new Date(),
 }
 
 describe('servicoDeEnderecosWms', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(servicoDeEstruturaWms.exigirNiveisDoCatalogo).mockResolvedValue(undefined)
-  })
-
-  it('cria endereço válido e recusa duplicata com 409', async () => {
-    vi.mocked(repositorioDeEnderecosWms.buscarPorCodigo).mockResolvedValue(null)
-    vi.mocked(repositorioDeEnderecosWms.criar).mockResolvedValue({
-      id: 'end-1',
-      codigo: 'A-RC-CH-20-2-05',
-      ...componentesValidos,
+    vi.mocked(servicoDeEstruturaWms.buscarPorId).mockResolvedValue({
+      id: 'andar-2',
+      nivel: 'andar',
+      codigo: '2',
+      nome: '2',
+      parentId: 'bloco-01',
+      sequencia: 0,
+      status: 'ativo',
       ativo: true,
       createdAt: new Date(),
     })
+    vi.mocked(servicoDeEstruturaWms.statusEfetivoBloqueante).mockResolvedValue(null)
+    vi.mocked(servicoDeEstruturaWms.caminhoComponentes).mockResolvedValue(caminho as never)
+    vi.mocked(repositorioDeEnderecosWms.proximaSequencia).mockResolvedValue(0)
+    vi.mocked(repositorioDeEnderecosWms.buscarPorAndarCodigo).mockResolvedValue(null)
+  })
+
+  it('cria apartamento e recusa duplicata no mesmo andar', async () => {
+    vi.mocked(repositorioDeEnderecosWms.criar).mockResolvedValue(apCriado)
 
     const criado = await servicoDeEnderecosWms.criarEndereco(
       'company-001',
-      { ...componentesValidos, ativo: true },
+      { andarId: 'andar-2', codigo: '05', tipoEndereco: 'CH', status: 'ativo' },
       'user-001'
     )
-    expect(criado.codigo).toBe('A-RC-CH-20-2-05')
+    expect(criado.codigoCompleto).toBe('A-RC-20-01-2-05')
 
-    vi.mocked(repositorioDeEnderecosWms.buscarPorCodigo).mockResolvedValue({
-      id: 'end-1',
-      codigo: 'A-RC-CH-20-2-05',
-      ...componentesValidos,
-      ativo: true,
-      createdAt: new Date(),
-    })
+    vi.mocked(repositorioDeEnderecosWms.buscarPorAndarCodigo).mockResolvedValue(apCriado)
 
     await expect(
       servicoDeEnderecosWms.criarEndereco(
         'company-001',
-        { ...componentesValidos, ativo: true },
+        { andarId: 'andar-2', codigo: '05', tipoEndereco: 'CH', status: 'ativo' },
         'user-001'
       )
     ).rejects.toMatchObject({
-      message: 'Código de endereço já cadastrado nesta empresa',
+      message: 'Já existe um apartamento 05 neste andar.',
       codigoHttp: 409,
     })
   })
 
-  it('recusa letra na rua', async () => {
+  it('recusa letra no apartamento', async () => {
     await expect(
       servicoDeEnderecosWms.criarEndereco(
         'company-001',
-        {
-          local: 'A',
-          area: 'RC',
-          tipo: 'CH',
-          rua: 'C',
-          andar: '20',
-          posicao: '2',
-          ativo: true,
-        },
+        { andarId: 'andar-2', codigo: 'C', tipoEndereco: 'CH' },
         'user-001'
       )
     ).rejects.toBeInstanceOf(ErroDaAplicacao)
-
-    await expect(
-      servicoDeEnderecosWms.criarEndereco(
-        'company-001',
-        {
-          local: 'A',
-          area: 'RC',
-          tipo: 'CH',
-          rua: 'C',
-          andar: '20',
-          posicao: '2',
-          ativo: true,
-        },
-        'user-001'
-      )
-    ).rejects.toThrow('Rua deve ter 2 números')
   })
 
-  it('recusa rua não cadastrada na estrutura', async () => {
-    vi.mocked(servicoDeEstruturaWms.exigirNiveisDoCatalogo).mockRejectedValue(
-      new ErroDaAplicacao('Rua não cadastrada na estrutura do depósito', 400)
-    )
-
+  it('recusa criar sob ancestral bloqueado', async () => {
+    vi.mocked(servicoDeEstruturaWms.statusEfetivoBloqueante).mockResolvedValue('bloco')
     await expect(
       servicoDeEnderecosWms.criarEndereco(
         'company-001',
-        { ...componentesValidos, ativo: true },
+        { andarId: 'andar-2', codigo: '05', tipoEndereco: 'CH' },
         'user-001'
       )
     ).rejects.toMatchObject({
-      message: 'Rua não cadastrada na estrutura do depósito',
+      message: 'Este endereço está indisponível porque seu Bloco está bloqueado.',
       codigoHttp: 400,
     })
     expect(repositorioDeEnderecosWms.criar).not.toHaveBeenCalled()
   })
 
-  it('aceita posição 99 sem catálogo de posição', async () => {
-    vi.mocked(repositorioDeEnderecosWms.buscarPorCodigo).mockResolvedValue(null)
-    vi.mocked(repositorioDeEnderecosWms.criar).mockResolvedValue({
-      id: 'end-2',
-      codigo: 'A-RC-CH-20-2-99',
-      ...componentesValidos,
-      posicao: '99',
-      ativo: true,
-      createdAt: new Date(),
-    })
-
-    const criado = await servicoDeEnderecosWms.criarEndereco(
-      'company-001',
-      { ...componentesValidos, posicao: '99', ativo: true },
-      'user-001'
-    )
-    expect(criado.codigo).toBe('A-RC-CH-20-2-99')
-    expect(servicoDeEstruturaWms.exigirNiveisDoCatalogo).toHaveBeenCalled()
-  })
-
   it('GET por id de outra empresa não encontra', async () => {
     vi.mocked(repositorioDeEnderecosWms.buscarPorId).mockResolvedValue(null)
-
-    await expect(
-      servicoDeEnderecosWms.buscarPorId('company-outra', 'end-1')
-    ).rejects.toMatchObject({
+    await expect(servicoDeEnderecosWms.buscarPorId('company-outra', 'end-1')).rejects.toMatchObject({
       message: 'Endereço WMS não encontrado',
       codigoHttp: 404,
     })
   })
 
   it('exclui endereço da empresa', async () => {
-    vi.mocked(repositorioDeEnderecosWms.buscarPorId).mockResolvedValue({
-      id: 'end-1',
-      codigo: 'A-RC-CH-20-2-05',
-      ...componentesValidos,
-      ativo: true,
-      createdAt: new Date(),
-    })
+    vi.mocked(repositorioDeEnderecosWms.buscarPorId).mockResolvedValue(apCriado)
     vi.mocked(repositorioDeEnderecosWms.excluir).mockResolvedValue(true)
-
     await servicoDeEnderecosWms.excluirEndereco('company-001', 'end-1', 'user-001')
-
     expect(repositorioDeEnderecosWms.excluir).toHaveBeenCalledWith('company-001', 'end-1')
+  })
+
+  it('lista com teto quando filtra por q sem andar', async () => {
+    vi.mocked(repositorioDeEnderecosWms.listarPorEmpresa).mockResolvedValue([apCriado])
+    await servicoDeEnderecosWms.listar('company-001', { q: 'RC 20' })
+    expect(repositorioDeEnderecosWms.listarPorEmpresa).toHaveBeenCalledWith(
+      'company-001',
+      expect.objectContaining({ q: 'RC 20', take: 80 })
+    )
+  })
+
+  it('lista sem teto quando filtra por andar', async () => {
+    vi.mocked(repositorioDeEnderecosWms.listarPorEmpresa).mockResolvedValue([apCriado])
+    await servicoDeEnderecosWms.listar('company-001', { andarId: 'andar-2', q: '05', take: 10 })
+    expect(repositorioDeEnderecosWms.listarPorEmpresa).toHaveBeenCalledWith(
+      'company-001',
+      expect.objectContaining({ andarId: 'andar-2', take: undefined })
+    )
   })
 })

@@ -9,19 +9,29 @@ vi.mock('./repositorio-estrutura-wms.js', () => ({
   repositorioDeEstruturaWms: {
     listarPorEmpresa: vi.fn(),
     buscarPorId: vi.fn(),
-    buscarPorNivelCodigo: vi.fn(),
+    buscarFilhoPorCodigo: vi.fn(),
     criar: vi.fn(),
     atualizar: vi.fn(),
     excluir: vi.fn(),
-    contarRuasDaArea: vi.fn(),
+    contarFilhos: vi.fn(),
+    proximaSequencia: vi.fn(),
+    garantirCatalogoPadrao: vi.fn(),
     garantirAreasETiposPadrao: vi.fn(),
+    coletarIdsSubarvore: vi.fn(),
+    ancestrais: vi.fn(),
     ehUnicidadePrisma: vi.fn(() => false),
   },
 }))
 
 vi.mock('../enderecos-wms/repositorio-enderecos-wms.js', () => ({
   repositorioDeEnderecosWms: {
-    contarPorComponente: vi.fn(),
+    contarPorAndar: vi.fn(),
+    contarPorAndares: vi.fn(),
+    listarPorAndares: vi.fn(),
+    atualizarCodigoCompletoEmLote: vi.fn(),
+    buscarPorAndarCodigo: vi.fn(),
+    proximaSequencia: vi.fn(),
+    criar: vi.fn(),
   },
 }))
 
@@ -29,44 +39,16 @@ import { repositorioDeEstruturaWms } from './repositorio-estrutura-wms.js'
 import { repositorioDeEnderecosWms } from '../enderecos-wms/repositorio-enderecos-wms.js'
 import { servicoDeEstruturaWms } from './servico-estrutura-wms.js'
 
-function itemRua(codigo: string, ativo = true, paiCodigo = 'RC') {
+function no(nivel: string, codigo: string, extra?: Partial<{ id: string; parentId: string | null; status: string }>) {
   return {
-    id: `rua-${codigo}`,
-    nivel: 'rua',
-    codigo,
-    nome: codigo,
-    paiCodigo,
-    ativo,
-    createdAt: new Date(),
-  }
-}
-
-function areaAtiva(codigo = 'RC') {
-  return {
-    id: `area-${codigo}`,
-    nivel: 'area',
-    codigo,
-    nome: codigo,
-    paiCodigo: null,
-    ativo: true,
-    createdAt: new Date(),
-  }
-}
-
-function itemCatalogo(nivel: string, codigo: string, extra?: { ativo?: boolean; paiCodigo?: string | null }) {
-  const paiCodigo =
-    extra && 'paiCodigo' in extra
-      ? (extra.paiCodigo ?? null)
-      : nivel === 'rua'
-        ? 'RC'
-        : null
-  return {
-    id: `${nivel}-${codigo}`,
+    id: extra?.id ?? `${nivel}-${codigo}`,
     nivel,
     codigo,
     nome: codigo,
-    paiCodigo,
-    ativo: extra?.ativo ?? true,
+    parentId: extra?.parentId ?? null,
+    sequencia: 0,
+    status: extra?.status ?? 'ativo',
+    ativo: (extra?.status ?? 'ativo') !== 'inativo',
     createdAt: new Date(),
   }
 }
@@ -74,22 +56,23 @@ function itemCatalogo(nivel: string, codigo: string, extra?: { ativo?: boolean; 
 describe('servicoDeEstruturaWms', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(repositorioDeEstruturaWms.garantirAreasETiposPadrao).mockResolvedValue(undefined)
-    vi.mocked(repositorioDeEstruturaWms.buscarPorNivelCodigo).mockImplementation(async (_c, nivel, codigo) => {
-      if (nivel === 'area') return areaAtiva(codigo)
-      return null
-    })
+    vi.mocked(repositorioDeEstruturaWms.garantirCatalogoPadrao).mockResolvedValue(undefined)
+    vi.mocked(repositorioDeEstruturaWms.proximaSequencia).mockResolvedValue(0)
+    vi.mocked(repositorioDeEstruturaWms.buscarFilhoPorCodigo).mockResolvedValue(null)
+    vi.mocked(repositorioDeEstruturaWms.ancestrais).mockResolvedValue([])
   })
 
-  it('cria quatro ruas e recusa a quinta com o mesmo código', async () => {
+  it('cria ruas irmãs e recusa duplicata no mesmo pai', async () => {
+    const area = no('area', 'RC', { id: 'area-RC', parentId: 'local-A' })
+    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockResolvedValue(area)
     vi.mocked(repositorioDeEstruturaWms.criar).mockImplementation(async (_c, dados) =>
-      itemRua(dados.codigo)
+      no('rua', dados.codigo, { parentId: 'area-RC' })
     )
 
     for (const codigo of ['01', '02', '03', '04']) {
       const criado = await servicoDeEstruturaWms.criarNivel(
         'company-001',
-        { nivel: 'rua', codigo, nome: '', paiCodigo: 'RC', ativo: true },
+        { codigo, nome: '', parentId: 'area-RC', status: 'ativo' },
         'user-001'
       )
       expect(criado.codigo).toBe(codigo)
@@ -101,7 +84,7 @@ describe('servicoDeEstruturaWms', () => {
     await expect(
       servicoDeEstruturaWms.criarNivel(
         'company-001',
-        { nivel: 'rua', codigo: '01', nome: '', paiCodigo: 'RC', ativo: true },
+        { codigo: '01', nome: '', parentId: 'area-RC', status: 'ativo' },
         'user-001'
       )
     ).rejects.toMatchObject({
@@ -110,24 +93,7 @@ describe('servicoDeEstruturaWms', () => {
     })
   })
 
-  it('grava o nome da rua igual ao código', async () => {
-    vi.mocked(repositorioDeEstruturaWms.criar).mockImplementation(async (_c, dados) =>
-      itemRua(dados.codigo, true, dados.paiCodigo ?? 'RC')
-    )
-
-    await servicoDeEstruturaWms.criarNivel(
-      'company-001',
-      { nivel: 'rua', codigo: '01', nome: 'Corredor', paiCodigo: 'RC', ativo: true },
-      'user-001'
-    )
-
-    expect(repositorioDeEstruturaWms.criar).toHaveBeenCalledWith(
-      'company-001',
-      expect.objectContaining({ codigo: '01', nome: '01', paiCodigo: 'RC' })
-    )
-  })
-
-  it('recusa rua sem área', async () => {
+  it('recusa rua sem pai', async () => {
     await expect(
       servicoDeEstruturaWms.criarNivel(
         'company-001',
@@ -135,211 +101,47 @@ describe('servicoDeEstruturaWms', () => {
         'user-001'
       )
     ).rejects.toMatchObject({
-      message: 'Rua deve estar vinculada a uma área',
-      codigoHttp: 400,
-    })
-  })
-
-  it('recusa código de local que não é letra', async () => {
-    await expect(
-      servicoDeEstruturaWms.criarNivel(
-        'company-001',
-        { nivel: 'local', codigo: '1', nome: 'Anexo', ativo: true },
-        'user-001'
-      )
-    ).rejects.toMatchObject({
-      message: 'Local deve ter 1 letra',
+      message: 'Informe o nível pai',
       codigoHttp: 400,
     })
   })
 
   it('recusa letra no código da rua', async () => {
+    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockResolvedValue(
+      no('area', 'RC', { id: 'area-RC' })
+    )
     await expect(
       servicoDeEstruturaWms.criarNivel(
         'company-001',
-        { nivel: 'rua', codigo: 'C', nome: '', paiCodigo: 'RC', ativo: true },
+        { codigo: 'C', nome: '', parentId: 'area-RC', ativo: true },
         'user-001'
       )
     ).rejects.toMatchObject({
-      message: 'Rua deve ter 2 números (00 a 99)',
+      message: 'Rua deve ter números (ex.: 01)',
       codigoHttp: 400,
     })
   })
 
   it('GET por id de outra empresa não encontra', async () => {
     vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockResolvedValue(null)
-
-    await expect(
-      servicoDeEstruturaWms.buscarPorId('company-outra', 'n-1')
-    ).rejects.toMatchObject({
+    await expect(servicoDeEstruturaWms.buscarPorId('company-outra', 'n-1')).rejects.toMatchObject({
       message: 'Item da estrutura WMS não encontrado',
       codigoHttp: 404,
     })
   })
-})
 
-describe('exigirNiveisDoCatalogo', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    vi.mocked(repositorioDeEstruturaWms.garantirAreasETiposPadrao).mockResolvedValue(undefined)
-  })
-
-  it('recusa rua fora do catálogo', async () => {
-    vi.mocked(repositorioDeEstruturaWms.buscarPorNivelCodigo).mockImplementation(
-      async (_c, nivel, codigo) => {
-        if (nivel === 'rua') return null
-        return itemCatalogo(nivel, codigo)
-      }
+  it('recusa criar filho sob nível bloqueado', async () => {
+    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockResolvedValue(
+      no('bloco', '01', { id: 'bloco-01', parentId: 'rua-20', status: 'bloqueado' })
     )
-
     await expect(
-      servicoDeEstruturaWms.exigirNiveisDoCatalogo('company-001', {
-        local: 'A',
-        area: 'RC',
-        tipo: 'CH',
-        rua: '20',
-        andar: '2',
-      })
-    ).rejects.toMatchObject({
-      message: 'Rua não cadastrada na estrutura do depósito',
-      codigoHttp: 400,
-    })
-  })
-
-  it('recusa rua inativa em endereço novo', async () => {
-    vi.mocked(repositorioDeEstruturaWms.buscarPorNivelCodigo).mockImplementation(
-      async (_c, nivel, codigo) =>
-        itemCatalogo(nivel, codigo, { ativo: nivel !== 'rua', paiCodigo: nivel === 'rua' ? 'RC' : null })
-    )
-
-    await expect(
-      servicoDeEstruturaWms.exigirNiveisDoCatalogo('company-001', {
-        local: 'A',
-        area: 'RC',
-        tipo: 'CH',
-        rua: '20',
-        andar: '2',
-      })
-    ).rejects.toMatchObject({
-      message: 'Rua não cadastrada na estrutura do depósito',
-      codigoHttp: 400,
-    })
-  })
-
-  it('recusa rua de outra área', async () => {
-    vi.mocked(repositorioDeEstruturaWms.buscarPorNivelCodigo).mockImplementation(
-      async (_c, nivel, codigo) =>
-        itemCatalogo(nivel, codigo, { paiCodigo: nivel === 'rua' ? 'RC' : null })
-    )
-
-    await expect(
-      servicoDeEstruturaWms.exigirNiveisDoCatalogo('company-001', {
-        local: 'A',
-        area: 'EX',
-        tipo: 'CH',
-        rua: '20',
-        andar: '2',
-      })
-    ).rejects.toMatchObject({
-      message: 'Rua não pertence à área selecionada',
-      codigoHttp: 400,
-    })
-  })
-
-  it('recusa rua sem vínculo de área em endereço novo', async () => {
-    vi.mocked(repositorioDeEstruturaWms.buscarPorNivelCodigo).mockImplementation(
-      async (_c, nivel, codigo) =>
-        itemCatalogo(nivel, codigo, { paiCodigo: nivel === 'rua' ? null : null })
-    )
-
-    await expect(
-      servicoDeEstruturaWms.exigirNiveisDoCatalogo('company-001', {
-        local: 'A',
-        area: 'RC',
-        tipo: 'CH',
-        rua: '20',
-        andar: '2',
-      })
-    ).rejects.toMatchObject({
-      message: 'Rua não pertence à área selecionada',
-      codigoHttp: 400,
-    })
-  })
-
-  it('aceita rua inativa se o endereço já gravado a usa', async () => {
-    vi.mocked(repositorioDeEstruturaWms.buscarPorNivelCodigo).mockImplementation(
-      async (_c, nivel, codigo) =>
-        itemCatalogo(nivel, codigo, { ativo: nivel !== 'rua', paiCodigo: nivel === 'rua' ? 'RC' : null })
-    )
-
-    await expect(
-      servicoDeEstruturaWms.exigirNiveisDoCatalogo(
+      servicoDeEstruturaWms.criarNivel(
         'company-001',
-        { local: 'A', area: 'RC', tipo: 'CH', rua: '20', andar: '2' },
-        { local: 'A', area: 'RC', tipo: 'CH', rua: '20', andar: '2' }
+        { codigo: '2', parentId: 'bloco-01' },
+        'user-001'
       )
-    ).resolves.toBeUndefined()
-  })
-
-  it('recusa local fora do catálogo', async () => {
-    vi.mocked(repositorioDeEstruturaWms.buscarPorNivelCodigo).mockImplementation(
-      async (_c, nivel, codigo) => {
-        if (nivel === 'local') return null
-        return itemCatalogo(nivel, codigo)
-      }
-    )
-
-    await expect(
-      servicoDeEstruturaWms.exigirNiveisDoCatalogo('company-001', {
-        local: 'C',
-        area: 'RC',
-        tipo: 'CH',
-        rua: '20',
-        andar: '2',
-      })
     ).rejects.toMatchObject({
-      message: 'Local não cadastrado na estrutura do depósito',
-      codigoHttp: 400,
-    })
-  })
-
-  it('aceita local inativo se o endereço já gravado o usa', async () => {
-    vi.mocked(repositorioDeEstruturaWms.buscarPorNivelCodigo).mockImplementation(
-      async (_c, nivel, codigo) =>
-        itemCatalogo(nivel, codigo, {
-          ativo: nivel !== 'local',
-          paiCodigo: nivel === 'rua' ? 'RC' : null,
-        })
-    )
-
-    await expect(
-      servicoDeEstruturaWms.exigirNiveisDoCatalogo(
-        'company-001',
-        { local: 'A', area: 'RC', tipo: 'CH', rua: '20', andar: '2' },
-        { local: 'A', area: 'RC', tipo: 'CH', rua: '20', andar: '2' }
-      )
-    ).resolves.toBeUndefined()
-  })
-
-  it('recusa local inativo em endereço novo', async () => {
-    vi.mocked(repositorioDeEstruturaWms.buscarPorNivelCodigo).mockImplementation(
-      async (_c, nivel, codigo) =>
-        itemCatalogo(nivel, codigo, {
-          ativo: nivel !== 'local',
-          paiCodigo: nivel === 'rua' ? 'RC' : null,
-        })
-    )
-
-    await expect(
-      servicoDeEstruturaWms.exigirNiveisDoCatalogo('company-001', {
-        local: 'A',
-        area: 'RC',
-        tipo: 'CH',
-        rua: '20',
-        andar: '2',
-      })
-    ).rejects.toMatchObject({
-      message: 'Local não cadastrado na estrutura do depósito',
+      message: 'Este endereço está indisponível porque seu Bloco está bloqueado.',
       codigoHttp: 400,
     })
   })
@@ -348,48 +150,143 @@ describe('exigirNiveisDoCatalogo', () => {
 describe('excluirNivel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(repositorioDeEstruturaWms.contarRuasDaArea).mockResolvedValue(0)
-    vi.mocked(repositorioDeEnderecosWms.contarPorComponente).mockResolvedValue(0)
+    vi.mocked(repositorioDeEstruturaWms.contarFilhos).mockResolvedValue(0)
+    vi.mocked(repositorioDeEnderecosWms.contarPorAndar).mockResolvedValue(0)
     vi.mocked(repositorioDeEstruturaWms.excluir).mockResolvedValue(true)
   })
 
-  it('exclui local, área e tipo do seed quando não estão em uso', async () => {
-    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockResolvedValue(itemCatalogo('area', 'RC'))
-
+  it('exclui área sem filhos', async () => {
+    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockResolvedValue(no('area', 'RC'))
     await servicoDeEstruturaWms.excluirNivel('company-001', 'area-RC', 'user-001')
-
     expect(repositorioDeEstruturaWms.excluir).toHaveBeenCalledWith('company-001', 'area-RC')
   })
 
-  it('recusa excluir área que ainda tem rua', async () => {
-    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockResolvedValue(itemCatalogo('area', 'AM'))
-    vi.mocked(repositorioDeEstruturaWms.contarRuasDaArea).mockResolvedValue(2)
-
+  it('recusa excluir área que ainda tem filhos', async () => {
+    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockResolvedValue(no('area', 'AM'))
+    vi.mocked(repositorioDeEstruturaWms.contarFilhos).mockResolvedValue(2)
     await expect(
       servicoDeEstruturaWms.excluirNivel('company-001', 'area-AM', 'user-001')
     ).rejects.toMatchObject({
-      message: 'Há ruas cadastradas nesta área. Exclua as ruas primeiro.',
+      message: 'Há itens filhos neste nível. Exclua-os primeiro.',
       codigoHttp: 409,
     })
   })
 
-  it('recusa excluir nível usado em endereço', async () => {
-    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockResolvedValue(itemCatalogo('local', 'C'))
-    vi.mocked(repositorioDeEnderecosWms.contarPorComponente).mockResolvedValue(1)
-
+  it('recusa excluir andar com apartamentos', async () => {
+    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockResolvedValue(
+      no('andar', '2', { id: 'andar-2' })
+    )
+    vi.mocked(repositorioDeEnderecosWms.contarPorAndar).mockResolvedValue(1)
     await expect(
-      servicoDeEstruturaWms.excluirNivel('company-001', 'local-C', 'user-001')
+      servicoDeEstruturaWms.excluirNivel('company-001', 'andar-2', 'user-001')
     ).rejects.toMatchObject({
-      message: 'Há endereços WMS usando local C',
+      message: 'Há endereços WMS usando andar 2',
       codigoHttp: 409,
     })
   })
+})
 
-  it('exclui nível criado pelo operador quando não está em uso', async () => {
-    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockResolvedValue(itemCatalogo('local', 'C'))
+describe('previewGerar', () => {
+  it('recusa quando a área não pertence ao local', async () => {
+    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockImplementation(async (_c, id) => {
+      if (id === 'local-A') return no('local', 'A', { id: 'local-A' })
+      return no('area', 'RC', { id: 'area-RC', parentId: 'outro' })
+    })
+    await expect(
+      servicoDeEstruturaWms.previewGerar('company-001', {
+        localId: 'local-A',
+        areaId: 'area-RC',
+        blocoInicio: '01',
+        blocoFim: '01',
+        andarInicio: '1',
+        andarFim: '1',
+        apartamentoInicio: '01',
+        apartamentoFim: '01',
+        tipoPadrao: 'CH',
+        ruaInicio: '01',
+        ruaFim: '01',
+      })
+    ).rejects.toMatchObject({
+      message: 'Área não pertence ao local selecionado',
+      codigoHttp: 400,
+    })
+  })
 
-    await servicoDeEstruturaWms.excluirNivel('company-001', 'local-C', 'user-001')
+  it('monta prévia com códigos de local e área ainda não persistidos', async () => {
+    vi.mocked(repositorioDeEstruturaWms.buscarFilhoPorCodigo).mockResolvedValue(null)
+    const preview = await servicoDeEstruturaWms.previewGerar('company-001', {
+      localCodigo: 'A',
+      areaCodigo: 'RC',
+      blocoInicio: '01',
+      blocoFim: '01',
+      andarInicio: '2',
+      andarFim: '2',
+      apartamentoInicio: '05',
+      apartamentoFim: '05',
+      tipoPadrao: 'CH',
+      ruaInicio: '20',
+      ruaFim: '20',
+    })
+    expect(preview.total).toBe(1)
+    expect(preview.exemplos).toEqual(['A-RC-20-01-2-05'])
+    expect(repositorioDeEstruturaWms.criar).not.toHaveBeenCalled()
+  })
+})
 
-    expect(repositorioDeEstruturaWms.excluir).toHaveBeenCalledWith('company-001', 'local-C')
+describe('gerarEstrutura', () => {
+  it('cria local e área novos e devolve ids para expandir', async () => {
+    const local = no('local', 'C', { id: 'local-C' })
+    const area = no('area', 'EXP', { id: 'area-EXP', parentId: 'local-C' })
+    const rua = no('rua', '01', { id: 'rua-01', parentId: 'area-EXP' })
+    const bloco = no('bloco', '01', { id: 'bloco-01', parentId: 'rua-01' })
+    const andar = no('andar', '1', { id: 'andar-1', parentId: 'bloco-01' })
+    vi.mocked(repositorioDeEstruturaWms.buscarFilhoPorCodigo).mockResolvedValue(null)
+    vi.mocked(repositorioDeEstruturaWms.criar).mockImplementation(async (_c, dados) => {
+      if (dados.nivel === 'local') return local
+      if (dados.nivel === 'area') return area
+      if (dados.nivel === 'rua') return rua
+      if (dados.nivel === 'bloco') return bloco
+      return andar
+    })
+    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockImplementation(async (_c, id) => {
+      const mapa: Record<string, ReturnType<typeof no>> = {
+        'local-C': local,
+        'area-EXP': area,
+        'rua-01': rua,
+        'bloco-01': bloco,
+        'andar-1': andar,
+      }
+      return mapa[id] ?? null
+    })
+    vi.mocked(repositorioDeEstruturaWms.ancestrais).mockResolvedValue([bloco, rua, area, local])
+    vi.mocked(repositorioDeEnderecosWms.buscarPorAndarCodigo).mockResolvedValue(null)
+    vi.mocked(repositorioDeEnderecosWms.proximaSequencia).mockResolvedValue(0)
+    vi.mocked(repositorioDeEnderecosWms.criar).mockResolvedValue({ id: 'ap-1' } as never)
+
+    const gerado = await servicoDeEstruturaWms.gerarEstrutura(
+      'company-001',
+      {
+        localCodigo: 'C',
+        areaCodigo: 'EXP',
+        blocoInicio: '01',
+        blocoFim: '01',
+        andarInicio: '1',
+        andarFim: '1',
+        apartamentoInicio: '01',
+        apartamentoFim: '01',
+        tipoPadrao: 'CH',
+        ruaInicio: '01',
+        ruaFim: '01',
+      },
+      'user-001'
+    )
+
+    expect(gerado.criados).toBe(1)
+    expect(gerado.pulados).toBe(0)
+    expect(gerado.andarIds).toEqual(['andar-1'])
+    expect(gerado.idsParaExpandir).toEqual(
+      expect.arrayContaining(['local-C', 'area-EXP', 'rua-01', 'bloco-01', 'andar-1'])
+    )
+    expect(repositorioDeEnderecosWms.criar).toHaveBeenCalled()
   })
 })

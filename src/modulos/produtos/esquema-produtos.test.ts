@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   esquemaDeCriacaoDeProduto,
+  esquemaSubstituirEnderecosEstoque,
   MENSAGEM_MULTIPLICADOR_UNIDADES_DIFERENTES,
   MENSAGEM_MULTIPLICADOR_UNIDADES_IGUAIS,
   mensagemErroZod,
@@ -423,6 +424,22 @@ describe('esquemaDeCriacaoDeProduto', () => {
     const r = esquemaDeCriacaoDeProduto.safeParse({
       ...payloadMinimo,
       multiploVenda: 0,
+    })
+    expect(r.success).toBe(false)
+  })
+})
+
+describe('esquemaSubstituirEnderecosEstoque', () => {
+  it('aceita lista vazia', () => {
+    expect(esquemaSubstituirEnderecosEstoque.safeParse({ enderecosEstoque: [] }).success).toBe(true)
+  })
+
+  it('recusa o mesmo endereço em duas linhas', () => {
+    const r = esquemaSubstituirEnderecosEstoque.safeParse({
+      enderecosEstoque: [
+        { endereco: 'A-CQ-01-01-1-01' },
+        { endereco: 'a-cq-01-01-1-01' },
+      ],
     })
     expect(r.success).toBe(false)
   })
