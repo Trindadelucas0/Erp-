@@ -19,6 +19,7 @@ vi.mock('./repositorio-estrutura-wms.js', () => ({
     garantirAreasETiposPadrao: vi.fn(),
     coletarIdsSubarvore: vi.fn(),
     ancestrais: vi.fn(),
+    excluirSubarvore: vi.fn(),
     ehUnicidadePrisma: vi.fn(() => false),
   },
 }))
@@ -35,8 +36,17 @@ vi.mock('../enderecos-wms/repositorio-enderecos-wms.js', () => ({
   },
 }))
 
+vi.mock('../enderecos-wms/vinculo-produto-endereco-wms.js', () => ({
+  contarProdutosNosCodigos: vi.fn(),
+  MSG_PRODUTO_VINCULADO_ENDERECO:
+    'Há produtos vinculados a este endereço. Realoque os produtos primeiro.',
+  MSG_PRODUTO_VINCULADO_NIVEL:
+    'Há produtos vinculados a endereços abaixo deste nível. Realoque os produtos primeiro.',
+}))
+
 import { repositorioDeEstruturaWms } from './repositorio-estrutura-wms.js'
 import { repositorioDeEnderecosWms } from '../enderecos-wms/repositorio-enderecos-wms.js'
+import { contarProdutosNosCodigos } from '../enderecos-wms/vinculo-produto-endereco-wms.js'
 import { servicoDeEstruturaWms } from './servico-estrutura-wms.js'
 
 function no(nivel: string, codigo: string, extra?: Partial<{ id: string; parentId: string | null; status: string }>) {
@@ -150,39 +160,69 @@ describe('servicoDeEstruturaWms', () => {
 describe('excluirNivel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(repositorioDeEstruturaWms.contarFilhos).mockResolvedValue(0)
-    vi.mocked(repositorioDeEnderecosWms.contarPorAndar).mockResolvedValue(0)
-    vi.mocked(repositorioDeEstruturaWms.excluir).mockResolvedValue(true)
+    vi.mocked(contarProdutosNosCodigos).mockResolvedValue(0)
+    vi.mocked(repositorioDeEnderecosWms.listarPorAndares).mockResolvedValue([])
+    vi.mocked(repositorioDeEstruturaWms.excluirSubarvore).mockResolvedValue(undefined)
   })
 
   it('exclui área sem filhos', async () => {
-    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockResolvedValue(no('area', 'RC'))
+    const area = no('area', 'RC')
+    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockResolvedValue(area)
+    vi.mocked(repositorioDeEstruturaWms.coletarIdsSubarvore).mockResolvedValue(['area-RC'])
+    vi.mocked(repositorioDeEstruturaWms.listarPorEmpresa).mockResolvedValue([area])
     await servicoDeEstruturaWms.excluirNivel('company-001', 'area-RC', 'user-001')
-    expect(repositorioDeEstruturaWms.excluir).toHaveBeenCalledWith('company-001', 'area-RC')
-  })
-
-  it('recusa excluir área que ainda tem filhos', async () => {
-    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockResolvedValue(no('area', 'AM'))
-    vi.mocked(repositorioDeEstruturaWms.contarFilhos).mockResolvedValue(2)
-    await expect(
-      servicoDeEstruturaWms.excluirNivel('company-001', 'area-AM', 'user-001')
-    ).rejects.toMatchObject({
-      message: 'Há itens filhos neste nível. Exclua-os primeiro.',
-      codigoHttp: 409,
-    })
-  })
-
-  it('recusa excluir andar com apartamentos', async () => {
-    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockResolvedValue(
-      no('andar', '2', { id: 'andar-2' })
+    expect(repositorioDeEstruturaWms.excluirSubarvore).toHaveBeenCalledWith(
+      'company-001',
+      [area],
+      []
     )
-    vi.mocked(repositorioDeEnderecosWms.contarPorAndar).mockResolvedValue(1)
+  })
+
+  it('apaga subárvore vazia de produtos mesmo com filhos e apartamentos', async () => {
+    const area = no('area', 'AM', { id: 'area-AM' })
+    const rua = no('rua', '20', { id: 'rua-20', parentId: 'area-AM' })
+    const bloco = no('bloco', '01', { id: 'bloco-01', parentId: 'rua-20' })
+    const andar = no('andar', '2', { id: 'andar-2', parentId: 'bloco-01' })
+    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockResolvedValue(area)
+    vi.mocked(repositorioDeEstruturaWms.coletarIdsSubarvore).mockResolvedValue([
+      'area-AM',
+      'rua-20',
+      'bloco-01',
+      'andar-2',
+    ])
+    vi.mocked(repositorioDeEstruturaWms.listarPorEmpresa).mockResolvedValue([
+      area,
+      rua,
+      bloco,
+      andar,
+    ])
+    vi.mocked(repositorioDeEnderecosWms.listarPorAndares).mockResolvedValue([
+      { codigoCompleto: 'A-AM-20-01-2-05' },
+    ] as never)
+    await servicoDeEstruturaWms.excluirNivel('company-001', 'area-AM', 'user-001')
+    expect(repositorioDeEstruturaWms.excluirSubarvore).toHaveBeenCalledWith(
+      'company-001',
+      [area, rua, bloco, andar],
+      ['andar-2']
+    )
+  })
+
+  it('recusa excluir nível com produto nos apartamentos abaixo', async () => {
+    const andar = no('andar', '2', { id: 'andar-2' })
+    vi.mocked(repositorioDeEstruturaWms.buscarPorId).mockResolvedValue(andar)
+    vi.mocked(repositorioDeEstruturaWms.coletarIdsSubarvore).mockResolvedValue(['andar-2'])
+    vi.mocked(repositorioDeEstruturaWms.listarPorEmpresa).mockResolvedValue([andar])
+    vi.mocked(repositorioDeEnderecosWms.listarPorAndares).mockResolvedValue([
+      { codigoCompleto: 'A-RC-20-01-2-05' },
+    ] as never)
+    vi.mocked(contarProdutosNosCodigos).mockResolvedValue(1)
     await expect(
       servicoDeEstruturaWms.excluirNivel('company-001', 'andar-2', 'user-001')
     ).rejects.toMatchObject({
-      message: 'Há endereços WMS usando andar 2',
+      message: 'Há produtos vinculados a endereços abaixo deste nível. Realoque os produtos primeiro.',
       codigoHttp: 409,
     })
+    expect(repositorioDeEstruturaWms.excluirSubarvore).not.toHaveBeenCalled()
   })
 })
 

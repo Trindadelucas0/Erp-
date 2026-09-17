@@ -151,6 +151,25 @@ async function excluir(companyId: string, id: string) {
   return true
 }
 
+const ORDEM_EXCLUSAO_NIVEL = ['andar', 'bloco', 'rua', 'area', 'local'] as const
+
+async function excluirSubarvore(
+  companyId: string,
+  nos: { id: string; nivel: string }[],
+  andarIds: string[]
+) {
+  await clientePrisma.$transaction(async (tx) => {
+    if (andarIds.length > 0) {
+      await tx.enderecoWms.deleteMany({ where: { companyId, andarId: { in: andarIds } } })
+    }
+    for (const nivel of ORDEM_EXCLUSAO_NIVEL) {
+      const ids = nos.filter((n) => n.nivel === nivel).map((n) => n.id)
+      if (ids.length === 0) continue
+      await tx.nivelEnderecoWms.deleteMany({ where: { companyId, id: { in: ids } } })
+    }
+  })
+}
+
 async function garantirCatalogoPadrao(companyId: string) {
   const jaTem = await clientePrisma.nivelEnderecoWms.count({ where: { companyId } })
   if (jaTem > 0) return
@@ -234,6 +253,7 @@ export const repositorioDeEstruturaWms = {
   criar,
   atualizar,
   excluir,
+  excluirSubarvore,
   garantirCatalogoPadrao,
   garantirAreasETiposPadrao: garantirCatalogoPadrao,
   coletarIdsSubarvore,

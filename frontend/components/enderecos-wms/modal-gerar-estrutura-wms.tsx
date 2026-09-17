@@ -10,10 +10,19 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { TIPOS_ENDERECO_WMS } from '@/lib/endereco-wms'
 import {
   mascaraCodigoNivelWms,
+  rotuloNivelEstruturaWms,
   type FormGerarWms,
   type ItemEstruturaWms,
+  type NivelEstruturaWms,
 } from '@/lib/estrutura-wms'
 import { cn } from '@/lib/utils'
+
+const ORDEM_NIVEL = ['local', 'area', 'rua', 'bloco', 'andar'] as const
+
+function nivelTravado(origem: NivelEstruturaWms | null | undefined, campo: (typeof ORDEM_NIVEL)[number]) {
+  if (!origem) return false
+  return ORDEM_NIVEL.indexOf(campo) <= ORDEM_NIVEL.indexOf(origem)
+}
 
 type Props = {
   aberto: boolean
@@ -25,6 +34,8 @@ type Props = {
   exemplos?: string[]
   salvando: boolean
   erro: string
+  origemNivel?: NivelEstruturaWms | null
+  caminho?: string
   aoMudar: (form: FormGerarWms) => void
   aoFechar: () => void
   aoPreview: (e: FormEvent) => void
@@ -45,12 +56,19 @@ export function ModalGerarEstruturaWms({
   exemplos,
   salvando,
   erro,
+  origemNivel,
+  caminho,
   aoMudar,
   aoFechar,
   aoPreview,
   aoConfirmar,
 }: Props) {
   const um = form.modo === 'um'
+  const travaLocal = nivelTravado(origemNivel, 'local')
+  const travaArea = nivelTravado(origemNivel, 'area')
+  const travaRua = nivelTravado(origemNivel, 'rua')
+  const travaBloco = nivelTravado(origemNivel, 'bloco')
+  const travaAndar = nivelTravado(origemNivel, 'andar')
   const opcoesLocal = locais.map((l) => ({ value: l.id, label: rotuloOpcao(l) }))
   const opcoesArea = areas.map((l) => ({ value: l.id, label: rotuloOpcao(l) }))
   const opcoesRua = [
@@ -66,8 +84,16 @@ export function ModalGerarEstruturaWms({
     <Modal
       aberto={aberto}
       aoFechar={aoFechar}
-      titulo="Cadastrar endereços"
-      descricao="O código nasce sozinho: LOCAL-ÁREA-RUA-BLOCO-ANDAR-AP (ex.: A-RC-20-01-2-05). O tipo fica só no apartamento."
+      titulo={
+        origemNivel
+          ? `Gerar endereços abaixo de ${rotuloNivelEstruturaWms(origemNivel)}`
+          : 'Cadastrar endereços'
+      }
+      descricao={
+        origemNivel && caminho
+          ? `Caminho: ${caminho}. Só a faixa abaixo deste item. O tipo fica no apartamento.`
+          : 'O código nasce sozinho: LOCAL-ÁREA-RUA-BLOCO-ANDAR-AP (ex.: A-RC-20-01-2-05). O tipo fica só no apartamento.'
+      }
       largura="xl"
       rodape={
         <>
@@ -115,24 +141,26 @@ export function ModalGerarEstruturaWms({
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={form.novoLocal}
-                disabled={salvando}
-                onCheckedChange={(v) =>
-                  aoMudar({
-                    ...form,
-                    novoLocal: v === true,
-                    localId: v === true ? '' : form.localId,
-                    novaArea: v === true ? true : form.novaArea,
-                    areaId: v === true ? '' : form.areaId,
-                    ruaId: '',
-                  })
-                }
-              />
-              Novo local
-            </label>
-            {form.novoLocal ? (
+            {!travaLocal && (
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={form.novoLocal}
+                  disabled={salvando}
+                  onCheckedChange={(v) =>
+                    aoMudar({
+                      ...form,
+                      novoLocal: v === true,
+                      localId: v === true ? '' : form.localId,
+                      novaArea: v === true ? true : form.novaArea,
+                      areaId: v === true ? '' : form.areaId,
+                      ruaId: '',
+                    })
+                  }
+                />
+                Novo local
+              </label>
+            )}
+            {form.novoLocal && !travaLocal ? (
               <div className="grid gap-2">
                 <InputPadrao
                   rotulo="Código do local"
@@ -158,28 +186,30 @@ export function ModalGerarEstruturaWms({
                 aoMudar={(v) => aoMudar({ ...form, localId: v, areaId: '', ruaId: '' })}
                 opcoes={opcoesLocal}
                 obrigatorio
-                disabled={salvando}
+                disabled={salvando || travaLocal}
                 placeholder={opcoesLocal.length ? 'Selecione' : 'Nenhum local — marque Novo local'}
               />
             )}
           </div>
           <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={form.novaArea}
-                disabled={salvando || form.novoLocal}
-                onCheckedChange={(v) =>
-                  aoMudar({
-                    ...form,
-                    novaArea: v === true,
-                    areaId: v === true ? '' : form.areaId,
-                    ruaId: '',
-                  })
-                }
-              />
-              Nova área
-            </label>
-            {form.novaArea ? (
+            {!travaArea && (
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={form.novaArea}
+                  disabled={salvando || form.novoLocal}
+                  onCheckedChange={(v) =>
+                    aoMudar({
+                      ...form,
+                      novaArea: v === true,
+                      areaId: v === true ? '' : form.areaId,
+                      ruaId: '',
+                    })
+                  }
+                />
+                Nova área
+              </label>
+            )}
+            {form.novaArea && !travaArea ? (
               <div className="grid gap-2">
                 <InputPadrao
                   rotulo="Código da área"
@@ -205,13 +235,14 @@ export function ModalGerarEstruturaWms({
                 aoMudar={(v) => aoMudar({ ...form, areaId: v, ruaId: '' })}
                 opcoes={opcoesArea}
                 obrigatorio
-                disabled={salvando || (!form.localId && !form.novoLocal)}
+                disabled={salvando || travaArea || (!form.localId && !form.novoLocal)}
                 placeholder={form.localId || form.novoLocal ? 'Selecione' : 'Selecione o local'}
               />
             )}
           </div>
         </div>
 
+        {!travaRua && (
         <SelectPadrao
           rotulo="Rua cadastrada"
           valor={form.ruaId}
@@ -219,7 +250,8 @@ export function ModalGerarEstruturaWms({
           opcoes={opcoesRua}
           disabled={salvando || form.novaArea || (!form.areaId && !form.novaArea)}
         />
-        {!form.ruaId && (
+        )}
+        {!form.ruaId && !travaRua && (
           <div className={cn('grid gap-3', um ? 'sm:grid-cols-1' : 'sm:grid-cols-2')}>
             <InputPadrao
               rotulo={um ? 'Rua' : 'Ruas — inicial'}
@@ -245,7 +277,7 @@ export function ModalGerarEstruturaWms({
             rotulo={um ? 'Bloco' : 'Blocos — inicial'}
             value={form.blocoInicio}
             onChange={(e) => aoMudar({ ...form, blocoInicio: soDigitos('bloco', e.target.value) })}
-            disabled={salvando}
+            disabled={salvando || travaBloco}
             className="font-mono"
           />
           {!um && (
@@ -253,7 +285,7 @@ export function ModalGerarEstruturaWms({
               rotulo="Blocos — final"
               value={form.blocoFim}
               onChange={(e) => aoMudar({ ...form, blocoFim: soDigitos('bloco', e.target.value) })}
-              disabled={salvando}
+              disabled={salvando || travaBloco}
               className="font-mono"
             />
           )}
@@ -261,7 +293,7 @@ export function ModalGerarEstruturaWms({
             rotulo={um ? 'Andar' : 'Andares — inicial'}
             value={form.andarInicio}
             onChange={(e) => aoMudar({ ...form, andarInicio: soDigitos('andar', e.target.value) })}
-            disabled={salvando}
+            disabled={salvando || travaAndar}
             className="font-mono"
           />
           {!um && (
@@ -269,7 +301,7 @@ export function ModalGerarEstruturaWms({
               rotulo="Andares — final"
               value={form.andarFim}
               onChange={(e) => aoMudar({ ...form, andarFim: soDigitos('andar', e.target.value) })}
-              disabled={salvando}
+              disabled={salvando || travaAndar}
               className="font-mono"
             />
           )}

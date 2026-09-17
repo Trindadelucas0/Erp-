@@ -3,6 +3,7 @@ import {
   FORM_GERAR_WMS_VAZIO,
   cadastroWmsProntoParaPreview,
   corpoGerarEstruturaWms,
+  formGerarAPartirDoNo,
 } from './estrutura-wms'
 
 describe('corpoGerarEstruturaWms', () => {
@@ -41,5 +42,46 @@ describe('cadastroWmsProntoParaPreview', () => {
         areaId: 'a1',
       })
     ).toBe(true)
+  })
+})
+
+describe('formGerarAPartirDoNo', () => {
+  it('trava ancestrais da rua e deixa faixa de bloco em diante', () => {
+    const arvore = [
+      {
+        id: 'local-A',
+        nivel: 'local',
+        codigo: 'A',
+        nome: 'A',
+        ativo: true,
+        filhos: [
+          {
+            id: 'area-RC',
+            nivel: 'area',
+            codigo: 'RC',
+            nome: 'RC',
+            ativo: true,
+            parentId: 'local-A',
+            filhos: [
+              {
+                id: 'rua-20',
+                nivel: 'rua',
+                codigo: '20',
+                nome: '20',
+                ativo: true,
+                parentId: 'area-RC',
+                filhos: [],
+              },
+            ],
+          },
+        ],
+      },
+    ]
+    const form = formGerarAPartirDoNo(arvore, arvore[0]!.filhos![0]!.filhos![0]!)
+    expect(form.localId).toBe('local-A')
+    expect(form.areaId).toBe('area-RC')
+    expect(form.ruaId).toBe('rua-20')
+    expect(form.novoLocal).toBe(false)
+    expect(form.novaArea).toBe(false)
   })
 })

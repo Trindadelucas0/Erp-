@@ -11,7 +11,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
-import { ChevronDown, ChevronRight, GripVertical, Pencil, Plus, Power } from 'lucide-react'
+import { ChevronDown, ChevronRight, Copy, GripVertical, Pencil, Plus, Power, Trash2 } from 'lucide-react'
 import { MenuAcoesLinha } from '@/components/compartilhado/menu-acoes-linha'
 import { BadgeStatus } from '@/components/ui/badge-status'
 import { CabecalhoColunaOrdenavel } from '@/components/ui/cabecalho-coluna-ordenavel'
@@ -22,6 +22,7 @@ import {
   FILHO_NIVEL,
   ROTULO_NOVO_FILHO,
   achatarArvoreWms,
+  rotuloNivelEstruturaWms,
   type ItemEstruturaWms,
   type NivelEstruturaWms,
 } from '@/lib/estrutura-wms'
@@ -56,6 +57,9 @@ type Props = {
   aoNovoFilho: (no: ItemEstruturaWms) => void
   aoStatusNo: (no: ItemEstruturaWms, status: string) => void
   aoStatusAp: (ap: ApartamentoWms, status: string) => void
+  aoExcluirNo?: (no: ItemEstruturaWms) => void
+  aoExcluirAp?: (ap: ApartamentoWms) => void
+  aoGerarEmMassa?: (no: ItemEstruturaWms) => void
   aoMoverNo?: (id: string, alvoId: string, posicao: PosicaoMoverWms) => void
   aoMoverAp?: (id: string, alvoId: string, posicao: 'antes' | 'depois') => void
 }
@@ -84,6 +88,8 @@ function LinhaNo({
   aoEditar,
   aoNovoFilho,
   aoStatus,
+  aoExcluir,
+  aoGerarEmMassa,
 }: {
   no: ItemEstruturaWms
   profundidade: number
@@ -96,6 +102,8 @@ function LinhaNo({
   aoEditar: () => void
   aoNovoFilho: () => void
   aoStatus: (status: string) => void
+  aoExcluir?: () => void
+  aoGerarEmMassa?: () => void
 }) {
   const { attributes, listeners, setNodeRef: setDrag } = useDraggable({
     id: `no-${no.id}`,
@@ -141,6 +149,9 @@ function LinhaNo({
           </span>
         </div>
       </td>
+      <td className="px-2 py-2 text-muted-foreground">
+        {rotuloNivelEstruturaWms(no.nivel)}
+      </td>
       <td className="px-2 py-2 text-muted-foreground">—</td>
       <td className="px-2 py-2">
         <BadgeStatus variante={varianteStatus(status, no.ativo)}>{rotuloStatus(status, no.ativo)}</BadgeStatus>
@@ -162,10 +173,23 @@ function LinhaNo({
             itens={[
               { rotulo: 'Editar', icone: Pencil, onClick: aoEditar, oculto: !podeEditar },
               {
+                rotulo: 'Gerar em massa',
+                icone: Copy,
+                onClick: () => aoGerarEmMassa?.(),
+                oculto: !podeCriar || !aoGerarEmMassa,
+              },
+              {
                 rotulo: status === 'inativo' ? 'Ativar' : 'Inativar',
                 icone: Power,
                 onClick: () => aoStatus(status === 'inativo' ? 'ativo' : 'inativo'),
                 oculto: !podeEditar,
+              },
+              {
+                rotulo: 'Excluir',
+                icone: Trash2,
+                onClick: () => aoExcluir?.(),
+                destrutivo: true,
+                oculto: !podeEditar || !aoExcluir,
               },
             ]}
           />
@@ -182,6 +206,7 @@ function LinhaAp({
   podeEditar,
   aoEditar,
   aoStatus,
+  aoExcluir,
 }: {
   ap: ApartamentoWms
   profundidade: number
@@ -189,6 +214,7 @@ function LinhaAp({
   podeEditar: boolean
   aoEditar: () => void
   aoStatus: (status: string) => void
+  aoExcluir?: () => void
 }) {
   const { attributes, listeners, setNodeRef: setDrag } = useDraggable({
     id: `ap-${ap.id}`,
@@ -219,6 +245,7 @@ function LinhaAp({
           </span>
         </div>
       </td>
+      <td className="px-2 py-2 text-muted-foreground">Apartamento</td>
       <td className="px-2 py-2 font-mono text-xs">{ap.tipoEndereco}</td>
       <td className="px-2 py-2">
         <BadgeStatus variante={varianteStatus(ap.status, ap.ativo)}>
@@ -235,6 +262,13 @@ function LinhaAp({
               icone: Power,
               onClick: () => aoStatus(ap.status === 'inativo' ? 'ativo' : 'inativo'),
               oculto: !podeEditar,
+            },
+            {
+              rotulo: 'Excluir',
+              icone: Trash2,
+              onClick: () => aoExcluir?.(),
+              destrutivo: true,
+              oculto: !podeEditar || !aoExcluir,
             },
           ]}
         />
@@ -334,6 +368,7 @@ export function ArvoreEnderecosWms(props: Props) {
                 ordenacao={ordenacao}
                 onOrdenar={alternarOrdenacao}
               />
+              <th className="px-2 py-2 font-medium">Nível</th>
               <th className="px-2 py-2 font-medium">Tipo</th>
               <CabecalhoColunaOrdenavel
                 coluna="situacao"
@@ -347,7 +382,7 @@ export function ArvoreEnderecosWms(props: Props) {
           <tbody>
             {linhas.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                   Nenhum endereço. Use Cadastrar endereços (local até o apartamento) ou Novo local.
                 </td>
               </tr>
@@ -367,6 +402,10 @@ export function ArvoreEnderecosWms(props: Props) {
                     aoEditar={() => props.aoEditarNo(linha.no)}
                     aoNovoFilho={() => props.aoNovoFilho(linha.no)}
                     aoStatus={(s) => props.aoStatusNo(linha.no, s)}
+                    aoExcluir={props.aoExcluirNo ? () => props.aoExcluirNo?.(linha.no) : undefined}
+                    aoGerarEmMassa={
+                      props.aoGerarEmMassa ? () => props.aoGerarEmMassa?.(linha.no) : undefined
+                    }
                   />
                 ) : (
                   <LinhaAp
@@ -377,6 +416,7 @@ export function ArvoreEnderecosWms(props: Props) {
                     podeEditar={props.podeEditar}
                     aoEditar={() => props.aoEditarAp(linha.ap)}
                     aoStatus={(s) => props.aoStatusAp(linha.ap, s)}
+                    aoExcluir={props.aoExcluirAp ? () => props.aoExcluirAp?.(linha.ap) : undefined}
                   />
                 )
               )

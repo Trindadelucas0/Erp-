@@ -7,6 +7,10 @@ import {
   validarCodigoNivelEstruturaWms,
 } from './nomenclatura-endereco-wms.js'
 import { repositorioDeEnderecosWms } from './repositorio-enderecos-wms.js'
+import {
+  contarProdutosNosCodigos,
+  MSG_PRODUTO_VINCULADO_ENDERECO,
+} from './vinculo-produto-endereco-wms.js'
 import { servicoDeEstruturaWms } from '../estrutura-wms/servico-estrutura-wms.js'
 import { mensagemIndisponivelPorAncestral } from '../estrutura-wms/status-efetivo-wms.js'
 import type {
@@ -218,6 +222,12 @@ async function moverEndereco(
 
 async function excluirEndereco(companyId: string, id: string, idDoAutor: string) {
   const existente = await buscarPorId(companyId, id)
+  const vinculados = await contarProdutosNosCodigos(companyId, [existente.codigoCompleto])
+  if (vinculados > 0) {
+    throw new ErroDaAplicacao(MSG_PRODUTO_VINCULADO_ENDERECO, 409, {
+      detalhes: { quantidade: vinculados },
+    })
+  }
   const apagou = await repositorioDeEnderecosWms.excluir(companyId, id)
   if (!apagou) throw new ErroDaAplicacao('Endereço WMS não encontrado', 404)
   await registrarAuditoria({

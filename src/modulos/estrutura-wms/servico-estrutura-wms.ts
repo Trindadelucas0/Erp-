@@ -7,6 +7,10 @@ import {
   type NivelHierarquiaWms,
 } from '../enderecos-wms/nomenclatura-endereco-wms.js'
 import { repositorioDeEnderecosWms } from '../enderecos-wms/repositorio-enderecos-wms.js'
+import {
+  contarProdutosNosCodigos,
+  MSG_PRODUTO_VINCULADO_NIVEL,
+} from '../enderecos-wms/vinculo-produto-endereco-wms.js'
 import { repositorioDeEstruturaWms } from './repositorio-estrutura-wms.js'
 import type {
   DadosParaCriarNivelWms,
@@ -24,13 +28,6 @@ import {
 } from './status-efetivo-wms.js'
 
 const MSG_DUPLICADO = 'Código já cadastrado neste nível da estrutura'
-const ROTULO_NIVEL: Record<NivelEstruturaWms, string> = {
-  local: 'Local',
-  area: 'Área',
-  rua: 'Rua',
-  bloco: 'Bloco',
-  andar: 'Andar',
-}
 
 function nomeOuCodigo(nome: string | undefined, codigo: string): string {
   const n = String(nome ?? '').trim()
@@ -279,27 +276,34 @@ async function editarNivel(
 
 async function excluirNivel(companyId: string, id: string, idDoAutor: string) {
   const existente = await buscarPorId(companyId, id)
-  const filhos = await repositorioDeEstruturaWms.contarFilhos(companyId, id)
-  if (filhos > 0) {
-    throw new ErroDaAplicacao('Há itens filhos neste nível. Exclua-os primeiro.', 409)
+  const idsSub = await repositorioDeEstruturaWms.coletarIdsSubarvore(companyId, id)
+  const niveis = await repositorioDeEstruturaWms.listarPorEmpresa(companyId, {
+    incluirInativos: true,
+  })
+  const nos = niveis.filter((n) => idsSub.includes(n.id))
+  const andarIds = nos.filter((n) => n.nivel === 'andar').map((n) => n.id)
+  const aps = await repositorioDeEnderecosWms.listarPorAndares(companyId, andarIds)
+  const vinculados = await contarProdutosNosCodigos(
+    companyId,
+    aps.map((ap) => ap.codigoCompleto)
+  )
+  if (vinculados > 0) {
+    throw new ErroDaAplicacao(MSG_PRODUTO_VINCULADO_NIVEL, 409, {
+      detalhes: { quantidade: vinculados },
+    })
   }
-  if (existente.nivel === 'andar') {
-    const aps = await repositorioDeEnderecosWms.contarPorAndar(companyId, id)
-    if (aps > 0) {
-      throw new ErroDaAplicacao(
-        `Há endereços WMS usando ${ROTULO_NIVEL.andar.toLowerCase()} ${existente.codigo}`,
-        409
-      )
-    }
-  }
-  const apagou = await repositorioDeEstruturaWms.excluir(companyId, id)
-  if (!apagou) throw new ErroDaAplicacao('Item da estrutura WMS não encontrado', 404)
+  await repositorioDeEstruturaWms.excluirSubarvore(companyId, nos, andarIds)
   await registrarAuditoria({
     usuarioId: idDoAutor,
     acao: 'excluir',
     entidade: 'nivel_endereco_wms',
     entidadeId: id,
-    valoresAntes: { nivel: existente.nivel, codigo: existente.codigo },
+    valoresAntes: {
+      nivel: existente.nivel,
+      codigo: existente.codigo,
+      niveis: nos.length,
+      apartamentos: aps.length,
+    },
   })
 }
 

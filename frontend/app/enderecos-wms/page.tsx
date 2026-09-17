@@ -13,6 +13,7 @@ import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { SelectPadrao } from '@/components/ui/select-padrao'
 import { CampoBuscaLista } from '@/components/compartilhado/campo-busca-lista'
+import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import { textosContemTodosTermos } from '@/lib/normalizar-busca'
 import {
@@ -20,9 +21,11 @@ import {
   coletarIdsCaminho,
   corpoGerarEstruturaWms,
   cadastroWmsProntoParaPreview,
+  formGerarAPartirDoNo,
   FILHO_NIVEL,
   FORM_GERAR_WMS_VAZIO,
   ROTULO_NOVO_FILHO,
+  rotuloNivelEstruturaWms,
   type FormGerarWms,
   type ItemEstruturaWms,
   type NivelEstruturaWms,
@@ -102,8 +105,18 @@ function ConteudoEnderecosWms() {
   const [erroModal, setErroModal] = useState('')
 
   const [modalGerar, setModalGerar] = useState(false)
+  const [origemGerar, setOrigemGerar] = useState<NivelEstruturaWms | null>(null)
+  const [caminhoGerar, setCaminhoGerar] = useState('')
   const [formGerar, setFormGerar] = useState<FormGerarWms>(FORM_GERAR_WMS_VAZIO)
   const [preview, setPreview] = useState<{ total: number; exemplos: string[] } | null>(null)
+  const [exclusao, setExclusao] = useState<{
+    tipo: 'no' | 'ap'
+    id: string
+    titulo: string
+    mensagem: string
+    andarId?: string
+  } | null>(null)
+  const [excluindo, setExcluindo] = useState(false)
 
   const carregar = useCallback(async () => {
     setCarregando(true)
@@ -376,10 +389,69 @@ function ConteudoEnderecosWms() {
     } else {
       inicial.novoLocal = true
     }
+    setOrigemGerar(null)
+    setCaminhoGerar('')
     setFormGerar(inicial)
     setPreview(null)
     setErroModal('')
     setModalGerar(true)
+  }
+
+  function aoGerarEmMassa(no: ItemEstruturaWms) {
+    setOrigemGerar(no.nivel as NivelEstruturaWms)
+    setCaminhoGerar(breadcrumb(arvore, no.id))
+    setFormGerar(formGerarAPartirDoNo(arvore, no))
+    setPreview(null)
+    setErroModal('')
+    setModalGerar(true)
+  }
+
+  function aoExcluirNo(no: ItemEstruturaWms) {
+    const qtd = no.qtdApartamentos ?? 0
+    const nivel = rotuloNivelEstruturaWms(no.nivel)
+    setExclusao({
+      tipo: 'no',
+      id: no.id,
+      titulo: `Excluir ${nivel} ${no.codigo}?`,
+      mensagem:
+        qtd > 0
+          ? `Vai apagar este ${nivel.toLowerCase()} e ${qtd} apartamento${qtd === 1 ? '' : 's'} abaixo, se nenhum produto estiver vinculado. Não dá para desfazer.`
+          : `Vai apagar este ${nivel.toLowerCase()} e tudo abaixo sem produto. Não dá para desfazer.`,
+    })
+  }
+
+  function aoExcluirAp(ap: ApartamentoWms) {
+    setExclusao({
+      tipo: 'ap',
+      id: ap.id,
+      andarId: ap.andarId,
+      titulo: `Excluir apartamento ${ap.codigo}?`,
+      mensagem: `Remove ${ap.codigoCompleto}. Se houver produto neste endereço, a exclusão será recusada para você realocar antes.`,
+    })
+  }
+
+  async function confirmarExclusao() {
+    if (!exclusao) return
+    setExcluindo(true)
+    setErro('')
+    try {
+      if (exclusao.tipo === 'ap') {
+        await clienteHttp.delete(`/enderecos-wms/${exclusao.id}`)
+        if (exclusao.andarId) await carregarAps(exclusao.andarId)
+        await carregar()
+      } else {
+        await clienteHttp.delete(`/estrutura-wms/${exclusao.id}`)
+        await carregar()
+        setAps({})
+      }
+      setMensagem('Registro excluído.')
+      setExclusao(null)
+    } catch (err: unknown) {
+      setErro(extrairMensagemApi(err, 'Não foi possível excluir.'))
+      setExclusao(null)
+    } finally {
+      setExcluindo(false)
+    }
   }
 
   return (
@@ -388,7 +460,8 @@ function ConteudoEnderecosWms() {
       <p className="text-sm text-muted-foreground">
         Formato: <span className="font-mono">LOCAL-ÁREA-RUA-BLOCO-ANDAR-AP</span> (ex.:{' '}
         <span className="font-mono">A-RC-20-01-2-05</span>). Use <strong>Cadastrar endereços</strong>{' '}
-        para um apartamento ou uma faixa. O tipo (PP/CX/CH/BC) fica no apartamento.
+        ou <strong>Gerar em massa</strong> na linha. O tipo (PP/CX/CH/BC) fica no apartamento. Excluir
+        pede realocação se houver produto no endereço.
       </p>
       {mensagem && (
         <p className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">{mensagem}</p>
@@ -436,7 +509,7 @@ function ConteudoEnderecosWms() {
           />
         </div>
         {carregando ? (
-          <LinhasSkeletonTabela colunas={4} linhas={6} />
+          <LinhasSkeletonTabela colunas={5} linhas={6} />
         ) : (
           <ArvoreEnderecosWms
             arvore={arvore}
@@ -452,6 +525,9 @@ function ConteudoEnderecosWms() {
             aoNovoFilho={aoNovoFilho}
             aoStatusNo={aoStatusNo}
             aoStatusAp={aoStatusAp}
+            aoExcluirNo={podeEditar ? aoExcluirNo : undefined}
+            aoExcluirAp={podeEditar ? aoExcluirAp : undefined}
+            aoGerarEmMassa={podeCriar ? aoGerarEmMassa : undefined}
             aoMoverNo={aoMoverNo}
             aoMoverAp={aoMoverAp}
           />
@@ -495,13 +571,32 @@ function ConteudoEnderecosWms() {
         exemplos={preview?.exemplos}
         salvando={salvando}
         erro={erroModal}
+        origemNivel={origemGerar}
+        caminho={caminhoGerar}
         aoMudar={(f) => {
           setFormGerar(f)
           setPreview(null)
         }}
-        aoFechar={() => setModalGerar(false)}
+        aoFechar={() => {
+          setModalGerar(false)
+          setOrigemGerar(null)
+        }}
         aoPreview={aoPreviewGerar}
         aoConfirmar={aoConfirmarGerar}
+      />
+
+      <ModalConfirmacao
+        aberto={Boolean(exclusao)}
+        titulo={exclusao?.titulo}
+        mensagem={exclusao?.mensagem}
+        textoConfirmar={excluindo ? 'Excluindo...' : 'Excluir'}
+        textoCancelar="Cancelar"
+        aoConfirmar={() => {
+          if (!excluindo) void confirmarExclusao()
+        }}
+        aoCancelar={() => {
+          if (!excluindo) setExclusao(null)
+        }}
       />
     </div>
   )

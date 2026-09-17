@@ -159,6 +159,50 @@ export function achatarArvoreWms(
   return linhas
 }
 
+export function rotuloNivelEstruturaWms(nivel: string) {
+  if (nivel === 'apartamento') return 'Apartamento'
+  return ROTULOS_NIVEL_ESTRUTURA_WMS[nivel as NivelEstruturaWms] ?? nivel
+}
+
+export function cadeiaAteNo(nos: ItemEstruturaWms[], alvoId: string): ItemEstruturaWms[] {
+  const ids = coletarIdsCaminho(nos, alvoId)
+  if (!ids) return []
+  const cadeia: ItemEstruturaWms[] = []
+  let lista = nos
+  for (const id of ids) {
+    const item = lista.find((n) => n.id === id)
+    if (!item) break
+    cadeia.push(item)
+    lista = item.filhos ?? []
+  }
+  return cadeia
+}
+
+export function formGerarAPartirDoNo(arvore: ItemEstruturaWms[], no: ItemEstruturaWms): FormGerarWms {
+  const cadeia = cadeiaAteNo(arvore, no.id)
+  const porNivel = new Map(cadeia.map((n) => [n.nivel, n]))
+  const local = porNivel.get('local')
+  const area = porNivel.get('area')
+  const rua = porNivel.get('rua')
+  const bloco = porNivel.get('bloco')
+  const andar = porNivel.get('andar')
+  return {
+    ...FORM_GERAR_WMS_VAZIO,
+    modo: 'varios',
+    novoLocal: false,
+    novaArea: false,
+    localId: local?.id ?? '',
+    areaId: area?.id ?? '',
+    ruaId: rua?.id ?? '',
+    ruaInicio: rua?.codigo ?? FORM_GERAR_WMS_VAZIO.ruaInicio,
+    ruaFim: rua?.codigo ?? FORM_GERAR_WMS_VAZIO.ruaFim,
+    blocoInicio: bloco?.codigo ?? FORM_GERAR_WMS_VAZIO.blocoInicio,
+    blocoFim: bloco?.codigo ?? FORM_GERAR_WMS_VAZIO.blocoFim,
+    andarInicio: andar?.codigo ?? FORM_GERAR_WMS_VAZIO.andarInicio,
+    andarFim: andar?.codigo ?? FORM_GERAR_WMS_VAZIO.andarFim,
+  }
+}
+
 export function coletarIdsCaminho(nos: ItemEstruturaWms[], alvoId: string, prefixo: string[] = []): string[] | null {
   for (const no of nos) {
     const caminho = [...prefixo, no.id]

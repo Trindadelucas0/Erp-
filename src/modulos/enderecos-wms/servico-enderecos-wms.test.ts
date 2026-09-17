@@ -21,6 +21,14 @@ vi.mock('./repositorio-enderecos-wms.js', () => ({
   },
 }))
 
+vi.mock('./vinculo-produto-endereco-wms.js', () => ({
+  contarProdutosNosCodigos: vi.fn(),
+  MSG_PRODUTO_VINCULADO_ENDERECO:
+    'Há produtos vinculados a este endereço. Realoque os produtos primeiro.',
+  MSG_PRODUTO_VINCULADO_NIVEL:
+    'Há produtos vinculados a endereços abaixo deste nível. Realoque os produtos primeiro.',
+}))
+
 vi.mock('../estrutura-wms/servico-estrutura-wms.js', () => ({
   servicoDeEstruturaWms: {
     buscarPorId: vi.fn(),
@@ -30,6 +38,7 @@ vi.mock('../estrutura-wms/servico-estrutura-wms.js', () => ({
 }))
 
 import { repositorioDeEnderecosWms } from './repositorio-enderecos-wms.js'
+import { contarProdutosNosCodigos } from './vinculo-produto-endereco-wms.js'
 import { servicoDeEstruturaWms } from '../estrutura-wms/servico-estrutura-wms.js'
 import { servicoDeEnderecosWms } from './servico-enderecos-wms.js'
 
@@ -79,6 +88,7 @@ describe('servicoDeEnderecosWms', () => {
     vi.mocked(servicoDeEstruturaWms.caminhoComponentes).mockResolvedValue(caminho as never)
     vi.mocked(repositorioDeEnderecosWms.proximaSequencia).mockResolvedValue(0)
     vi.mocked(repositorioDeEnderecosWms.buscarPorAndarCodigo).mockResolvedValue(null)
+    vi.mocked(contarProdutosNosCodigos).mockResolvedValue(0)
   })
 
   it('cria apartamento e recusa duplicata no mesmo andar', async () => {
@@ -143,6 +153,18 @@ describe('servicoDeEnderecosWms', () => {
     vi.mocked(repositorioDeEnderecosWms.excluir).mockResolvedValue(true)
     await servicoDeEnderecosWms.excluirEndereco('company-001', 'end-1', 'user-001')
     expect(repositorioDeEnderecosWms.excluir).toHaveBeenCalledWith('company-001', 'end-1')
+  })
+
+  it('recusa excluir endereço com produto vinculado', async () => {
+    vi.mocked(repositorioDeEnderecosWms.buscarPorId).mockResolvedValue(apCriado)
+    vi.mocked(contarProdutosNosCodigos).mockResolvedValue(3)
+    await expect(
+      servicoDeEnderecosWms.excluirEndereco('company-001', 'end-1', 'user-001')
+    ).rejects.toMatchObject({
+      message: 'Há produtos vinculados a este endereço. Realoque os produtos primeiro.',
+      codigoHttp: 409,
+    })
+    expect(repositorioDeEnderecosWms.excluir).not.toHaveBeenCalled()
   })
 
   it('lista com teto quando filtra por q sem andar', async () => {
