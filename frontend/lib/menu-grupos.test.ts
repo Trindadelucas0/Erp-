@@ -9,13 +9,14 @@ const paginas: PaginaDoSistema[] = [
   { chave: 'auditoria-entradas', caminho: '/auditoria-entradas', rotulo: 'Auditoria de entradas' },
   { chave: 'estoque', caminho: '/estoque', rotulo: 'Estoque' },
   { chave: 'enderecos-wms', caminho: '/enderecos-wms', rotulo: 'Endereços WMS' },
+  { chave: 'requisicoes', caminho: '/requisicoes', rotulo: 'Requisições' },
 ]
 
 describe('GRUPOS_DO_MENU', () => {
   it('Logística agrupa contagens, estoque e endereços WMS', () => {
     const logistica = GRUPOS_DO_MENU.find((grupo) => grupo.id === 'logistica')
     expect(logistica?.rotulo).toBe('Logística')
-    expect(logistica?.chaves).toEqual(['contagens', 'estoque', 'enderecos-wms'])
+    expect(logistica?.chaves).toEqual(['contagens', 'estoque', 'enderecos-wms', 'requisicoes'])
   })
 
   it('Compras não contém contagens', () => {
@@ -26,7 +27,7 @@ describe('GRUPOS_DO_MENU', () => {
 })
 
 describe('montarEntradasDoMenu', () => {
-  it('monta Logística com os três itens e Compras sem contagens', () => {
+  it('monta Logística com os quatro itens e Compras sem contagens', () => {
     const entradas = montarEntradasDoMenu(paginas)
     const compras = entradas.find((entrada) => entrada.tipo === 'grupo' && entrada.id === 'compras')
     const logistica = entradas.find(
@@ -47,6 +48,7 @@ describe('montarEntradasDoMenu', () => {
       'contagens',
       'estoque',
       'enderecos-wms',
+      'requisicoes',
     ])
   })
 })

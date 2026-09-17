@@ -91,6 +91,9 @@ export const ROTULOS_TIPO_MOVIMENTO: Record<string, string> = {
   entrada: 'Entrada',
   saida: 'Saída',
   perda: 'Perda',
+  requisicao_reserva: 'Reserva (requisição)',
+  requisicao_saida: 'Saída (requisição)',
+  requisicao_estorno: 'Estorno reserva (requisição)',
 }
 
 export function rotuloTipoMovimento(tipo: string): string {
@@ -124,6 +127,9 @@ export function montarOcorrencia(dados: {
   }
   if (dados.tipoMovimento === 'conferencia_ok') {
     return `Conferência cega OK (${dim})`
+  }
+  if (dados.origem === 'requisicao_wms' || dados.tipoMovimento.startsWith('requisicao_')) {
+    return `${tipo} (${dim})`
   }
   return `${tipo} (${dim})`
 }

@@ -763,10 +763,17 @@ function ConteudoDaPagina() {
     const produtoId = searchParams.get('id')?.trim()
     if (!produtoId) return
 
+    const abaQuery = searchParams.get('aba')?.trim()
+    const abaDeepLink =
+      abaQuery && (ORDEM_ABAS as readonly string[]).includes(abaQuery)
+        ? abaQuery
+        : null
+
     deepLinkProcessado.current = true
     void (async () => {
       try {
         await carregarProdutoNoForm(produtoId)
+        if (abaDeepLink) setAbaAtiva(abaDeepLink)
         setModoEdicao(false)
         setModoVisualizacao(true)
         setModalAberto(true)

@@ -3,6 +3,7 @@
  * Regra de ouro: saldo só muda via registrarMovimentoEstoque (append-only).
  */
 import { randomUUID } from 'node:crypto'
+import type { Prisma } from '@prisma/client'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { repositorioDeEstoque } from './repositorio-estoque.js'
 import {
@@ -119,7 +120,10 @@ function mapearMovimento(row: {
   }
 }
 
-async function registrarMovimentoEstoque(entrada: EntradaRegistrarMovimento) {
+async function registrarMovimentoEstoque(
+  entrada: EntradaRegistrarMovimento,
+  txExterno?: Prisma.TransactionClient
+) {
   if (!dimensaoEhValida(entrada.dimensao)) {
     throw new ErroDaAplicacao('Dimensão de estoque inválida', 400)
   }
@@ -151,12 +155,14 @@ async function registrarMovimentoEstoque(entrada: EntradaRegistrarMovimento) {
 
   const existente = await repositorioDeEstoque.buscarMovimentoPorChave(
     entrada.companyId,
-    entrada.chaveIdempotencia
+    entrada.chaveIdempotencia,
+    txExterno
   )
   if (existente) {
     const saldo = await repositorioDeEstoque.buscarSaldo(
       entrada.companyId,
-      entrada.produtoId
+      entrada.produtoId,
+      txExterno
     )
     return {
       idempotente: true as const,
@@ -169,7 +175,7 @@ async function registrarMovimentoEstoque(entrada: EntradaRegistrarMovimento) {
     }
   }
 
-  return repositorioDeEstoque.clientePrisma.$transaction(async (tx) => {
+  const executarNoTx = async (tx: Prisma.TransactionClient) => {
     const deNovo = await repositorioDeEstoque.buscarMovimentoPorChave(
       entrada.companyId,
       entrada.chaveIdempotencia,
@@ -249,7 +255,10 @@ async function registrarMovimentoEstoque(entrada: EntradaRegistrarMovimento) {
       movimento: mapearMovimento(movimento),
       saldos: saldosComDisponivel(repositorioDeEstoque.mapearSaldos(saldoAtualizado)),
     }
-  })
+  }
+
+  if (txExterno) return executarNoTx(txExterno)
+  return repositorioDeEstoque.clientePrisma.$transaction(executarNoTx)
 }
 
 export type ItemBloqueioAtivoProduto = {

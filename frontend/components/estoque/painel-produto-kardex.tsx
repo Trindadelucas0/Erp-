@@ -27,6 +27,7 @@ function Meta({ rotulo, valor }: { rotulo: string; valor: string | null | undefi
 
 export function PainelProdutoKardex({ produto, fornecedores }: Props) {
   const hrefCadastro = `/produtos?id=${encodeURIComponent(produto.id)}`
+  const hrefCadastroLogistica = `${hrefCadastro}&aba=logistica`
   const enderecos = (produto.enderecosEstoque ?? []).filter((e) => e.endereco.trim())
 
   return (
@@ -68,7 +69,7 @@ export function PainelProdutoKardex({ produto, fornecedores }: Props) {
           </div>
         </div>
         <Link
-          href={hrefCadastro}
+          href={hrefCadastroLogistica}
           className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
         >
           Abrir cadastro
@@ -94,7 +95,7 @@ export function PainelProdutoKardex({ produto, fornecedores }: Props) {
         {enderecos.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             Nenhum endereço cadastrado.{' '}
-            <Link href={hrefCadastro} className="text-primary hover:underline">
+            <Link href={hrefCadastroLogistica} className="text-primary hover:underline">
               Abrir cadastro
             </Link>
           </p>

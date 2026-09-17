@@ -81,6 +81,12 @@ export const PAGINAS_VINCULAVEIS: readonly PaginaDoSistema[] = [
     modulo: 'estoque',
   },
   {
+    chave: 'requisicoes',
+    caminho: '/requisicoes',
+    rotulo: 'Requisições',
+    modulo: 'estoque',
+  },
+  {
     chave: 'estrutura-wms',
     caminho: '/configuracoes?aba=logistica&secao=estrutura',
     rotulo: 'Estrutura WMS',

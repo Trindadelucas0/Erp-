@@ -170,8 +170,9 @@ async function criarMovimento(
   })
 }
 
-async function buscarSaldo(companyId: string, produtoId: string) {
-  return clientePrisma.estoqueSaldo.findUnique({
+async function buscarSaldo(companyId: string, produtoId: string, tx?: Tx) {
+  const db = tx ?? clientePrisma
+  return db.estoqueSaldo.findUnique({
     where: { companyId_produtoId: { companyId, produtoId } },
   })
 }

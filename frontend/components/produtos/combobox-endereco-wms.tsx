@@ -32,7 +32,9 @@ type PosicaoDropdown = {
 type Props = {
   rotulo?: string
   valor: string
-  aoMudar: (codigoCompleto: string) => void
+  aoMudar: (codigoCompletoOuId: string) => void
+  /** Padrão: grava o código completo. `id` grava o UUID do apartamento (Requisições). */
+  tipoValor?: 'codigoCompleto' | 'id'
   disabled?: boolean
   mensagemDeErro?: string
 }
@@ -63,6 +65,7 @@ export function ComboboxEnderecoWms({
   rotulo = 'Endereço *',
   valor,
   aoMudar,
+  tipoValor = 'codigoCompleto',
   disabled,
   mensagemDeErro,
 }: Props) {
@@ -184,7 +187,7 @@ export function ComboboxEnderecoWms({
 
   function selecionar(item: EnderecoOpcao) {
     setEscolhido(item)
-    aoMudar(item.codigoCompleto)
+    aoMudar(tipoValor === 'id' ? item.id : item.codigoCompleto)
     fechar()
   }
 
@@ -199,8 +202,9 @@ export function ComboboxEnderecoWms({
       setEscolhido(null)
       return
     }
-    if (escolhido?.codigoCompleto === valor) return
-    const daLista = opcoes.find((o) => o.codigoCompleto === valor)
+    if (tipoValor === 'id' && escolhido?.id === valor) return
+    if (tipoValor !== 'id' && escolhido?.codigoCompleto === valor) return
+    const daLista = opcoes.find((o) => (tipoValor === 'id' ? o.id === valor : o.codigoCompleto === valor))
     if (daLista) {
       setEscolhido(daLista)
       return
@@ -208,6 +212,12 @@ export function ComboboxEnderecoWms({
     let cancelado = false
     void (async () => {
       try {
+        if (tipoValor === 'id') {
+          const { data } = await clienteHttp.get(`/enderecos-wms/${valor}`)
+          const hit = data.endereco as EnderecoOpcao | undefined
+          if (!cancelado && hit) setEscolhido(hit)
+          return
+        }
         const params = new URLSearchParams()
         params.set('q', valor.trim())
         params.set('take', '5')
@@ -221,7 +231,7 @@ export function ComboboxEnderecoWms({
     return () => {
       cancelado = true
     }
-  }, [valor, opcoes, escolhido?.codigoCompleto])
+  }, [valor, opcoes, escolhido?.codigoCompleto, escolhido?.id, tipoValor])
 
   const listaDropdown = aberto && posicao && montado && (
     <div
@@ -293,7 +303,7 @@ export function ComboboxEnderecoWms({
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
-            value={aberto ? busca : valor}
+            value={aberto ? busca : tipoValor === 'id' ? escolhido?.codigoCompleto ?? '' : valor}
             onChange={(e) => {
               setBusca(e.target.value)
               abrirSeFechado()
@@ -318,7 +328,13 @@ export function ComboboxEnderecoWms({
       {montado && listaDropdown ? createPortal(listaDropdown, document.body) : null}
       {!aberto && valor.trim() ? (
         <LinhasDetalheEndereco
-          dados={escolhido?.codigoCompleto === valor ? escolhido : { codigoCompleto: valor }}
+          dados={
+            escolhido
+              ? escolhido
+              : tipoValor === 'id'
+                ? { codigoCompleto: '' }
+                : { codigoCompleto: valor }
+          }
           className="space-y-0.5 text-xs text-muted-foreground"
         />
       ) : null}

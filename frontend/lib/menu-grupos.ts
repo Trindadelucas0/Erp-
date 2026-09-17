@@ -5,6 +5,7 @@ import {
   Building2,
   CircleDollarSign,
   ClipboardCheck,
+  ClipboardList,
   Factory,
   FileInput,
   MapPin,
@@ -49,7 +50,7 @@ export const GRUPOS_DO_MENU: readonly GrupoDoMenu[] = [
   {
     id: 'logistica',
     rotulo: 'Logística',
-    chaves: ['contagens', 'estoque', 'enderecos-wms'],
+    chaves: ['contagens', 'estoque', 'enderecos-wms', 'requisicoes'],
   },
   {
     id: 'financeiro',
@@ -76,6 +77,7 @@ const ICONES_POR_CHAVE: Record<string, LucideIcon> = {
   'auditoria-entradas': SearchCheck,
   estoque: Warehouse,
   'enderecos-wms': MapPin,
+  requisicoes: ClipboardList,
   'contas-a-pagar': Banknote,
   'contas-a-receber': CircleDollarSign,
   pendencias: Bell,

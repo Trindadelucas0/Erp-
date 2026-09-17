@@ -767,3 +767,43 @@ describe('obterSaldosAtuais', () => {
     ])
   })
 })
+
+describe('obterKardex', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('repassa endereços de estoque no produto do kardex', async () => {
+    vi.mocked(repositorioDeEstoque.buscarProdutoEstoque).mockResolvedValue(
+      produtoMock({
+        enderecosEstoque: [
+          { id: 'e1', endereco: '  A-RC-20-01-2-05  ', ordem: 0 },
+          { id: 'e2', endereco: '   ', ordem: 1 },
+          { id: 'e3', endereco: 'A-RC-20-01-2-06', ordem: 2 },
+        ],
+      }) as never
+    )
+    vi.mocked(repositorioDeEstoque.buscarSaldo).mockResolvedValue({
+      id: 's1',
+      qtdFisica: 10,
+      qtdReservada: 0,
+      qtdBloqueada: 0,
+      qtdFiscal: 10,
+    } as never)
+    vi.mocked(repositorioDeEstoque.buscarUltimoMovimentoAntes).mockResolvedValue(null as never)
+    vi.mocked(repositorioDeEstoque.listarMovimentosPeriodo).mockResolvedValue([] as never)
+
+    const resultado = await servicoDeEstoque.obterKardex({
+      companyId: 'c1',
+      produtoId: 'p1',
+      de: new Date('2026-09-01T00:00:00.000Z'),
+      ate: new Date('2026-09-17T23:59:59.999Z'),
+      tipoEstoque: 'fisico',
+    })
+
+    expect(resultado.produto.enderecosEstoque).toEqual([
+      { id: 'e1', endereco: 'A-RC-20-01-2-05' },
+      { id: 'e3', endereco: 'A-RC-20-01-2-06' },
+    ])
+  })
+})

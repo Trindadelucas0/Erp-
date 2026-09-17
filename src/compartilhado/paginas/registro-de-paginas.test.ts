@@ -13,6 +13,7 @@ describe('montarPaginasPermitidasParaUsuario', () => {
     expect(chaves).toContain('configuracoes')
     expect(chaves).toContain('enderecos-wms')
     expect(chaves).toContain('estoque')
+    expect(chaves).toContain('requisicoes')
   })
 
   it('não mostra Estrutura WMS nem para admin', () => {

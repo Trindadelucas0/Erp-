@@ -60,6 +60,7 @@ model Company {
   recorrenciasFinanceiras     RecorrenciaFinanceira[]
   enderecosWms                EnderecoWms[]
   niveisEnderecoWms           NivelEnderecoWms[]
+  requisicoesWms              RequisicaoWms[]
   parametrizacaoCustoVenda    ParametrizacaoCustoVenda?
   createdAt                   DateTime                     @default(now())
 }
@@ -944,6 +945,8 @@ model User {
   contasReceberBaixas ContaReceberBaixa[]
   contasReceberAnexos ContaReceberAnexo[]
   nfesRecebidasAnexos NfeRecebidaAnexo[]
+  requisicoesWms      RequisicaoWms[]
+  requisicoesWmsEventos RequisicaoWmsEvento[]
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 }
@@ -1117,6 +1120,7 @@ model Produto {
   estoqueMovimentos    EstoqueMovimento[]
   contagensEntradaItens ContagemEntradaItem[]
   recorrenciasFinanceiras RecorrenciaFinanceira[]
+  requisicoesWms          RequisicaoWms[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1572,11 +1576,71 @@ model EnderecoWms {
   status         String   @default("ativo")
   ativo          Boolean  @default(true)
   createdAt      DateTime @default(now())
+  requisicoesOrigem  RequisicaoWms[] @relation("RequisicaoWmsOrigem")
+  requisicoesDestino RequisicaoWms[] @relation("RequisicaoWmsDestino")
 
   @@unique([companyId, codigoCompleto])
   @@unique([andarId, codigo])
   @@index([companyId, andarId])
   @@index([companyId, local, area])
+}
+
+/// Ordem operacional do armazém (1 requisição = 1 tarefa).
+/// Kardex só em Separação (reserva + saída física do produto). Sem saldo por endereço.
+model RequisicaoWms {
+  id                   String   @id @default(uuid())
+  companyId            String
+  company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  numero               Int
+  /// separacao | reposicao | conferencia | movimentacao | limpeza | inventario
+  tipoOperacao         String
+  /// 1 critica … 4 baixa
+  prioridade           Int
+  /// pendente | disponivel | atribuida | em_execucao | pausada | concluida | cancelada | bloqueada
+  status               String   @default("pendente")
+  origemEnderecoId     String?
+  origemEndereco       EnderecoWms? @relation("RequisicaoWmsOrigem", fields: [origemEnderecoId], references: [id], onDelete: SetNull)
+  destinoEnderecoId    String?
+  destinoEndereco      EnderecoWms? @relation("RequisicaoWmsDestino", fields: [destinoEnderecoId], references: [id], onDelete: SetNull)
+  produtoId            String?
+  produto              Produto? @relation(fields: [produtoId], references: [id], onDelete: SetNull)
+  quantidade           Decimal? @db.Decimal(18, 4)
+  qtdExecutada         Decimal? @db.Decimal(18, 4)
+  conferidoOrigemEm    DateTime?
+  conferidoProdutoEm   DateTime?
+  conferidoDestinoEm   DateTime?
+  conferidoOrigemValor String?
+  conferidoProdutoValor String?
+  conferidoDestinoValor String?
+  responsavelId        String?
+  responsavel          User?    @relation(fields: [responsavelId], references: [id], onDelete: SetNull)
+  observacao           String?
+  iniciadoEm           DateTime?
+  pausadoEm            DateTime?
+  concluidoEm          DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  eventos              RequisicaoWmsEvento[]
+
+  @@unique([companyId, numero])
+  @@index([companyId, status])
+  @@index([companyId, responsavelId, status])
+  @@index([companyId, prioridade, createdAt])
+}
+
+model RequisicaoWmsEvento {
+  id           String        @id @default(uuid())
+  requisicaoId String
+  requisicao   RequisicaoWms @relation(fields: [requisicaoId], references: [id], onDelete: Cascade)
+  usuarioId    String
+  usuario      User          @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  deStatus     String?
+  paraStatus   String
+  acao         String
+  motivo       String?
+  createdAt    DateTime      @default(now())
+
+  @@index([requisicaoId, createdAt])
 }
 
 /// Determinante permanente de formação de preço da empresa (Configurações → Vendas).
