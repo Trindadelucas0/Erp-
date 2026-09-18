@@ -34,6 +34,7 @@ export type CamposOsConferencia = {
 
 export function passosExigidos(os: CamposOsConferencia): EtapaConferencia[] {
   const tipo = os.tipoOperacao as TipoOperacaoRequisicao | string
+  if (tipo === 'contagem_entrada') return []
   const temOrigem = Boolean(os.origemEnderecoId)
   const temDestino = Boolean(os.destinoEnderecoId)
   const temProduto = Boolean(os.produtoId)

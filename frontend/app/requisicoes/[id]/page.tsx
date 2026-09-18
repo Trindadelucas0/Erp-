@@ -26,6 +26,7 @@ import {
 } from '@/components/requisicoes-wms/formulario-campos-requisicao'
 import {
   formatarNumeroRequisicao,
+  rotuloNfDaRequisicao,
   ROTULO_TIPO_OPERACAO,
   type RequisicaoWms,
 } from '@/lib/requisicoes-wms'
@@ -101,7 +102,12 @@ function ConteudoFicha() {
       const { data } = await clienteHttp.post(`/requisicoes/${id}/${acao}`, body)
       setItem(data.requisicao)
       setForm(requisicaoParaForm(data.requisicao))
-      if (acao === 'iniciar') {
+      if (acao === 'iniciar' && item?.tipoOperacao === 'contagem_entrada') {
+        const destino = item.nfeRecebidaId
+          ? `/contagens?nfeRecebidaId=${encodeURIComponent(item.nfeRecebidaId)}`
+          : '/contagens'
+        router.push(destino)
+      } else if (acao === 'iniciar') {
         router.push(`/requisicoes/${id}/executar`)
       }
     } catch (err) {
@@ -147,6 +153,9 @@ function ConteudoFicha() {
             {ROTULO_TIPO_OPERACAO[item.tipoOperacao]} · criada em{' '}
             {new Date(item.createdAt).toLocaleString('pt-BR')}
             {item.produtoNome ? ` · ${item.produtoNome}` : ''}
+            {rotuloNfDaRequisicao(item.nfeRecebidaChave)
+              ? ` · ${rotuloNfDaRequisicao(item.nfeRecebidaChave)}`
+              : ''}
           </p>
           <CardPadrao titulo="Dados">
             <form onSubmit={(e) => void salvar(e)}>
@@ -154,7 +163,7 @@ function ConteudoFicha() {
                 form={form}
                 aoMudar={setForm}
                 operadores={operadores}
-                disabled={!podeEditar || encerrada}
+                disabled={!podeEditar || encerrada || item.tipoOperacao === 'contagem_entrada'}
               />
               {podeEditar && !encerrada ? (
                 <div className="mt-4">

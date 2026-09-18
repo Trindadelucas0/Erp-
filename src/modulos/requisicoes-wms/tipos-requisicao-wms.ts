@@ -5,9 +5,14 @@ export const TIPOS_OPERACAO_REQUISICAO = [
   'movimentacao',
   'limpeza',
   'inventario',
+  'contagem_entrada',
 ] as const
 
 export type TipoOperacaoRequisicao = (typeof TIPOS_OPERACAO_REQUISICAO)[number]
+
+export const TIPOS_OPERACAO_MANUAIS = TIPOS_OPERACAO_REQUISICAO.filter(
+  (tipo) => tipo !== 'contagem_entrada'
+) as readonly Exclude<TipoOperacaoRequisicao, 'contagem_entrada'>[]
 
 export const STATUS_REQUISICAO = [
   'pendente',

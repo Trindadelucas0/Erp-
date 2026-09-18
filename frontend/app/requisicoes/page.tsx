@@ -26,6 +26,7 @@ import {
   OPCOES_STATUS,
   OPCOES_TIPO_OPERACAO,
   ROTULO_TIPO_OPERACAO,
+  rotuloNfDaRequisicao,
   type ListaRequisicoes,
   type RequisicaoWms,
 } from '@/lib/requisicoes-wms'
@@ -132,7 +133,11 @@ function ConteudoLista() {
             rotulo="Tipo"
             valor={tipo}
             aoMudar={setTipo}
-            opcoes={[{ value: '', label: 'Todos' }, ...OPCOES_TIPO_OPERACAO]}
+            opcoes={[
+              { value: '', label: 'Todos' },
+              ...OPCOES_TIPO_OPERACAO,
+              { value: 'contagem_entrada', label: ROTULO_TIPO_OPERACAO.contagem_entrada },
+            ]}
           />
           <SelectPadrao
             rotulo="Status"
@@ -181,6 +186,7 @@ function ConteudoLista() {
                   <th className="px-2 py-2">Nº</th>
                   <th className="px-2 py-2">Prioridade</th>
                   <th className="px-2 py-2">Tipo</th>
+                  <th className="px-2 py-2">NF</th>
                   <th className="px-2 py-2">Origem → Destino</th>
                   <th className="px-2 py-2">Qtd</th>
                   <th className="px-2 py-2">Responsável</th>
@@ -189,10 +195,10 @@ function ConteudoLista() {
               </thead>
               <tbody>
                 {carregando ? (
-                  <LinhasSkeletonTabela linhas={5} colunas={7} />
+                  <LinhasSkeletonTabela linhas={5} colunas={8} />
                 ) : itens.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-2 py-8 text-center text-muted-foreground">
+                    <td colSpan={8} className="px-2 py-8 text-center text-muted-foreground">
                       Nenhuma requisição nesta fila.
                     </td>
                   </tr>
@@ -211,6 +217,7 @@ function ConteudoLista() {
                         <BadgePrioridadeRequisicao prioridade={item.prioridade} />
                       </td>
                       <td className="px-2 py-2">{ROTULO_TIPO_OPERACAO[item.tipoOperacao]}</td>
+                      <td className="px-2 py-2">{rotuloNfDaRequisicao(item.nfeRecebidaChave) ?? '—'}</td>
                       <td className="px-2 py-2">{origemDestino(item)}</td>
                       <td className="px-2 py-2">{item.quantidade ?? '—'}</td>
                       <td className="px-2 py-2">{item.responsavelNome ?? '—'}</td>

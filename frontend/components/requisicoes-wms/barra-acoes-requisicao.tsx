@@ -54,7 +54,23 @@ export function BarraAcoesRequisicao({
             Iniciar
           </Button>
         )}
-        {ehResponsavel && item.status === 'em_execucao' && (
+        {item.tipoOperacao === 'contagem_entrada' &&
+          (item.status === 'atribuida' ||
+            item.status === 'em_execucao' ||
+            item.status === 'pausada') && (
+            <Button asChild type="button" size="sm" variant="outline">
+              <Link
+                href={
+                  item.nfeRecebidaId
+                    ? `/contagens?nfeRecebidaId=${encodeURIComponent(item.nfeRecebidaId)}`
+                    : '/contagens'
+                }
+              >
+                Contar
+              </Link>
+            </Button>
+          )}
+        {ehResponsavel && item.status === 'em_execucao' && item.tipoOperacao !== 'contagem_entrada' && (
           <>
             <Button asChild type="button" size="sm">
               <Link href={`/requisicoes/${item.id}/executar`}>Executar</Link>
@@ -64,7 +80,7 @@ export function BarraAcoesRequisicao({
             </Button>
           </>
         )}
-        {ehResponsavel && item.status === 'pausada' && (
+        {ehResponsavel && item.status === 'pausada' && item.tipoOperacao !== 'contagem_entrada' && (
           <>
             <Button asChild type="button" size="sm" variant="outline">
               <Link href={`/requisicoes/${item.id}/executar`}>Executar</Link>

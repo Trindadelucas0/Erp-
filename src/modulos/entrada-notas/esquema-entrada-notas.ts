@@ -96,6 +96,10 @@ export const esquemaBaixarContagem = z.object({
   senha: z.string().optional(),
 })
 
+export const esquemaLiberarParaContagem = z.object({
+  responsavelId: z.string().trim().min(1, 'Informe quem vai contar'),
+})
+
 export const esquemaDesbloquearEstoque = esquemaResolverDivergencia
 
 export const esquemaLancar = z.object({

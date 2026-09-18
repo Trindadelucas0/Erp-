@@ -4,12 +4,19 @@
  */
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-auditoria.js'
+import { usuarioEhAdmin } from '../../compartilhado/paginas/registro-de-paginas.js'
 import {
   normalizarCodigoBarrasGtin,
   variantesCodigoBarrasParaBusca,
 } from '../../compartilhado/validacoes/codigo-barras-gtin.js'
 import { podeIniciarContagemLogistica } from '../entrada-notas/status-entrada-contagem.js'
 import { resolverUnidadeEntrada } from '../pedidos-compra/resolver-item-fornecedor.js'
+import {
+  listarResumoOsContagemPorNfeIds,
+  osContagemEstaAberta,
+  concluirOsContagemDasNotas,
+} from '../requisicoes-wms/os-contagem-entrada.js'
+import { repositorioDeUsuarios } from '../usuarios/repositorio-usuarios.js'
 import {
   repositorioContagens,
   type ItemRevisaoCega,
@@ -120,14 +127,22 @@ function extrairSerieNumeroChave(chave: string): { serie: string | null; numero:
   return { serie, numero }
 }
 
-function mapearNotaCega(nota: {
-  id: string
-  chaveNfe: string
-  nomeEmitente: string | null
-  documentoEmitente: string | null
-  dataEmissao: Date | null
-  statusEntrada?: string
-}) {
+function mapearNotaCega(
+  nota: {
+    id: string
+    chaveNfe: string
+    nomeEmitente: string | null
+    documentoEmitente: string | null
+    dataEmissao: Date | null
+    statusEntrada?: string
+  },
+  os?: {
+    contagemResponsavelId: string | null
+    contagemResponsavelNome: string | null
+    requisicaoContagemId: string
+    requisicaoContagemNumero: number
+  } | null
+) {
   const { serie, numero } = extrairSerieNumeroChave(nota.chaveNfe)
   return {
     id: nota.id,
@@ -138,6 +153,10 @@ function mapearNotaCega(nota: {
     serie,
     numero,
     ...(nota.statusEntrada != null ? { statusEntrada: nota.statusEntrada } : {}),
+    contagemResponsavelId: os?.contagemResponsavelId ?? null,
+    contagemResponsavelNome: os?.contagemResponsavelNome ?? null,
+    requisicaoContagemId: os?.requisicaoContagemId ?? null,
+    requisicaoContagemNumero: os?.requisicaoContagemNumero ?? null,
   }
 }
 
@@ -206,6 +225,11 @@ function sessaoEditavel(sessao: { status: string; baixadaEm?: Date | null }): bo
   return sessao.status === 'aberta' || sessao.status === 'em_andamento'
 }
 
+async function usuarioEhAdminEmpresa(usuarioId: string) {
+  const usuario = await repositorioDeUsuarios.buscarPorId(usuarioId)
+  return Boolean(usuario && usuarioEhAdmin(usuario.roles))
+}
+
 function mapearSessaoLista(
   sessao: {
     id: string
@@ -267,20 +291,48 @@ function mapearRevisao(rev: {
   }
 }
 
-async function listarDisponiveis(companyId: string) {
+async function listarDisponiveis(companyId: string, usuarioId: string) {
+  const ehAdmin = await usuarioEhAdminEmpresa(usuarioId)
   const [{ notas, ignoradas }, sessoesBrutas, historicoBruto] = await Promise.all([
     repositorioContagens.listarNotasDisponiveis(companyId),
     repositorioContagens.listarSessoesAtivas(companyId),
     repositorioContagens.listarHistoricoRecente(companyId, 20),
   ])
+  const ids = [
+    ...notas.map((n) => n.id),
+    ...ignoradas.map((n) => n.id),
+  ]
+  const osPorNota = await listarResumoOsContagemPorNfeIds(companyId, ids)
+
+  function visivelParaOperador(nfeId: string) {
+    if (ehAdmin) return true
+    const os = osPorNota.get(nfeId)
+    return Boolean(
+      os && osContagemEstaAberta(os.status) && os.contagemResponsavelId === usuarioId
+    )
+  }
+
   return {
-    notas: notas.map(mapearNotaCega),
-    ignoradas: ignoradas.map((n) => ({
-      ...mapearNotaCega(n),
-      motivo: n.motivo,
-    })),
-    sessoesAtivas: sessoesBrutas.map((sessao) => mapearSessaoLista(sessao, false)),
+    notas: notas.filter((n) => visivelParaOperador(n.id)).map((n) => {
+      const os = osPorNota.get(n.id)
+      return mapearNotaCega(n, os && osContagemEstaAberta(os.status) ? os : null)
+    }),
+    ignoradas: ignoradas.filter((n) => visivelParaOperador(n.id)).map((n) => {
+      const os = osPorNota.get(n.id)
+      return {
+        ...mapearNotaCega(n, os && osContagemEstaAberta(os.status) ? os : null),
+        motivo: n.motivo,
+      }
+    }),
+    sessoesAtivas: sessoesBrutas
+      .filter((sessao) =>
+        ehAdmin ||
+        sessao.notas.some((n) => visivelParaOperador(n.nfeRecebida.id)) ||
+        sessao.usuario?.id === usuarioId
+      )
+      .map((sessao) => mapearSessaoLista(sessao, false)),
     historicoRecente: historicoBruto.map((sessao) => mapearSessaoLista(sessao, true)),
+    ehAdmin,
   }
 }
 
@@ -301,6 +353,22 @@ async function criar(companyId: string, usuarioId: string, nfeRecebidaIds: strin
   const notas = await repositorioContagens.buscarNotasParaSessao(companyId, idsUnicos)
   if (notas.length !== idsUnicos.length) {
     throw new ErroDaAplicacao('Uma ou mais entradas não foram encontradas', 404)
+  }
+
+  const ehAdmin = await usuarioEhAdminEmpresa(usuarioId)
+  const osPorNota = await listarResumoOsContagemPorNfeIds(companyId, idsUnicos)
+  const donos = new Set<string>()
+  for (const nota of notas) {
+    const os = osPorNota.get(nota.id)
+    if (os && osContagemEstaAberta(os.status)) {
+      if (!ehAdmin && os.contagemResponsavelId !== usuarioId) {
+        throw new ErroDaAplicacao('Esta entrada está designada a outro operador.', 403)
+      }
+      if (os.contagemResponsavelId) donos.add(os.contagemResponsavelId)
+    }
+  }
+  if (!ehAdmin && donos.size > 1) {
+    throw new ErroDaAplicacao('Selecione apenas entradas designadas a você.', 403)
   }
 
   for (const nota of notas) {
@@ -891,6 +959,11 @@ async function finalizar(
       valoresDepois: { status: 'ok' },
     })
     const detalhe = await obterDetalhe(companyId, sessaoId)
+    await concluirOsContagemDasNotas({
+      companyId,
+      nfeRecebidaIds: nfeIds,
+      usuarioId,
+    })
     return {
       ok: true as const,
       divergentes: [] as string[],
@@ -929,6 +1002,11 @@ async function finalizar(
     entidade: 'contagem_entrada',
     entidadeId: sessaoId,
     valoresDepois: { status: 'divergente', divergentes },
+  })
+  await concluirOsContagemDasNotas({
+    companyId,
+    nfeRecebidaIds: nfeIds,
+    usuarioId,
   })
 
   return {

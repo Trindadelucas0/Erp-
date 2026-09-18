@@ -29,7 +29,15 @@ vi.mock('../contagens/repositorio-contagens.js', () => ({
     marcarSessaoBaixada: vi.fn(),
     reabrirSessaoAposBaixa: vi.fn(),
     mapaBaixadaPorNota: vi.fn().mockResolvedValue(new Map()),
+    listarNomesUnidades: vi.fn().mockResolvedValue(new Map()),
   },
+}))
+
+vi.mock('../requisicoes-wms/os-contagem-entrada.js', () => ({
+  obterResumoOsContagemDaNota: vi.fn().mockResolvedValue(null),
+  gravarLiberacaoContagemComOs: vi.fn(),
+  reabrirOsContagemDaNota: vi.fn(),
+  cancelarOsContagemDasNotas: vi.fn(),
 }))
 
 vi.mock('../autenticacao/servico-autenticacao.js', () => ({
@@ -113,6 +121,7 @@ vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({
     },
     despesaEntradaDocumento: { upsert: vi.fn() },
     contaPagar: { findMany: vi.fn().mockResolvedValue([]) },
+    requisicaoWms: { findMany: vi.fn().mockResolvedValue([]), findFirst: vi.fn() },
   },
 }))
 
@@ -121,6 +130,7 @@ import { analisarCadastro } from './analise-cadastro/analisar-cadastro.js'
 import { analisarFiscalItens } from './analise-fiscal/analisar-fiscal-itens.js'
 import { analisarNegociacao } from './analise-negociacao/analisar-negociacao.js'
 import { servicoEntradaNotas } from './servico-pipeline-entrada.js'
+import { gravarLiberacaoContagemComOs } from '../requisicoes-wms/os-contagem-entrada.js'
 import { gerarTitulosContasPagarDaEntrada } from '../contas-a-pagar/gerar-titulos-entrada.js'
 import { servicoDeEstoque } from '../estoque/servico-estoque.js'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
@@ -832,18 +842,52 @@ describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)'
 describe('liberarParaContagem — sair de "Aguardando chegada"', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(gravarLiberacaoContagemComOs).mockImplementation(async (params) => {
+      await repositorioEntradaNotas.atualizarNota(params.notaId, {
+        statusEntrada: params.statusEntrada,
+      })
+      return { id: 'os-1' } as never
+    })
   })
 
   it('libera nota aguardando_chegada para entrada_contagem', async () => {
     const fake = ligarRepositorioFake(notaLancada({ statusEntrada: 'aguardando_chegada' }))
 
-    const detalhe = await servicoEntradaNotas.liberarParaContagem('c1', 'nota-1')
+    const detalhe = await servicoEntradaNotas.liberarParaContagem('c1', 'nota-1', 'user-1', 'op-1')
 
     expect(fake.getEstado().statusEntrada).toBe('entrada_contagem')
     expect(detalhe.nota.statusEntrada).toBe('entrada_contagem')
-    expect(repositorioEntradaNotas.atualizarNota).toHaveBeenCalledWith('nota-1', {
-      statusEntrada: 'entrada_contagem',
-    })
+    expect(gravarLiberacaoContagemComOs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyId: 'c1',
+        notaId: 'nota-1',
+        responsavelId: 'op-1',
+        usuarioId: 'user-1',
+        statusEntrada: 'entrada_contagem',
+      })
+    )
+  })
+
+  it('recusa liberar sem responsável (400) e não atualiza a NF', async () => {
+    ligarRepositorioFake(notaLancada({ statusEntrada: 'aguardando_chegada' }))
+
+    await expect(
+      servicoEntradaNotas.liberarParaContagem('c1', 'nota-1', 'user-1', '')
+    ).rejects.toMatchObject({ statusCode: 400 })
+    expect(gravarLiberacaoContagemComOs).not.toHaveBeenCalled()
+    expect(repositorioEntradaNotas.atualizarNota).not.toHaveBeenCalled()
+  })
+
+  it('recusa responsável de outra empresa (400)', async () => {
+    ligarRepositorioFake(notaLancada({ statusEntrada: 'aguardando_chegada' }))
+    vi.mocked(gravarLiberacaoContagemComOs).mockRejectedValue(
+      new ErroDaAplicacao('Responsável não pertence a esta empresa', 400)
+    )
+
+    await expect(
+      servicoEntradaNotas.liberarParaContagem('c1', 'nota-1', 'user-1', 'outro-tenant')
+    ).rejects.toMatchObject({ statusCode: 400 })
+    expect(repositorioEntradaNotas.atualizarNota).not.toHaveBeenCalled()
   })
 
   it('bloqueia liberar quando há divergência de nome sem aceite (409)', async () => {
@@ -864,7 +908,9 @@ describe('liberarParaContagem — sair de "Aguardando chegada"', () => {
       })
     )
 
-    await expect(servicoEntradaNotas.liberarParaContagem('c1', 'nota-1')).rejects.toMatchObject({
+    await expect(
+      servicoEntradaNotas.liberarParaContagem('c1', 'nota-1', 'user-1', 'op-1')
+    ).rejects.toMatchObject({
       statusCode: 409,
     })
   })
@@ -872,18 +918,19 @@ describe('liberarParaContagem — sair de "Aguardando chegada"', () => {
   it('rejeita liberar nota que não está aguardando_chegada (409)', async () => {
     ligarRepositorioFake(notaLancada({ statusEntrada: 'em_analise' }))
 
-    await expect(servicoEntradaNotas.liberarParaContagem('c1', 'nota-1')).rejects.toThrow(
-      ErroDaAplicacao
-    )
+    await expect(
+      servicoEntradaNotas.liberarParaContagem('c1', 'nota-1', 'user-1', 'op-1')
+    ).rejects.toThrow(ErroDaAplicacao)
+    expect(gravarLiberacaoContagemComOs).not.toHaveBeenCalled()
     expect(repositorioEntradaNotas.atualizarNota).not.toHaveBeenCalled()
   })
 
   it('rejeita nota inexistente (404)', async () => {
     vi.mocked(repositorioEntradaNotas.buscarNotaCompleta).mockResolvedValue(null as never)
 
-    await expect(servicoEntradaNotas.liberarParaContagem('c1', 'nota-inexistente')).rejects.toThrow(
-      ErroDaAplicacao
-    )
+    await expect(
+      servicoEntradaNotas.liberarParaContagem('c1', 'nota-inexistente', 'user-1', 'op-1')
+    ).rejects.toThrow(ErroDaAplicacao)
   })
 })
 

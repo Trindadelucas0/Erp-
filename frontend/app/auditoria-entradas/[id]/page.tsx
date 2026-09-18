@@ -10,6 +10,10 @@ import { dispararDownloadArquivo } from '@/lib/disparar-download-arquivo'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { GradeRolavel } from '@/components/ui/grade-rolavel'
 import { TituloPagina } from '@/components/ui/titulo-pagina'
+import {
+  TabelaResultadoContagem,
+  type ResultadoContagem,
+} from '@/components/entrada-notas/tabela-resultado-contagem'
 import { Button } from '@/components/ui/button'
 import { BadgeStatus } from '@/components/ui/badge-status'
 import {
@@ -40,32 +44,6 @@ type AchadoChegada = {
   precoAtual?: number
   precoUltima?: number
   variacaoPercentual?: number
-}
-
-type ItemContagemAuditoria = {
-  id: string
-  produtoId: string
-  sku: string | null
-  nomeExibicao: string
-  unidade: string | null
-  unidadeNome?: string | null
-  qtdEsperada: number
-  qtdContada: number
-  diferenca: number
-  statusItem: string
-}
-
-type ResultadoContagem = {
-  sessaoId: string
-  status: string
-  iniciadoEm: string | null
-  finalizadoEm: string | null
-  baixadaEm: string | null
-  observacao: string | null
-  multiNota: boolean
-  qtdNotasSessao: number
-  totais: { itens: number; ok: number; divergente: number }
-  itens: ItemContagemAuditoria[]
 }
 
 type ItemBloqueadoAuditoria = {
@@ -162,12 +140,6 @@ function rotuloTipoAnexo(tipo: string): string {
     ressalva_divergencia: 'Ressalva de divergência',
   }
   return mapa[tipo] ?? tipo
-}
-
-function textoDiferenca(diferenca: number): string {
-  if (Math.abs(diferenca) < 1e-9) return 'Bateu'
-  if (diferenca < 0) return `Faltou ${formatarQtd(Math.abs(diferenca))}`
-  return `Sobrou ${formatarQtd(diferenca)}`
 }
 
 function ConteudoDetalheAuditoria() {
@@ -383,66 +355,13 @@ function ConteudoDetalheAuditoria() {
               {contagem.baixadaEm ? formatarData(contagem.baixadaEm) : '—'}
             </span>
           </div>
-          {contagem.multiNota && (
-            <p className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
-              Esta sessão incluiu {contagem.qtdNotasSessao} notas — as quantidades abaixo são
-              agregadas por produto na sessão.
-            </p>
-          )}
           {contagem.observacao && (
             <p className="mb-3 text-sm">
               <span className="text-muted-foreground">Observação: </span>
               {contagem.observacao}
             </p>
           )}
-          <GradeRolavel>
-            <table className="w-full min-w-[640px] text-left text-sm">
-              <thead>
-                <tr className="border-b text-xs text-muted-foreground">
-                  <th className="px-3 py-2 font-medium">Produto</th>
-                  <th className="px-3 py-2 font-medium">Esperada</th>
-                  <th className="px-3 py-2 font-medium">Contada</th>
-                  <th className="px-3 py-2 font-medium">Diferença</th>
-                  <th className="px-3 py-2 font-medium">Situação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {contagem.itens.map((item) => {
-                  const divergente = item.statusItem === 'divergente'
-                  return (
-                    <tr
-                      key={item.id}
-                      className={`border-b last:border-0 ${
-                        divergente ? 'bg-amber-500/10' : ''
-                      }`}
-                    >
-                      <td className="px-3 py-2">
-                        <div className="font-medium">{item.nomeExibicao}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {item.sku || '—'}
-                          {item.unidadeNome || item.unidade
-                            ? ` · ${item.unidadeNome || item.unidade}`
-                            : ''}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 tabular-nums">{formatarQtd(item.qtdEsperada)}</td>
-                      <td className="px-3 py-2 tabular-nums">{formatarQtd(item.qtdContada)}</td>
-                      <td className="px-3 py-2 tabular-nums font-medium">
-                        {textoDiferenca(item.diferenca)}
-                      </td>
-                      <td className="px-3 py-2">
-                        {divergente ? (
-                          <BadgeStatus variante="pendente">Divergente</BadgeStatus>
-                        ) : (
-                          <BadgeStatus variante="sucesso">OK</BadgeStatus>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </GradeRolavel>
+          <TabelaResultadoContagem resultado={contagem} />
         </CardPadrao>
       ) : (
         <CardPadrao titulo="Resultado da contagem">

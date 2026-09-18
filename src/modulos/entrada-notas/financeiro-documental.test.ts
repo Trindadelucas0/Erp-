@@ -14,6 +14,7 @@ vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({
       findFirst: vi.fn().mockResolvedValue({ id: 'plano-1' }),
     },
     contaPagar: { findMany: vi.fn().mockResolvedValue([]) },
+    requisicaoWms: { findMany: vi.fn().mockResolvedValue([]), findFirst: vi.fn() },
   },
 }))
 

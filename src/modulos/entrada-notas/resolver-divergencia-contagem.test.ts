@@ -84,12 +84,21 @@ vi.mock('../contagens/repositorio-contagens.js', () => ({
     }),
     marcarSessaoBaixada: vi.fn(),
     reabrirSessaoAposBaixa: vi.fn(),
+    listarNomesUnidades: vi.fn().mockResolvedValue(new Map()),
   },
+}))
+
+vi.mock('../requisicoes-wms/os-contagem-entrada.js', () => ({
+  obterResumoOsContagemDaNota: vi.fn().mockResolvedValue(null),
+  gravarLiberacaoContagemComOs: vi.fn(),
+  reabrirOsContagemDaNota: vi.fn(),
+  cancelarOsContagemDasNotas: vi.fn(),
 }))
 
 vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({
   clientePrisma: {
     contaPagar: { findMany: vi.fn().mockResolvedValue([]) },
+    requisicaoWms: { findMany: vi.fn().mockResolvedValue([]), findFirst: vi.fn() },
   },
 }))
 
@@ -99,6 +108,7 @@ vi.mock('../contas-a-pagar/gerar-titulos-entrada.js', () => ({
 
 import { repositorioEntradaNotas } from './repositorio-entrada-notas.js'
 import { repositorioContagens } from '../contagens/repositorio-contagens.js'
+import { reabrirOsContagemDaNota } from '../requisicoes-wms/os-contagem-entrada.js'
 import { salvarAnexoEntradaNota } from './armazenamento-anexo-entrada-nota.js'
 import { servicoDeAutenticacao } from '../autenticacao/servico-autenticacao.js'
 import { servicoDeEstoque } from '../estoque/servico-estoque.js'
@@ -408,6 +418,9 @@ describe('baixarContagem / voltarParaContagem / desbloquear', () => {
         nfeRecebidaIds: ['nota-1'],
         usuarioId: 'user-1',
       })
+    )
+    expect(reabrirOsContagemDaNota).toHaveBeenCalledWith(
+      expect.objectContaining({ companyId: 'c1', nfeRecebidaId: 'nota-1', usuarioId: 'user-1' })
     )
   })
 

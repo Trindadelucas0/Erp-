@@ -100,6 +100,8 @@ function mapearBase(row: RowFicha) {
     responsavelId: row.responsavelId,
     responsavelNome: row.responsavel?.name ?? null,
     observacao: row.observacao,
+    nfeRecebidaId: row.nfeRecebidaId ?? null,
+    nfeRecebidaChave: row.nfeRecebida?.chaveNfe ?? null,
     iniciadoEm: iso(row.iniciadoEm),
     pausadoEm: iso(row.pausadoEm),
     concluidoEm: iso(row.concluidoEm),
@@ -318,6 +320,12 @@ async function aplicarSaidaFisica(
 
 async function criar(companyId: string, usuarioId: string, dados: DadosCorpoRequisicao) {
   exigirEmpresa(companyId)
+  if (dados.tipoOperacao === 'contagem_entrada') {
+    throw new ErroDaAplicacao(
+      'Contagem de entrada só é criada ao liberar a nota para contagem.',
+      400
+    )
+  }
   await validarVinculos(companyId, dados)
   const status = dados.responsavelId ? 'atribuida' : 'pendente'
   const row = await repositorioDeRequisicoesWms.criar(companyId, {
@@ -385,6 +393,12 @@ async function editar(
   if (!edicaoPermitida(atual.status)) {
     throw new ErroDaAplicacao('Requisição encerrada não pode ser editada', 409)
   }
+  if (atual.tipoOperacao === 'contagem_entrada' || dados.tipoOperacao === 'contagem_entrada') {
+    throw new ErroDaAplicacao(
+      'Contagem de entrada não pode ser criada nem alterada por esta tela.',
+      400
+    )
+  }
   const reserva = await reservaAindaAtiva(companyId, id)
   const emExecucao = atual.status === 'em_execucao' || atual.status === 'pausada'
   if (reserva || emExecucao) {
@@ -443,6 +457,9 @@ async function transicionar(params: {
   }
 
   if (params.acao === 'concluir') {
+    if (atual.tipoOperacao === 'contagem_entrada') {
+      throw new ErroDaAplicacao('Conclua a contagem de entrada na tela Contagens.', 409)
+    }
     const os = camposOs(atual)
     const flags = {
       conferidoOrigemEm: atual.conferidoOrigemEm,
@@ -551,6 +568,9 @@ async function conferir(
   dados: DadosConferirRequisicao
 ) {
   const atual = await obterOu404(companyId, id)
+  if (atual.tipoOperacao === 'contagem_entrada') {
+    throw new ErroDaAplicacao('Contagem de entrada é conferida na tela Contagens.', 400)
+  }
   if (atual.status !== 'em_execucao') {
     throw new ErroDaAplicacao('Só é possível conferir com a requisição em execução', 409)
   }

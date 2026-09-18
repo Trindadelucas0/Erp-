@@ -21,6 +21,7 @@ import {
   esquemaLancar,
   esquemaLiberarCriticas,
   esquemaBaixarContagem,
+  esquemaLiberarParaContagem,
   esquemaDesbloquearEstoque,
   esquemaManifestar,
   esquemaMarcarProblema,
@@ -212,7 +213,8 @@ async function manifestar(requisicao: FastifyRequest, resposta: FastifyReply) {
     companyIdDe(requisicao),
     notaIdDe(requisicao),
     parsed.data.tipo,
-    parsed.data.justificativa
+    parsed.data.justificativa,
+    usuarioIdDe(requisicao)
   )
   return resposta.send(dados)
 }
@@ -288,9 +290,13 @@ async function aceitarAuditoriaChegada(requisicao: FastifyRequest, resposta: Fas
 }
 
 async function liberarParaContagem(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parsed = esquemaLiberarParaContagem.safeParse(requisicao.body ?? {})
+  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
   const dados = await servicoEntradaNotas.liberarParaContagem(
     companyIdDe(requisicao),
-    notaIdDe(requisicao)
+    notaIdDe(requisicao),
+    usuarioIdDe(requisicao),
+    parsed.data.responsavelId
   )
   return resposta.send(dados)
 }

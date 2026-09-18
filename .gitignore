@@ -6,6 +6,9 @@ dist/
 *.tsbuildinfo
 docs/
 .cursor/
+.agents/
+archify-mapas/
+skills-lock.json
 .env.example 
 scripts/linear-connect.mjs
 package-lock.json

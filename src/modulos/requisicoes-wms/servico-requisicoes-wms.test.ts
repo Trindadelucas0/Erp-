@@ -35,6 +35,9 @@ vi.mock('./repositorio-requisicoes-wms.js', () => ({
     produtoDaEmpresa: vi.fn(),
     usuarioDaEmpresa: vi.fn(),
     listarOperadores: vi.fn(),
+    buscarPorNfeRecebida: vi.fn(),
+    listarPorNfeRecebidaIds: vi.fn(),
+    proximoNumero: vi.fn(),
   },
 }))
 
@@ -68,6 +71,8 @@ function row(parcial: Record<string, unknown> = {}) {
     responsavelId: null,
     responsavel: null,
     observacao: null,
+    nfeRecebidaId: null,
+    nfeRecebida: null,
     iniciadoEm: null,
     pausadoEm: null,
     concluidoEm: null,
@@ -459,5 +464,21 @@ describe('servicoDeRequisicoesWms', () => {
       'c1',
       expect.objectContaining({ fila: 'minha', usuarioId: 'op-1' })
     )
+  })
+
+  it('POST criar recusa tipo contagem_entrada', async () => {
+    await expect(
+      servicoDeRequisicoesWms.criar('c1', 'u1', {
+        tipoOperacao: 'contagem_entrada',
+        prioridade: 3,
+        origemEnderecoId: null,
+        destinoEnderecoId: null,
+        produtoId: null,
+        quantidade: null,
+        responsavelId: 'u2',
+        observacao: null,
+      })
+    ).rejects.toMatchObject({ statusCode: 400 })
+    expect(repositorioDeRequisicoesWms.criar).not.toHaveBeenCalled()
   })
 })

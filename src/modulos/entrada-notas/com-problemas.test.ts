@@ -54,7 +54,15 @@ vi.mock('../fornecedores/vinculos-fornecedor.js', () => ({
 vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({
   clientePrisma: {
     contaPagar: { findMany: vi.fn().mockResolvedValue([]) },
+    requisicaoWms: { findMany: vi.fn().mockResolvedValue([]), findFirst: vi.fn() },
   },
+}))
+
+vi.mock('../requisicoes-wms/os-contagem-entrada.js', () => ({
+  obterResumoOsContagemDaNota: vi.fn().mockResolvedValue(null),
+  gravarLiberacaoContagemComOs: vi.fn(),
+  reabrirOsContagemDaNota: vi.fn(),
+  cancelarOsContagemDasNotas: vi.fn(),
 }))
 
 import { repositorioEntradaNotas } from './repositorio-entrada-notas.js'

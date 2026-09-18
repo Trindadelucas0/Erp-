@@ -1,9 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
+import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import { CardPadrao } from '@/components/ui/card-padrao'
@@ -18,6 +19,7 @@ type NotaDisponivel = {
   dataEmissao: string | null
   serie: string | null
   numero: string | null
+  contagemResponsavelNome?: string | null
 }
 
 type NotaIgnorada = NotaDisponivel & { motivo: string }
@@ -76,6 +78,11 @@ function resumoEntradas(entradas: NotaDisponivel[]): string {
 
 function ConteudoListaContagens() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const { perfil } = useSessaoDoUsuario()
+  const ehAdmin = Boolean(perfil?.ehAdmin)
+  const nfeDaOs = searchParams.get('nfeRecebidaId')
+  const nfeOsTentada = useRef<string | null>(null)
   const [notas, setNotas] = useState<NotaDisponivel[]>([])
   const [ignoradas, setIgnoradas] = useState<NotaIgnorada[]>([])
   const [sessoesAtivas, setSessoesAtivas] = useState<SessaoAtiva[]>([])
@@ -94,6 +101,7 @@ function ConteudoListaContagens() {
         ignoradas?: NotaIgnorada[]
         sessoesAtivas?: SessaoAtiva[]
         historicoRecente?: SessaoHistorico[]
+        ehAdmin?: boolean
       }>('/contagens/disponiveis')
       setNotas(data.notas ?? [])
       setIgnoradas(data.ignoradas ?? [])
@@ -120,8 +128,8 @@ function ConteudoListaContagens() {
     })
   }
 
-  async function iniciar() {
-    if (selecionadas.size === 0) {
+  async function iniciarComIds(ids: string[]) {
+    if (ids.length === 0) {
       setErro('Selecione ao menos uma entrada.')
       return
     }
@@ -129,7 +137,7 @@ function ConteudoListaContagens() {
     setErro(null)
     try {
       const { data } = await clienteHttp.post<{ id: string }>('/contagens', {
-        nfeRecebidaIds: [...selecionadas],
+        nfeRecebidaIds: ids,
       })
       router.push(`/contagens/${data.id}`)
     } catch (e) {
@@ -137,6 +145,25 @@ function ConteudoListaContagens() {
       setIniciando(false)
     }
   }
+
+  async function iniciar() {
+    await iniciarComIds([...selecionadas])
+  }
+
+  useEffect(() => {
+    if (carregando || iniciando || !nfeDaOs) return
+    if (nfeOsTentada.current === nfeDaOs) return
+    const sessao = sessoesAtivas.find((s) => s.entradas.some((e) => e.id === nfeDaOs))
+    if (sessao) {
+      nfeOsTentada.current = nfeDaOs
+      router.replace(`/contagens/${sessao.id}`)
+      return
+    }
+    if (notas.some((n) => n.id === nfeDaOs)) {
+      nfeOsTentada.current = nfeDaOs
+      void iniciarComIds([nfeDaOs])
+    }
+  }, [carregando, nfeDaOs, notas, sessoesAtivas, iniciando, router])
 
   const nfeSemVinculo = ignoradas.filter((n) =>
     /vinculado a produto/i.test(n.motivo)
@@ -225,15 +252,22 @@ function ConteudoListaContagens() {
                 <th className="px-3 py-2 font-medium" scope="col">
                   Emissão
                 </th>
+                {ehAdmin ? (
+                  <th className="px-3 py-2 font-medium" scope="col">
+                    Quem vai contar
+                  </th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
               {carregando ? (
-                <LinhasSkeletonTabela colunas={5} linhas={5} />
+                <LinhasSkeletonTabela colunas={ehAdmin ? 6 : 5} linhas={5} />
               ) : notas.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
-                    Nenhuma NFe pronta para contagem física.
+                  <td colSpan={ehAdmin ? 6 : 5} className="px-3 py-8 text-center text-muted-foreground">
+                    {ehAdmin
+                      ? 'Nenhuma NFe pronta para contagem física.'
+                      : 'Nenhuma entrada designada a você.'}
                     {sessoesAtivas.length > 0
                       ? ' Há contagens em andamento acima — use Continuar contagem.'
                       : nfeSemVinculo.length > 0
@@ -266,6 +300,9 @@ function ConteudoListaContagens() {
                       <td className="px-3 py-2 tabular-nums">{n.numero ?? '—'}</td>
                       <td className="px-3 py-2 tabular-nums">{n.serie ?? '—'}</td>
                       <td className="px-3 py-2">{formatarData(n.dataEmissao)}</td>
+                      {ehAdmin ? (
+                        <td className="px-3 py-2">{n.contagemResponsavelNome || '—'}</td>
+                      ) : null}
                     </tr>
                   )
                 })
@@ -368,7 +405,9 @@ function ConteudoListaContagens() {
 export default function PaginaContagens() {
   return (
     <ProtegerRota chaveDaPagina="contagens">
-      <ConteudoListaContagens />
+      <Suspense fallback={<p className="text-sm text-muted-foreground">Carregando contagens…</p>}>
+        <ConteudoListaContagens />
+      </Suspense>
     </ProtegerRota>
   )
 }

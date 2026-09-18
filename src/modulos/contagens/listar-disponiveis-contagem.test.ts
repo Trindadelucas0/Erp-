@@ -10,7 +10,24 @@ vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({
   },
 }))
 
+vi.mock('../usuarios/repositorio-usuarios.js', () => ({
+  repositorioDeUsuarios: {
+    buscarPorId: vi.fn(),
+  },
+}))
+
+vi.mock('../requisicoes-wms/os-contagem-entrada.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../requisicoes-wms/os-contagem-entrada.js')>()
+  return {
+    ...actual,
+    listarResumoOsContagemPorNfeIds: vi.fn(),
+    concluirOsContagemDasNotas: vi.fn(),
+  }
+})
+
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
+import { repositorioDeUsuarios } from '../usuarios/repositorio-usuarios.js'
+import { listarResumoOsContagemPorNfeIds } from '../requisicoes-wms/os-contagem-entrada.js'
 import { repositorioContagens } from './repositorio-contagens.js'
 import { servicoContagens } from './servico-contagens.js'
 
@@ -28,6 +45,10 @@ const notaBase = {
 describe('listarDisponiveis — sessão ativa oculta nota mas expõe retomada', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(repositorioDeUsuarios.buscarPorId).mockResolvedValue({
+      roles: [{ role: { name: 'admin' } }],
+    } as never)
+    vi.mocked(listarResumoOsContagemPorNfeIds).mockResolvedValue(new Map())
     vi.mocked(clientePrisma.contagemEntradaNota.findMany).mockResolvedValue([
       { nfeRecebidaId: 'nota-1' },
     ] as never)
@@ -90,7 +111,7 @@ describe('listarDisponiveis — sessão ativa oculta nota mas expõe retomada', 
   })
 
   it('nota em sessão ativa não aparece em notas, mas aparece em sessoesAtivas', async () => {
-    const resultado = await servicoContagens.listarDisponiveis('company-1')
+    const resultado = await servicoContagens.listarDisponiveis('company-1', 'user-1')
 
     expect(resultado.notas).toHaveLength(0)
     expect(resultado.sessoesAtivas).toHaveLength(1)
@@ -101,7 +122,7 @@ describe('listarDisponiveis — sessão ativa oculta nota mas expõe retomada', 
   })
 
   it('historicoRecente lista só finalizadas com operador e finalizadoEm', async () => {
-    const resultado = await servicoContagens.listarDisponiveis('company-1')
+    const resultado = await servicoContagens.listarDisponiveis('company-1', 'user-1')
 
     expect(resultado.historicoRecente).toHaveLength(2)
     expect(resultado.historicoRecente[0]).toMatchObject({
@@ -128,6 +149,30 @@ describe('listarDisponiveis — sessão ativa oculta nota mas expõe retomada', 
       orderBy: [{ finalizadoEm: 'desc' }, { createdAt: 'desc' }],
       take: 20,
     })
+  })
+
+  it('operador não-admin só vê NF da OS dele; legado sem OS some', async () => {
+    vi.mocked(repositorioDeUsuarios.buscarPorId).mockResolvedValue({
+      roles: [{ role: { name: 'estoque' } }],
+    } as never)
+    vi.mocked(clientePrisma.contagemEntradaNota.findMany).mockResolvedValue([] as never)
+    vi.mocked(listarResumoOsContagemPorNfeIds).mockResolvedValue(
+      new Map([
+        [
+          'nota-1',
+          {
+            nfeRecebidaId: 'nota-1',
+            requisicaoContagemId: 'os-1',
+            requisicaoContagemNumero: 1,
+            contagemResponsavelId: 'outro',
+            contagemResponsavelNome: 'Outro',
+            status: 'atribuida',
+          },
+        ],
+      ])
+    )
+    const resultado = await servicoContagens.listarDisponiveis('company-1', 'user-1')
+    expect(resultado.notas).toHaveLength(0)
   })
 })
 

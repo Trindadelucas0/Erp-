@@ -4,6 +4,19 @@ vi.mock('../../compartilhado/auditoria/registrar-auditoria.js', () => ({
   registrarAuditoria: vi.fn().mockResolvedValue(undefined),
 }))
 
+vi.mock('../usuarios/repositorio-usuarios.js', () => ({
+  repositorioDeUsuarios: {
+    buscarPorId: vi.fn().mockResolvedValue({ roles: [{ role: { name: 'admin' } }] }),
+  },
+}))
+
+vi.mock('../requisicoes-wms/os-contagem-entrada.js', () => ({
+  listarResumoOsContagemPorNfeIds: vi.fn().mockResolvedValue(new Map()),
+  osContagemEstaAberta: (status: string) =>
+    ['atribuida', 'em_execucao', 'pausada'].includes(status),
+  concluirOsContagemDasNotas: vi.fn().mockResolvedValue(undefined),
+}))
+
 vi.mock('./repositorio-contagens.js', () => ({
   repositorioContagens: {
     MSG_CONCORRENCIA: 'Outro operador alterou esta contagem. Recarregue.',
@@ -20,6 +33,7 @@ vi.mock('./repositorio-contagens.js', () => ({
 
 import { repositorioContagens } from './repositorio-contagens.js'
 import { servicoContagens } from './servico-contagens.js'
+import { concluirOsContagemDasNotas } from '../requisicoes-wms/os-contagem-entrada.js'
 
 function sessaoBase(overrides: Record<string, unknown> = {}) {
   return {
@@ -121,6 +135,11 @@ describe('gravar rascunho vs finalizar', () => {
     )
     expect(r.ok).toBe(true)
     expect(r.sessao.status).toBe('ok')
+    expect(concluirOsContagemDasNotas).toHaveBeenCalledWith({
+      companyId: 'c1',
+      nfeRecebidaIds: ['nota-1'],
+      usuarioId: 'user-1',
+    })
   })
 
   it('finalizar com divergência sem confirmar só avisa', async () => {

@@ -26,7 +26,10 @@ function usuarioIdDe(requisicao: FastifyRequest): string {
 }
 
 async function listarDisponiveis(requisicao: FastifyRequest, resposta: FastifyReply) {
-  const dados = await servicoContagens.listarDisponiveis(companyIdDe(requisicao))
+  const dados = await servicoContagens.listarDisponiveis(
+    companyIdDe(requisicao),
+    usuarioIdDe(requisicao)
+  )
   return resposta.send(dados)
 }
 

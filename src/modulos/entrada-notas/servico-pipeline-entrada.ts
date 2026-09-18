@@ -58,6 +58,12 @@ import {
   STATUS_PAINEL_PRONTA_CONSOLIDAR,
   STATUS_PRONTA_PARA_CONSOLIDAR,
 } from './status-entrada-contagem.js'
+import {
+  cancelarOsContagemDasNotas,
+  gravarLiberacaoContagemComOs,
+  obterResumoOsContagemDaNota,
+  reabrirOsContagemDaNota,
+} from '../requisicoes-wms/os-contagem-entrada.js'
 import { gerarTitulosContasPagarDaEntrada } from '../contas-a-pagar/gerar-titulos-entrada.js'
 import { resolverPlanoFinanceiroEntrada } from '../contas-a-pagar/resolver-plano-financeiro-entrada.js'
 import {
@@ -2486,6 +2492,7 @@ async function obterDetalhe(
     nota.id
   )
   const ipiXmlPorItem = mapaValorIpiPorNItemDoXml(nota.xmlConteudo)
+  const osContagem = await obterResumoOsContagemDaNota(companyId, nota.id)
 
   return {
     nota: {
@@ -2497,6 +2504,10 @@ async function obterDetalhe(
       valorTotal: decimalNum(nota.valorTotal),
       dataEmissao: nota.dataEmissao,
       statusEntrada: nota.statusEntrada,
+      contagemResponsavelId: osContagem?.contagemResponsavelId ?? null,
+      contagemResponsavelNome: osContagem?.contagemResponsavelNome ?? null,
+      requisicaoContagemId: osContagem?.requisicaoContagemId ?? null,
+      requisicaoContagemNumero: osContagem?.requisicaoContagemNumero ?? null,
       manifestacaoDestinatario: nota.manifestacaoDestinatario ?? null,
       origem: nota.origem,
       etapaAtual: nota.etapaAtual,
@@ -3208,7 +3219,8 @@ async function manifestar(
   companyId: string,
   notaId: string,
   tipo: 'desconhecimento' | 'nao_realizada',
-  justificativa?: string
+  justificativa?: string,
+  usuarioId?: string
 ) {
   const nota = await repositorioEntradaNotas.buscarNotaPorId(companyId, notaId)
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
@@ -3250,6 +3262,14 @@ async function manifestar(
         }
       : {}),
   })
+  if (usuarioId) {
+    await cancelarOsContagemDasNotas({
+      companyId,
+      nfeRecebidaIds: [notaId],
+      usuarioId,
+      motivo: 'Nota cancelada',
+    })
+  }
   return obterDetalhe(companyId, notaId)
 }
 
@@ -3673,7 +3693,12 @@ async function lancar(
  * Libera manualmente uma NF "aguardando chegada" (NFe 55 com produto) para o
  * painel de contagem — única ação de saída desse status (uma nota por vez, sem lote).
  */
-async function liberarParaContagem(companyId: string, notaId: string) {
+async function liberarParaContagem(
+  companyId: string,
+  notaId: string,
+  usuarioId: string,
+  responsavelId: string | null | undefined
+) {
   const nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
   if (!podeLiberarParaContagem(nota.statusEntrada)) {
@@ -3692,7 +3717,18 @@ async function liberarParaContagem(companyId: string, notaId: string) {
     })
     throw new ErroDaAplicacao(MSG_AUDITORIA_CHEGADA_PENDENTE, 409)
   }
-  await repositorioEntradaNotas.atualizarNota(notaId, { statusEntrada: STATUS_AGUARDANDO_CONTAGEM })
+  const idResp = typeof responsavelId === 'string' ? responsavelId.trim() : ''
+  if (!idResp) {
+    throw new ErroDaAplicacao('Informe quem vai contar', 400)
+  }
+  await gravarLiberacaoContagemComOs({
+    companyId,
+    notaId,
+    chaveNfe: nota.chaveNfe,
+    responsavelId: idResp,
+    usuarioId,
+    statusEntrada: STATUS_AGUARDANDO_CONTAGEM,
+  })
   return await obterDetalhe(companyId, notaId)
 }
 
@@ -3781,6 +3817,11 @@ async function voltarParaContagem(companyId: string, notaId: string, usuarioId: 
     usuarioId,
     itensSnapshot,
     observacao: sessao.observacao,
+  })
+  await reabrirOsContagemDaNota({
+    companyId,
+    nfeRecebidaId: notaId,
+    usuarioId,
   })
   return await obterDetalhe(companyId, notaId)
 }

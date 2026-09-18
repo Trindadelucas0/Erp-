@@ -39,6 +39,8 @@ import {
   varianteBadgeTipo,
 } from '@/lib/tipo-documento-entrada'
 import { extrairSerieNumeroChave } from '@/lib/chave-acesso-nfe'
+import { ModalLiberarParaContagem } from '@/components/entrada-notas/modal-liberar-para-contagem'
+import { formatarNumeroRequisicao } from '@/lib/requisicoes-wms'
 
 type NotaPendente = {
   id: string
@@ -64,6 +66,9 @@ type NotaPendente = {
   contagemBaixada?: boolean
   /** Sessão de contagem `aberta` / `em_andamento` (só painel contagem). */
   contagemEmAndamento?: boolean
+  contagemResponsavelNome?: string | null
+  requisicaoContagemId?: string | null
+  requisicaoContagemNumero?: number | null
   /** Desfecho de divergência de contagem (§7.17) — ex.: `bloqueio`. */
   divergenciaDesfecho?: string | null
   /** Preenchido após desbloquear estoque — badge deixa de dizer "Estoque bloqueado". */
@@ -308,6 +313,7 @@ function ConteudoEntradaNotas() {
   const [xmlModal, setXmlModal] = useState<XmlVisualizacao | null>(null)
   const [xmlCarregandoId, setXmlCarregandoId] = useState<string | null>(null)
   const [liberandoId, setLiberandoId] = useState<string | null>(null)
+  const [modalLiberarId, setModalLiberarId] = useState<string | null>(null)
   const [baixandoId, setBaixandoId] = useState<string | null>(null)
   const [senhaBaixar, setSenhaBaixar] = useState('')
   const [modalBaixarId, setModalBaixarId] = useState<string | null>(null)
@@ -849,12 +855,13 @@ function ConteudoEntradaNotas() {
     }
   }
 
-  async function liberarParaContagem(id: string) {
+  async function liberarParaContagem(id: string, responsavelId: string) {
     setLiberandoId(id)
     setErro('')
     try {
-      await clienteHttp.post(`/entrada-notas/${id}/liberar-para-contagem`)
+      await clienteHttp.post(`/entrada-notas/${id}/liberar-para-contagem`, { responsavelId })
       setMensagem('Nota liberada para contagem — a logística já pode conferir em Contagens de entrada.')
+      setModalLiberarId(null)
       await carregar({ silencioso: true })
     } catch (err) {
       setErro(extrairMensagemApi(err, 'Não foi possível liberar a nota para contagem.'))
@@ -1356,6 +1363,14 @@ function ConteudoEntradaNotas() {
                         {n.auditoriaChegadaPendente ? (
                           <BadgeStatus variante="reprovado">Conferir</BadgeStatus>
                         ) : null}
+                        {n.contagemResponsavelNome ? (
+                          <BadgeStatus variante="info">
+                            {n.contagemResponsavelNome}
+                            {n.requisicaoContagemNumero != null
+                              ? ` · ${formatarNumeroRequisicao(n.requisicaoContagemNumero)}`
+                              : ''}
+                          </BadgeStatus>
+                        ) : null}
                         {painel === 'consolidada' &&
                         n.divergenciaDesfecho === 'bloqueio' &&
                         n.divergenciaDesbloqueioEm ? (
@@ -1380,7 +1395,7 @@ function ConteudoEntradaNotas() {
                                 ? 'Confirme as divergências de preço/nome no detalhe da nota'
                                 : undefined
                             }
-                            onClick={() => void liberarParaContagem(n.id)}
+                            onClick={() => setModalLiberarId(n.id)}
                           >
                             {liberandoId === n.id ? (
                               <>
@@ -1743,6 +1758,14 @@ function ConteudoEntradaNotas() {
         </div>
       </CardPadrao>
       )}
+      <ModalLiberarParaContagem
+        aberto={modalLiberarId != null}
+        ocupado={liberandoId != null}
+        aoFechar={() => setModalLiberarId(null)}
+        aoConfirmar={(responsavelId) => {
+          if (modalLiberarId) void liberarParaContagem(modalLiberarId, responsavelId)
+        }}
+      />
     </div>
   )
 }

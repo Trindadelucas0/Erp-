@@ -16,6 +16,7 @@ describe('efeito-estoque-requisicao', () => {
     expect(tipoMoveKardexSeparacao('reposicao')).toBe(false)
     expect(tipoMoveKardexSeparacao('movimentacao')).toBe(false)
     expect(tipoMoveKardexSeparacao('inventario')).toBe(false)
+    expect(tipoMoveKardexSeparacao('contagem_entrada')).toBe(false)
   })
 
   it('chaves de idempotência são estáveis por id', () => {
@@ -82,6 +83,18 @@ describe('efeito-estoque-requisicao', () => {
         quantidade: null,
       })
     ).toEqual(['origem', 'produto'])
+  })
+
+  it('contagem_entrada não exige passos de conferência', () => {
+    expect(
+      passosExigidos({
+        tipoOperacao: 'contagem_entrada',
+        origemEnderecoId: 'o1',
+        destinoEnderecoId: 'd1',
+        produtoId: 'p1',
+        quantidade: 10,
+      })
+    ).toEqual([])
   })
 
   it('conferência completa exige todos os passos persistidos', () => {

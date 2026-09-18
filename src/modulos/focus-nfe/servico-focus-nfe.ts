@@ -37,6 +37,7 @@ import { REGRAS_FISCAIS_PADRAO, sanitizarRegrasFiscais } from './esquema-focus-n
 import { analisarFiscalBasico } from '../entrada-notas/analise-fiscal/analisar-fiscal-basico.js'
 import { servicoEntradaNotas } from '../entrada-notas/servico-pipeline-entrada.js'
 import { repositorioContagens } from '../contagens/repositorio-contagens.js'
+import { listarResumoOsContagemPorNfeIds } from '../requisicoes-wms/os-contagem-entrada.js'
 import { lerConfigCotaFocus, saldoCotaFocus, contarUsoMesFocus } from './cota-focus-nfe.js'
 import { saldoCotaEmissaoFocus } from './cota-emissao-focus.js'
 import { lerLimiteLoteSyncFocus } from './config-rate-limit-focus-nfe.js'
@@ -1169,6 +1170,7 @@ async function listarPendentes(
     painel === 'contagem'
       ? await repositorioContagens.mapaEmAndamentoPorNota(companyId, idsNotas)
       : new Map<string, boolean>()
+  const mapaOsContagem = await listarResumoOsContagemPorNfeIds(companyId, idsNotas)
 
   const notas = notasBrutas.map((n) => {
     const dest = n.cnpjDestinatario ? normalizarCnpj(n.cnpjDestinatario) : ''
@@ -1216,6 +1218,10 @@ async function listarPendentes(
       })(),
       contagemBaixada: mapaBaixada.get(n.id) === true,
       contagemEmAndamento: mapaEmAndamento.get(n.id) === true,
+      contagemResponsavelId: mapaOsContagem.get(n.id)?.contagemResponsavelId ?? null,
+      contagemResponsavelNome: mapaOsContagem.get(n.id)?.contagemResponsavelNome ?? null,
+      requisicaoContagemId: mapaOsContagem.get(n.id)?.requisicaoContagemId ?? null,
+      requisicaoContagemNumero: mapaOsContagem.get(n.id)?.requisicaoContagemNumero ?? null,
       divergenciaDesfecho: n.divergenciaDesfecho ?? null,
       /** ISO do desbloqueio (§7.17) — null = ainda retido no estoque. */
       divergenciaDesbloqueioEm: (() => {

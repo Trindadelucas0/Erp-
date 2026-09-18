@@ -19,6 +19,7 @@ const includeDetalhe = {
     },
   },
   responsavel: { select: { id: true, name: true } },
+  nfeRecebida: { select: { id: true, chaveNfe: true } },
 } satisfies Prisma.RequisicaoWmsInclude
 
 const includeFicha = {
@@ -114,6 +115,7 @@ async function criar(
     quantidade: number | null
     responsavelId: string | null
     observacao: string | null
+    nfeRecebidaId?: string | null
     evento: {
       usuarioId: string
       acao: string
@@ -137,6 +139,7 @@ async function criar(
         quantidade: dados.quantidade,
         responsavelId: dados.responsavelId,
         observacao: dados.observacao,
+        nfeRecebidaId: dados.nfeRecebidaId ?? null,
         eventos: {
           create: {
             usuarioId: dados.evento.usuarioId,
@@ -281,6 +284,32 @@ async function listarOperadores(companyId: string) {
   })
 }
 
+async function buscarPorNfeRecebida(
+  companyId: string,
+  nfeRecebidaId: string,
+  tx?: Prisma.TransactionClient
+) {
+  const db = tx ?? clientePrisma
+  return db.requisicaoWms.findFirst({
+    where: { companyId, nfeRecebidaId, tipoOperacao: 'contagem_entrada' },
+    include: includeFicha,
+    orderBy: { createdAt: 'asc' },
+  })
+}
+
+async function listarPorNfeRecebidaIds(companyId: string, nfeRecebidaIds: string[]) {
+  if (nfeRecebidaIds.length === 0) return []
+  return clientePrisma.requisicaoWms.findMany({
+    where: {
+      companyId,
+      nfeRecebidaId: { in: nfeRecebidaIds },
+      tipoOperacao: 'contagem_entrada',
+    },
+    include: includeDetalhe,
+    orderBy: { createdAt: 'asc' },
+  })
+}
+
 export const repositorioDeRequisicoesWms = {
   criar,
   listar,
@@ -292,5 +321,7 @@ export const repositorioDeRequisicoesWms = {
   produtoDaEmpresa,
   usuarioDaEmpresa,
   listarOperadores,
+  buscarPorNfeRecebida,
+  listarPorNfeRecebidaIds,
   proximoNumero,
 }

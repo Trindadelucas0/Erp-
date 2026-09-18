@@ -69,6 +69,7 @@ vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({
     despesaEntradaDocumento: { upsert: vi.fn() },
     contaPagar: { findMany: vi.fn().mockResolvedValue([]) },
     nfeRecebida: { findFirst: vi.fn().mockResolvedValue(null) },
+    requisicaoWms: { findMany: vi.fn().mockResolvedValue([]), findFirst: vi.fn() },
   },
 }))
 

@@ -1,3 +1,5 @@
+import { extrairSerieNumeroChave } from '@/lib/chave-acesso-nfe'
+
 export const TIPOS_OPERACAO_REQUISICAO = [
   'separacao',
   'reposicao',
@@ -5,6 +7,7 @@ export const TIPOS_OPERACAO_REQUISICAO = [
   'movimentacao',
   'limpeza',
   'inventario',
+  'contagem_entrada',
 ] as const
 
 export type TipoOperacaoRequisicao = (typeof TIPOS_OPERACAO_REQUISICAO)[number]
@@ -16,9 +19,12 @@ export const ROTULO_TIPO_OPERACAO: Record<TipoOperacaoRequisicao, string> = {
   movimentacao: 'Movimentação',
   limpeza: 'Limpeza',
   inventario: 'Inventário',
+  contagem_entrada: 'Contagem de entrada',
 }
 
-export const OPCOES_TIPO_OPERACAO = TIPOS_OPERACAO_REQUISICAO.map((value) => ({
+export const OPCOES_TIPO_OPERACAO = TIPOS_OPERACAO_REQUISICAO.filter(
+  (value) => value !== 'contagem_entrada'
+).map((value) => ({
   value,
   label: ROTULO_TIPO_OPERACAO[value],
 }))
@@ -92,6 +98,8 @@ export type RequisicaoWms = {
   responsavelId: string | null
   responsavelNome: string | null
   observacao: string | null
+  nfeRecebidaId: string | null
+  nfeRecebidaChave: string | null
   iniciadoEm: string | null
   pausadoEm: string | null
   concluidoEm: string | null
@@ -120,6 +128,13 @@ export type ListaRequisicoes = {
 
 export function formatarNumeroRequisicao(numero: number) {
   return `REQ-${String(numero).padStart(5, '0')}`
+}
+
+export function rotuloNfDaRequisicao(chave: string | null | undefined) {
+  if (!chave) return null
+  const { serie, numero } = extrairSerieNumeroChave(chave)
+  if (!numero) return null
+  return serie ? `NF ${numero} série ${serie}` : `NF ${numero}`
 }
 
 export function origemDestino(item: RequisicaoWms) {

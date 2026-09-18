@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   formatarNumeroRequisicao,
+  OPCOES_TIPO_OPERACAO,
   podeConcluirExecucao,
+  rotuloNfDaRequisicao,
+  ROTULO_TIPO_OPERACAO,
   type RequisicaoWms,
 } from './requisicoes-wms'
 
@@ -23,6 +26,8 @@ function item(parcial: Partial<RequisicaoWms> = {}): RequisicaoWms {
     responsavelId: 'eu',
     responsavelNome: 'Eu',
     observacao: null,
+    nfeRecebidaId: null,
+    nfeRecebidaChave: null,
     iniciadoEm: null,
     pausadoEm: null,
     concluidoEm: null,
@@ -44,9 +49,17 @@ function item(parcial: Partial<RequisicaoWms> = {}): RequisicaoWms {
   }
 }
 
-describe('formatarNumeroRequisicao', () => {
-  it('preenche zeros à esquerda', () => {
-    expect(formatarNumeroRequisicao(42)).toBe('REQ-00042')
+describe('tipos de operação', () => {
+  it('não oferece Contagem de entrada na criação manual', () => {
+    expect(OPCOES_TIPO_OPERACAO.some((o) => o.value === 'contagem_entrada')).toBe(false)
+    expect(ROTULO_TIPO_OPERACAO.contagem_entrada).toBe('Contagem de entrada')
+  })
+})
+
+describe('rotuloNfDaRequisicao', () => {
+  it('extrai número e série da chave', () => {
+    const chave = '35260812345678000190550010002651121234567890'
+    expect(rotuloNfDaRequisicao(chave)).toBe('NF 265112 série 1')
   })
 })
 

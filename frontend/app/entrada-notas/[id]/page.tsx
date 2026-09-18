@@ -22,6 +22,12 @@ import {
 } from '@/components/entrada-notas/conteudo-visualizacao-nota'
 import { BarraCarregamentoDownload } from '@/components/entrada-notas/barra-carregamento-download'
 import { ModalConciliarProduto } from '@/components/entrada-notas/modal-conciliar-produto'
+import { ModalLiberarParaContagem } from '@/components/entrada-notas/modal-liberar-para-contagem'
+import {
+  TabelaResultadoContagem,
+  type ResultadoContagem,
+} from '@/components/entrada-notas/tabela-resultado-contagem'
+import { formatarNumeroRequisicao } from '@/lib/requisicoes-wms'
 import {
   ItemVinculoCadastroGrid,
   MSG_GRAVAR_CODIGO_ORIGINAL_SEM_FORNECEDOR,
@@ -295,6 +301,10 @@ type DetalheNota = {
     pendente: boolean
   } | null
   contagemBaixada?: boolean
+  resultadoContagem?: ResultadoContagem | null
+  contagemResponsavelNome?: string | null
+  requisicaoContagemId?: string | null
+  requisicaoContagemNumero?: number | null
   tratativas?: TratativaNota[]
   modFrete?: string | null
   chaveNfeReferenciada?: string | null
@@ -947,6 +957,7 @@ function ConteudoDetalheEntrada() {
   const [downloadRotulo, setDownloadRotulo] = useState('')
   const [xmlModal, setXmlModal] = useState<{ visualizacao: VisualizacaoNota } | null>(null)
   const [modalMarcarProblema, setModalMarcarProblema] = useState(false)
+  const [modalLiberarContagem, setModalLiberarContagem] = useState(false)
   const [modalEstoqueBloqueado, setModalEstoqueBloqueado] = useState<{
     aberto: boolean
     motivo: string
@@ -1899,6 +1910,16 @@ function ConteudoDetalheEntrada() {
         />
       )}
 
+      <ModalLiberarParaContagem
+        aberto={modalLiberarContagem}
+        ocupado={acao}
+        aoFechar={() => setModalLiberarContagem(false)}
+        aoConfirmar={(responsavelId) => {
+          void postAcao('/liberar-para-contagem', { responsavelId }).then((ok) => {
+            if (ok) setModalLiberarContagem(false)
+          })
+        }}
+      />
       <ModalConfirmacao
         aberto={modalMarcarProblema}
         titulo="Marcar com problema?"
@@ -3380,7 +3401,7 @@ function ConteudoDetalheEntrada() {
                   <BotaoPrimario
                     type="button"
                     disabled={acao || Boolean(nota.auditoriaChegada?.pendente)}
-                    onClick={() => postAcao('/liberar-para-contagem', {})}
+                    onClick={() => setModalLiberarContagem(true)}
                   >
                     Liberar para contagem
                   </BotaoPrimario>
@@ -3401,6 +3422,15 @@ function ConteudoDetalheEntrada() {
                 <p className="mt-2 text-sm text-muted-foreground">
                   {(nota.itens ?? []).some((i) => i.produtoId) ? (
                     <>
+                      {nota.contagemResponsavelNome ? (
+                        <>
+                          Quem vai contar: <strong>{nota.contagemResponsavelNome}</strong>
+                          {nota.requisicaoContagemNumero != null
+                            ? ` · ${formatarNumeroRequisicao(nota.requisicaoContagemNumero)}`
+                            : ''}
+                          .{' '}
+                        </>
+                      ) : null}
                       Abra{' '}
                       <Link href="/contagens" className="text-primary underline">
                         Contagens de entrada
@@ -3562,11 +3592,31 @@ function ConteudoDetalheEntrada() {
               )}
               {nota.statusEntrada === 'entrada_contagem_divergente' && (
                 <div className="mt-4 space-y-3 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800/60 dark:bg-amber-950/30">
+                  <div>
+                    <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                      Contagem divergente
+                    </p>
+                    {nota.contagemResponsavelNome ? (
+                      <p className="mt-0.5 text-sm text-amber-800 dark:text-amber-300">
+                        Quem vai contar: <strong>{nota.contagemResponsavelNome}</strong>
+                        {nota.requisicaoContagemNumero != null
+                          ? ` · ${formatarNumeroRequisicao(nota.requisicaoContagemNumero)}`
+                          : ''}
+                      </p>
+                    ) : null}
+                  </div>
+                  {nota.resultadoContagem ? (
+                    <TabelaResultadoContagem resultado={nota.resultadoContagem} />
+                  ) : (
+                    <p className="text-sm text-amber-800 dark:text-amber-300">
+                      Contagem finalizada com divergência (detalhe por produto indisponível).
+                    </p>
+                  )}
                   {!nota.contagemBaixada ? (
                     <>
                       <p className="text-sm text-amber-800 dark:text-amber-300">
-                        Contagem finalizada com divergência. Baixe para travar a logística e depois
-                        bloquear o estoque, ou volte para a logística contar de novo.
+                        Baixe para travar a logística e depois bloquear o estoque, ou volte para a
+                        logística contar de novo.
                       </p>
                       <div className="flex flex-wrap gap-2">
                         <Button

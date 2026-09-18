@@ -252,6 +252,7 @@ model NfeRecebida {
   contasPagar              ContaPagar[]
   contagensEntradaNotas    ContagemEntradaNota[]
   anexos                   NfeRecebidaAnexo[]
+  requisicoesWms           RequisicaoWms[]
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 
@@ -1592,7 +1593,7 @@ model RequisicaoWms {
   companyId            String
   company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   numero               Int
-  /// separacao | reposicao | conferencia | movimentacao | limpeza | inventario
+  /// separacao | reposicao | conferencia | movimentacao | limpeza | inventario | contagem_entrada
   tipoOperacao         String
   /// 1 critica … 4 baixa
   prioridade           Int
@@ -1615,6 +1616,8 @@ model RequisicaoWms {
   responsavelId        String?
   responsavel          User?    @relation(fields: [responsavelId], references: [id], onDelete: SetNull)
   observacao           String?
+  nfeRecebidaId        String?
+  nfeRecebida          NfeRecebida? @relation(fields: [nfeRecebidaId], references: [id], onDelete: SetNull)
   iniciadoEm           DateTime?
   pausadoEm            DateTime?
   concluidoEm          DateTime?
@@ -1626,6 +1629,7 @@ model RequisicaoWms {
   @@index([companyId, status])
   @@index([companyId, responsavelId, status])
   @@index([companyId, prioridade, createdAt])
+  @@index([companyId, nfeRecebidaId])
 }
 
 model RequisicaoWmsEvento {
