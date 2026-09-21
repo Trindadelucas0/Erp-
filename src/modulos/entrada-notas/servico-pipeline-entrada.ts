@@ -2319,21 +2319,41 @@ async function obterDetalhe(
   const itensBloqueados =
     itensBloqueadosResumo.itens.length > 0 ? itensBloqueadosResumo : null
 
-  const contasPagarRows = await clientePrisma.contaPagar.findMany({
+  const selectContasPagar = {
+    id: true,
+    codigo: true,
+    origem: true,
+    status: true,
+    valorTotal: true,
+    nfeRecebidaId: true,
+  } as const
+  let contasPagarRows = await clientePrisma.contaPagar.findMany({
     where: {
       companyId,
       nfeRecebidaId: notaId,
     },
-    select: {
-      id: true,
-      codigo: true,
-      origem: true,
-      status: true,
-      valorTotal: true,
-      nfeRecebidaId: true,
-    },
+    select: selectContasPagar,
     orderBy: { createdAt: 'asc' },
   })
+  // Reparo: documental consolidada sem título (bug uso_consumo que lia só cobr/dup do XML).
+  if (
+    nota.statusEntrada === 'entrada_consolidada' &&
+    notaEhDocumentalSemEstoque(nota) &&
+    !contasPagarRows.some((c) => c.origem === 'nfe')
+  ) {
+    try {
+      await gerarTitulosContasPagarDaEntrada(companyId, notaId, {
+        exigirVencimentoMercadoria: true,
+      })
+      contasPagarRows = await clientePrisma.contaPagar.findMany({
+        where: { companyId, nfeRecebidaId: notaId },
+        select: selectContasPagar,
+        orderBy: { createdAt: 'asc' },
+      })
+    } catch {
+      // Prévia incompleta na nota antiga — detalhe segue; operador cadastra CAP manual.
+    }
+  }
   const contasPagar = contasPagarRows.map((c) => ({
     id: c.id,
     codigo: c.codigo,
@@ -3667,7 +3687,10 @@ async function lancar(
     if (!ok) throw new ErroDaAplicacao('Senha inválida.', 403)
     await aplicarRateioEDespesasFrete(companyId, notaId)
     contasPagarResumo = await gerarTitulosContasPagarDaEntrada(companyId, notaId, {
-      exigirVencimentoMercadoria: !noPainelContagem && !noPainelProntaConsolidar,
+      // Documental (NFS-e / uso e consumo): nunca consolidar sem título (§7.16).
+      // Revenda no painel de contagem / pronta: mantém flexibilidade de vencimento.
+      exigirVencimentoMercadoria:
+        documentalSemEstoque || (!noPainelContagem && !noPainelProntaConsolidar),
     })
     estoqueResumo = await lancarEstoqueAoConsolidar(companyId, notaId, usuarioId)
     await repositorioEntradaNotas.atualizarNota(notaId, {

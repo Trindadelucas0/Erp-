@@ -6,6 +6,7 @@ import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-auditoria.js'
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import {
+  mapaDespesasPorNItemDoXml,
   mapaImpostosPorNItemDoXml,
   mapaValorIpiPorNItemDoXml,
 } from '../focus-nfe/parser-xml-nfe.js'
@@ -15,8 +16,8 @@ import { repositorioDeEstoque } from '../estoque/repositorio-estoque.js'
 import { repositorioEntradaNotas } from './repositorio-entrada-notas.js'
 import { montarCustoComparativo, resolverValorIpi } from './custo-unitario-entrada.js'
 import {
-  calcularCustoComercialEntrada,
-  creditoIcmsComercial,
+  calcularCustoContabilEntrada,
+  creditoIcmsContabil,
 } from './custo-comercial-entrada.js'
 import {
   calcularDiferencaPercentualPreco,
@@ -92,11 +93,13 @@ async function obterGrade(companyId: string, notaId: string) {
   ])
   const ipiXmlPorItem = mapaValorIpiPorNItemDoXml(nota.xmlConteudo)
   const impostosPorItem = mapaImpostosPorNItemDoXml(nota.xmlConteudo)
+  const despesasPorItem = mapaDespesasPorNItemDoXml(nota.xmlConteudo)
   const tipoFrete = nota.modFrete ?? null
   const tipoFreteRotulo = rotuloModFrete(nota.modFrete)
 
   const itens = nota.itens.map((i) => {
     const quantidade = decimalNum(i.quantidade)
+    const valorUnitario = decimalNum(i.valorUnitario)
     const itensPorEmbalagem = resolverItensPorEmbalagem(
       i.produto?.fornecedores,
       nota.fornecedorPessoaId
@@ -106,36 +109,49 @@ async function obterGrade(companyId: string, notaId: string) {
       ipiXmlPorItem.get(i.nItem) ?? null
     )
     const custoFreteRateado = decimalNum(i.custoFreteRateado) ?? 0
+    const despesas = despesasPorItem.get(i.nItem)
+    const despesasSeguro =
+      despesas?.valorSeguro != null && Number.isFinite(despesas.valorSeguro)
+        ? despesas.valorSeguro
+        : 0
+    const outrasDespesas =
+      despesas?.valorOutrasDespesas != null && Number.isFinite(despesas.valorOutrasDespesas)
+        ? despesas.valorOutrasDespesas
+        : 0
     const impostos = impostosPorItem.get(i.nItem)
-    const aproveitarIcms = Boolean(
-      (i.cfopEntrada as { aproveitarCreditoIcms?: boolean } | null)?.aproveitarCreditoIcms
-    )
-    const creditoIcms = creditoIcmsComercial(impostos?.valorIcms, aproveitarIcms)
-    const creditoPis = impostos?.valorPis != null && Number.isFinite(impostos.valorPis) ? impostos.valorPis : 0
+    const creditoIcms = creditoIcmsContabil(impostos?.valorIcms, quantidade, valorUnitario)
+    const creditoPis =
+      impostos?.valorPis != null && Number.isFinite(impostos.valorPis) ? impostos.valorPis : 0
     const creditoCofins =
-      impostos?.valorCofins != null && Number.isFinite(impostos.valorCofins) ? impostos.valorCofins : 0
+      impostos?.valorCofins != null && Number.isFinite(impostos.valorCofins)
+        ? impostos.valorCofins
+        : 0
     const custos = montarCustoComparativo({
       quantidadeNf: quantidade,
-      valorUnitario: decimalNum(i.valorUnitario),
+      valorUnitario,
       custoFreteRateado,
       valorIpi,
       itensPorEmbalagem,
       produtoId: i.produtoId,
       ultimaPorProduto: ultimaCustoPorProduto,
     })
-    const custoComercial = calcularCustoComercialEntrada({
+    const custoContabil = calcularCustoContabilEntrada({
       quantidadeNf: quantidade,
-      valorUnitario: decimalNum(i.valorUnitario),
+      valorUnitario,
       custoFreteRateado,
       valorIpi,
+      valorSeguro: despesasSeguro,
+      valorOutrasDespesas: outrasDespesas,
       itensPorEmbalagem,
       creditoIcms,
       creditoPis,
       creditoCofins,
     })
     const vinculado = Boolean(i.produtoId && i.produto)
-    const formacao = calcularPrecoSugerido(custoComercial, encargosPercentual, 0, 0)
-    const formacaoLinha = vinculado ? formacao : { ok: false as const, motivo: 'Item sem produto vinculado.' }
+    const formacao = calcularPrecoSugerido(custoContabil, encargosPercentual, 0, 0)
+    const formacaoLinha = vinculado
+      ? formacao
+      : { ok: false as const, motivo: 'Item sem produto vinculado.' }
     const precoAtual = i.produto?.precoVenda != null ? decimalNum(i.produto.precoVenda) : null
     const precoSugerido = formacaoLinha.ok ? formacaoLinha.precoSugerido : null
     const ultima = i.produtoId ? ultimaCustoPorProduto.get(i.produtoId) : undefined
@@ -151,13 +167,15 @@ async function obterGrade(companyId: string, notaId: string) {
       tipoFrete,
       tipoFreteRotulo,
       custoFreteRateado,
+      despesasSeguro,
+      outrasDespesas,
       creditoIcms,
       creditoPis,
       creditoCofins,
       aliquotaIcms: impostos?.aliquotaIcms ?? null,
       aliquotaPis: impostos?.aliquotaPis ?? null,
       aliquotaCofins: impostos?.aliquotaCofins ?? null,
-      custoComercial,
+      custoContabil,
       custoEntrada: custos.custoEntrada,
       custoAnterior: custos.custoAnterior,
       custoAnteriorData: ultima?.dataEmissao ?? null,
@@ -214,6 +232,7 @@ async function gravarPrecos(
   const encargosPercentual = parametrizacao.totalVenda ?? 0
   const ipiXmlPorItem = mapaValorIpiPorNItemDoXml(nota.xmlConteudo)
   const impostosPorItem = mapaImpostosPorNItemDoXml(nota.xmlConteudo)
+  const despesasPorItem = mapaDespesasPorNItemDoXml(nota.xmlConteudo)
   const vistos = new Set<string>()
   for (const linha of linhas) {
     if (vistos.has(linha.produtoId)) {
@@ -229,29 +248,30 @@ async function gravarPrecos(
     }
     if (linha.margemPercentual == null) continue
     const quantidade = decimalNum(item.quantidade)
+    const valorUnitario = decimalNum(item.valorUnitario)
     const itensPorEmbalagem = resolverItensPorEmbalagem(
       item.produto.fornecedores,
       nota.fornecedorPessoaId
     )
     const impostos = impostosPorItem.get(item.nItem)
-    const aproveitarIcms = Boolean(
-      (item.cfopEntrada as { aproveitarCreditoIcms?: boolean } | null)?.aproveitarCreditoIcms
-    )
-    const custoComercial = calcularCustoComercialEntrada({
+    const despesas = despesasPorItem.get(item.nItem)
+    const custoContabil = calcularCustoContabilEntrada({
       quantidadeNf: quantidade,
-      valorUnitario: decimalNum(item.valorUnitario),
+      valorUnitario,
       custoFreteRateado: decimalNum(item.custoFreteRateado),
       valorIpi: resolverValorIpi(
         decimalNum((item as { valorIpi?: unknown }).valorIpi),
         ipiXmlPorItem.get(item.nItem) ?? null
       ),
+      valorSeguro: despesas?.valorSeguro,
+      valorOutrasDespesas: despesas?.valorOutrasDespesas,
       itensPorEmbalagem,
-      creditoIcms: creditoIcmsComercial(impostos?.valorIcms, aproveitarIcms),
+      creditoIcms: creditoIcmsContabil(impostos?.valorIcms, quantidade, valorUnitario),
       creditoPis: impostos?.valorPis,
       creditoCofins: impostos?.valorCofins,
     })
     const formacao = calcularPrecoSugerido(
-      custoComercial,
+      custoContabil,
       encargosPercentual,
       linha.margemPercentual,
       0

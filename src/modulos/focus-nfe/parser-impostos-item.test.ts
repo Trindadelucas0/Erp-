@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { extrairItensDoXml, mapaImpostosPorNItemDoXml } from './parser-xml-nfe.js'
+import {
+  extrairItensDoXml,
+  mapaDespesasPorNItemDoXml,
+  mapaImpostosPorNItemDoXml,
+} from './parser-xml-nfe.js'
 
 const xmlComImpostos = `<?xml version="1.0" encoding="UTF-8"?>
 <nfeProc>
@@ -12,6 +16,8 @@ const xmlComImpostos = `<?xml version="1.0" encoding="UTF-8"?>
           <qCom>2.0000</qCom>
           <vUnCom>50.0000</vUnCom>
           <vProd>100.00</vProd>
+          <vSeg>3.50</vSeg>
+          <vOutro>1.25</vOutro>
         </prod>
         <imposto>
           <ICMS>
@@ -89,5 +95,23 @@ describe('mapaImpostosPorNItemDoXml', () => {
     expect(item.aliquotaPis).toBeNull()
     expect(item.valorCofins).toBeNull()
     expect(item.aliquotaCofins).toBeNull()
+  })
+})
+
+describe('mapaDespesasPorNItemDoXml', () => {
+  it('lê vSeg e vOutro do prod', () => {
+    const mapa = mapaDespesasPorNItemDoXml(xmlComImpostos)
+    const item = mapa.get(1)
+    expect(item?.valorSeguro).toBe(3.5)
+    expect(item?.valorOutrasDespesas).toBe(1.25)
+  })
+
+  it('XML sem vSeg/vOutro deixa despesas nulas (não inventa valor)', () => {
+    const item = extrairItensDoXml(xmlSemPisCofins)[0]
+    expect(item.valorSeguro).toBeNull()
+    expect(item.valorOutrasDespesas).toBeNull()
+    const mapa = mapaDespesasPorNItemDoXml(xmlSemPisCofins)
+    expect(mapa.get(1)?.valorSeguro).toBeNull()
+    expect(mapa.get(1)?.valorOutrasDespesas).toBeNull()
   })
 })

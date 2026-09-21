@@ -223,6 +223,10 @@ export type ItemXmlNfe = {
   pesoKg?: number | null
   /** IPI do item (vIPI do XML / valor_ipi do JSON Focus). */
   valorIpi?: number | null
+  /** Seguro do item (prod/vSeg). */
+  valorSeguro?: number | null
+  /** Outras despesas acessórias do item (prod/vOutro). */
+  valorOutrasDespesas?: number | null
   valorIcms?: number | null
   aliquotaIcms?: number | null
   valorPis?: number | null
@@ -239,6 +243,13 @@ export type ImpostosItemXmlNfe = {
   aliquotaPis: number | null
   valorCofins: number | null
   aliquotaCofins: number | null
+}
+
+/** Despesas incorporáveis do item (prod/vSeg e prod/vOutro). */
+export type DespesasItemXmlNfe = {
+  nItem: number
+  valorSeguro: number | null
+  valorOutrasDespesas: number | null
 }
 
 /**
@@ -282,6 +293,22 @@ export function extrairItensDoJsonFocusCompleta(
           : it.ipi_valor != null
             ? String(it.ipi_valor)
             : null
+      ),
+      valorSeguro: parseValor(
+        it.valor_seguro != null
+          ? String(it.valor_seguro)
+          : it.seguro != null
+            ? String(it.seguro)
+            : null
+      ),
+      valorOutrasDespesas: parseValor(
+        it.valor_outras_despesas != null
+          ? String(it.valor_outras_despesas)
+          : it.outras_despesas != null
+            ? String(it.outras_despesas)
+            : it.valor_outro != null
+              ? String(it.valor_outro)
+              : null
       ),
     }
   })
@@ -754,6 +781,8 @@ export function extrairItensDoXml(xmlBruto: string): ItemXmlNfe[] {
       valorTotal: parseValor(prod ? extrairCampoXml(prod, 'vProd') : null),
       pesoKg: parseValor(prod ? extrairCampoXml(prod, 'pesoL') ?? extrairCampoXml(prod, 'pesoB') : null),
       valorIpi: parseValor(imposto ? extrairCampoXml(imposto, 'vIPI') : null),
+      valorSeguro: parseValor(prod ? extrairCampoXml(prod, 'vSeg') : null),
+      valorOutrasDespesas: parseValor(prod ? extrairCampoXml(prod, 'vOutro') : null),
       ...extrairImpostosDoImposto(imposto),
     })
   }
@@ -776,6 +805,22 @@ export function mapaImpostosPorNItemDoXml(
       aliquotaPis: item.aliquotaPis ?? null,
       valorCofins: item.valorCofins ?? null,
       aliquotaCofins: item.aliquotaCofins ?? null,
+    })
+  }
+  return mapa
+}
+
+/** nItem → vSeg/vOutro do prod (sem rateio de ICMSTot). */
+export function mapaDespesasPorNItemDoXml(
+  xmlBruto: string | null | undefined
+): Map<number, DespesasItemXmlNfe> {
+  const mapa = new Map<number, DespesasItemXmlNfe>()
+  if (!xmlBruto) return mapa
+  for (const item of extrairItensDoXml(xmlBruto)) {
+    mapa.set(item.nItem, {
+      nItem: item.nItem,
+      valorSeguro: item.valorSeguro ?? null,
+      valorOutrasDespesas: item.valorOutrasDespesas ?? null,
     })
   }
   return mapa

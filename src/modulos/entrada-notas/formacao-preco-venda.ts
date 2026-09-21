@@ -1,10 +1,10 @@
 /**
- * Formação de preço de venda a partir do custo comercial (grade Precificação).
+ * Formação de preço de venda a partir do custo contábil (grade Precificação).
  * Fonte: DOCUMENTACAO-SISTEMA.md §7.26.
  *
  * carga% = TotalVenda% + vrAdic% + margem%
  * se carga% >= 100 → recusa
- * precoFormado = custoComercial / (1 − carga% / 100)
+ * precoFormado = custoContabil / (1 − carga% / 100)
  *
  * CBS, IBS e juros mensais não entram no divisor nesta fase.
  */
@@ -12,7 +12,10 @@
 export const MSG_CARGA_INVALIDA =
   'Carga (encargos + vr.adic + margem) deve ser menor que 100%.'
 
-export const MSG_CUSTO_COMERCIAL_INVALIDO = 'Custo comercial inválido.'
+export const MSG_CUSTO_CONTABIL_INVALIDO = 'Custo contábil inválido.'
+
+/** @deprecated Use MSG_CUSTO_CONTABIL_INVALIDO. */
+export const MSG_CUSTO_COMERCIAL_INVALIDO = MSG_CUSTO_CONTABIL_INVALIDO
 
 export type ResultadoFormacaoPreco = {
   ok: true
@@ -33,13 +36,13 @@ function arred4(n: number): number {
 }
 
 export function calcularPrecoSugerido(
-  custoComercial: number | null | undefined,
+  custoContabil: number | null | undefined,
   encargosPercentual: number,
   margemPercentual: number,
   vrAdicPercentual = 0
 ): ResultadoFormacaoPreco {
-  if (!finitoPositivo(custoComercial)) {
-    return { ok: false, motivo: MSG_CUSTO_COMERCIAL_INVALIDO }
+  if (!finitoPositivo(custoContabil)) {
+    return { ok: false, motivo: MSG_CUSTO_CONTABIL_INVALIDO }
   }
   if (!Number.isFinite(encargosPercentual) || encargosPercentual < 0) {
     return { ok: false, motivo: 'Encargos inválidos.' }
@@ -60,7 +63,7 @@ export function calcularPrecoSugerido(
   }
   return {
     ok: true,
-    precoSugerido: arred4(custoComercial / divisor),
+    precoSugerido: arred4(custoContabil / divisor),
     margemPercentual,
     cargaPercentual: carga,
   }
@@ -68,13 +71,13 @@ export function calcularPrecoSugerido(
 
 /** Recalcula a margem quando o operador edita o preço formado. */
 export function calcularMargemDePreco(
-  custoComercial: number | null | undefined,
+  custoContabil: number | null | undefined,
   encargosPercentual: number,
   precoDigitado: number,
   vrAdicPercentual = 0
 ): ResultadoFormacaoPreco {
-  if (!finitoPositivo(custoComercial)) {
-    return { ok: false, motivo: MSG_CUSTO_COMERCIAL_INVALIDO }
+  if (!finitoPositivo(custoContabil)) {
+    return { ok: false, motivo: MSG_CUSTO_CONTABIL_INVALIDO }
   }
   if (!Number.isFinite(encargosPercentual) || encargosPercentual < 0) {
     return { ok: false, motivo: 'Encargos inválidos.' }
@@ -86,7 +89,7 @@ export function calcularMargemDePreco(
     return { ok: false, motivo: 'Preço de venda deve ser maior que zero.' }
   }
   const margemPercentual = arred4(
-    (1 - (encargosPercentual + vrAdicPercentual) / 100 - custoComercial / precoDigitado) * 100
+    (1 - (encargosPercentual + vrAdicPercentual) / 100 - custoContabil / precoDigitado) * 100
   )
   const carga = encargosPercentual + vrAdicPercentual + margemPercentual
   if (carga >= 100) {
@@ -110,10 +113,10 @@ export function calcularDiferencaPercentualPreco(
 }
 
 export function valorAdicionalReais(
-  custoComercial: number | null | undefined,
+  custoContabil: number | null | undefined,
   vrAdicPercentual: number
 ): number | null {
-  if (custoComercial == null || !Number.isFinite(custoComercial)) return null
+  if (custoContabil == null || !Number.isFinite(custoContabil)) return null
   if (!Number.isFinite(vrAdicPercentual)) return null
-  return arred4((custoComercial * vrAdicPercentual) / 100)
+  return arred4((custoContabil * vrAdicPercentual) / 100)
 }

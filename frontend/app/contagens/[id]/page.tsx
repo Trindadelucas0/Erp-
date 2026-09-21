@@ -8,6 +8,7 @@ import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
+import { textoQtdParaNumero } from '@/lib/qtd-contagem-input'
 import { Button } from '@/components/ui/button'
 import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { Label } from '@/components/ui/label'
@@ -155,6 +156,8 @@ function ConteudoSessaoContagem() {
   const [confirmacaoFinalizarDivergencia, setConfirmacaoFinalizarDivergencia] =
     useState(false)
   const [revisaoExpandida, setRevisaoExpandida] = useState<string | null>(null)
+  /** Texto cru enquanto o operador edita Qtd. Entrada (permite campo vazio). */
+  const [rascunhosQtd, setRascunhosQtd] = useState<Record<string, string>>({})
 
   const editavel =
     (sessao?.status === 'aberta' || sessao?.status === 'em_andamento') && !sessao?.baixadaEm
@@ -172,6 +175,7 @@ function ConteudoSessaoContagem() {
       const { data } = await clienteHttp.get<SessaoContagem>(`/contagens/${id}`)
       setSessao(data)
       setObservacao(data.observacao ?? '')
+      setRascunhosQtd({})
       if (data.status === 'divergente') {
         setDivergentes(
           data.itens
@@ -210,10 +214,25 @@ function ConteudoSessaoContagem() {
 
   function montarItensQtdFlush(): Array<{ itemId: string; qtdContada: number }> {
     if (!sessao) return []
-    return sessao.itens.map((i) => ({
-      itemId: i.id,
-      qtdContada: Number.isFinite(i.qtdContada) && i.qtdContada >= 0 ? i.qtdContada : 0,
-    }))
+    return sessao.itens.map((i) => {
+      const rascunho = rascunhosQtd[i.id]
+      const qtdContada =
+        rascunho !== undefined
+          ? textoQtdParaNumero(rascunho)
+          : Number.isFinite(i.qtdContada) && i.qtdContada >= 0
+            ? i.qtdContada
+            : 0
+      return { itemId: i.id, qtdContada }
+    })
+  }
+
+  function limparRascunhoQtd(itemId: string) {
+    setRascunhosQtd((prev) => {
+      if (!(itemId in prev)) return prev
+      const proximo = { ...prev }
+      delete proximo[itemId]
+      return proximo
+    })
   }
 
   async function tratarConcorrencia(e: unknown) {
@@ -239,6 +258,7 @@ function ConteudoSessaoContagem() {
         tipoBip: string
         versao: number
       }>(`/contagens/${id}/bip`, { codigoBarras: limpo, versao: sessao.versao })
+      limparRascunhoQtd(data.item.id)
       atualizarItemLocal(data.item)
       aplicarVersao(data.versao)
       setMensagem(
@@ -265,6 +285,7 @@ function ConteudoSessaoContagem() {
         `/contagens/${id}/itens/${itemId}`,
         { qtdContada: valor, versao: sessao.versao }
       )
+      limparRascunhoQtd(itemId)
       atualizarItemLocal(data.item)
       aplicarVersao(data.versao)
     } catch (e) {
@@ -294,6 +315,7 @@ function ConteudoSessaoContagem() {
         versao: sessao.versao,
         itensQtd: montarItensQtdFlush(),
       })
+      setRascunhosQtd({})
       setSessao(data.sessao)
       setDivergentes(data.divergentes ?? [])
       setMensagem(data.mensagem)
@@ -334,6 +356,7 @@ function ConteudoSessaoContagem() {
         versao: sessao.versao,
         itensQtd: montarItensQtdFlush(),
       })
+      setRascunhosQtd({})
       setSessao(data.sessao)
       const nomesDivergentes = data.divergentes ?? []
       setDivergentes(nomesDivergentes)
@@ -584,18 +607,34 @@ function ConteudoSessaoContagem() {
                             min={0}
                             step="any"
                             className="h-8 w-24"
-                            value={Number.isFinite(item.qtdContada) ? item.qtdContada : 0}
+                            value={
+                              rascunhosQtd[item.id] !== undefined
+                                ? rascunhosQtd[item.id]
+                                : Number.isFinite(item.qtdContada)
+                                  ? String(item.qtdContada)
+                                  : '0'
+                            }
                             disabled={acao}
+                            onFocus={(e) => {
+                              const atual =
+                                rascunhosQtd[item.id] !== undefined
+                                  ? rascunhosQtd[item.id]
+                                  : Number.isFinite(item.qtdContada)
+                                    ? String(item.qtdContada)
+                                    : '0'
+                              setRascunhosQtd((prev) => ({ ...prev, [item.id]: atual }))
+                              e.target.select()
+                            }}
                             onChange={(e) => {
-                              const v = Number(e.target.value)
-                              atualizarItemLocal({
-                                ...item,
-                                qtdContada: Number.isFinite(v) ? v : 0,
-                              })
+                              setRascunhosQtd((prev) => ({
+                                ...prev,
+                                [item.id]: e.target.value,
+                              }))
                             }}
                             onBlur={(e) => {
-                              const v = Number(e.target.value)
-                              void salvarQtdManual(item.id, Number.isFinite(v) && v >= 0 ? v : 0)
+                              const valor = textoQtdParaNumero(e.target.value)
+                              atualizarItemLocal({ ...item, qtdContada: valor })
+                              void salvarQtdManual(item.id, valor)
                             }}
                             aria-label={`Quantidade contada de ${item.nomeExibicao}`}
                           />

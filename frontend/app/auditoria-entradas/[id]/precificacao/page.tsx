@@ -62,13 +62,15 @@ type ItemPrecificacaoApi = {
   tipoFrete: string | null
   tipoFreteRotulo: string | null
   custoFreteRateado: number | null
+  despesasSeguro: number
+  outrasDespesas: number
   creditoIcms: number
   creditoPis: number
   creditoCofins: number
   aliquotaIcms: number | null
   aliquotaPis: number | null
   aliquotaCofins: number | null
-  custoComercial: number | null
+  custoContabil: number | null
   custoEntrada: number | null
   custoAnterior: number | null
   custoAnteriorData: string | null
@@ -205,7 +207,7 @@ function ConteudoPrecificacao() {
         }
         const margem = parseDecimal(linha.margemTexto) ?? linha.margemPercentual
         const r = calcularPrecoSugerido(
-          linha.custoComercial,
+          linha.custoContabil,
           linha.encargosPercentual,
           margem,
           vrAdic
@@ -246,7 +248,7 @@ function ConteudoPrecificacao() {
         }
         const vrAdic = parseDecimal(linha.vrAdicTexto) ?? linha.vrAdicPercentual ?? 0
         const r = calcularPrecoSugerido(
-          linha.custoComercial,
+          linha.custoContabil,
           linha.encargosPercentual,
           margem,
           vrAdic
@@ -285,7 +287,7 @@ function ConteudoPrecificacao() {
         }
         const vrAdic = parseDecimal(linha.vrAdicTexto) ?? linha.vrAdicPercentual ?? 0
         const r = calcularMargemDePreco(
-          linha.custoComercial,
+          linha.custoContabil,
           linha.encargosPercentual,
           preco,
           vrAdic
@@ -490,6 +492,12 @@ function ConteudoPrecificacao() {
                       <CelulaLinha rotulo="Frete lançado">
                         {formatarMoeda(linha.custoFreteRateado)}
                       </CelulaLinha>
+                      <CelulaLinha rotulo="Despesas">
+                        {formatarMoeda(linha.despesasSeguro)}
+                      </CelulaLinha>
+                      <CelulaLinha rotulo="Outras desp.">
+                        {formatarMoeda(linha.outrasDespesas)}
+                      </CelulaLinha>
                       <CelulaLinha rotulo="Créd. ICMS">{formatarMoeda(linha.creditoIcms)}</CelulaLinha>
                       <CelulaLinha rotulo="Créd. PIS">{formatarMoeda(linha.creditoPis)}</CelulaLinha>
                       <CelulaLinha rotulo="Créd. COFINS">
@@ -500,8 +508,8 @@ function ConteudoPrecificacao() {
                       <CelulaLinha rotulo="% COFINS">
                         {formatarPercentual(linha.aliquotaCofins)}
                       </CelulaLinha>
-                      <CelulaLinha rotulo="Custo comercial">
-                        <span className="font-medium">{formatarMoeda(linha.custoComercial)}</span>
+                      <CelulaLinha rotulo="Custo contábil">
+                        <span className="font-medium">{formatarMoeda(linha.custoContabil)}</span>
                       </CelulaLinha>
                       <CelulaLinha rotulo="Custo da entrada">
                         {formatarMoeda(linha.custoEntrada)}
@@ -536,7 +544,7 @@ function ConteudoPrecificacao() {
                         />
                       </CelulaLinha>
                       <CelulaLinha rotulo="Vr.adic R$">
-                        {formatarMoeda(valorAdicionalReais(linha.custoComercial, vrAdic))}
+                        {formatarMoeda(valorAdicionalReais(linha.custoContabil, vrAdic))}
                       </CelulaLinha>
                       <CelulaLinha rotulo="% Marg">
                         <Input

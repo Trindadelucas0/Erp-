@@ -808,7 +808,9 @@ describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)'
 
     expect(fake.getEstado().statusEntrada).toBe('entrada_consolidada')
     expect(resultado.nota.statusEntrada).toBe('entrada_consolidada')
-    expect(gerarTitulosContasPagarDaEntrada).toHaveBeenCalled()
+    expect(gerarTitulosContasPagarDaEntrada).toHaveBeenCalledWith('c1', 'nota-1', {
+      exigirVencimentoMercadoria: true,
+    })
     expect(servicoDeEstoque.aplicarEntradaNotaFiscal).not.toHaveBeenCalled()
   })
 

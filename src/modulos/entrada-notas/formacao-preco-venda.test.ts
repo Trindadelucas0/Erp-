@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   MSG_CARGA_INVALIDA,
-  MSG_CUSTO_COMERCIAL_INVALIDO,
+  MSG_CUSTO_CONTABIL_INVALIDO,
   calcularDiferencaPercentualPreco,
   calcularMargemDePreco,
   calcularPrecoSugerido,
@@ -32,12 +32,12 @@ describe('calcularPrecoSugerido', () => {
     if (!r.ok) expect(r.motivo).toBe(MSG_CARGA_INVALIDA)
   })
 
-  it('recusa custo comercial inválido', () => {
+  it('recusa custo contábil inválido', () => {
     expect(calcularPrecoSugerido(null, 10, 0).ok).toBe(false)
     expect(calcularPrecoSugerido(0, 10, 0).ok).toBe(false)
     const r = calcularPrecoSugerido(-1, 10, 0)
     expect(r.ok).toBe(false)
-    if (!r.ok) expect(r.motivo).toBe(MSG_CUSTO_COMERCIAL_INVALIDO)
+    if (!r.ok) expect(r.motivo).toBe(MSG_CUSTO_CONTABIL_INVALIDO)
   })
 })
 

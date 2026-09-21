@@ -160,6 +160,7 @@ async function gerarTituloMercadoriaNfe(
     select: {
       id: true,
       tipoDocumento: true,
+      finalidadeEntrada: true,
       xmlConteudo: true,
       valorTotal: true,
       dataEmissao: true,
@@ -185,6 +186,8 @@ async function gerarTituloMercadoriaNfe(
   const porRecorrencia = Boolean(nota.recorrenciaFinanceiraId)
   const ehNfse = tipo === 'nfse'
   const ehNfe55 = tipo === 'nfe55'
+  /** NFS-e e NFe 55 Uso e Consumo: prévia financeira da nota (§7.16). */
+  const ehDocumental = ehNfse || (ehNfe55 && nota.finalidadeEntrada === 'uso_consumo')
 
   if (!ehNfe55 && !ehNfse) return null
 
@@ -210,7 +213,7 @@ async function gerarTituloMercadoriaNfe(
   let observacao: string
   let numeroDocumento: string | null
 
-  if (ehNfse) {
+  if (ehDocumental) {
     const gravadas = parcelasDaNotaDocumental(nota)
     if (gravadas.length > 0) {
       parcelas = gravadas
@@ -239,7 +242,9 @@ async function gerarTituloMercadoriaNfe(
     }
     observacao = porRecorrencia
       ? 'Gerado automaticamente por recorrência na Entrada de Notas'
-      : 'Gerado na consolidação da NFS-e na Entrada de Notas'
+      : ehNfse
+        ? 'Gerado na consolidação da NFS-e na Entrada de Notas'
+        : 'Gerado na consolidação da NFe de uso e consumo na Entrada de Notas'
     numeroDocumento = nota.chaveNfe ? nota.chaveNfe.slice(-9) : null
   } else if (porRecorrencia) {
     const montagem = await resolverParcelasRecorrencia({

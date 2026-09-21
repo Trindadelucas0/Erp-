@@ -1,48 +1,72 @@
 import { describe, expect, it } from 'vitest'
 import {
-  calcularCustoComercialEntrada,
-  creditoIcmsComercial,
+  ALIQUOTA_CREDITO_ICMS_BENEFICIO,
+  calcularCustoContabilEntrada,
+  creditoIcmsContabil,
 } from './custo-comercial-entrada.js'
 
-describe('creditoIcmsComercial', () => {
-  it('zera ICMS quando o CFOP não aproveita crédito', () => {
-    expect(creditoIcmsComercial(18, false)).toBe(0)
+describe('creditoIcmsContabil', () => {
+  it('usa vICMS do XML quando presente', () => {
+    expect(creditoIcmsContabil(18, 1, 100)).toBe(18)
+    expect(creditoIcmsContabil(0, 1, 100)).toBe(0)
   })
 
-  it('usa vICMS do XML quando o CFOP aproveita', () => {
-    expect(creditoIcmsComercial(18, true)).toBe(18)
-    expect(creditoIcmsComercial(null, true)).toBe(0)
+  it('sem vICMS aplica 12% da mercadoria', () => {
+    expect(creditoIcmsContabil(null, 2, 50)).toBe(12)
+    expect(creditoIcmsContabil(undefined, 1, 100)).toBe(
+      (100 * ALIQUOTA_CREDITO_ICMS_BENEFICIO) / 100
+    )
+  })
+
+  it('sem mercadoria válida e sem vICMS retorna 0', () => {
+    expect(creditoIcmsContabil(null, null, 100)).toBe(0)
+    expect(creditoIcmsContabil(null, 1, null)).toBe(0)
   })
 })
 
-describe('calcularCustoComercialEntrada', () => {
-  it('sem frete e sem crédito iguala o unitário da NF', () => {
+describe('calcularCustoContabilEntrada', () => {
+  it('sem frete, despesas e crédito iguala o unitário da NF', () => {
     expect(
-      calcularCustoComercialEntrada({
+      calcularCustoContabilEntrada({
         quantidadeNf: 2,
         valorUnitario: 10,
         custoFreteRateado: 0,
         valorIpi: 0,
         itensPorEmbalagem: 1,
+        creditoIcms: 0,
       })
     ).toBe(10)
   })
 
   it('soma frete rateado antes de dividir pela qtd de estoque', () => {
     expect(
-      calcularCustoComercialEntrada({
+      calcularCustoContabilEntrada({
         quantidadeNf: 2,
         valorUnitario: 10,
         custoFreteRateado: 4,
         valorIpi: 0,
         itensPorEmbalagem: 1,
+        creditoIcms: 0,
       })
     ).toBe(12)
   })
 
+  it('soma seguro e outras despesas na linha', () => {
+    expect(
+      calcularCustoContabilEntrada({
+        quantidadeNf: 1,
+        valorUnitario: 100,
+        valorSeguro: 3.5,
+        valorOutrasDespesas: 1.5,
+        itensPorEmbalagem: 1,
+        creditoIcms: 0,
+      })
+    ).toBe(105)
+  })
+
   it('abate créditos da NF da linha', () => {
     expect(
-      calcularCustoComercialEntrada({
+      calcularCustoContabilEntrada({
         quantidadeNf: 1,
         valorUnitario: 100,
         custoFreteRateado: 10,
@@ -57,7 +81,7 @@ describe('calcularCustoComercialEntrada', () => {
 
   it('XML sem PIS/COFINS não inventa crédito', () => {
     expect(
-      calcularCustoComercialEntrada({
+      calcularCustoContabilEntrada({
         quantidadeNf: 1,
         valorUnitario: 100,
         itensPorEmbalagem: 1,
@@ -68,10 +92,11 @@ describe('calcularCustoComercialEntrada', () => {
     ).toBe(82)
   })
 
-  it('CFOP sem flag deixa ICMS zerado e PIS/COFINS do XML continuam', () => {
-    const icms = creditoIcmsComercial(18, false)
+  it('crédito ICMS 12% quando vICMS ausente (benefício)', () => {
+    const icms = creditoIcmsContabil(null, 1, 100)
+    expect(icms).toBe(12)
     expect(
-      calcularCustoComercialEntrada({
+      calcularCustoContabilEntrada({
         quantidadeNf: 1,
         valorUnitario: 100,
         itensPorEmbalagem: 1,
@@ -79,11 +104,24 @@ describe('calcularCustoComercialEntrada', () => {
         creditoPis: 1.65,
         creditoCofins: 7.6,
       })
-    ).toBeCloseTo(90.75)
+    ).toBeCloseTo(78.75)
   })
 
-  it('crédito maior que o custo deixa custo comercial <= 0', () => {
-    const custo = calcularCustoComercialEntrada({
+  it('vICMS zero não cai no benefício de 12%', () => {
+    const icms = creditoIcmsContabil(0, 1, 100)
+    expect(icms).toBe(0)
+    expect(
+      calcularCustoContabilEntrada({
+        quantidadeNf: 1,
+        valorUnitario: 100,
+        itensPorEmbalagem: 1,
+        creditoIcms: icms,
+      })
+    ).toBe(100)
+  })
+
+  it('crédito maior que o custo deixa custo contábil <= 0', () => {
+    const custo = calcularCustoContabilEntrada({
       quantidadeNf: 1,
       valorUnitario: 10,
       itensPorEmbalagem: 1,
