@@ -297,6 +297,41 @@ async function buscarPorNfeRecebida(
   })
 }
 
+async function buscarArmazenagemPorNfeProduto(
+  companyId: string,
+  nfeRecebidaId: string,
+  produtoId: string,
+  tx?: Prisma.TransactionClient
+) {
+  const db = tx ?? clientePrisma
+  return db.requisicaoWms.findFirst({
+    where: {
+      companyId,
+      nfeRecebidaId,
+      produtoId,
+      tipoOperacao: 'armazenagem',
+    },
+    select: { id: true, status: true, produtoId: true },
+  })
+}
+
+async function listarEnderecosCadastroProduto(produtoId: string, tx?: Prisma.TransactionClient) {
+  const db = tx ?? clientePrisma
+  return db.produtoEnderecoEstoque.findMany({
+    where: { produtoId },
+    orderBy: { ordem: 'asc' },
+    select: { endereco: true, ordem: true },
+  })
+}
+
+async function listarEnderecosWmsOperacionais(companyId: string, tx?: Prisma.TransactionClient) {
+  const db = tx ?? clientePrisma
+  return db.enderecoWms.findMany({
+    where: { companyId, ativo: true, status: 'ativo' },
+    select: { id: true, codigoCompleto: true, ativo: true, status: true },
+  })
+}
+
 async function listarPorNfeRecebidaIds(companyId: string, nfeRecebidaIds: string[]) {
   if (nfeRecebidaIds.length === 0) return []
   return clientePrisma.requisicaoWms.findMany({
@@ -322,6 +357,9 @@ export const repositorioDeRequisicoesWms = {
   usuarioDaEmpresa,
   listarOperadores,
   buscarPorNfeRecebida,
+  buscarArmazenagemPorNfeProduto,
+  listarEnderecosCadastroProduto,
+  listarEnderecosWmsOperacionais,
   listarPorNfeRecebidaIds,
   proximoNumero,
 }

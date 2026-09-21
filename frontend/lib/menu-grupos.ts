@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import {
+  Archive,
   Banknote,
   Bell,
   Building2,
@@ -50,7 +51,7 @@ export const GRUPOS_DO_MENU: readonly GrupoDoMenu[] = [
   {
     id: 'logistica',
     rotulo: 'Logística',
-    chaves: ['contagens', 'estoque', 'enderecos-wms', 'requisicoes'],
+    chaves: ['contagens', 'estoque', 'enderecos-wms', 'requisicoes', 'guardar-mercadorias'],
   },
   {
     id: 'financeiro',
@@ -78,6 +79,7 @@ const ICONES_POR_CHAVE: Record<string, LucideIcon> = {
   estoque: Warehouse,
   'enderecos-wms': MapPin,
   requisicoes: ClipboardList,
+  'guardar-mercadorias': Archive,
   'contas-a-pagar': Banknote,
   'contas-a-receber': CircleDollarSign,
   pendencias: Bell,

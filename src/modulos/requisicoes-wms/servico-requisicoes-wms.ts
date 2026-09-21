@@ -23,6 +23,8 @@ import {
   ORIGEM_MOVIMENTO_REQUISICAO,
   passosExigidos,
   produtoConfere,
+  produtoConfereBarrasArmazenagem,
+  produtoTemBarrasArmazenagem,
   quantidadeConfere,
   TIPO_MOV_ESTORNO,
   TIPO_MOV_RESERVA,
@@ -85,6 +87,10 @@ function mapearBase(row: RowFicha) {
     produtoId: row.produtoId,
     produtoNome: row.produto?.nomeVenda ?? null,
     produtoSku: row.produto?.sku ?? null,
+    produtoCodigoBarras: row.produto?.codigoBarras ?? null,
+    produtoBarrasMaster: (row.produto?.embalagensMaster ?? [])
+      .map((e) => e.codigoBarras)
+      .filter((c): c is string => Boolean(c?.trim())),
     produtoUnidade: row.produto?.unidade ?? null,
     controlaEstoque: row.produto?.controlaEstoque ?? null,
     quantidade: decimalParaNumero(row.quantidade),
@@ -209,6 +215,20 @@ function validarOsParaIniciar(row: RowFicha) {
       throw new ErroDaAplicacao('Movimentação exige origem e destino', 400)
     }
   }
+  if (row.tipoOperacao === 'armazenagem') {
+    if (!row.destinoEnderecoId) {
+      throw new ErroDaAplicacao(
+        'Cadastre um endereço WMS ativo no produto antes de guardar.',
+        400
+      )
+    }
+    if (!produtoTemBarrasArmazenagem(row.produto ?? {})) {
+      throw new ErroDaAplicacao(
+        'Cadastre EAN-13 ou DUN-14 no produto antes de guardar.',
+        400
+      )
+    }
+  }
 }
 
 async function reservaAindaAtiva(companyId: string, id: string, tx?: Prisma.TransactionClient) {
@@ -326,6 +346,12 @@ async function criar(companyId: string, usuarioId: string, dados: DadosCorpoRequ
       400
     )
   }
+  if (dados.tipoOperacao === 'armazenagem') {
+    throw new ErroDaAplicacao(
+      'Guardar mercadorias só é criado ao consolidar a nota de revenda.',
+      400
+    )
+  }
   await validarVinculos(companyId, dados)
   const status = dados.responsavelId ? 'atribuida' : 'pendente'
   const row = await repositorioDeRequisicoesWms.criar(companyId, {
@@ -396,6 +422,12 @@ async function editar(
   if (atual.tipoOperacao === 'contagem_entrada' || dados.tipoOperacao === 'contagem_entrada') {
     throw new ErroDaAplicacao(
       'Contagem de entrada não pode ser criada nem alterada por esta tela.',
+      400
+    )
+  }
+  if (atual.tipoOperacao === 'armazenagem' || dados.tipoOperacao === 'armazenagem') {
+    throw new ErroDaAplicacao(
+      'Guardar mercadorias não pode ser criado nem alterado por esta tela.',
       400
     )
   }
@@ -475,6 +507,10 @@ async function transicionar(params: {
   let responsavelId = atual.responsavelId
   if (params.acao === 'atribuir') {
     if (!params.responsavelId) throw new ErroDaAplicacao('Informe o responsável', 400)
+    // Mesmo operador já dono: 200 sem evento (evita spam Atribuída → Atribuída).
+    if (atual.status === 'atribuida' && atual.responsavelId === params.responsavelId) {
+      return mapear(atual)
+    }
     await validarVinculos(params.companyId, { responsavelId: params.responsavelId })
     responsavelId = params.responsavelId
   }
@@ -489,7 +525,14 @@ async function transicionar(params: {
     ...(params.acao === 'iniciar' ? { iniciadoEm: agora, pausadoEm: null } : {}),
     ...(params.acao === 'pausar' ? { pausadoEm: agora } : {}),
     ...(params.acao === 'retomar' ? { pausadoEm: null } : {}),
-    ...(params.acao === 'concluir' ? { concluidoEm: agora } : {}),
+    ...(params.acao === 'concluir'
+      ? {
+          concluidoEm: agora,
+          ...(atual.tipoOperacao === 'armazenagem'
+            ? { qtdExecutada: arredondarQtd(decimalParaNumero(atual.quantidade) ?? 0) }
+            : {}),
+        }
+      : {}),
   }
   const evento = {
     usuarioId: params.usuarioId,
@@ -610,12 +653,21 @@ async function conferir(
       .map((e) => e.codigoBarras)
       .filter((c): c is string => Boolean(c?.trim()))
     const ok =
-      produtoConfere({
-        sku: atual.produto?.sku,
-        codigoBarras: atual.produto?.codigoBarras,
-        gtin: barrasMaster[0] ?? null,
-        informado: valor,
-      }) || barrasMaster.some((c) => produtoConfere({ sku: null, codigoBarras: c, gtin: null, informado: valor }))
+      atual.tipoOperacao === 'armazenagem'
+        ? produtoConfereBarrasArmazenagem({
+            codigoBarras: atual.produto?.codigoBarras,
+            barrasMaster,
+            informado: valor,
+          })
+        : produtoConfere({
+            sku: atual.produto?.sku,
+            codigoBarras: atual.produto?.codigoBarras,
+            gtin: barrasMaster[0] ?? null,
+            informado: valor,
+          }) ||
+          barrasMaster.some((c) =>
+            produtoConfere({ sku: null, codigoBarras: c, gtin: null, informado: valor })
+          )
     if (!ok) {
       throw new ErroDaAplicacao('Produto conferido não confere com a ordem', 400)
     }

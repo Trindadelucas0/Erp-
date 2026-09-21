@@ -40,6 +40,10 @@ vi.mock('../requisicoes-wms/os-contagem-entrada.js', () => ({
   cancelarOsContagemDasNotas: vi.fn(),
 }))
 
+vi.mock('../requisicoes-wms/os-armazenagem-entrada.js', () => ({
+  gerarOsArmazenagemAposConsolidar: vi.fn().mockResolvedValue([]),
+}))
+
 vi.mock('../autenticacao/servico-autenticacao.js', () => ({
   servicoDeAutenticacao: {
     verificarSenhaDoUsuario: vi.fn().mockResolvedValue(true),
@@ -131,6 +135,7 @@ import { analisarFiscalItens } from './analise-fiscal/analisar-fiscal-itens.js'
 import { analisarNegociacao } from './analise-negociacao/analisar-negociacao.js'
 import { servicoEntradaNotas } from './servico-pipeline-entrada.js'
 import { gravarLiberacaoContagemComOs } from '../requisicoes-wms/os-contagem-entrada.js'
+import { gerarOsArmazenagemAposConsolidar } from '../requisicoes-wms/os-armazenagem-entrada.js'
 import { gerarTitulosContasPagarDaEntrada } from '../contas-a-pagar/gerar-titulos-entrada.js'
 import { servicoDeEstoque } from '../estoque/servico-estoque.js'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
@@ -685,6 +690,7 @@ describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)'
     expect(fake.getEstado().recorrenciaFinanceiraId).toBe('rec-1')
     expect(detalhe.nota.statusEntrada).toBe('entrada_consolidada')
     expect(gerarTitulosContasPagarDaEntrada).toHaveBeenCalled()
+    expect(gerarOsArmazenagemAposConsolidar).not.toHaveBeenCalled()
   })
 
   it('definirCfopEntradaNota após recorrência casada sem CFOP consolida a NFS-e', async () => {

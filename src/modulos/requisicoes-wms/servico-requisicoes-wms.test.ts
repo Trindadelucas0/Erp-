@@ -36,6 +36,7 @@ vi.mock('./repositorio-requisicoes-wms.js', () => ({
     usuarioDaEmpresa: vi.fn(),
     listarOperadores: vi.fn(),
     buscarPorNfeRecebida: vi.fn(),
+    buscarArmazenagemPorNfeProduto: vi.fn(),
     listarPorNfeRecebidaIds: vi.fn(),
     proximoNumero: vi.fn(),
   },
@@ -480,5 +481,183 @@ describe('servicoDeRequisicoesWms', () => {
       })
     ).rejects.toMatchObject({ statusCode: 400 })
     expect(repositorioDeRequisicoesWms.criar).not.toHaveBeenCalled()
+  })
+
+  it('POST criar recusa tipo armazenagem', async () => {
+    await expect(
+      servicoDeRequisicoesWms.criar('c1', 'u1', {
+        tipoOperacao: 'armazenagem',
+        prioridade: 3,
+        origemEnderecoId: null,
+        destinoEnderecoId: null,
+        produtoId: 'p1',
+        quantidade: 1,
+        responsavelId: null,
+        observacao: null,
+      })
+    ).rejects.toMatchObject({ statusCode: 400 })
+    expect(repositorioDeRequisicoesWms.criar).not.toHaveBeenCalled()
+  })
+
+  it('armazenagem: bip SKU recusa; EAN grava; destino inativo 409; concluir sem kardex', async () => {
+    const os = row({
+      tipoOperacao: 'armazenagem',
+      status: 'em_execucao',
+      responsavelId: 'eu',
+      produtoId: 'p1',
+      quantidade: 8,
+      destinoEnderecoId: 'd1',
+      destinoEndereco: { codigoCompleto: 'A-RC-20-01-2-05', ativo: true, status: 'ativo' },
+      produto: {
+        sku: '9325',
+        codigoBarras: '7894900011517',
+        controlaEstoque: true,
+        permiteEstoqueNegativo: false,
+        embalagensMaster: [{ codigoBarras: '17894900011514' }],
+      },
+    })
+    vi.mocked(repositorioDeRequisicoesWms.buscarPorId).mockResolvedValue(os as never)
+    await expect(
+      servicoDeRequisicoesWms.conferir('c1', 'req-1', 'eu', { etapa: 'produto', valor: '9325' })
+    ).rejects.toMatchObject({ statusCode: 400 })
+
+    vi.mocked(repositorioDeRequisicoesWms.atualizar).mockResolvedValue(os as never)
+    await servicoDeRequisicoesWms.conferir('c1', 'req-1', 'eu', {
+      etapa: 'produto',
+      valor: '7894900011517',
+    })
+
+    vi.mocked(repositorioDeRequisicoesWms.buscarPorId).mockResolvedValue(
+      row({
+        ...os,
+        destinoEndereco: { codigoCompleto: 'A-RC-20-01-2-05', ativo: false, status: 'inativo' },
+      }) as never
+    )
+    await expect(
+      servicoDeRequisicoesWms.conferir('c1', 'req-1', 'eu', {
+        etapa: 'destino',
+        valor: 'A-RC-20-01-2-05',
+      })
+    ).rejects.toMatchObject({ statusCode: 409 })
+
+    vi.mocked(repositorioDeRequisicoesWms.buscarPorId).mockResolvedValue(
+      row({
+        tipoOperacao: 'armazenagem',
+        status: 'em_execucao',
+        responsavelId: 'eu',
+        produtoId: 'p1',
+        quantidade: 8,
+        destinoEnderecoId: 'd1',
+        conferidoProdutoEm: agora,
+        conferidoDestinoEm: agora,
+        produto: { controlaEstoque: true, permiteEstoqueNegativo: false, embalagensMaster: [] },
+      }) as never
+    )
+    vi.mocked(repositorioDeRequisicoesWms.atualizar).mockResolvedValue(
+      row({ status: 'concluida', tipoOperacao: 'armazenagem' }) as never
+    )
+    await servicoDeRequisicoesWms.transicionar({
+      companyId: 'c1',
+      id: 'req-1',
+      usuarioId: 'eu',
+      acao: 'concluir',
+    })
+    expect(registrarMovimentoEstoque).not.toHaveBeenCalled()
+    expect(repositorioDeRequisicoesWms.atualizar).toHaveBeenCalledWith(
+      'c1',
+      'req-1',
+      expect.objectContaining({ qtdExecutada: 8, status: 'concluida' }),
+      expect.objectContaining({ acao: 'concluir' })
+    )
+  })
+
+  it('iniciar armazenagem sem destino ou sem barras recusa', async () => {
+    vi.mocked(repositorioDeRequisicoesWms.buscarPorId).mockResolvedValue(
+      row({
+        tipoOperacao: 'armazenagem',
+        status: 'disponivel',
+        produtoId: 'p1',
+        quantidade: 1,
+        destinoEnderecoId: null,
+        produto: { codigoBarras: '789', embalagensMaster: [] },
+      }) as never
+    )
+    await expect(
+      servicoDeRequisicoesWms.transicionar({
+        companyId: 'c1',
+        id: 'req-1',
+        usuarioId: 'eu',
+        acao: 'iniciar',
+      })
+    ).rejects.toMatchObject({ statusCode: 400 })
+
+    vi.mocked(repositorioDeRequisicoesWms.buscarPorId).mockResolvedValue(
+      row({
+        tipoOperacao: 'armazenagem',
+        status: 'disponivel',
+        produtoId: 'p1',
+        quantidade: 1,
+        destinoEnderecoId: 'd1',
+        produto: { codigoBarras: null, embalagensMaster: [] },
+      }) as never
+    )
+    await expect(
+      servicoDeRequisicoesWms.transicionar({
+        companyId: 'c1',
+        id: 'req-1',
+        usuarioId: 'eu',
+        acao: 'iniciar',
+      })
+    ).rejects.toMatchObject({ statusCode: 400 })
+  })
+
+  it('atribuir o mesmo responsável já dono não grava evento', async () => {
+    const atual = row({
+      status: 'atribuida',
+      responsavelId: 'u2',
+      tipoOperacao: 'limpeza',
+    })
+    vi.mocked(repositorioDeRequisicoesWms.buscarPorId).mockResolvedValue(atual as never)
+    vi.mocked(repositorioDeRequisicoesWms.atualizar).mockClear()
+
+    const resultado = await servicoDeRequisicoesWms.transicionar({
+      companyId: 'c1',
+      id: 'req-1',
+      usuarioId: 'eu',
+      acao: 'atribuir',
+      responsavelId: 'u2',
+    })
+
+    expect(resultado.responsavelId).toBe('u2')
+    expect(resultado.status).toBe('atribuida')
+    expect(repositorioDeRequisicoesWms.atualizar).not.toHaveBeenCalled()
+  })
+
+  it('atribuir outro responsável grava um evento', async () => {
+    vi.mocked(repositorioDeRequisicoesWms.buscarPorId).mockResolvedValue(
+      row({ status: 'atribuida', responsavelId: 'u2', tipoOperacao: 'limpeza' }) as never
+    )
+    vi.mocked(repositorioDeRequisicoesWms.usuarioDaEmpresa).mockResolvedValue({
+      id: 'u3',
+      name: 'Outro',
+    } as never)
+    vi.mocked(repositorioDeRequisicoesWms.atualizar).mockResolvedValue(
+      row({ status: 'atribuida', responsavelId: 'u3', tipoOperacao: 'limpeza' }) as never
+    )
+
+    await servicoDeRequisicoesWms.transicionar({
+      companyId: 'c1',
+      id: 'req-1',
+      usuarioId: 'eu',
+      acao: 'atribuir',
+      responsavelId: 'u3',
+    })
+
+    expect(repositorioDeRequisicoesWms.atualizar).toHaveBeenCalledWith(
+      'c1',
+      'req-1',
+      expect.objectContaining({ status: 'atribuida', responsavelId: 'u3' }),
+      expect.objectContaining({ acao: 'atribuir', deStatus: 'atribuida', paraStatus: 'atribuida' })
+    )
   })
 })

@@ -64,7 +64,7 @@ export function TelaExecucaoRequisicao({
     <div className="mx-auto w-full max-w-[480px] space-y-4">
       <div className="rounded-lg border-2 border-border p-4 text-sm">
         <p className="font-medium">
-          {ROTULO_TIPO_OPERACAO[item.tipoOperacao]}
+          {item.tipoOperacao === 'armazenagem' ? 'Guardar' : ROTULO_TIPO_OPERACAO[item.tipoOperacao]}
           {item.produtoSku ? ` · ${item.produtoSku}` : ''}
           {item.produtoNome ? ` · ${item.produtoNome}` : ''}
         </p>
@@ -72,9 +72,15 @@ export function TelaExecucaoRequisicao({
           Pedido: {item.quantidade ?? '—'} {item.produtoUnidade ?? 'UN'}
           {item.qtdDisponivel != null ? ` · Disponível: ${item.qtdDisponivel} UN` : ''}
         </p>
-        <p className="mt-1 break-all text-muted-foreground">
-          {(item.origemCodigo || '—') + ' → ' + (item.destinoCodigo || '—')}
-        </p>
+        {item.tipoOperacao === 'armazenagem' ? (
+          <p className="mt-2 break-all text-base font-semibold">
+            Destino: {item.destinoCodigo || '—'}
+          </p>
+        ) : (
+          <p className="mt-1 break-all text-muted-foreground">
+            {(item.origemCodigo || '—') + ' → ' + (item.destinoCodigo || '—')}
+          </p>
+        )}
       </div>
 
       {pausada ? (
@@ -155,7 +161,7 @@ export function TelaExecucaoRequisicao({
           disabled={ocupado !== null || !podeConcluirExecucao(item, usuarioId)}
           onClick={onConcluir}
         >
-          Concluir
+          {item.tipoOperacao === 'armazenagem' ? 'Guardar' : 'Concluir'}
         </Button>
       </div>
     </div>

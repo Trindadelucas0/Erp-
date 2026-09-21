@@ -137,6 +137,7 @@ function ConteudoLista() {
               { value: '', label: 'Todos' },
               ...OPCOES_TIPO_OPERACAO,
               { value: 'contagem_entrada', label: ROTULO_TIPO_OPERACAO.contagem_entrada },
+              { value: 'armazenagem', label: ROTULO_TIPO_OPERACAO.armazenagem },
             ]}
           />
           <SelectPadrao

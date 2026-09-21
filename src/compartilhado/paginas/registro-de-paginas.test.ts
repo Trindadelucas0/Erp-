@@ -14,6 +14,7 @@ describe('montarPaginasPermitidasParaUsuario', () => {
     expect(chaves).toContain('enderecos-wms')
     expect(chaves).toContain('estoque')
     expect(chaves).toContain('requisicoes')
+    expect(chaves).toContain('guardar-mercadorias')
   })
 
   it('não mostra Estrutura WMS nem para admin', () => {

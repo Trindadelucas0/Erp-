@@ -65,6 +65,10 @@ vi.mock('../requisicoes-wms/os-contagem-entrada.js', () => ({
   cancelarOsContagemDasNotas: vi.fn(),
 }))
 
+vi.mock('../requisicoes-wms/os-armazenagem-entrada.js', () => ({
+  gerarOsArmazenagemAposConsolidar: vi.fn().mockResolvedValue([]),
+}))
+
 import { repositorioEntradaNotas } from './repositorio-entrada-notas.js'
 import { clienteFocusNfe } from '../focus-nfe/cliente-focus-nfe.js'
 import { servicoDeAutenticacao } from '../autenticacao/servico-autenticacao.js'

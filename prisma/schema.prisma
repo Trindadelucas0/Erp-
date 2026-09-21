@@ -1593,7 +1593,7 @@ model RequisicaoWms {
   companyId            String
   company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   numero               Int
-  /// separacao | reposicao | conferencia | movimentacao | limpeza | inventario | contagem_entrada
+  /// separacao | reposicao | conferencia | movimentacao | limpeza | inventario | contagem_entrada | armazenagem
   tipoOperacao         String
   /// 1 critica … 4 baixa
   prioridade           Int

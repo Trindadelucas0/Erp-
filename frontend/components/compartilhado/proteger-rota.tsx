@@ -9,15 +9,24 @@ type Props = {
   children: React.ReactNode
   somenteAdmin?: boolean
   chaveDaPagina?: string
+  /** Qualquer chave basta (ex.: Executar reutilizado por Guardar mercadorias). */
+  chavesDaPagina?: string[]
 }
 
 export function ProtegerRota({
   children,
   somenteAdmin = false,
   chaveDaPagina,
+  chavesDaPagina,
 }: Props) {
   const roteador = useRouter()
   const { perfil, carregando, estaAutenticado } = useSessaoDoUsuario()
+  const chaves = [
+    ...(chaveDaPagina ? [chaveDaPagina] : []),
+    ...(chavesDaPagina ?? []),
+  ]
+  const temAcessoPagina =
+    chaves.length === 0 || chaves.some((chave) => usuarioPossuiAcessoAPagina(perfil, chave))
 
   useEffect(() => {
     if (carregando) return
@@ -32,10 +41,7 @@ export function ProtegerRota({
       return
     }
 
-    if (
-      chaveDaPagina &&
-      !usuarioPossuiAcessoAPagina(perfil, chaveDaPagina)
-    ) {
+    if (!temAcessoPagina) {
       roteador.replace(CAMINHO_INICIO)
     }
   }, [
@@ -43,7 +49,7 @@ export function ProtegerRota({
     estaAutenticado,
     perfil,
     somenteAdmin,
-    chaveDaPagina,
+    temAcessoPagina,
     roteador,
   ])
 
@@ -57,9 +63,7 @@ export function ProtegerRota({
 
   if (somenteAdmin && !perfil?.ehAdmin) return null
 
-  if (chaveDaPagina && !usuarioPossuiAcessoAPagina(perfil, chaveDaPagina)) {
-    return null
-  }
+  if (!temAcessoPagina) return null
 
   return <>{children}</>
 }

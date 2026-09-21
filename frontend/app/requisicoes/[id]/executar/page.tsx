@@ -21,7 +21,7 @@ import {
 
 export default function PaginaExecutarRequisicao() {
   return (
-    <ProtegerRota chaveDaPagina="requisicoes">
+    <ProtegerRota chaveDaPagina="requisicoes" chavesDaPagina={['guardar-mercadorias']}>
       <ConteudoExecutar />
     </ProtegerRota>
   )
@@ -74,7 +74,13 @@ function ConteudoExecutar() {
         `/requisicoes/${id}/${nome}`
       )
       setItem(data.requisicao)
-      if (nome === 'concluir') router.push(`/requisicoes/${id}`)
+      if (nome === 'concluir') {
+        router.push(
+          data.requisicao.tipoOperacao === 'armazenagem'
+            ? '/guardar-mercadorias'
+            : `/requisicoes/${id}`
+        )
+      }
     } catch (e) {
       setErro(extrairMensagemApi(e, 'Não foi possível executar a ação.'))
     } finally {
@@ -86,7 +92,11 @@ function ConteudoExecutar() {
     <div className="space-y-4">
       <TituloPagina
         caminho={<Link href={`/requisicoes/${id}`}>Requisição</Link>}
-        subtitulo="Confirme origem, produto, quantidade e destino. Concluir só libera com os passos gravados."
+        subtitulo={
+          item?.tipoOperacao === 'armazenagem'
+            ? 'Bipa o produto (EAN-13 ou DUN-14) e o endereço de destino. Guardar não relança estoque.'
+            : 'Confirme origem, produto, quantidade e destino. Concluir só libera com os passos gravados.'
+        }
         aoLadoDoTitulo={
           item ? (
             <span className="flex flex-wrap items-center gap-2">

@@ -5,6 +5,7 @@ import {
   podeConcluirExecucao,
   rotuloNfDaRequisicao,
   ROTULO_TIPO_OPERACAO,
+  statusUiArmazenagem,
   type RequisicaoWms,
 } from './requisicoes-wms'
 
@@ -22,6 +23,8 @@ function item(parcial: Partial<RequisicaoWms> = {}): RequisicaoWms {
     produtoId: 'p',
     produtoNome: 'Cabo',
     produtoSku: '9325',
+    produtoCodigoBarras: null,
+    produtoBarrasMaster: [],
     quantidade: 10,
     responsavelId: 'eu',
     responsavelNome: 'Eu',
@@ -50,9 +53,11 @@ function item(parcial: Partial<RequisicaoWms> = {}): RequisicaoWms {
 }
 
 describe('tipos de operação', () => {
-  it('não oferece Contagem de entrada na criação manual', () => {
+  it('não oferece Contagem de entrada nem Guardar na criação manual', () => {
     expect(OPCOES_TIPO_OPERACAO.some((o) => o.value === 'contagem_entrada')).toBe(false)
+    expect(OPCOES_TIPO_OPERACAO.some((o) => o.value === 'armazenagem')).toBe(false)
     expect(ROTULO_TIPO_OPERACAO.contagem_entrada).toBe('Contagem de entrada')
+    expect(ROTULO_TIPO_OPERACAO.armazenagem).toBe('Guardar mercadorias')
   })
 })
 
@@ -69,5 +74,24 @@ describe('podeConcluirExecucao', () => {
     expect(podeConcluirExecucao(item({ conferenciaOk: false }), 'eu')).toBe(false)
     expect(podeConcluirExecucao(item(), 'outro')).toBe(false)
     expect(podeConcluirExecucao(item({ status: 'pausada' }), 'eu')).toBe(false)
+  })
+})
+
+describe('statusUiArmazenagem', () => {
+  it('prioriza OK, sem endereço e sem barras', () => {
+    expect(statusUiArmazenagem(item({ status: 'concluida' })).rotulo).toBe('OK/Armazenada')
+    expect(
+      statusUiArmazenagem(item({ status: 'disponivel', destinoEnderecoId: null })).rotulo
+    ).toBe('Sem endereço')
+    expect(
+      statusUiArmazenagem(
+        item({
+          status: 'disponivel',
+          destinoEnderecoId: 'd1',
+          produtoCodigoBarras: null,
+          produtoBarrasMaster: [],
+        })
+      ).rotulo
+    ).toBe('Sem barras')
   })
 })

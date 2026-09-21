@@ -95,6 +95,10 @@ vi.mock('../requisicoes-wms/os-contagem-entrada.js', () => ({
   cancelarOsContagemDasNotas: vi.fn(),
 }))
 
+vi.mock('../requisicoes-wms/os-armazenagem-entrada.js', () => ({
+  gerarOsArmazenagemAposConsolidar: vi.fn().mockResolvedValue([]),
+}))
+
 vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({
   clientePrisma: {
     contaPagar: { findMany: vi.fn().mockResolvedValue([]) },
@@ -109,6 +113,7 @@ vi.mock('../contas-a-pagar/gerar-titulos-entrada.js', () => ({
 import { repositorioEntradaNotas } from './repositorio-entrada-notas.js'
 import { repositorioContagens } from '../contagens/repositorio-contagens.js'
 import { reabrirOsContagemDaNota } from '../requisicoes-wms/os-contagem-entrada.js'
+import { gerarOsArmazenagemAposConsolidar } from '../requisicoes-wms/os-armazenagem-entrada.js'
 import { salvarAnexoEntradaNota } from './armazenamento-anexo-entrada-nota.js'
 import { servicoDeAutenticacao } from '../autenticacao/servico-autenticacao.js'
 import { servicoDeEstoque } from '../estoque/servico-estoque.js'
@@ -274,6 +279,7 @@ describe('resolverDivergenciaContagem', () => {
 
     // Lançamento físico/fiscal (mesmo passo do Consolidar normal)
     expect(servicoDeEstoque.aplicarEntradaNotaFiscal).toHaveBeenCalled()
+    expect(gerarOsArmazenagemAposConsolidar).toHaveBeenCalled()
 
     // Bloqueio por item com produto e controle de estoque
     expect(servicoDeEstoque.registrarMovimentoEstoque).toHaveBeenCalledWith(

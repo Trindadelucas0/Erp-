@@ -64,6 +64,7 @@ import {
   obterResumoOsContagemDaNota,
   reabrirOsContagemDaNota,
 } from '../requisicoes-wms/os-contagem-entrada.js'
+import { gerarOsArmazenagemAposConsolidar } from '../requisicoes-wms/os-armazenagem-entrada.js'
 import { gerarTitulosContasPagarDaEntrada } from '../contas-a-pagar/gerar-titulos-entrada.js'
 import { resolverPlanoFinanceiroEntrada } from '../contas-a-pagar/resolver-plano-financeiro-entrada.js'
 import {
@@ -3497,13 +3498,21 @@ async function lancarEstoqueAoConsolidar(
     }
   }
 
-  return servicoDeEstoque.aplicarEntradaNotaFiscal({
+  const resultado = await servicoDeEstoque.aplicarEntradaNotaFiscal({
     companyId,
     notaId,
     usuarioId,
     pessoaId: nota.fornecedorPessoaId,
     linhas,
   })
+  await gerarOsArmazenagemAposConsolidar({
+    companyId,
+    nfeRecebidaId: notaId,
+    chaveNfe: nota.chaveNfe ?? '',
+    usuarioId,
+    linhas,
+  })
+  return resultado
 }
 
 const TOLERANCIA_QTD_STATUS_PEDIDO = 0.0001

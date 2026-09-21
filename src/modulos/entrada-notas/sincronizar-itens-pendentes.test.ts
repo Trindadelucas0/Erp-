@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('../requisicoes-wms/os-armazenagem-entrada.js', () => ({
+  gerarOsArmazenagemAposConsolidar: vi.fn().mockResolvedValue([]),
+}))
+
 vi.mock('./repositorio-entrada-notas.js', () => ({
   repositorioEntradaNotas: {
     buscarNotaCompleta: vi.fn(),

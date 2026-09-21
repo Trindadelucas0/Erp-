@@ -16,6 +16,50 @@ export function tipoMoveKardexSeparacao(tipoOperacao: string): boolean {
   return tipoOperacao === 'separacao'
 }
 
+export function barrasArmazenagemDoProduto(params: {
+  codigoBarras?: string | null
+  embalagensMaster?: Array<{ codigoBarras?: string | null }>
+}): string[] {
+  const barras: string[] = []
+  const ean = params.codigoBarras?.trim()
+  if (ean) barras.push(ean)
+  for (const emb of params.embalagensMaster ?? []) {
+    const c = emb.codigoBarras?.trim()
+    if (c) barras.push(c)
+  }
+  return barras
+}
+
+export function produtoTemBarrasArmazenagem(params: {
+  codigoBarras?: string | null
+  embalagensMaster?: Array<{ codigoBarras?: string | null }>
+}): boolean {
+  return barrasArmazenagemDoProduto(params).length > 0
+}
+
+/** Conferência de Guardar: só EAN-13 (produto) e DUN-14 (master). Não aceita SKU. */
+export function produtoConfereBarrasArmazenagem(params: {
+  codigoBarras: string | null | undefined
+  barrasMaster: string[]
+  informado: string
+}): boolean {
+  const inf = params.informado.trim()
+  if (!inf) return false
+  if (
+    produtoConfere({
+      sku: null,
+      codigoBarras: params.codigoBarras,
+      gtin: null,
+      informado: inf,
+    })
+  ) {
+    return true
+  }
+  return params.barrasMaster.some((c) =>
+    produtoConfere({ sku: null, codigoBarras: c, gtin: null, informado: inf })
+  )
+}
+
 export function chavesIdempotenciaEstoque(requisicaoId: string) {
   return {
     reserva: `reqwms:${requisicaoId}:reserva`,
@@ -35,6 +79,7 @@ export type CamposOsConferencia = {
 export function passosExigidos(os: CamposOsConferencia): EtapaConferencia[] {
   const tipo = os.tipoOperacao as TipoOperacaoRequisicao | string
   if (tipo === 'contagem_entrada') return []
+  if (tipo === 'armazenagem') return ['produto', 'destino']
   const temOrigem = Boolean(os.origemEnderecoId)
   const temDestino = Boolean(os.destinoEnderecoId)
   const temProduto = Boolean(os.produtoId)

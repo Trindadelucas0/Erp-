@@ -6,6 +6,7 @@ import {
   ORDEM_MOVIMENTOS_CONCLUIR,
   passosExigidos,
   produtoConfere,
+  produtoConfereBarrasArmazenagem,
   quantidadeConfere,
   tipoMoveKardexSeparacao,
 } from './efeito-estoque-requisicao.js'
@@ -17,6 +18,7 @@ describe('efeito-estoque-requisicao', () => {
     expect(tipoMoveKardexSeparacao('movimentacao')).toBe(false)
     expect(tipoMoveKardexSeparacao('inventario')).toBe(false)
     expect(tipoMoveKardexSeparacao('contagem_entrada')).toBe(false)
+    expect(tipoMoveKardexSeparacao('armazenagem')).toBe(false)
   })
 
   it('chaves de idempotência são estáveis por id', () => {
@@ -85,6 +87,18 @@ describe('efeito-estoque-requisicao', () => {
     ).toEqual(['origem', 'produto'])
   })
 
+  it('armazenagem exige produto e destino, sem quantidade digitada', () => {
+    expect(
+      passosExigidos({
+        tipoOperacao: 'armazenagem',
+        origemEnderecoId: null,
+        destinoEnderecoId: 'd1',
+        produtoId: 'p1',
+        quantidade: 10,
+      })
+    ).toEqual(['produto', 'destino'])
+  })
+
   it('contagem_entrada não exige passos de conferência', () => {
     expect(
       passosExigidos({
@@ -138,6 +152,20 @@ describe('efeito-estoque-requisicao', () => {
     expect(
       produtoConfere({ sku: 'ABC', codigoBarras: null, gtin: null, informado: 'XYZ' })
     ).toBe(false)
+    expect(
+      produtoConfereBarrasArmazenagem({
+        codigoBarras: '7894900011517',
+        barrasMaster: ['17894900011514'],
+        informado: '9325',
+      })
+    ).toBe(false)
+    expect(
+      produtoConfereBarrasArmazenagem({
+        codigoBarras: '7894900011517',
+        barrasMaster: [],
+        informado: '7894900011517',
+      })
+    ).toBe(true)
   })
 
   it('quantidade usa arredondamento do kardex', () => {

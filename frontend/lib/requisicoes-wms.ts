@@ -8,6 +8,7 @@ export const TIPOS_OPERACAO_REQUISICAO = [
   'limpeza',
   'inventario',
   'contagem_entrada',
+  'armazenagem',
 ] as const
 
 export type TipoOperacaoRequisicao = (typeof TIPOS_OPERACAO_REQUISICAO)[number]
@@ -20,10 +21,11 @@ export const ROTULO_TIPO_OPERACAO: Record<TipoOperacaoRequisicao, string> = {
   limpeza: 'Limpeza',
   inventario: 'Inventário',
   contagem_entrada: 'Contagem de entrada',
+  armazenagem: 'Guardar mercadorias',
 }
 
 export const OPCOES_TIPO_OPERACAO = TIPOS_OPERACAO_REQUISICAO.filter(
-  (value) => value !== 'contagem_entrada'
+  (value) => value !== 'contagem_entrada' && value !== 'armazenagem'
 ).map((value) => ({
   value,
   label: ROTULO_TIPO_OPERACAO[value],
@@ -94,6 +96,8 @@ export type RequisicaoWms = {
   produtoId: string | null
   produtoNome: string | null
   produtoSku: string | null
+  produtoCodigoBarras: string | null
+  produtoBarrasMaster: string[]
   quantidade: number | null
   responsavelId: string | null
   responsavelNome: string | null
@@ -163,8 +167,60 @@ export function etapaJaConferida(item: RequisicaoWms, etapa: EtapaConferencia) {
 export function esperadoDaEtapa(item: RequisicaoWms, etapa: EtapaConferencia) {
   if (etapa === 'origem') return item.origemCodigo ?? ''
   if (etapa === 'destino') return item.destinoCodigo ?? ''
-  if (etapa === 'produto') return item.produtoSku ?? item.produtoNome ?? ''
+  if (etapa === 'produto') {
+    if (item.tipoOperacao === 'armazenagem') {
+      return barrasArmazenagemTexto(item)
+    }
+    return item.produtoSku ?? item.produtoNome ?? ''
+  }
   return item.quantidade != null ? String(item.quantidade) : ''
+}
+
+export function barrasArmazenagemTexto(item: Pick<RequisicaoWms, 'produtoCodigoBarras' | 'produtoBarrasMaster'>) {
+  const partes = [
+    item.produtoCodigoBarras?.trim(),
+    ...(item.produtoBarrasMaster ?? []).map((c) => c.trim()).filter(Boolean),
+  ].filter((c): c is string => Boolean(c))
+  return [...new Set(partes)].join(' / ')
+}
+
+export function produtoTemBarrasArmazenagemUi(
+  item: Pick<RequisicaoWms, 'produtoCodigoBarras' | 'produtoBarrasMaster'>
+) {
+  return Boolean(barrasArmazenagemTexto(item))
+}
+
+export type StatusUiArmazenagem =
+  | 'pendente'
+  | 'em_execucao'
+  | 'ok'
+  | 'sem_endereco'
+  | 'sem_barras'
+
+export function statusUiArmazenagem(item: RequisicaoWms): {
+  chave: StatusUiArmazenagem
+  rotulo: string
+} {
+  if (item.status === 'concluida') return { chave: 'ok', rotulo: 'OK/Armazenada' }
+  if (!item.destinoEnderecoId) return { chave: 'sem_endereco', rotulo: 'Sem endereço' }
+  if (!produtoTemBarrasArmazenagemUi(item)) return { chave: 'sem_barras', rotulo: 'Sem barras' }
+  if (item.status === 'em_execucao' || item.status === 'pausada') {
+    return { chave: 'em_execucao', rotulo: 'Em execução' }
+  }
+  return { chave: 'pendente', rotulo: 'Pendente' }
+}
+
+export function podeIniciarGuardar(item: RequisicaoWms) {
+  if (item.status === 'concluida' || item.status === 'cancelada' || item.status === 'bloqueada') {
+    return false
+  }
+  if (!item.destinoEnderecoId || !produtoTemBarrasArmazenagemUi(item)) return false
+  return (
+    item.status === 'disponivel' ||
+    item.status === 'atribuida' ||
+    item.status === 'em_execucao' ||
+    item.status === 'pausada'
+  )
 }
 
 export function podeConcluirExecucao(item: RequisicaoWms, usuarioId: string) {

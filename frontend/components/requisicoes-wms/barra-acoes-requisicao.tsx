@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { InputPadrao } from '@/components/ui/input-padrao'
@@ -30,6 +30,12 @@ export function BarraAcoesRequisicao({
   const [responsavel, setResponsavel] = useState(item.responsavelId ?? '')
   const ehResponsavel = item.responsavelId === usuarioId
   const busy = ocupado !== null
+  const mesmoResponsavelAtual =
+    Boolean(responsavel) && responsavel === (item.responsavelId ?? '')
+
+  useEffect(() => {
+    setResponsavel(item.responsavelId ?? '')
+  }, [item.responsavelId])
 
   return (
     <div className="space-y-3">
@@ -113,7 +119,7 @@ export function BarraAcoesRequisicao({
               type="button"
               size="sm"
               variant="outline"
-              disabled={busy || !responsavel}
+              disabled={busy || !responsavel || mesmoResponsavelAtual}
               onClick={() => onAcao('atribuir', { usuarioId: responsavel })}
             >
               Atribuir
