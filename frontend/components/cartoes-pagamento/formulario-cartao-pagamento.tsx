@@ -44,36 +44,78 @@ function taxaVazia(numeroParcelas: number): TaxaCartaoForm {
   }
 }
 
+function mapearTaxasRegistro(
+  taxasRegistro: CartaoPagamentoLista['taxas'] | undefined
+): TaxaCartaoForm[] {
+  if (!taxasRegistro?.length) return [taxaVazia(1)]
+  return taxasRegistro.map((t) => ({
+    numeroParcelas: t.numeroParcelas,
+    taxaPercentual: formatarPercentualBr(t.taxaPercentual),
+    prazoDias: t.prazoDias,
+    valorFixo: formatarMoedaInput(t.valorFixo),
+  }))
+}
+
+type RascunhoPorTipo = {
+  credito: { taxas: TaxaCartaoForm[]; permitirParcelamento: boolean }
+  debito: { taxas: TaxaCartaoForm[] }
+}
+
+function rascunhoInicial(registro: CartaoPagamentoLista | null): RascunhoPorTipo {
+  const taxasIniciais = mapearTaxasRegistro(registro?.taxas)
+  const tipoInicial = (registro?.tipo as TipoCartaoPagamento) || 'credito'
+  const linhaDebito = [
+    {
+      ...(taxasIniciais[0] ?? taxaVazia(1)),
+      numeroParcelas: 1,
+    },
+  ]
+  if (tipoInicial === 'debito') {
+    return {
+      credito: { taxas: [taxaVazia(1)], permitirParcelamento: true },
+      debito: { taxas: linhaDebito },
+    }
+  }
+  return {
+    credito: {
+      taxas: taxasIniciais,
+      permitirParcelamento: registro?.permitirParcelamento ?? true,
+    },
+    debito: { taxas: linhaDebito },
+  }
+}
+
 export function FormularioCartaoPagamento({
   registro,
   aoCancelar,
   aoSalvo,
   podeSalvar,
 }: Props) {
+  const tipoInicial = (registro?.tipo as TipoCartaoPagamento) || 'credito'
   const [bandeira, setBandeira] = useState<CodigoBandeiraCartao | ''>(
     (registro?.bandeira as CodigoBandeiraCartao) || ''
   )
-  const [tipo, setTipo] = useState<TipoCartaoPagamento>(
-    (registro?.tipo as TipoCartaoPagamento) || 'credito'
-  )
+  const [tipo, setTipo] = useState<TipoCartaoPagamento>(tipoInicial)
   const [nomeExibicao, setNomeExibicao] = useState(registro?.nomeExibicao ?? '')
-  const [nomeManual, setNomeManual] = useState(Boolean(registro?.nomeExibicao))
+  const [nomeManual, setNomeManual] = useState(
+    Boolean(registro?.nomeExibicao) && !ehNomePadraoBandeira(registro?.nomeExibicao ?? '')
+  )
   const [ativo, setAtivo] = useState(registro?.ativo ?? true)
   const [adquirenteId, setAdquirenteId] = useState(registro?.adquirenteId ?? '')
-  const [permitirParcelamento, setPermitirParcelamento] = useState(
-    registro?.tipo === 'debito' ? false : (registro?.permitirParcelamento ?? true)
+  const [rascunhoPorTipo, setRascunhoPorTipo] = useState<RascunhoPorTipo>(() =>
+    rascunhoInicial(registro)
   )
-  const [taxas, setTaxas] = useState<TaxaCartaoForm[]>(() => {
-    if (registro?.taxas?.length) {
-      return registro.taxas.map((t) => ({
-        numeroParcelas: t.numeroParcelas,
-        taxaPercentual: formatarPercentualBr(t.taxaPercentual),
-        prazoDias: t.prazoDias,
-        valorFixo: formatarMoedaInput(t.valorFixo),
-      }))
-    }
-    return [taxaVazia(1)]
-  })
+  const [permitirParcelamento, setPermitirParcelamento] = useState(
+    tipoInicial === 'debito'
+      ? false
+      : (registro?.permitirParcelamento ?? true)
+  )
+  const [taxas, setTaxas] = useState<TaxaCartaoForm[]>(() =>
+    tipoInicial === 'debito'
+      ? rascunhoInicial(registro).debito.taxas
+      : rascunhoInicial(registro).credito.taxas
+  )
+  const [visitouDebito, setVisitouDebito] = useState(tipoInicial === 'debito')
   const [adquirentes, setAdquirentes] = useState<AdquirenteLista[]>([])
   const [erro, setErro] = useState('')
   const [salvando, setSalvando] = useState(false)
@@ -110,29 +152,79 @@ export function FormularioCartaoPagamento({
 
   function aplicarBandeira(nova: CodigoBandeiraCartao) {
     setBandeira(nova)
-    if (!nomeManual || ehNomePadraoBandeira(nomeExibicao) || !nomeExibicao.trim()) {
+    if (!nomeManual || !nomeExibicao.trim() || ehNomePadraoBandeira(nomeExibicao)) {
       setNomeExibicao(sugerirNomeExibicao(nova, tipo))
       setNomeManual(false)
     }
   }
 
   function aplicarTipo(novo: TipoCartaoPagamento) {
-    setTipo(novo)
+    if (novo === tipo) return
+
+    const creditoSalvo: RascunhoPorTipo['credito'] =
+      tipo === 'credito'
+        ? { taxas: taxas.map((t) => ({ ...t })), permitirParcelamento }
+        : {
+            taxas: rascunhoPorTipo.credito.taxas.map((t) => ({ ...t })),
+            permitirParcelamento: rascunhoPorTipo.credito.permitirParcelamento,
+          }
+
+    const debitoSalvo: RascunhoPorTipo['debito'] =
+      tipo === 'debito'
+        ? { taxas: taxas.map((t) => ({ ...t, numeroParcelas: 1 })) }
+        : {
+            taxas: rascunhoPorTipo.debito.taxas.map((t) => ({
+              ...t,
+              numeroParcelas: 1,
+            })),
+          }
+
+    let taxasNovas: TaxaCartaoForm[]
+    let parcelamentoNovo = permitirParcelamento
+    let debitoFinal = debitoSalvo
+    let passouPeloDebito = visitouDebito
+
     if (novo === 'debito') {
-      setPermitirParcelamento(false)
-      setTaxas((atual) => {
-        const primeira = atual[0] ?? taxaVazia(1)
-        return [{ ...primeira, numeroParcelas: 1 }]
-      })
+      parcelamentoNovo = false
+      if (visitouDebito) {
+        taxasNovas = debitoSalvo.taxas.map((t) => ({ ...t, numeroParcelas: 1 }))
+      } else {
+        taxasNovas = [
+          {
+            ...(creditoSalvo.taxas[0] ?? taxaVazia(1)),
+            numeroParcelas: 1,
+          },
+        ]
+        passouPeloDebito = true
+      }
+      debitoFinal = { taxas: taxasNovas }
     } else {
-      setPermitirParcelamento(true)
+      parcelamentoNovo = creditoSalvo.permitirParcelamento
+      taxasNovas =
+        creditoSalvo.taxas.length > 0
+          ? creditoSalvo.taxas.map((t) => ({ ...t }))
+          : [taxaVazia(1)]
     }
-    if (bandeira && (!nomeManual || ehNomePadraoBandeira(nomeExibicao) || !nomeExibicao.trim())) {
+
+    setRascunhoPorTipo({
+      credito: creditoSalvo,
+      debito: debitoFinal,
+    })
+    setVisitouDebito(passouPeloDebito)
+    setPermitirParcelamento(parcelamentoNovo)
+    setTaxas(taxasNovas)
+    setTipo(novo)
+
+    const padraoAnterior = bandeira ? sugerirNomeExibicao(bandeira, tipo) : ''
+    const aindaEhPadrao =
+      !nomeExibicao.trim() ||
+      nomeExibicao.trim() === padraoAnterior ||
+      (!nomeManual && ehNomePadraoBandeira(nomeExibicao))
+    if (bandeira && aindaEhPadrao) {
       setNomeExibicao(sugerirNomeExibicao(bandeira, novo))
       setNomeManual(false)
     }
   }
-
   function atualizarTaxa(indice: number, patch: Partial<TaxaCartaoForm>) {
     setTaxas((atual) => atual.map((t, i) => (i === indice ? { ...t, ...patch } : t)))
   }
