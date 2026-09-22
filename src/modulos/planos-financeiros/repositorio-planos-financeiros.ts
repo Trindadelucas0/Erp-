@@ -6,6 +6,7 @@ import type {
 import type { TipoPlanoFinanceiro } from './codigo-plano-financeiro.js'
 import { ordenarPorCodigoPlano } from './codigo-plano-financeiro.js'
 import { montarFiltroBuscaCamposEscalares } from '../../compartilhado/utilitarios/filtro-busca-textual.js'
+import { montarOpcoesListarFolhasAtivas } from './opcoes-listar-folhas-ativas.js'
 
 export type PlanoFinanceiroRegistro = {
   id: string
@@ -75,21 +76,10 @@ async function listarFolhasAtivas(
   tipo?: TipoPlanoFinanceiro,
   somenteSubgrupo?: boolean
 ) {
-  const filtroBusca = montarFiltroBuscaCamposEscalares(q, ['codigo', 'nome'])
-  const planos = await clientePrisma.planoFinanceiro.findMany({
-    where: {
-      companyId,
-      ativo: true,
-      ...(tipo ? { tipo } : {}),
-      ...(somenteSubgrupo ? { parentId: { not: null } } : {}),
-      ...(filtroBusca ?? {}),
-    },
-    include: { _count: { select: { children: true } } },
-    orderBy: { codigo: 'asc' },
-    take: 50,
-  })
-
-  return ordenarPorCodigoPlano(planos.filter((p) => p._count.children === 0))
+  const planos = await clientePrisma.planoFinanceiro.findMany(
+    montarOpcoesListarFolhasAtivas(companyId, q, tipo, somenteSubgrupo)
+  )
+  return ordenarPorCodigoPlano(planos)
 }
 
 async function buscarPorId(companyId: string, id: string) {
