@@ -58,6 +58,8 @@ model Company {
   contasReceberAnexos         ContaReceberAnexo[]
   jobs                        Job[]
   recorrenciasFinanceiras     RecorrenciaFinanceira[]
+  adquirentes                 Adquirente[]
+  cartoesPagamento            CartaoPagamento[]
   enderecosWms                EnderecoWms[]
   niveisEnderecoWms           NivelEnderecoWms[]
   requisicoesWms              RequisicaoWms[]
@@ -1158,6 +1160,57 @@ model RecorrenciaFinanceira {
   @@index([companyId, fornecedorPessoaId, ativo])
   @@index([companyId, ativo])
   @@index([produtoId])
+}
+
+/// Operadora/adquirente de cartão (Stone, Cielo, Rede…). Cadastro em Configurações → Financeiro.
+model Adquirente {
+  id        String            @id @default(uuid())
+  companyId String
+  company   Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  nome      String
+  ativo     Boolean           @default(true)
+  cartoes   CartaoPagamento[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@unique([companyId, nome])
+  @@index([companyId, ativo])
+}
+
+/// Taxas e prazos de uma bandeira+tipo sob uma adquirente. Bandeiras fixas no código.
+model CartaoPagamento {
+  id                    String                @id @default(uuid())
+  companyId             String
+  company               Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  adquirenteId          String
+  adquirente            Adquirente            @relation(fields: [adquirenteId], references: [id], onDelete: Restrict)
+  /// visa | mastercard | elo | amex | hipercard
+  bandeira              String
+  /// credito | debito
+  tipo                  String
+  nomeExibicao          String
+  ativo                 Boolean               @default(true)
+  permitirParcelamento  Boolean               @default(true)
+  taxas                 CartaoPagamentoTaxa[]
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  @@unique([companyId, adquirenteId, bandeira, tipo])
+  @@index([companyId, ativo])
+  @@index([adquirenteId])
+}
+
+model CartaoPagamentoTaxa {
+  id                String          @id @default(uuid())
+  cartaoPagamentoId String
+  cartaoPagamento   CartaoPagamento @relation(fields: [cartaoPagamentoId], references: [id], onDelete: Cascade)
+  numeroParcelas    Int
+  taxaPercentual    Decimal         @db.Decimal(7, 4)
+  prazoDias         Int             @default(30)
+  valorFixo         Decimal         @default(0) @db.Decimal(18, 2)
+
+  @@unique([cartaoPagamentoId, numeroParcelas])
+  @@index([cartaoPagamentoId])
 }
 
 // ─── Contagem de entrada cega (logística) ─────────────────────────────────────

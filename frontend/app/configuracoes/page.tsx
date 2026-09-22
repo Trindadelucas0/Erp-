@@ -16,9 +16,11 @@ import { PainelParametrizacaoCustos } from '@/components/configuracoes/painel-pa
 import { ConteudoDaPaginaEstruturaWms } from '@/app/estrutura-wms/conteudo-pagina-estrutura-wms'
 import { ConteudoDaPaginaCfops } from '@/app/cfops/conteudo-pagina-cfops'
 import { ConteudoDaPaginaPlanosFinanceiros } from '@/app/planos-financeiros/conteudo-pagina-planos-financeiros'
+import { PainelRecorrenciasFinanceiras } from '@/components/recorrencias-financeiras/painel-recorrencias-financeiras'
+import { PainelAdquirentes } from '@/components/adquirentes/painel-adquirentes'
+import { PainelCartoesPagamento } from '@/components/cartoes-pagamento/painel-cartoes-pagamento'
 import { ConteudoDaPaginaDeUsuarios } from '@/app/users/conteudo-pagina-usuarios'
 import { ConteudoDaPaginaDePapeis } from '@/app/papeis/conteudo-pagina-papeis'
-import { PainelRecorrenciasFinanceiras } from '@/components/recorrencias-financeiras/painel-recorrencias-financeiras'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { Abas } from '@/components/ui/abas'
@@ -42,7 +44,7 @@ import type { AtalhoConfigurado, ChaveDaAcao } from '@/lib/atalhos/tipos'
 type AbaConfig = 'geral' | 'vendas' | 'logistica' | 'financeiro' | 'fiscal'
 type SecaoGeral = 'usuarios' | 'papeis' | 'assinatura' | 'atalhos'
 type SecaoFiscal = 'cfop' | 'buscador'
-type SecaoFinanceiro = 'planos' | 'recorrencia'
+type SecaoFinanceiro = 'planos' | 'recorrencia' | 'adquirentes' | 'cartoes'
 type SecaoLogistica = 'unidades' | 'estrutura'
 
 const ABAS_GERAL = [
@@ -65,6 +67,8 @@ const ABAS_FISCAL = [
 const ABAS_FINANCEIRO = [
   { id: 'planos', rotulo: 'Planos Financeiros' },
   { id: 'recorrencia', rotulo: 'Recorrência' },
+  { id: 'adquirentes', rotulo: 'Adquirentes' },
+  { id: 'cartoes', rotulo: 'Cartões de Pagamento' },
 ]
 
 const ABAS_LOGISTICA = [
@@ -431,7 +435,10 @@ function ConteudoDaPaginaDeConfiguracoes() {
   const secaoFinanceiro: SecaoFinanceiro = useMemo(() => {
     if (
       abaAtiva === 'financeiro' &&
-      (secaoParam === 'planos' || secaoParam === 'recorrencia')
+      (secaoParam === 'planos' ||
+        secaoParam === 'recorrencia' ||
+        secaoParam === 'adquirentes' ||
+        secaoParam === 'cartoes')
     ) {
       return secaoParam
     }
@@ -560,6 +567,8 @@ function ConteudoDaPaginaDeConfiguracoes() {
           />
           {secaoFinanceiro === 'planos' && <ConteudoDaPaginaPlanosFinanceiros />}
           {secaoFinanceiro === 'recorrencia' && <PainelRecorrenciasFinanceiras />}
+          {secaoFinanceiro === 'adquirentes' && <PainelAdquirentes />}
+          {secaoFinanceiro === 'cartoes' && <PainelCartoesPagamento />}
         </div>
       )}
 
