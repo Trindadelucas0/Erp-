@@ -78,10 +78,7 @@ const camposComuns = {
   fornecedoresVinculadosIds: z.array(z.string().uuid()).optional(),
   modalidadeTransportePadrao: z.preprocess(
     nulParaUndefined,
-    z.enum(MODALIDADES_TRANSPORTE_FORNECEDOR, {
-      required_error: 'Tipo de frete obrigatório',
-      invalid_type_error: 'Tipo de frete inválido',
-    })
+    z.enum(MODALIDADES_TRANSPORTE_FORNECEDOR).optional()
   ),
   regraRateioFrete: z.preprocess(
     nulParaUndefined,
@@ -93,13 +90,38 @@ function exigeDadosTransporteFornecedor(modalidade: string | undefined): boolean
   return modalidade === 'FOB_NOTA' || modalidade === 'FOB_CONHECIMENTO'
 }
 
-function validarRegraRateioFrete(
+function fornecedorSomentePrestador(data: {
+  tipoRevenda?: boolean
+  tipoConsumo?: boolean
+  tipoPrestadorServico?: boolean
+}): boolean {
+  return Boolean(data.tipoPrestadorServico) && !Boolean(data.tipoRevenda) && !Boolean(data.tipoConsumo)
+}
+
+function validarFreteFornecedor(
   data: {
     modalidadeTransportePadrao?: string
     regraRateioFrete?: string
+    tipoRevenda?: boolean
+    tipoConsumo?: boolean
+    tipoPrestadorServico?: boolean
   },
   ctx: z.RefinementCtx
 ) {
+  // Se é só prestador, não exigir frete
+  if (fornecedorSomentePrestador(data)) return
+  
+  // Se não é só prestador, frete é obrigatório
+  if (!data.modalidadeTransportePadrao) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Tipo de frete obrigatório',
+      path: ['modalidadeTransportePadrao'],
+    })
+    return
+  }
+  
+  // Se é FOB, rateio é obrigatório
   if (!exigeDadosTransporteFornecedor(data.modalidadeTransportePadrao)) return
   if (data.regraRateioFrete) return
   ctx.addIssue({
@@ -114,6 +136,29 @@ function limparRegraRateioSeCif<
 >(data: T): T {
   if (exigeDadosTransporteFornecedor(data.modalidadeTransportePadrao)) return data
   return { ...data, regraRateioFrete: undefined }
+}
+
+function limparFreteParaPrestador<
+  T extends {
+    modalidadeTransportePadrao?: string
+    regraRateioFrete?: string
+    permitirVinculoManual?: boolean
+    exigirItensEntrada?: boolean
+    tipoRevenda?: boolean
+    tipoConsumo?: boolean
+    tipoPrestadorServico?: boolean
+  },
+>(data: T): T {
+  if (fornecedorSomentePrestador(data)) {
+    return {
+      ...data,
+      modalidadeTransportePadrao: undefined,
+      regraRateioFrete: undefined,
+      permitirVinculoManual: false,
+      exigirItensEntrada: false,
+    }
+  }
+  return data
 }
 
 export const esquemaDeContatoItem = z
@@ -224,8 +269,9 @@ const esquemaDeFornecedorComRegrasFrete = z
     esquemaDeCriacaoDeFornecedorPF,
     esquemaDeCriacaoDeFornecedorPJ,
   ])
-  .superRefine(validarRegraRateioFrete)
+  .superRefine(validarFreteFornecedor)
   .transform(limparRegraRateioSeCif)
+  .transform(limparFreteParaPrestador)
 
 export const esquemaDeCriacaoDeFornecedor = esquemaDeFornecedorComRegrasFrete
 export const esquemaDeEdicaoDeFornecedor = esquemaDeFornecedorComRegrasFrete
