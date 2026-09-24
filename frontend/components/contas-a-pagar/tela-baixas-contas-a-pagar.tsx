@@ -25,6 +25,7 @@ import {
   formatarDataBr,
   formatarMoedaBr,
   tituloVencido,
+  valorParcelaNaLista,
 } from '@/lib/contas-a-pagar'
 import { cn } from '@/lib/utils'
 
@@ -346,7 +347,7 @@ export function TelaBaixasContasAPagar({ fornecedores, planos, aoBaixar }: Props
                     </td>
                     <td className={TD}>{linha.conta.numeroDocumento || '—'}</td>
                     <td className={cn(TD, 'text-right tabular-nums')}>
-                      {formatarMoedaBr(linha.conta.valorTotal)}
+                      {formatarMoedaBr(valorParcelaNaLista(linha.conta, linha.parcelaId))}
                     </td>
                     <td className={cn(TD, 'text-right tabular-nums font-medium')}>
                       {formatarMoedaBr(linha.conta.saldoDevedor ?? 0)}
@@ -449,6 +450,8 @@ export function TelaBaixasContasAPagar({ fornecedores, planos, aoBaixar }: Props
             }
             somenteLeitura
             contaId={detalhe.conta.id}
+            parcelas={detalhe.conta.parcelas}
+            origem={detalhe.conta.origem}
           />
         )}
       </Modal>

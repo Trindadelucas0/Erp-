@@ -203,7 +203,16 @@ function montarWhere(
     ]
   }
   if (filtro.numeroDocumento) {
-    where.numeroDocumento = { contains: filtro.numeroDocumento, mode: 'insensitive' }
+    const doc = filtro.numeroDocumento
+    where.AND = [
+      ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+      {
+        OR: [
+          { numeroDocumento: { contains: doc, mode: 'insensitive' } },
+          { parcelas: { some: { numeroDocumento: { contains: doc, mode: 'insensitive' } } } },
+        ],
+      },
+    ]
   }
   if (filtro.valorMin != null || filtro.valorMax != null) {
     where.valorTotal = {}
@@ -547,6 +556,73 @@ export const repositorioDeContasAPagar = {
       }
       throw e
     }
+  },
+
+  /**
+   * Troca as parcelas do título (ex.: 1 parcela com total → N duplicatas do XML).
+   * Só se status aberto, sem baixas e sem valorPago nas parcelas.
+   */
+  async substituirParcelasSemBaixa(
+    companyId: string,
+    contaId: string,
+    parcelas: Array<{
+      numeroDocumento: string | null
+      vencimento: Date
+      valor: number
+    }>
+  ) {
+    if (!parcelas.length) {
+      throw new ErroBaixa('Título da entrada exige ao menos uma parcela com vencimento')
+    }
+    for (const p of parcelas) {
+      if (!p.vencimento || Number.isNaN(p.vencimento.getTime())) {
+        throw new ErroBaixa('Data de vencimento é obrigatória em cada parcela')
+      }
+      if (!(p.valor > 0)) {
+        throw new ErroBaixa('Valor de cada parcela deve ser maior que zero')
+      }
+    }
+
+    const valorTotal =
+      Math.round(parcelas.reduce((acc, p) => acc + p.valor, 0) * 100) / 100
+
+    const row = await clientePrisma.$transaction(async (tx) => {
+      const existente = await tx.contaPagar.findFirst({
+        where: { id: contaId, companyId },
+        include: {
+          parcelas: { include: { baixas: { take: 1, select: { id: true } } } },
+        },
+      })
+      if (!existente) return null
+      if (existente.status !== 'aberto') return null
+      if (existente.parcelas.some((p) => p.baixas.length > 0 || decimalParaNumero(p.valorPago) > 0)) {
+        return null
+      }
+
+      await tx.contaPagarParcela.deleteMany({ where: { contaPagarId: contaId } })
+      await tx.contaPagar.update({
+        where: { id: contaId },
+        data: {
+          valorTotal,
+          parcelas: {
+            create: parcelas.map((p, idx) => ({
+              numeroParcela: idx + 1,
+              numeroDocumento: p.numeroDocumento,
+              vencimento: p.vencimento,
+              valor: p.valor,
+              status: 'aberta',
+            })),
+          },
+        },
+      })
+
+      return tx.contaPagar.findFirst({
+        where: { id: contaId, companyId },
+        include: includeDetalhe,
+      })
+    }, OPCOES_TX_CONTA_PAGAR)
+
+    return row ? mapearContaPagar(row) : null
   },
 
   async atualizar(

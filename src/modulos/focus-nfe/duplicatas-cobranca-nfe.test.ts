@@ -23,6 +23,15 @@ describe('extrairDuplicatasCobrancaDoXml', () => {
     expect(dups[0].valor).toBe(100)
     expect(dups[1].valor).toBe(50.5)
   })
+
+  it('dVenc só dia fica no meio-dia UTC (não desloca no fuso BR)', () => {
+    const xml = `<?xml version="1.0"?><nfeProc><NFe><infNFe>
+      <cobr><dup><nDup>001</nDup><dVenc>2026-10-06</dVenc><vDup>3759.79</vDup></dup></cobr>
+    </infNFe></NFe></nfeProc>`
+    const dups = extrairDuplicatasCobrancaDoXml(xml)
+    expect(dups).toHaveLength(1)
+    expect(dups[0].vencimento?.toISOString()).toBe('2026-10-06T12:00:00.000Z')
+  })
 })
 
 describe('montarParcelasContaPagarDaNfe', () => {

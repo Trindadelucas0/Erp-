@@ -13,6 +13,7 @@ vi.mock('./repositorio-contas-a-pagar.js', () => ({
   repositorioDeContasAPagar: {
     buscarPorNfeOrigem: vi.fn(),
     criarDeEntrada: vi.fn(),
+    substituirParcelasSemBaixa: vi.fn(),
   },
 }))
 
@@ -36,7 +37,10 @@ vi.mock('../focus-nfe/parser-xml-nfe.js', () => ({
 }))
 
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
-import { montarParcelasContaPagarDaNfe } from '../focus-nfe/parser-xml-nfe.js'
+import {
+  extrairDuplicatasCobrancaDoXml,
+  montarParcelasContaPagarDaNfe,
+} from '../focus-nfe/parser-xml-nfe.js'
 import { repositorioDeContasAPagar } from './repositorio-contas-a-pagar.js'
 import { resolverPlanoFinanceiroEntrada } from './resolver-plano-financeiro-entrada.js'
 import { gerarTitulosContasPagarDaEntrada } from './gerar-titulos-entrada.js'
@@ -185,7 +189,11 @@ describe('gerarTitulosContasPagarDaEntrada — documental / uso_consumo', () => 
 
   it('idempotente: título existente não duplica', async () => {
     vi.mocked(repositorioDeContasAPagar.buscarPorNfeOrigem).mockResolvedValue(
-      contaFake() as never
+      contaFake({
+        status: 'aberto',
+        valorTotal: 640,
+        parcelas: [{ valor: 640, valorPago: 0, baixas: [] }],
+      }) as never
     )
     vi.mocked(clientePrisma.nfeRecebida.findFirst).mockResolvedValue(
       notaBase({
@@ -199,5 +207,119 @@ describe('gerarTitulosContasPagarDaEntrada — documental / uso_consumo', () => 
     const r = await gerarTitulosContasPagarDaEntrada('c1', 'nota-1')
     expect(r.gerados).toBe(0)
     expect(repositorioDeContasAPagar.criarDeEntrada).not.toHaveBeenCalled()
+    expect(repositorioDeContasAPagar.substituirParcelasSemBaixa).not.toHaveBeenCalled()
+  })
+
+  it('NFe Revenda: regrava 1 parcela=total quando XML tem N dups e sem baixa', async () => {
+    const venc1 = new Date('2026-10-06T12:00:00.000Z')
+    const venc2 = new Date('2026-10-20T12:00:00.000Z')
+    const venc3 = new Date('2026-11-03T12:00:00.000Z')
+    vi.mocked(repositorioDeContasAPagar.buscarPorNfeOrigem).mockResolvedValue(
+      contaFake({
+        status: 'aberto',
+        valorTotal: 11277.11,
+        parcelas: [{ valor: 11277.11, valorPago: 0, baixas: [] }],
+      }) as never
+    )
+    vi.mocked(extrairDuplicatasCobrancaDoXml).mockReturnValue([
+      { numeroDocumento: '001', vencimento: venc1, valor: 3759.79 },
+      { numeroDocumento: '002', vencimento: venc2, valor: 3758.66 },
+      { numeroDocumento: '003', vencimento: venc3, valor: 3758.66 },
+    ])
+    vi.mocked(montarParcelasContaPagarDaNfe).mockReturnValue({
+      ok: true,
+      parcelas: [
+        { numeroDocumento: '001', vencimento: venc1, valor: 3759.79 },
+        { numeroDocumento: '002', vencimento: venc2, valor: 3758.66 },
+        { numeroDocumento: '003', vencimento: venc3, valor: 3758.66 },
+      ],
+    })
+    vi.mocked(repositorioDeContasAPagar.substituirParcelasSemBaixa).mockResolvedValue(
+      contaFake({ id: 'cap-1', codigo: '9' }) as never
+    )
+    vi.mocked(clientePrisma.nfeRecebida.findFirst).mockResolvedValue(
+      notaBase({
+        finalidadeEntrada: 'revenda',
+        valorTotal: 11277.11,
+        xmlConteudo: '<nfe com cobr/>',
+      }) as never
+    )
+
+    const r = await gerarTitulosContasPagarDaEntrada('c1', 'nota-1')
+    expect(r.gerados).toBe(0)
+    expect(repositorioDeContasAPagar.substituirParcelasSemBaixa).toHaveBeenCalledWith(
+      'c1',
+      'cap-1',
+      expect.arrayContaining([
+        expect.objectContaining({ numeroDocumento: '001', valor: 3759.79 }),
+        expect.objectContaining({ numeroDocumento: '003', valor: 3758.66 }),
+      ])
+    )
+    expect(repositorioDeContasAPagar.criarDeEntrada).not.toHaveBeenCalled()
+  })
+
+  it('NFe Revenda: regrava quando qtd/valores das parcelas ≠ cobr/dup (sem baixa)', async () => {
+    const venc1 = new Date('2026-10-06T12:00:00.000Z')
+    const venc2 = new Date('2026-10-20T12:00:00.000Z')
+    vi.mocked(repositorioDeContasAPagar.buscarPorNfeOrigem).mockResolvedValue(
+      contaFake({
+        status: 'aberto',
+        valorTotal: 100,
+        parcelas: [
+          {
+            numeroDocumento: 'X',
+            vencimento: '2026-09-01',
+            valor: 100,
+            valorPago: 0,
+            baixas: [],
+          },
+        ],
+      }) as never
+    )
+    vi.mocked(extrairDuplicatasCobrancaDoXml).mockReturnValue([
+      { numeroDocumento: '001', vencimento: venc1, valor: 40 },
+      { numeroDocumento: '002', vencimento: venc2, valor: 60 },
+    ])
+    vi.mocked(montarParcelasContaPagarDaNfe).mockReturnValue({
+      ok: true,
+      parcelas: [
+        { numeroDocumento: '001', vencimento: venc1, valor: 40 },
+        { numeroDocumento: '002', vencimento: venc2, valor: 60 },
+      ],
+    })
+    vi.mocked(repositorioDeContasAPagar.substituirParcelasSemBaixa).mockResolvedValue(
+      contaFake({ id: 'cap-1', codigo: '9' }) as never
+    )
+    vi.mocked(clientePrisma.nfeRecebida.findFirst).mockResolvedValue(
+      notaBase({
+        finalidadeEntrada: 'revenda',
+        valorTotal: 100,
+        xmlConteudo: '<nfe/>',
+      }) as never
+    )
+
+    await gerarTitulosContasPagarDaEntrada('c1', 'nota-1')
+    expect(repositorioDeContasAPagar.substituirParcelasSemBaixa).toHaveBeenCalled()
+  })
+
+  it('não regrava parcelas se já houver baixa', async () => {
+    vi.mocked(repositorioDeContasAPagar.buscarPorNfeOrigem).mockResolvedValue(
+      contaFake({
+        status: 'aberto',
+        valorTotal: 11277.11,
+        parcelas: [{ valor: 11277.11, valorPago: 100, baixas: [{ id: 'b1' }] }],
+      }) as never
+    )
+    vi.mocked(clientePrisma.nfeRecebida.findFirst).mockResolvedValue(
+      notaBase({
+        finalidadeEntrada: 'revenda',
+        valorTotal: 11277.11,
+        xmlConteudo: '<nfe/>',
+      }) as never
+    )
+
+    const r = await gerarTitulosContasPagarDaEntrada('c1', 'nota-1')
+    expect(r.gerados).toBe(0)
+    expect(repositorioDeContasAPagar.substituirParcelasSemBaixa).not.toHaveBeenCalled()
   })
 })

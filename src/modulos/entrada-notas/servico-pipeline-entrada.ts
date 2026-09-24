@@ -2336,10 +2336,12 @@ async function obterDetalhe(
     orderBy: { createdAt: 'asc' },
   })
   // Reparo: documental consolidada sem título (bug uso_consumo que lia só cobr/dup do XML).
+  // Também tenta reparar NFe Revenda com 1 parcela = total quando o XML tem N <dup>.
   if (
     nota.statusEntrada === 'entrada_consolidada' &&
-    notaEhDocumentalSemEstoque(nota) &&
-    !contasPagarRows.some((c) => c.origem === 'nfe')
+    (notaEhDocumentalSemEstoque(nota)
+      ? !contasPagarRows.some((c) => c.origem === 'nfe')
+      : contasPagarRows.some((c) => c.origem === 'nfe'))
   ) {
     try {
       await gerarTitulosContasPagarDaEntrada(companyId, notaId, {

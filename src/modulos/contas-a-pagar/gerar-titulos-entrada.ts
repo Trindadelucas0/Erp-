@@ -150,6 +150,261 @@ function parcelasDaNotaDocumental(nota: {
   return parcelasDoStubDespesa(stub)
 }
 
+/**
+ * Título NFe Revenda cujas parcelas não batem com `cobr/dup` do XML:
+ * regrava se aberto e sem baixa (§7.16 / chamado duplicatas).
+ */
+async function tentarRepararParcelasDuplicatasXml(
+  companyId: string,
+  nota: {
+    xmlConteudo: string | null
+    valorTotal: unknown
+    prazoPagamentoXml: string | null
+    prazoPagamentoTexto: string | null
+    tipoDocumento?: string | null
+    finalidadeEntrada?: string | null
+  },
+  conta: {
+    id: string
+    status: string
+    valorTotal: number
+    parcelas?: Array<{
+      numeroDocumento?: string | null
+      vencimento?: string | Date | null
+      valor: number
+      valorPago: number
+      baixas?: unknown[]
+    }>
+  }
+) {
+  if (conta.status !== 'aberto') return null
+  const tipo = nota.tipoDocumento || 'nfe55'
+  if (tipo === 'nfse' || (tipo === 'nfe55' && nota.finalidadeEntrada === 'uso_consumo')) {
+    return null
+  }
+
+  const parcelasAtuais = conta.parcelas ?? []
+  if (parcelasAtuais.some((p) => (p.baixas?.length ?? 0) > 0 || p.valorPago > 0)) {
+    return null
+  }
+
+  const valorNf = decimalNum(nota.valorTotal)
+  if (!(valorNf > 0)) return null
+
+  const xml = nota.xmlConteudo ? normalizarXmlNfe(nota.xmlConteudo) : ''
+  const dupsXml = xml ? extrairDuplicatasCobrancaDoXml(xml) : []
+  const dupsComVenc = dupsXml.filter((d) => d.vencimento != null)
+  if (dupsComVenc.length < 2) return null
+
+  const montagem = montarParcelasContaPagarDaNfe({
+    duplicatasXml: dupsXml,
+    valorTotalNf: valorNf,
+    prazoPagamentoXml: nota.prazoPagamentoXml,
+    prazoPagamentoTexto: nota.prazoPagamentoTexto,
+  })
+  if (!montagem.ok || montagem.parcelas.length < 2) return null
+
+  const esperadas = montagem.parcelas
+  if (parcelasBatemComEsperadas(parcelasAtuais, esperadas)) return null
+
+  return repositorioDeContasAPagar.substituirParcelasSemBaixa(
+    companyId,
+    conta.id,
+    esperadas
+  )
+}
+
+function diaCivil(v: string | Date | null | undefined): string | null {
+  if (v == null) return null
+  if (v instanceof Date) {
+    if (Number.isNaN(v.getTime())) return null
+    return v.toISOString().slice(0, 10)
+  }
+  const m = String(v).match(/^(\d{4}-\d{2}-\d{2})/)
+  return m?.[1] ?? null
+}
+
+function parcelasBatemComEsperadas(
+  atuais: Array<{
+    numeroDocumento?: string | null
+    vencimento?: string | Date | null
+    valor: number
+  }>,
+  esperadas: Array<{ numeroDocumento: string | null; vencimento: Date; valor: number }>
+): boolean {
+  if (atuais.length !== esperadas.length) return false
+  for (let i = 0; i < esperadas.length; i++) {
+    const a = atuais[i]
+    const e = esperadas[i]
+    if (!a || !e) return false
+    if (Math.abs(a.valor - e.valor) > 0.02) return false
+    if (diaCivil(a.vencimento) !== diaCivil(e.vencimento)) return false
+    const docA = (a.numeroDocumento ?? '').trim()
+    const docE = (e.numeroDocumento ?? '').trim()
+    if (docE && docA && docA !== docE) return false
+  }
+  return true
+}
+
+export type ResultadoReparoDuplicatasCap = {
+  examinados: number
+  reparados: number
+  pulados: number
+  detalhes: Array<{
+    companyId: string
+    contaId: string
+    codigo: string
+    nfeRecebidaId: string
+    de: number
+    para: number
+  }>
+}
+
+/**
+ * Varre Contas a Pagar origem NFe (todas as empresas ou uma) e corrige
+ * títulos abertos sem baixa cujas parcelas não batem com `<dup>` do XML.
+ */
+export async function repararParcelasDuplicatasContasPagar(opcoes?: {
+  companyId?: string
+  dryRun?: boolean
+  limite?: number
+}): Promise<ResultadoReparoDuplicatasCap> {
+  const where: {
+    origem: string
+    status: string
+    nfeRecebidaId: { not: null }
+    companyId?: string
+  } = {
+    origem: 'nfe',
+    status: 'aberto',
+    nfeRecebidaId: { not: null },
+  }
+  if (opcoes?.companyId) where.companyId = opcoes.companyId
+
+  const rows = await clientePrisma.contaPagar.findMany({
+    where,
+    select: {
+      id: true,
+      companyId: true,
+      codigo: true,
+      status: true,
+      valorTotal: true,
+      nfeRecebidaId: true,
+      parcelas: {
+        orderBy: { numeroParcela: 'asc' },
+        select: {
+          numeroDocumento: true,
+          vencimento: true,
+          valor: true,
+          valorPago: true,
+          baixas: { take: 1, select: { id: true } },
+        },
+      },
+      nfeRecebida: {
+        select: {
+          id: true,
+          tipoDocumento: true,
+          finalidadeEntrada: true,
+          xmlConteudo: true,
+          valorTotal: true,
+          prazoPagamentoXml: true,
+          prazoPagamentoTexto: true,
+        },
+      },
+    },
+    orderBy: { createdAt: 'asc' },
+    take: opcoes?.limite && opcoes.limite > 0 ? opcoes.limite : undefined,
+  })
+
+  const resultado: ResultadoReparoDuplicatasCap = {
+    examinados: 0,
+    reparados: 0,
+    pulados: 0,
+    detalhes: [],
+  }
+
+  for (const row of rows) {
+    resultado.examinados += 1
+    const nota = row.nfeRecebida
+    if (!nota || !row.nfeRecebidaId) {
+      resultado.pulados += 1
+      continue
+    }
+
+    const conta = {
+      id: row.id,
+      status: row.status,
+      valorTotal: decimalNum(row.valorTotal),
+      parcelas: row.parcelas.map((p) => ({
+        numeroDocumento: p.numeroDocumento,
+        vencimento: p.vencimento,
+        valor: decimalNum(p.valor),
+        valorPago: decimalNum(p.valorPago),
+        baixas: p.baixas,
+      })),
+    }
+
+    if (opcoes?.dryRun) {
+      const tipo = nota.tipoDocumento || 'nfe55'
+      if (tipo === 'nfse' || (tipo === 'nfe55' && nota.finalidadeEntrada === 'uso_consumo')) {
+        resultado.pulados += 1
+        continue
+      }
+      if (conta.parcelas.some((p) => (p.baixas?.length ?? 0) > 0 || p.valorPago > 0)) {
+        resultado.pulados += 1
+        continue
+      }
+      const xml = nota.xmlConteudo ? normalizarXmlNfe(nota.xmlConteudo) : ''
+      const dupsXml = xml ? extrairDuplicatasCobrancaDoXml(xml) : []
+      if (dupsXml.filter((d) => d.vencimento != null).length < 2) {
+        resultado.pulados += 1
+        continue
+      }
+      const montagem = montarParcelasContaPagarDaNfe({
+        duplicatasXml: dupsXml,
+        valorTotalNf: decimalNum(nota.valorTotal),
+        prazoPagamentoXml: nota.prazoPagamentoXml,
+        prazoPagamentoTexto: nota.prazoPagamentoTexto,
+      })
+      if (!montagem.ok || montagem.parcelas.length < 2) {
+        resultado.pulados += 1
+        continue
+      }
+      if (parcelasBatemComEsperadas(conta.parcelas, montagem.parcelas)) {
+        resultado.pulados += 1
+        continue
+      }
+      resultado.reparados += 1
+      resultado.detalhes.push({
+        companyId: row.companyId,
+        contaId: row.id,
+        codigo: row.codigo,
+        nfeRecebidaId: row.nfeRecebidaId,
+        de: conta.parcelas.length,
+        para: montagem.parcelas.length,
+      })
+      continue
+    }
+
+    const reparado = await tentarRepararParcelasDuplicatasXml(row.companyId, nota, conta)
+    if (reparado) {
+      resultado.reparados += 1
+      resultado.detalhes.push({
+        companyId: row.companyId,
+        contaId: row.id,
+        codigo: row.codigo,
+        nfeRecebidaId: row.nfeRecebidaId,
+        de: conta.parcelas.length,
+        para: reparado.parcelas?.length ?? 0,
+      })
+    } else {
+      resultado.pulados += 1
+    }
+  }
+
+  return resultado
+}
+
 async function gerarTituloMercadoriaNfe(
   companyId: string,
   notaId: string,
@@ -192,7 +447,13 @@ async function gerarTituloMercadoriaNfe(
   if (!ehNfe55 && !ehNfse) return null
 
   const existente = await repositorioDeContasAPagar.buscarPorNfeOrigem(companyId, notaId, 'nfe')
-  if (existente) return { conta: existente, criado: false as const }
+  if (existente) {
+    if (!ehDocumental && !porRecorrencia) {
+      const reparado = await tentarRepararParcelasDuplicatasXml(companyId, nota, existente)
+      if (reparado) return { conta: reparado, criado: false as const }
+    }
+    return { conta: existente, criado: false as const }
+  }
 
   const valorTotal = decimalNum(nota.valorTotal)
   const planoFinanceiroId = await resolverPlanoFinanceiroEntrada(companyId, {

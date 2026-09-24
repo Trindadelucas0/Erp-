@@ -1952,6 +1952,10 @@ async function reprocessarXmlsLocaisComContexto(companyId: string) {
 
   const ctesCanceladosTomador = await servicoEntradaNotas.repararCtesTomadorIndevido(companyId)
   const vinculosReparados = await servicoEntradaNotas.repararVinculosCteTomadorIndevido(companyId)
+  const { repararParcelasDuplicatasContasPagar } = await import(
+    '../contas-a-pagar/gerar-titulos-entrada.js'
+  )
+  const reparoDuplicatasCap = await repararParcelasDuplicatasContasPagar({ companyId })
   const vinculadas = await servicoEntradaNotas.vincularFornecedoresNasNotasPendentes(companyId)
   const vinculosCte = await servicoEntradaNotas.processarVinculosCtePendentes(companyId, {
     importarFocusSeAusente: true,
@@ -1964,6 +1968,7 @@ async function reprocessarXmlsLocaisComContexto(companyId: string) {
     xmlCompletadosFocus,
     ctesCanceladosTomador,
     vinculosReparados,
+    reparoDuplicatasCap: reparoDuplicatasCap.reparados,
     vinculadas,
     ctesVinculados: vinculosCte.vinculados,
     ctesImportFocus: vinculosCte.importadosFocus,

@@ -76,12 +76,50 @@ function normalizarDados(dados: DadosParaCriarContaPagar | DadosParaEditarContaP
 }
 
 async function listar(companyId: string, filtro: FiltroListagemContasPagar) {
-  return repositorioDeContasAPagar.listar(companyId, filtro)
+  const contas = await repositorioDeContasAPagar.listar(companyId, filtro)
+  const notasParaReparar = new Set<string>()
+  for (const c of contas) {
+    if (
+      c.origem === 'nfe' &&
+      c.nfeRecebidaId &&
+      c.status === 'aberto' &&
+      (c.parcelas?.length ?? 0) === 1
+    ) {
+      notasParaReparar.add(c.nfeRecebidaId)
+    }
+  }
+  if (notasParaReparar.size === 0) return contas
+
+  const { gerarTitulosContasPagarDaEntrada } = await import('./gerar-titulos-entrada.js')
+  let reparou = false
+  for (const notaId of notasParaReparar) {
+    try {
+      await gerarTitulosContasPagarDaEntrada(companyId, notaId, {
+        exigirVencimentoMercadoria: false,
+      })
+      reparou = true
+    } catch {
+      // lista segue; reparo só se XML tiver N dups e sem baixa
+    }
+  }
+  return reparou ? repositorioDeContasAPagar.listar(companyId, filtro) : contas
 }
 
 async function obter(companyId: string, id: string) {
-  const conta = await repositorioDeContasAPagar.buscarPorId(companyId, id)
+  let conta = await repositorioDeContasAPagar.buscarPorId(companyId, id)
   if (!conta) throw new ErroDaAplicacao('Conta a pagar não encontrada', 404)
+  if (conta.origem === 'nfe' && conta.nfeRecebidaId) {
+    try {
+      const { gerarTitulosContasPagarDaEntrada } = await import('./gerar-titulos-entrada.js')
+      await gerarTitulosContasPagarDaEntrada(companyId, conta.nfeRecebidaId, {
+        exigirVencimentoMercadoria: false,
+      })
+      const atualizada = await repositorioDeContasAPagar.buscarPorId(companyId, id)
+      if (atualizada) conta = atualizada
+    } catch {
+      // título segue; reparo só aplica se XML tiver N dups e sem baixa
+    }
+  }
   return conta
 }
 

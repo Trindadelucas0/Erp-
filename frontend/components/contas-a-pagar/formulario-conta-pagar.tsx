@@ -10,9 +10,12 @@ import { ComboboxPessoa } from '@/components/pedidos-compra/combobox-pessoa'
 import { ComboboxPlanoFinanceiro } from '@/components/contas-a-pagar/combobox-plano-financeiro'
 import { AnexosContaPagar } from '@/components/contas-a-pagar/anexos-conta-pagar'
 import {
+  ContaPagarLista,
   FormContaPagar,
   OPCOES_TIPO_CONTA,
   OPCOES_TIPO_TRIBUTO,
+  formatarDataBr,
+  formatarMoedaBr,
 } from '@/lib/contas-a-pagar'
 
 type Opcao = { id: string; nome: string; codigo?: string }
@@ -29,6 +32,9 @@ type Props = {
   erro?: string | null
   /** Id do título gravado — necessário para anexar. */
   contaId?: string | null
+  /** Parcelas do título (duplicatas da NFe) — grade só leitura quando origem entrada. */
+  parcelas?: ContaPagarLista['parcelas']
+  origem?: string | null
 }
 
 export function FormularioContaPagar({
@@ -41,12 +47,18 @@ export function FormularioContaPagar({
   anexosSomenteLeitura,
   erro,
   contaId = null,
+  parcelas,
+  origem = null,
 }: Props) {
   function patch(parcial: Partial<FormContaPagar>) {
     aoMudar({ ...form, ...parcial })
   }
 
   const anexosBloqueados = anexosSomenteLeitura ?? somenteLeitura
+  const listaParcelas = Array.isArray(parcelas) ? parcelas : []
+  const mostrarGradeDuplicatas =
+    listaParcelas.length > 1 && (origem === 'nfe' || origem === 'cte')
+  const valorTotalTitulo = listaParcelas.reduce((acc, p) => acc + (p.valor ?? 0), 0)
 
   return (
     <div className="min-w-0 space-y-4">
@@ -90,17 +102,24 @@ export function FormularioContaPagar({
             rotulo="Nr. documento"
             value={form.numeroDocumento}
             onChange={(e) => patch({ numeroDocumento: e.target.value })}
-            disabled={somenteLeitura}
+            disabled={somenteLeitura || mostrarGradeDuplicatas}
           />
         </div>
 
         <div className="min-w-0">
           <InputPadrao
-            rotulo="Valor do documento"
-            value={form.valorTotal}
+            rotulo={mostrarGradeDuplicatas ? 'Valor total' : 'Valor do documento'}
+            value={
+              mostrarGradeDuplicatas
+                ? valorTotalTitulo.toLocaleString('pt-BR', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })
+                : form.valorTotal
+            }
             onChange={(e) => patch({ valorTotal: e.target.value })}
             obrigatorio
-            disabled={somenteLeitura}
+            disabled={somenteLeitura || mostrarGradeDuplicatas}
             placeholder="0,00"
           />
         </div>
@@ -115,16 +134,18 @@ export function FormularioContaPagar({
           />
         </div>
 
-        <div className="min-w-0">
-          <InputPadrao
-            rotulo="Data de vencimento"
-            type="date"
-            value={form.vencimento}
-            onChange={(e) => patch({ vencimento: e.target.value })}
-            obrigatorio
-            disabled={somenteLeitura}
-          />
-        </div>
+        {!mostrarGradeDuplicatas && (
+          <div className="min-w-0">
+            <InputPadrao
+              rotulo="Data de vencimento"
+              type="date"
+              value={form.vencimento}
+              onChange={(e) => patch({ vencimento: e.target.value })}
+              obrigatorio
+              disabled={somenteLeitura}
+            />
+          </div>
+        )}
 
         <div className="min-w-0">
           <InputPadrao
@@ -162,6 +183,40 @@ export function FormularioContaPagar({
           />
         </div>
       </div>
+
+      {mostrarGradeDuplicatas && (
+        <div className="min-w-0 space-y-2">
+          <p className="text-sm font-medium">Duplicatas</p>
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full min-w-[420px] text-left text-sm">
+              <thead className="bg-muted/50 text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Nº</th>
+                  <th className="px-3 py-2 font-medium">Documento</th>
+                  <th className="px-3 py-2 font-medium">Vencimento</th>
+                  <th className="px-3 py-2 font-medium text-right">Valor</th>
+                  <th className="px-3 py-2 font-medium text-right">Saldo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {listaParcelas.map((p) => (
+                  <tr key={p.id} className="border-t">
+                    <td className="px-3 py-2 tabular-nums">{p.numeroParcela}</td>
+                    <td className="px-3 py-2">{p.numeroDocumento || '—'}</td>
+                    <td className="px-3 py-2">{formatarDataBr(p.vencimento)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {formatarMoedaBr(p.valor)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {formatarMoedaBr(p.saldoDevedor)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="min-w-0">

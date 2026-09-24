@@ -69,6 +69,60 @@ export type ContaPagarLista = {
   updatedAt: string
 }
 
+/** Linha da grade Títulos: 1 por título (manual) ou 1 por parcela (N duplicatas). */
+export type LinhaTituloContaPagar = ContaPagarLista & {
+  linhaKey: string
+  valorLinha: number
+  saldoLinha: number
+}
+
+/**
+ * Expande títulos com várias parcelas em uma linha por duplicata (nDup, vencimento, valor).
+ * Título com 0–1 parcela permanece uma linha.
+ */
+export function expandirLinhasTitulosContaPagar(
+  contas: ContaPagarLista[]
+): LinhaTituloContaPagar[] {
+  const out: LinhaTituloContaPagar[] = []
+  for (const c of contas) {
+    const parcelas = c.parcelas ?? []
+    if (parcelas.length <= 1) {
+      const unica = parcelas[0]
+      out.push({
+        ...c,
+        linhaKey: c.id,
+        valorLinha: unica?.valor ?? c.valorTotal,
+        saldoLinha: unica?.saldoDevedor ?? c.saldoDevedor ?? c.valorTotal,
+        vencimento: unica?.vencimento ?? c.vencimento,
+        numeroDocumento: unica?.numeroDocumento ?? c.numeroDocumento,
+        parcelaId: unica?.id ?? c.parcelaId,
+      })
+      continue
+    }
+    for (const p of parcelas) {
+      out.push({
+        ...c,
+        linhaKey: `${c.id}:${p.id}`,
+        parcelaId: p.id,
+        vencimento: p.vencimento,
+        numeroDocumento: p.numeroDocumento ?? c.numeroDocumento,
+        valorLinha: p.valor,
+        saldoLinha: p.saldoDevedor,
+      })
+    }
+  }
+  return out
+}
+
+export function valorParcelaNaLista(
+  conta: ContaPagarLista,
+  parcelaId: string | null | undefined
+): number {
+  if (!parcelaId) return conta.valorTotal
+  const p = conta.parcelas?.find((x) => x.id === parcelaId)
+  return p?.valor ?? conta.valorTotal
+}
+
 export type ContaPagarBaixaItem = {
   id: string
   pagoEm: string
@@ -159,8 +213,8 @@ export function contaParaForm(conta: ContaPagarLista): FormContaPagar {
     pessoaId: conta.pessoaId ?? '',
     planoFinanceiroId: conta.planoFinanceiroId ?? '',
     numeroDocumento: conta.numeroDocumento ?? '',
-    dataEmissao: conta.dataEmissao ? conta.dataEmissao.slice(0, 10) : '',
-    vencimento: conta.vencimento ? conta.vencimento.slice(0, 10) : '',
+    dataEmissao: dataCivilDoIso(conta.dataEmissao) ?? '',
+    vencimento: dataCivilDoIso(conta.vencimento) ?? '',
     valorTotal: String(conta.valorTotal ?? ''),
     valorDesconto: String(conta.valorDesconto ?? 0),
     valorJuros: String(conta.valorJuros ?? 0),
@@ -223,14 +277,30 @@ export function classeLinhaStatusContaPagar(status: string, vencido: boolean): s
   return 'hover:bg-muted/40'
 }
 
+/** Extrai YYYY-MM-DD do ISO (prefixo) — evita deslocar um dia no fuso local. */
+export function dataCivilDoIso(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  const m = String(iso).match(/^(\d{4}-\d{2}-\d{2})/)
+  return m?.[1] ?? null
+}
+
 export function diasAteVencimento(iso: string | null | undefined): number | null {
   if (!iso) return null
-  const v = new Date(iso)
-  if (Number.isNaN(v.getTime())) return null
+  const civil = dataCivilDoIso(iso)
+  if (!civil) {
+    const v = new Date(iso)
+    if (Number.isNaN(v.getTime())) return null
+    const hoje = new Date()
+    hoje.setHours(0, 0, 0, 0)
+    v.setHours(0, 0, 0, 0)
+    return Math.round((v.getTime() - hoje.getTime()) / 86400000)
+  }
+  const [y, m, d] = civil.split('-').map(Number)
+  const venc = new Date(y, m - 1, d)
   const hoje = new Date()
   hoje.setHours(0, 0, 0, 0)
-  v.setHours(0, 0, 0, 0)
-  return Math.round((v.getTime() - hoje.getTime()) / 86400000)
+  venc.setHours(0, 0, 0, 0)
+  return Math.round((venc.getTime() - hoje.getTime()) / 86400000)
 }
 
 export function tituloVencido(status: string, vencimento: string | null | undefined): boolean {
@@ -265,6 +335,11 @@ export function formatarMoedaBr(valor: number): string {
 
 export function formatarDataBr(iso: string | null | undefined): string {
   if (!iso) return '—'
+  const civil = dataCivilDoIso(iso)
+  if (civil) {
+    const [y, m, d] = civil.split('-')
+    return `${d}/${m}/${y}`
+  }
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
   return d.toLocaleDateString('pt-BR')

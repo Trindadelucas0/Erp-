@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, Suspense } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { clienteHttp } from '@/services/api'
@@ -35,6 +35,7 @@ import {
   classeLinhaStatusContaPagar,
   contaParaForm,
   diasAteVencimento,
+  expandirLinhasTitulosContaPagar,
   formContaPagarVazio,
   formParaPayload,
   formatarCodigoContaPagar,
@@ -230,7 +231,8 @@ function ConteudoContasAPagar() {
     setModalAberto(true)
   }
 
-  function abrirEdicao(conta: ContaPagarLista) {
+  function abrirEdicao(contaOuLinha: ContaPagarLista) {
+    const conta = contas.find((c) => c.id === contaOuLinha.id) ?? contaOuLinha
     setEditando(conta)
     setForm(contaParaForm(conta))
     setErroForm(null)
@@ -301,6 +303,8 @@ function ConteudoContasAPagar() {
   const podeExcluirTitulo = Boolean(ehAdmin && editando && !somenteLeitura)
   const [aba, setAba] = useState('titulos')
   const [tokenHistorico, setTokenHistorico] = useState(0)
+
+  const linhasTitulos = useMemo(() => expandirLinhasTitulosContaPagar(contas), [contas])
 
   function aoMudarAba(nova: string) {
     setAba(nova)
@@ -469,53 +473,53 @@ function ConteudoContasAPagar() {
             <tbody>
               {carregando ? (
                 <LinhasSkeletonTabela colunas={11} linhas={6} />
-              ) : contas.length === 0 ? (
+              ) : linhasTitulos.length === 0 ? (
                 <tr>
                   <td colSpan={11} className="px-3 py-8 text-center text-muted-foreground">
                     Nenhum título encontrado.
                   </td>
                 </tr>
               ) : (
-                contas.map((conta) => {
-                  const vencido = tituloVencido(conta.status, conta.vencimento)
-                  const dias = diasAteVencimento(conta.vencimento)
-                  const saldo = conta.saldoDevedor ?? conta.valorTotal
+                linhasTitulos.map((linha) => {
+                  const vencido = tituloVencido(linha.status, linha.vencimento)
+                  const dias = diasAteVencimento(linha.vencimento)
+                  const saldo = linha.saldoLinha
                   return (
                   <tr
-                    key={conta.id}
-                    className={`cursor-pointer border-t ${classeLinhaStatusContaPagar(conta.status, vencido)}`}
-                    onClick={() => abrirEdicao(conta)}
+                    key={linha.linhaKey}
+                    className={`cursor-pointer border-t ${classeLinhaStatusContaPagar(linha.status, vencido)}`}
+                    onClick={() => abrirEdicao(linha)}
                   >
                     <td className="px-3 py-2 font-medium">
-                      {conta.codigoExibicao ?? formatarCodigoContaPagar(conta.codigo)}
+                      {linha.codigoExibicao ?? formatarCodigoContaPagar(linha.codigo)}
                     </td>
-                    <td className="px-3 py-2">{formatarDataBr(conta.dataEmissao)}</td>
+                    <td className="px-3 py-2">{formatarDataBr(linha.dataEmissao)}</td>
                     <td className="px-3 py-2">
                       <CelulaVencimentoContaPagar
-                        status={conta.status}
-                        vencimento={conta.vencimento}
-                        dataFormatada={formatarDataBr(conta.vencimento)}
+                        status={linha.status}
+                        vencimento={linha.vencimento}
+                        dataFormatada={formatarDataBr(linha.vencimento)}
                         dias={dias}
                       />
                     </td>
-                    <td className="px-3 py-2">{conta.pessoa?.nome ?? '—'}</td>
-                    <td className="px-3 py-2">{conta.numeroDocumento || '—'}</td>
-                    <td className="px-3 py-2 tabular-nums">{formatarMoedaBr(conta.valorTotal)}</td>
+                    <td className="px-3 py-2">{linha.pessoa?.nome ?? '—'}</td>
+                    <td className="px-3 py-2">{linha.numeroDocumento || '—'}</td>
+                    <td className="px-3 py-2 tabular-nums">{formatarMoedaBr(linha.valorLinha)}</td>
                     <td className="px-3 py-2 tabular-nums">
                       <span className={saldo <= 0.009 ? 'text-emerald-700' : undefined}>
                         {formatarMoedaBr(saldo)}
                       </span>
                     </td>
                     <td className="px-3 py-2">
-                      <BadgeTipoContaPagar tipo={conta.tipo} />
+                      <BadgeTipoContaPagar tipo={linha.tipo} />
                     </td>
                     <td className="px-3 py-2">
-                      <BadgeOrigemContaPagar origem={conta.origem} />
+                      <BadgeOrigemContaPagar origem={linha.origem} />
                     </td>
                     <td className="px-3 py-2">
-                      <BadgeStatusContaPagar status={conta.status} />
+                      <BadgeStatusContaPagar status={linha.status} />
                     </td>
-                    <td className="px-3 py-2">{formatarDataBr(conta.dataCadastro)}</td>
+                    <td className="px-3 py-2">{formatarDataBr(linha.dataCadastro)}</td>
                   </tr>
                   )
                 })
@@ -592,6 +596,8 @@ function ConteudoContasAPagar() {
           }
           erro={erroForm}
           contaId={editando?.id ?? null}
+          parcelas={editando?.parcelas}
+          origem={editando?.origem ?? null}
         />
       </Modal>
 

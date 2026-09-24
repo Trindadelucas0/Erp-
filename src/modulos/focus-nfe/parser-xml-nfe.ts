@@ -107,8 +107,17 @@ function atributoTag(aberturaComAttrs: string, nome: string): string | null {
   return m?.[1]?.trim() ?? null
 }
 
+/**
+ * Data só dia (YYYY-MM-DD / dVenc) → meio-dia UTC para o dia civil não
+ * deslocar no fuso do Brasil. Data com hora (dhEmi) permanece como veio.
+ */
 function parseDataEmissao(texto: string | null): Date | null {
   if (!texto) return null
+  const soDia = texto.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (soDia) {
+    const d = new Date(`${soDia[1]}-${soDia[2]}-${soDia[3]}T12:00:00.000Z`)
+    return Number.isNaN(d.getTime()) ? null : d
+  }
   const d = new Date(texto)
   return Number.isNaN(d.getTime()) ? null : d
 }
