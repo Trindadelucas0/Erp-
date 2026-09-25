@@ -28,8 +28,6 @@ export const BANDEIRAS_CARTAO: ReadonlyArray<{
   { codigo: 'hipercard', rotulo: 'Hipercard', rotuloSugestao: 'Hipercard' },
 ]
 
-export const PRAZOS_DIAS_TAXA_CARTAO = [1, 2, 7, 14, 21, 30, 45, 60] as const
-
 export function rotuloBandeira(codigo: string): string {
   return BANDEIRAS_CARTAO.find((b) => b.codigo === codigo)?.rotulo ?? codigo
 }

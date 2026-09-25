@@ -78,4 +78,28 @@ describe('esquema cartões de pagamento', () => {
     })
     expect(r.success).toBe(false)
   })
+
+  it('aceita prazo de 15 dias fora da lista antiga', () => {
+    const r = esquemaDeCriacaoDeCartao.safeParse({
+      bandeira: 'visa',
+      tipo: 'credito',
+      nomeExibicao: 'Visa Crédito',
+      adquirenteId,
+      permitirParcelamento: false,
+      taxas: [{ numeroParcelas: 1, taxaPercentual: 2, prazoDias: 15, valorFixo: 0 }],
+    })
+    expect(r.success).toBe(true)
+  })
+
+  it('rejeita prazo de 366 dias', () => {
+    const r = esquemaDeCriacaoDeCartao.safeParse({
+      bandeira: 'visa',
+      tipo: 'credito',
+      nomeExibicao: 'Visa Crédito',
+      adquirenteId,
+      permitirParcelamento: false,
+      taxas: [{ numeroParcelas: 1, taxaPercentual: 2, prazoDias: 366, valorFixo: 0 }],
+    })
+    expect(r.success).toBe(false)
+  })
 })

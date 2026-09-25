@@ -9,7 +9,7 @@ export type AdquirenteLista = {
 export type TaxaCartaoForm = {
   numeroParcelas: number
   taxaPercentual: string
-  prazoDias: number
+  prazoDias: number | ''
   valorFixo: string
 }
 

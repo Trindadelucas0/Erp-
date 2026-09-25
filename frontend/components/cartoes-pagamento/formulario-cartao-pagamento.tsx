@@ -9,10 +9,8 @@ import { Input } from '@/components/ui/input'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Label } from '@/components/ui/label'
 import { SelectPadrao } from '@/components/ui/select-padrao'
-import { classesSelectCompacto } from '@/components/ui/select'
 import {
   ehNomePadraoBandeira,
-  PRAZOS_DIAS_TAXA_CARTAO,
   sugerirNomeExibicao,
   type CodigoBandeiraCartao,
   type TipoCartaoPagamento,
@@ -265,10 +263,31 @@ export function FormularioCartaoPagamento({
         setErro('Valor fixo inválido')
         return
       }
+      if (t.prazoDias === '') {
+        setErro('Prazo inválido')
+        return
+      }
+      const prazoDias = Number(t.prazoDias)
+      if (!Number.isFinite(prazoDias)) {
+        setErro('Prazo inválido')
+        return
+      }
+      if (!Number.isInteger(prazoDias)) {
+        setErro('Prazo deve ser inteiro')
+        return
+      }
+      if (prazoDias < 0) {
+        setErro('Prazo deve ser maior ou igual a zero')
+        return
+      }
+      if (prazoDias > 365) {
+        setErro('Prazo deve ser no máximo 365 dias')
+        return
+      }
       taxasPayload.push({
         numeroParcelas: t.numeroParcelas,
         taxaPercentual,
-        prazoDias: t.prazoDias,
+        prazoDias,
         valorFixo,
       })
     }
@@ -476,20 +495,22 @@ export function FormularioCartaoPagamento({
                     </div>
                   </td>
                   <td className="px-3 py-2">
-                    <select
+                    <Input
+                      type="number"
+                      min={0}
+                      max={365}
+                      step={1}
                       value={t.prazoDias}
                       disabled={!podeSalvar}
-                      onChange={(e) =>
-                        atualizarTaxa(indice, { prazoDias: Number(e.target.value) })
-                      }
-                      className={classesSelectCompacto}
-                    >
-                      {PRAZOS_DIAS_TAXA_CARTAO.map((d) => (
-                        <option key={d} value={d}>
-                          {d}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(e) => {
+                        const bruto = e.target.value
+                        const n = Number(bruto)
+                        atualizarTaxa(indice, {
+                          prazoDias: bruto === '' || !Number.isFinite(n) ? '' : n,
+                        })
+                      }}
+                      className="w-24"
+                    />
                   </td>
                   <td className="px-3 py-2">
                     <div className="relative">
