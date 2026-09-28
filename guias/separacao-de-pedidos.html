@@ -147,27 +147,29 @@
 <section class="capa">
   <p class="olho">Guia do operador e do gestor</p>
   <h1>Separação de pedidos</h1>
-  <p>Como achar a tela, criar a ordem e separar o produto até concluir.</p>
+  <p>Como achar a tela, receber o pagamento e separar o produto até concluir.</p>
   <h2>O que precisa existir antes</h2>
   <ul class="lista">
-    <li>O usuário precisa ter a página <strong>Requisições</strong> liberada no papel. Sem isso, o menu não mostra a tela.</li>
+    <li>Quem recebe o pagamento precisa ver <strong>Vendas → Receber pagamento</strong>.</li>
+    <li>Quem separa precisa ver <strong>Logística → Separação de pedidos</strong>.</li>
     <li>O produto precisa estar cadastrado, com código ou código de barras. A leitura usa esse código.</li>
     <li>Precisa haver estoque disponível. Ao clicar <strong>Iniciar</strong>, o sistema reserva essa quantidade.</li>
-    <li>A ordem não nasce de pedido de venda. Alguém cria em <strong>Nova requisição</strong>, tipo <strong>Separação</strong>.</li>
+    <li>A ordem nasce ao clicar <strong>Confirmar pagamento</strong>. Uma Separação por produto, já <strong>Disponível</strong>. Enquanto a tela estiver em desenvolvimento, esse botão fica desabilitado.</li>
     <li>Cada ordem tem um produto e uma quantidade.</li>
   </ul>
   <div class="nota">
-    O menu não tem um item chamado Separação. O caminho é
-    <strong>Logística → Requisições → Separação de pedidos</strong>.
+    O caminho da fila é <strong>Logística → Separação de pedidos</strong>.
+    A ordem nasce em <strong>Vendas → Receber pagamento → Confirmar pagamento</strong>.
+    <strong>Em desenvolvimento:</strong> o botão <strong>Confirmar pagamento</strong> está desabilitado e não grava daqui.
   </div>
 </section>
 
 <section class="folha">
-  <h2>1. Achar a tela</h2>
+  <h2>1. Confirmar o pagamento</h2>
   <ol class="passos">
     <li>Abra o menu lateral.</li>
-    <li>Entre em <strong>Logística</strong>.</li>
-    <li>Clique em <strong>Requisições</strong>.</li>
+    <li>Entre em <strong>Vendas</strong>.</li>
+    <li>Clique em <strong>Receber pagamento</strong> e depois em <strong>Nova venda</strong>.</li>
   </ol>
   <div class="tela">
     <div class="barra">Menu do sistema</div>
@@ -175,54 +177,39 @@
       <nav class="menu">
         <div class="grupo">Cadastros</div>
         <div class="grupo">Vendas</div>
+        <div class="item">Orçamentos</div>
+        <div class="item ativo">Receber pagamento</div>
         <div class="grupo">Compras</div>
         <div class="grupo">Logística</div>
-        <div class="item">Contagens</div>
-        <div class="item">Estoque</div>
-        <div class="item">Endereços WMS</div>
-        <div class="item ativo">Requisições</div>
-        <div class="item">Guardar mercadorias</div>
+        <div class="item">Separação de pedidos</div>
         <div class="grupo">Financeiro</div>
       </nav>
       <div class="conteudo">
         <div class="faixa">
           <div>
-            <p class="titulo-tela">Requisições</p>
-            <p class="sub">Ordens do armazém — Separação reserva e baixa o estoque ao concluir.</p>
+            <p class="titulo-tela">Nova venda</p>
+            <p class="sub">Cliente, produto e quantidade. Sem preço e sem troco.</p>
           </div>
         </div>
         <div class="acoes">
-          <span class="btn destaque">Separação de pedidos</span>
-          <span class="btn forte">+ Nova requisição</span>
+          <span class="btn forte">Confirmar pagamento</span>
         </div>
-        <p class="sub">O botão destacado abre a fila. Nova requisição é quem cria a ordem. Quem não pode criar só vê Separação de pedidos.</p>
+        <p class="sub">O clique grava a venda paga e cria uma Separação por produto, já Disponível.</p>
       </div>
     </div>
   </div>
 </section>
 
 <section class="folha">
-  <h2>2. Criar a ordem</h2>
-  <p>Em <strong>Requisições</strong>, clique em <strong>Nova requisição</strong>. Preencha e salve.</p>
+  <h2>2. O que preencher</h2>
+  <p>Informe o cliente e ao menos um produto com quantidade. Depois clique em <strong>Confirmar pagamento</strong>.</p>
   <div class="tela">
-    <div class="barra">Nova requisição</div>
+    <div class="barra">Nova venda</div>
     <div class="conteudo" style="padding:12px">
       <div class="grade">
-        <div class="campo">
-          <label>Tipo de operação <span class="obrigatorio">*</span></label>
-          <div class="caixa">Separação</div>
-        </div>
-        <div class="campo">
-          <label>Prioridade <span class="obrigatorio">*</span></label>
-          <div class="caixa">3 — Normal</div>
-        </div>
-        <div class="campo">
-          <label>Origem</label>
-          <div class="caixa">A-01-02</div>
-        </div>
-        <div class="campo">
-          <label>Destino</label>
-          <div class="caixa">opcional</div>
+        <div class="campo largo">
+          <label>Cliente <span class="obrigatorio">*</span></label>
+          <div class="caixa">Maria</div>
         </div>
         <div class="campo">
           <label>Produto</label>
@@ -232,26 +219,19 @@
           <label>Quantidade</label>
           <div class="caixa">10</div>
         </div>
-        <div class="campo">
-          <label>Responsável</label>
-          <div class="caixa">Sem responsável</div>
-        </div>
-        <div class="campo largo">
-          <label>Observação</label>
-          <div class="caixa"></div>
-        </div>
       </div>
       <div class="rodape-botoes">
-        <span class="btn forte">Salvar</span>
+        <span class="btn">+ Item</span>
+        <span class="btn forte">Confirmar pagamento</span>
       </div>
     </div>
   </div>
   <div class="nota">
-    Obrigatórios: <strong>Tipo de operação</strong> e <strong>Prioridade</strong>.
-    Para separar, preencha também <strong>Produto</strong> e <strong>Quantidade</strong>.
-    <strong>Origem</strong> vira o endereço de coleta na tela do operador.
-    Sem responsável, a ordem fica <strong>Pendente</strong>.
-    Com responsável, fica <strong>Atribuída</strong> e aparece na fila dessa pessoa.
+    <strong>Em desenvolvimento:</strong> <strong>Confirmar pagamento</strong> está desabilitado e não grava daqui.
+    Sem cliente ou sem produto com quantidade, o pagamento não confirma.
+    O mesmo produto em duas linhas vira uma Separação com a quantidade somada.
+    Dois produtos distintos viram duas Separações.
+    A lista mostra: <strong>Pagamento confirmado. Separações 31 e 32 estão em Separação de pedidos.</strong>
   </div>
 </section>
 
@@ -277,14 +257,14 @@
 
 <section class="folha">
   <h2>4. Abrir a fila</h2>
-  <p>Na lista de Requisições, clique em <strong>Separação de pedidos</strong>.</p>
+  <p>Na lista de Requisições, ou direto no menu, clique em <strong>Separação de pedidos</strong>. A ordem que nasceu no pagamento já entra em <strong>Minha fila</strong>, Disponível e sem responsável.</p>
   <div class="tela">
     <div class="barra">Separação de pedidos</div>
     <div class="conteudo" style="padding:12px">
       <div class="faixa">
         <div>
           <p class="titulo-tela">Separação de pedidos</p>
-          <p class="sub">Fila de Separação. Cada ordem continua criada em Requisições.</p>
+          <p class="sub">Fila de Separação. A ordem do pagamento chega Disponível, sem responsável.</p>
         </div>
         <div class="acoes" style="margin:0">
           <span class="btn forte">Minha fila</span>
@@ -414,8 +394,8 @@
     </div>
   </div>
   <div class="nota">
-    Resumo do caminho: <strong>Logística → Requisições → Separação de pedidos</strong>.
-    Crie a ordem, disponibilize se estiver Pendente, inicie, bipe até completar e conclua.
+    Resumo do caminho: <strong>Vendas → Receber pagamento → Confirmar pagamento</strong>, depois <strong>Logística → Separação de pedidos</strong>.
+    Inicie, bipe até completar e conclua.
   </div>
 </section>
 

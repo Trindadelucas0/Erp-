@@ -34,10 +34,10 @@ describe('GRUPOS_DO_MENU', () => {
     expect(compras?.chaves).not.toContain('contagens')
   })
 
-  it('Vendas agrupa só orçamentos', () => {
+  it('Vendas agrupa orçamentos e receber pagamento', () => {
     const vendas = GRUPOS_DO_MENU.find((grupo) => grupo.id === 'vendas')
     expect(vendas?.rotulo).toBe('Vendas')
-    expect(vendas?.chaves).toEqual(['orcamentos'])
+    expect(vendas?.chaves).toEqual(['orcamentos', 'receber-pagamento'])
   })
 })
 

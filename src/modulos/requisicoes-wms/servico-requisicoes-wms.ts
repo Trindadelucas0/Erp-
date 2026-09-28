@@ -353,6 +353,9 @@ async function criar(companyId: string, usuarioId: string, dados: DadosCorpoRequ
       400
     )
   }
+  if (dados.tipoOperacao === 'separacao') {
+    throw new ErroDaAplicacao('Separação só é criada ao confirmar o pagamento.', 400)
+  }
   await validarVinculos(companyId, dados)
   const status = dados.responsavelId ? 'atribuida' : 'pendente'
   const row = await repositorioDeRequisicoesWms.criar(companyId, {
@@ -431,6 +434,9 @@ async function editar(
       'Guardar mercadorias não pode ser criado nem alterado por esta tela.',
       400
     )
+  }
+  if (dados.tipoOperacao === 'separacao' && atual.tipoOperacao !== 'separacao') {
+    throw new ErroDaAplicacao('Separação só é criada ao confirmar o pagamento.', 400)
   }
   const reserva = await reservaAindaAtiva(companyId, id)
   const emExecucao = atual.status === 'em_execucao' || atual.status === 'pausada'

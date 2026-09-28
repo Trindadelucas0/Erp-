@@ -496,17 +496,14 @@ export function FormularioCartaoPagamento({
                   </td>
                   <td className="px-3 py-2">
                     <Input
-                      type="number"
-                      min={0}
-                      max={365}
-                      step={1}
+                      inputMode="numeric"
+                      autoComplete="off"
                       value={t.prazoDias}
                       disabled={!podeSalvar}
                       onChange={(e) => {
-                        const bruto = e.target.value
-                        const n = Number(bruto)
+                        const bruto = e.target.value.replace(/\D/g, '')
                         atualizarTaxa(indice, {
-                          prazoDias: bruto === '' || !Number.isFinite(n) ? '' : n,
+                          prazoDias: bruto === '' ? '' : Number(bruto),
                         })
                       }}
                       className="w-24"

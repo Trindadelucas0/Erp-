@@ -56,6 +56,8 @@ describe('tipos de operação', () => {
   it('não oferece Contagem de entrada nem Guardar na criação manual', () => {
     expect(OPCOES_TIPO_OPERACAO.some((o) => o.value === 'contagem_entrada')).toBe(false)
     expect(OPCOES_TIPO_OPERACAO.some((o) => o.value === 'armazenagem')).toBe(false)
+    expect(OPCOES_TIPO_OPERACAO.some((o) => o.value === 'separacao')).toBe(false)
+    expect(OPCOES_TIPO_OPERACAO[0]?.value).toBe('reposicao')
     expect(ROTULO_TIPO_OPERACAO.contagem_entrada).toBe('Contagem de entrada')
     expect(ROTULO_TIPO_OPERACAO.armazenagem).toBe('Guardar mercadorias')
   })

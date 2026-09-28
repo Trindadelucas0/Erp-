@@ -41,6 +41,7 @@ model Company {
   produtos                    Produto[]
   pedidosCompra               PedidoCompra[]
   orcamentos                  Orcamento[]
+  vendasCaixa                 VendaCaixa[]
   creditosFornecedor          CreditoFornecedor[]
   pendenciasFornecedor        PendenciaFornecedor[]
   movimentosCreditoFornecedor CreditoFornecedorMovimento[]
@@ -1125,6 +1126,7 @@ model Produto {
   contagensEntradaItens ContagemEntradaItem[]
   recorrenciasFinanceiras RecorrenciaFinanceira[]
   requisicoesWms          RequisicaoWms[]
+  vendasCaixaItens        VendaCaixaItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1672,6 +1674,8 @@ model RequisicaoWms {
   observacao           String?
   nfeRecebidaId        String?
   nfeRecebida          NfeRecebida? @relation(fields: [nfeRecebidaId], references: [id], onDelete: SetNull)
+  vendaCaixaId         String?
+  vendaCaixa           VendaCaixa? @relation(fields: [vendaCaixaId], references: [id], onDelete: SetNull)
   iniciadoEm           DateTime?
   pausadoEm            DateTime?
   concluidoEm          DateTime?
@@ -1684,6 +1688,7 @@ model RequisicaoWms {
   @@index([companyId, responsavelId, status])
   @@index([companyId, prioridade, createdAt])
   @@index([companyId, nfeRecebidaId])
+  @@index([companyId, vendaCaixaId])
 }
 
 model RequisicaoWmsEvento {
@@ -1776,4 +1781,34 @@ model OrcamentoItem {
   percentualDesconto Decimal   @default(0) @db.Decimal(15, 4)
 
   @@index([orcamentoId])
+}
+
+/// Venda já paga no caixa. Não é pedido de venda e não guarda preço.
+model VendaCaixa {
+  id          String           @id @default(uuid())
+  companyId   String
+  company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  numero      Int
+  clienteNome String
+  /// paga
+  status      String           @default("paga")
+  pagaEm      DateTime         @default(now())
+  itens       VendaCaixaItem[]
+  requisicoes RequisicaoWms[]
+  createdAt   DateTime         @default(now())
+
+  @@unique([companyId, numero])
+  @@index([companyId, pagaEm])
+}
+
+model VendaCaixaItem {
+  id           String     @id @default(uuid())
+  vendaCaixaId String
+  vendaCaixa   VendaCaixa @relation(fields: [vendaCaixaId], references: [id], onDelete: Cascade)
+  produtoId    String
+  produto      Produto    @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  quantidade   Decimal    @db.Decimal(18, 4)
+
+  @@index([vendaCaixaId])
+  @@index([produtoId])
 }

@@ -119,7 +119,7 @@ describe('servicoDeRequisicoesWms', () => {
   it('recusa empresa vazia', async () => {
     await expect(
       servicoDeRequisicoesWms.criar('', 'u1', {
-        tipoOperacao: 'separacao',
+        tipoOperacao: 'reposicao',
         prioridade: 1,
         origemEnderecoId: null,
         destinoEnderecoId: null,
@@ -134,7 +134,7 @@ describe('servicoDeRequisicoesWms', () => {
   it('cria pendente sem responsável e atribuída com responsável', async () => {
     vi.mocked(repositorioDeRequisicoesWms.criar).mockResolvedValue(row() as never)
     await servicoDeRequisicoesWms.criar('c1', 'u1', {
-      tipoOperacao: 'separacao',
+      tipoOperacao: 'reposicao',
       prioridade: 1,
       origemEnderecoId: null,
       destinoEnderecoId: null,
@@ -152,7 +152,7 @@ describe('servicoDeRequisicoesWms', () => {
       row({ status: 'atribuida', responsavelId: 'u2' }) as never
     )
     await servicoDeRequisicoesWms.criar('c1', 'u1', {
-      tipoOperacao: 'separacao',
+      tipoOperacao: 'reposicao',
       prioridade: 2,
       origemEnderecoId: null,
       destinoEnderecoId: null,
@@ -481,6 +481,25 @@ describe('servicoDeRequisicoesWms', () => {
         observacao: null,
       })
     ).rejects.toMatchObject({ statusCode: 400 })
+    expect(repositorioDeRequisicoesWms.criar).not.toHaveBeenCalled()
+  })
+
+  it('POST criar recusa tipo separacao', async () => {
+    await expect(
+      servicoDeRequisicoesWms.criar('c1', 'u1', {
+        tipoOperacao: 'separacao',
+        prioridade: 3,
+        origemEnderecoId: null,
+        destinoEnderecoId: null,
+        produtoId: 'p1',
+        quantidade: 1,
+        responsavelId: null,
+        observacao: null,
+      })
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'Separação só é criada ao confirmar o pagamento.',
+    })
     expect(repositorioDeRequisicoesWms.criar).not.toHaveBeenCalled()
   })
 

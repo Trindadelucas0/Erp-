@@ -9,6 +9,7 @@ import { clienteHttp } from '@/services/api'
 import {
   OPCOES_PRIORIDADE,
   OPCOES_TIPO_OPERACAO,
+  ROTULO_TIPO_OPERACAO,
   type RequisicaoWms,
 } from '@/lib/requisicoes-wms'
 
@@ -25,7 +26,7 @@ export type FormRequisicao = {
 
 export function formVazioRequisicao(): FormRequisicao {
   return {
-    tipoOperacao: 'separacao',
+    tipoOperacao: 'reposicao',
     prioridade: '3',
     origemEnderecoId: '',
     destinoEnderecoId: '',
@@ -113,6 +114,11 @@ export function FormularioCamposRequisicao({ form, aoMudar, operadores, disabled
     aoMudar({ ...form, ...parcial })
   }
 
+  const separacaoJaGravada = form.tipoOperacao === 'separacao'
+  const opcoesTipo = separacaoJaGravada
+    ? [{ value: 'separacao', label: ROTULO_TIPO_OPERACAO.separacao }, ...OPCOES_TIPO_OPERACAO]
+    : OPCOES_TIPO_OPERACAO
+
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <SelectPadrao
@@ -120,8 +126,8 @@ export function FormularioCamposRequisicao({ form, aoMudar, operadores, disabled
         obrigatorio
         valor={form.tipoOperacao}
         aoMudar={(tipoOperacao) => patch({ tipoOperacao })}
-        opcoes={OPCOES_TIPO_OPERACAO}
-        disabled={disabled}
+        opcoes={opcoesTipo}
+        disabled={disabled || separacaoJaGravada}
       />
       <SelectPadrao
         rotulo="Prioridade"

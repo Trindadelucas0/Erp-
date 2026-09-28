@@ -56,6 +56,10 @@ describe('montarPaginasPermitidasParaUsuario', () => {
 
     const vendedor = montarPaginasPermitidasParaUsuario(false, [], ['vendas:view']).map((p) => p.chave)
     expect(vendedor).toContain('orcamentos')
+    expect(vendedor).toContain('receber-pagamento')
     expect(listarPaginasVinculaveis().find((p) => p.chave === 'orcamentos')?.modulo).toBe('vendas')
+    expect(listarPaginasVinculaveis().find((p) => p.chave === 'receber-pagamento')?.rotulo).toBe(
+      'Receber pagamento'
+    )
   })
 })

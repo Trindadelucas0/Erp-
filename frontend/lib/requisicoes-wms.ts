@@ -25,7 +25,7 @@ export const ROTULO_TIPO_OPERACAO: Record<TipoOperacaoRequisicao, string> = {
 }
 
 export const OPCOES_TIPO_OPERACAO = TIPOS_OPERACAO_REQUISICAO.filter(
-  (value) => value !== 'contagem_entrada' && value !== 'armazenagem'
+  (value) => value !== 'contagem_entrada' && value !== 'armazenagem' && value !== 'separacao'
 ).map((value) => ({
   value,
   label: ROTULO_TIPO_OPERACAO[value],

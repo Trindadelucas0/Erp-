@@ -51,6 +51,12 @@ export const PAGINAS_VINCULAVEIS: readonly PaginaDoSistema[] = [
     modulo: 'vendas',
   },
   {
+    chave: 'receber-pagamento',
+    caminho: '/receber-pagamento',
+    rotulo: 'Receber pagamento',
+    modulo: 'vendas',
+  },
+  {
     chave: 'pedidos-compra',
     caminho: '/pedidos-compra',
     rotulo: 'Pedidos de Compra',
