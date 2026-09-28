@@ -45,6 +45,12 @@ export const PAGINAS_VINCULAVEIS: readonly PaginaDoSistema[] = [
     modulo: 'produtos',
   },
   {
+    chave: 'orcamentos',
+    caminho: '/orcamentos',
+    rotulo: 'Orçamentos',
+    modulo: 'vendas',
+  },
+  {
     chave: 'pedidos-compra',
     caminho: '/pedidos-compra',
     rotulo: 'Pedidos de Compra',
@@ -90,6 +96,12 @@ export const PAGINAS_VINCULAVEIS: readonly PaginaDoSistema[] = [
     chave: 'guardar-mercadorias',
     caminho: '/guardar-mercadorias',
     rotulo: 'Guardar mercadorias',
+    modulo: 'estoque',
+  },
+  {
+    chave: 'separacao',
+    caminho: '/separacao',
+    rotulo: 'Separação de pedidos',
     modulo: 'estoque',
   },
   {
@@ -238,6 +250,11 @@ export function montarPaginasPermitidasParaUsuario(
   ) {
     const config = resolverPaginaPorChave('configuracoes')
     if (config) paginasPorChave.set('configuracoes', config)
+  }
+
+  if (paginasPorChave.has('requisicoes') && !paginasPorChave.has('separacao')) {
+    const separacao = resolverPaginaPorChave('separacao')
+    if (separacao) paginasPorChave.set('separacao', separacao)
   }
 
   const temPendencias =

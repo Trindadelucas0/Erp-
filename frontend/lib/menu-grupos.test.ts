@@ -11,6 +11,7 @@ const paginas: PaginaDoSistema[] = [
   { chave: 'enderecos-wms', caminho: '/enderecos-wms', rotulo: 'Endereços WMS' },
   { chave: 'requisicoes', caminho: '/requisicoes', rotulo: 'Requisições' },
   { chave: 'guardar-mercadorias', caminho: '/guardar-mercadorias', rotulo: 'Guardar mercadorias' },
+  { chave: 'separacao', caminho: '/separacao', rotulo: 'Separação de pedidos' },
 ]
 
 describe('GRUPOS_DO_MENU', () => {
@@ -23,6 +24,7 @@ describe('GRUPOS_DO_MENU', () => {
       'enderecos-wms',
       'requisicoes',
       'guardar-mercadorias',
+      'separacao',
     ])
   })
 
@@ -30,6 +32,12 @@ describe('GRUPOS_DO_MENU', () => {
     const compras = GRUPOS_DO_MENU.find((grupo) => grupo.id === 'compras')
     expect(compras?.chaves).toEqual(['pedidos-compra', 'entrada-notas', 'auditoria-entradas'])
     expect(compras?.chaves).not.toContain('contagens')
+  })
+
+  it('Vendas agrupa só orçamentos', () => {
+    const vendas = GRUPOS_DO_MENU.find((grupo) => grupo.id === 'vendas')
+    expect(vendas?.rotulo).toBe('Vendas')
+    expect(vendas?.chaves).toEqual(['orcamentos'])
   })
 })
 
@@ -57,6 +65,7 @@ describe('montarEntradasDoMenu', () => {
       'enderecos-wms',
       'requisicoes',
       'guardar-mercadorias',
+      'separacao',
     ])
   })
 })

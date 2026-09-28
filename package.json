@@ -1,6 +1,6 @@
 {
   "name": "erp",
-  "version": "1.21.2",
+  "version": "1.22.2",
   "private": true,
   "type": "module",
   "scripts": {

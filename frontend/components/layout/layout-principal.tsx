@@ -26,7 +26,7 @@ export function LayoutPrincipal({ children }: Props) {
         <SheetContent
           side="left"
           showCloseButton={false}
-          className="h-full w-64 max-w-[85vw] gap-0 p-0 sm:max-w-sm"
+          className="h-full w-64 max-w-[85vw] gap-0 p-0 print:hidden sm:max-w-sm"
         >
           <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
           <BarraLateral

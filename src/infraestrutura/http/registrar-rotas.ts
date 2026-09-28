@@ -26,6 +26,7 @@ import { rotasContagens } from '../../modulos/contagens/rotas-contagens.js'
 import { rotasDeIntegracoes } from '../../modulos/integracoes/rotas-integracoes.js'
 import { rotasDeProdutos } from '../../modulos/produtos/rotas-produtos.js'
 import { rotasDePedidosCompra } from '../../modulos/pedidos-compra/rotas-pedidos-compra.js'
+import { rotasDeOrcamentos } from '../../modulos/orcamentos/rotas-orcamentos.js'
 import { rotasDeEstoque } from '../../modulos/estoque/rotas-estoque.js'
 import { rotasDeContasAPagar } from '../../modulos/contas-a-pagar/rotas-contas-a-pagar.js'
 import { rotasDeContasAReceber } from '../../modulos/contas-a-receber/rotas-contas-a-receber.js'
@@ -51,6 +52,7 @@ export async function registrarRotas(aplicacao: FastifyInstance): Promise<void> 
   await aplicacao.register(rotasDeTransportadoras, { prefix: '/transportadoras' })
   await aplicacao.register(rotasDeProdutos, { prefix: '/produtos' })
   await aplicacao.register(rotasDePedidosCompra, { prefix: '/pedidos-compra' })
+  await aplicacao.register(rotasDeOrcamentos, { prefix: '/orcamentos' })
   await aplicacao.register(rotasDeEstoque, { prefix: '/estoque' })
   await aplicacao.register(rotasDeContasAPagar, { prefix: '/contas-a-pagar' })
   await aplicacao.register(rotasDeContasAReceber, { prefix: '/contas-a-receber' })

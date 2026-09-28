@@ -14,7 +14,7 @@ import { formatarNumeroRequisicao, type RequisicaoWms } from '@/lib/requisicoes-
 
 export default function PaginaSeparacaoItem() {
   return (
-    <ProtegerRota chaveDaPagina="requisicoes">
+    <ProtegerRota chaveDaPagina="separacao" chavesDaPagina={['requisicoes']}>
       <Conteudo />
     </ProtegerRota>
   )

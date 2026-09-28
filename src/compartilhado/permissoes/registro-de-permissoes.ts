@@ -11,6 +11,7 @@ export const MODULOS_DO_SISTEMA = {
   transportadoras: 'Transportadoras',
   produtos: 'Produtos',
   compras: 'Compras',
+  vendas: 'Vendas',
   estoque: 'Estoque',
   financeiro: 'Financeiro',
   relatorios: 'Relatórios',
@@ -54,6 +55,9 @@ export const PERMISSOES_PADRAO_POR_PAPEL: Record<NomeDoPapel, string[]> = {
     'fornecedores:view',
     'produtos:view',
     'estoque:view',
+    'vendas:view',
+    'vendas:create',
+    'vendas:edit',
   ],
   financeiro: [
     'cadastros:view',

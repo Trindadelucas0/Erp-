@@ -28,7 +28,7 @@ export function DockPendencias({ itens, total, tela, ocultos, aoFechar }: Props)
     <div
       role="region"
       aria-label="Pendências desta tela"
-      className="pointer-events-none fixed bottom-3 left-3 z-40 flex w-[min(100vw-1.5rem,20rem)] flex-col-reverse gap-2"
+      className="pointer-events-none fixed bottom-3 left-3 z-40 flex w-[min(100vw-1.5rem,20rem)] flex-col-reverse gap-2 print:hidden"
     >
       {restantes > 0 && (
         <div className="pointer-events-auto">

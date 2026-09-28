@@ -40,6 +40,7 @@ model Company {
   despesasEntradaDocumento    DespesaEntradaDocumento[]
   produtos                    Produto[]
   pedidosCompra               PedidoCompra[]
+  orcamentos                  Orcamento[]
   creditosFornecedor          CreditoFornecedor[]
   pendenciasFornecedor        PendenciaFornecedor[]
   movimentosCreditoFornecedor CreditoFornecedorMovimento[]
@@ -1717,4 +1718,62 @@ model ParametrizacaoCustoVenda {
   aliquotaIbs                  Decimal? @db.Decimal(18, 4)
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
+}
+
+// ─── Orçamento (proposta de venda; não gera pedido) ─────────────────────────
+
+model Orcamento {
+  id                String          @id @default(uuid())
+  companyId         String
+  company           Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  numero            String
+  data              DateTime        @db.Date
+  validade          DateTime?       @db.Date
+  /// em_elaboracao | enviado | aprovado
+  status            String          @default("em_elaboracao")
+  vendedorId        String          @default("")
+  clienteCodigo     String          @default("")
+  clienteNome       String          @default("")
+  cnpj              String          @default("")
+  telefone          String          @default("")
+  email             String          @default("")
+  contato           String          @default("")
+  condicaoPagamento String          @default("")
+  prazoEntrega      String          @default("")
+  frete             String          @default("")
+  mensagem          String          @default("")
+  descontoTotal     Decimal         @default(0) @db.Decimal(15, 2)
+  valorFrete        Decimal         @default(0) @db.Decimal(15, 2)
+  outrasDespesas    Decimal         @default(0) @db.Decimal(15, 2)
+  converterEmPedido Boolean         @default(false)
+  cep               String          @default("")
+  logradouro        String          @default("")
+  numeroEndereco    String          @default("")
+  bairro            String          @default("")
+  cidade            String          @default("")
+  uf                String          @default("")
+  complementares    String          @default("")
+  observacoes       String          @default("")
+  itens             OrcamentoItem[]
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([companyId, numero])
+  @@index([companyId, updatedAt])
+}
+
+model OrcamentoItem {
+  id                 String    @id @default(uuid())
+  orcamentoId        String
+  orcamento          Orcamento @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
+  ordem              Int       @default(0)
+  codigo             String    @default("")
+  descricao          String    @default("")
+  ncm                String    @default("")
+  quantidade         Decimal   @db.Decimal(15, 4)
+  unidade            String    @default("UN")
+  precoUnitario      Decimal   @db.Decimal(15, 4)
+  percentualDesconto Decimal   @default(0) @db.Decimal(15, 4)
+
+  @@index([orcamentoId])
 }

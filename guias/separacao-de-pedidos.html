@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Separação de pedidos — passo a passo</title>
+  <style>
+    @page { size: A4; margin: 12mm 14mm; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: #1a1a1a;
+      font-family: "Segoe UI", Arial, sans-serif;
+      font-size: 11pt;
+      line-height: 1.4;
+    }
+    h1 { font-size: 20pt; margin: 0 0 4px; }
+    h2 { font-size: 14pt; margin: 0 0 8px; }
+    p { margin: 0 0 8px; }
+    .capa { page-break-after: always; }
+    .folha { page-break-after: always; }
+    .folha:last-child { page-break-after: auto; }
+    .olho { color: #555; font-size: 10pt; margin-bottom: 14px; }
+    ol.passos { margin: 0 0 10px 18px; padding: 0; }
+    ol.passos li { margin-bottom: 4px; }
+    .nota {
+      border-left: 3px solid #222;
+      padding: 6px 10px;
+      margin: 8px 0 0;
+      background: #f6f6f6;
+      font-size: 10.5pt;
+    }
+    .tela {
+      border: 2px solid #222;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    .barra {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #f3f3f3;
+      border-bottom: 1px solid #ccc;
+      padding: 6px 10px;
+      font-size: 9pt;
+      color: #444;
+    }
+    .miolo { display: flex; min-height: 210px; }
+    .menu {
+      width: 168px;
+      border-right: 1px solid #ccc;
+      background: #fafafa;
+      padding: 8px;
+      font-size: 10pt;
+    }
+    .grupo { font-size: 9pt; color: #666; margin: 8px 0 2px; }
+    .item { padding: 4px 6px; border-radius: 4px; }
+    .item.ativo { background: #222; color: #fff; font-weight: 600; }
+    .conteudo { flex: 1; padding: 10px 12px; }
+    .titulo-tela { font-size: 13pt; font-weight: 700; margin: 0; }
+    .sub { color: #555; font-size: 9.5pt; margin: 2px 0 8px; }
+    .acoes { display: flex; gap: 6px; justify-content: flex-end; margin-bottom: 8px; }
+    .btn {
+      display: inline-block;
+      border: 1.5px solid #222;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 9.5pt;
+      background: #fff;
+    }
+    .btn.forte { background: #222; color: #fff; }
+    .btn.destaque { outline: 2px solid #222; outline-offset: 1px; }
+    table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+    th, td { border-bottom: 1px solid #ddd; text-align: left; padding: 5px 4px; }
+    th { color: #555; font-weight: 600; }
+    .link { color: #222; text-decoration: underline; font-weight: 600; }
+    .grade { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .campo label { display: block; font-size: 8.5pt; color: #555; margin-bottom: 2px; }
+    .campo .caixa {
+      border: 1.5px solid #222;
+      border-radius: 4px;
+      padding: 4px 6px;
+      min-height: 22px;
+      font-size: 10pt;
+      background: #fff;
+    }
+    .campo.largo { grid-column: 1 / -1; }
+    .obrigatorio { color: #222; }
+    .faixa {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .passos-tela { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin: 8px 0; }
+    .passo {
+      border: 1.5px solid #ccc;
+      border-radius: 6px;
+      padding: 5px 6px;
+      font-size: 9pt;
+    }
+    .passo.atual { border-color: #222; background: #f3f3f3; font-weight: 600; }
+    .num {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 1px solid currentColor;
+      border-radius: 50%;
+      text-align: center;
+      font-size: 8pt;
+      line-height: 13px;
+      margin-right: 4px;
+    }
+    .layout { display: grid; grid-template-columns: 1fr 150px; gap: 8px; }
+    .card { border: 1.5px solid #ccc; border-radius: 6px; padding: 8px; }
+    .endereco {
+      border: 2px solid #222;
+      border-radius: 6px;
+      text-align: center;
+      padding: 8px;
+      min-width: 110px;
+    }
+    .endereco small { display: block; font-size: 8pt; letter-spacing: 0.04em; text-transform: uppercase; color: #555; }
+    .endereco strong { font-family: Consolas, monospace; font-size: 14pt; }
+    .linha-item { display: flex; justify-content: space-between; gap: 8px; }
+    .bip { display: flex; gap: 6px; align-items: flex-end; margin-top: 8px; }
+    .bip .campo { flex: 1; }
+    .barra-prog { height: 8px; background: #e6e6e6; border-radius: 99px; overflow: hidden; margin: 6px 0; }
+    .barra-prog span { display: block; height: 100%; width: 0; background: #222; }
+    .alerta {
+      border: 2px solid #222;
+      border-radius: 6px;
+      padding: 8px;
+      margin-top: 8px;
+      background: #f6f6f6;
+    }
+    .alerta strong { display: block; }
+    .rodape-botoes { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+    .vazio { text-align: center; color: #555; padding: 18px 8px; }
+    ul.lista { margin: 0 0 8px 18px; padding: 0; }
+    ul.lista li { margin-bottom: 3px; }
+  </style>
+</head>
+<body>
+
+<section class="capa">
+  <p class="olho">Guia do operador e do gestor</p>
+  <h1>Separação de pedidos</h1>
+  <p>Como achar a tela, criar a ordem e separar o produto até concluir.</p>
+  <h2>O que precisa existir antes</h2>
+  <ul class="lista">
+    <li>O usuário precisa ter a página <strong>Requisições</strong> liberada no papel. Sem isso, o menu não mostra a tela.</li>
+    <li>O produto precisa estar cadastrado, com código ou código de barras. A leitura usa esse código.</li>
+    <li>Precisa haver estoque disponível. Ao clicar <strong>Iniciar</strong>, o sistema reserva essa quantidade.</li>
+    <li>A ordem não nasce de pedido de venda. Alguém cria em <strong>Nova requisição</strong>, tipo <strong>Separação</strong>.</li>
+    <li>Cada ordem tem um produto e uma quantidade.</li>
+  </ul>
+  <div class="nota">
+    O menu não tem um item chamado Separação. O caminho é
+    <strong>Logística → Requisições → Separação de pedidos</strong>.
+  </div>
+</section>
+
+<section class="folha">
+  <h2>1. Achar a tela</h2>
+  <ol class="passos">
+    <li>Abra o menu lateral.</li>
+    <li>Entre em <strong>Logística</strong>.</li>
+    <li>Clique em <strong>Requisições</strong>.</li>
+  </ol>
+  <div class="tela">
+    <div class="barra">Menu do sistema</div>
+    <div class="miolo">
+      <nav class="menu">
+        <div class="grupo">Cadastros</div>
+        <div class="grupo">Vendas</div>
+        <div class="grupo">Compras</div>
+        <div class="grupo">Logística</div>
+        <div class="item">Contagens</div>
+        <div class="item">Estoque</div>
+        <div class="item">Endereços WMS</div>
+        <div class="item ativo">Requisições</div>
+        <div class="item">Guardar mercadorias</div>
+        <div class="grupo">Financeiro</div>
+      </nav>
+      <div class="conteudo">
+        <div class="faixa">
+          <div>
+            <p class="titulo-tela">Requisições</p>
+            <p class="sub">Ordens do armazém — Separação reserva e baixa o estoque ao concluir.</p>
+          </div>
+        </div>
+        <div class="acoes">
+          <span class="btn destaque">Separação de pedidos</span>
+          <span class="btn forte">+ Nova requisição</span>
+        </div>
+        <p class="sub">O botão destacado abre a fila. Nova requisição é quem cria a ordem. Quem não pode criar só vê Separação de pedidos.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="folha">
+  <h2>2. Criar a ordem</h2>
+  <p>Em <strong>Requisições</strong>, clique em <strong>Nova requisição</strong>. Preencha e salve.</p>
+  <div class="tela">
+    <div class="barra">Nova requisição</div>
+    <div class="conteudo" style="padding:12px">
+      <div class="grade">
+        <div class="campo">
+          <label>Tipo de operação <span class="obrigatorio">*</span></label>
+          <div class="caixa">Separação</div>
+        </div>
+        <div class="campo">
+          <label>Prioridade <span class="obrigatorio">*</span></label>
+          <div class="caixa">3 — Normal</div>
+        </div>
+        <div class="campo">
+          <label>Origem</label>
+          <div class="caixa">A-01-02</div>
+        </div>
+        <div class="campo">
+          <label>Destino</label>
+          <div class="caixa">opcional</div>
+        </div>
+        <div class="campo">
+          <label>Produto</label>
+          <div class="caixa">Parafuso sextavado</div>
+        </div>
+        <div class="campo">
+          <label>Quantidade</label>
+          <div class="caixa">10</div>
+        </div>
+        <div class="campo">
+          <label>Responsável</label>
+          <div class="caixa">Sem responsável</div>
+        </div>
+        <div class="campo largo">
+          <label>Observação</label>
+          <div class="caixa"></div>
+        </div>
+      </div>
+      <div class="rodape-botoes">
+        <span class="btn forte">Salvar</span>
+      </div>
+    </div>
+  </div>
+  <div class="nota">
+    Obrigatórios: <strong>Tipo de operação</strong> e <strong>Prioridade</strong>.
+    Para separar, preencha também <strong>Produto</strong> e <strong>Quantidade</strong>.
+    <strong>Origem</strong> vira o endereço de coleta na tela do operador.
+    Sem responsável, a ordem fica <strong>Pendente</strong>.
+    Com responsável, fica <strong>Atribuída</strong> e aparece na fila dessa pessoa.
+  </div>
+</section>
+
+<section class="folha">
+  <h2>3. Liberar a ordem pendente</h2>
+  <p>Ordem <strong>Pendente</strong> e sem responsável não entra em <strong>Minha fila</strong>. Abra a ficha e clique em <strong>Disponibilizar</strong>.</p>
+  <div class="tela">
+    <div class="barra">Ficha da requisição · status Pendente</div>
+    <div class="conteudo" style="padding:12px">
+      <p class="titulo-tela">Requisição 12</p>
+      <p class="sub">Pendente · Separação · Parafuso sextavado · 10 UN</p>
+      <div class="acoes" style="justify-content:flex-start">
+        <span class="btn forte destaque">Disponibilizar</span>
+      </div>
+      <p class="sub">Depois de disponibilizar, o status fica Disponível. Aí a ordem entra em Minha fila de quem for separar, mesmo sem responsável.</p>
+    </div>
+  </div>
+  <div class="nota">
+    Quem gerencia a lista usa <strong>Todas da empresa</strong>.
+    O operador comum entra em <strong>Minha fila</strong>: só o que está atribuído a ele, ou disponível e sem dono.
+  </div>
+</section>
+
+<section class="folha">
+  <h2>4. Abrir a fila</h2>
+  <p>Na lista de Requisições, clique em <strong>Separação de pedidos</strong>.</p>
+  <div class="tela">
+    <div class="barra">Separação de pedidos</div>
+    <div class="conteudo" style="padding:12px">
+      <div class="faixa">
+        <div>
+          <p class="titulo-tela">Separação de pedidos</p>
+          <p class="sub">Fila de Separação. Cada ordem continua criada em Requisições.</p>
+        </div>
+        <div class="acoes" style="margin:0">
+          <span class="btn forte">Minha fila</span>
+          <span class="btn">Todas da empresa</span>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Nº</th>
+            <th>Produto</th>
+            <th>Endereço</th>
+            <th>Qtd</th>
+            <th>Prioridade</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="link">12</td>
+            <td>Parafuso sextavado</td>
+            <td>A-01-02</td>
+            <td>0 / 10</td>
+            <td>3 — Normal</td>
+            <td>Disponível</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="vazio" style="border-top:1px dashed #ccc; margin-top:10px">
+        Se não houver ordem: <strong>Nenhuma separação nesta fila.</strong>
+      </p>
+    </div>
+  </div>
+  <div class="nota">
+    Clique no número da ordem para abrir a separação.
+    Lista vazia: a ordem ainda está Pendente, está atribuída a outra pessoa, ou o filtro está em Minha fila.
+    Troque para <strong>Todas da empresa</strong> ou disponibilize a ordem.
+  </div>
+</section>
+
+<section class="folha">
+  <h2>5. Executar a separação</h2>
+  <ol class="passos">
+    <li>Confira produto, quantidade e <strong>Endereço de coleta</strong>.</li>
+    <li>Clique em <strong>Iniciar</strong>. O status vai para Em execução e o estoque disponível é reservado.</li>
+    <li>Bipe o código do produto, ou digite e confirme. Cada leitura soma <strong>1 unidade</strong>.</li>
+    <li>Repita até a quantidade separada igualar a pedida. Exemplo: 10 de 10.</li>
+    <li>Clique em <strong>Concluir separação</strong>. Só libera com a quantidade completa. Ao concluir, o sistema baixa o estoque.</li>
+  </ol>
+  <div class="tela">
+    <div class="barra">Separação de pedidos · Requisição 12</div>
+    <div class="conteudo" style="padding:12px">
+      <div class="faixa">
+        <span class="btn">← Voltar</span>
+        <span class="btn">Imprimir lista</span>
+      </div>
+      <p class="titulo-tela">Requisição 12 &nbsp; Disponível</p>
+      <p class="sub">Data · Itens: 1 · Observação</p>
+      <div class="passos-tela">
+        <div class="passo atual"><span class="num">1</span>Requisição aberta</div>
+        <div class="passo"><span class="num">2</span>Separação em andamento</div>
+        <div class="passo"><span class="num">3</span>Finalizada</div>
+      </div>
+      <div class="layout">
+        <div class="card">
+          <div class="linha-item">
+            <strong>Item atual</strong>
+            <span>0 de 10 UN</span>
+          </div>
+          <p style="margin:6px 0 2px"><strong>Parafuso sextavado</strong></p>
+          <p class="sub">Código original 9325 · Código de barras 789…</p>
+          <p class="sub">Quantidade solicitada 10 UN · Quantidade separada 0 UN · Estoque disponível 40 UN</p>
+          <div class="bip">
+            <div class="campo">
+              <label>Bipe o código de barras do produto</label>
+              <div class="caixa"></div>
+            </div>
+            <span class="btn">Digitar código</span>
+          </div>
+          <p class="sub">Após a leitura, a quantidade separada sobe 1 UN.</p>
+          <div class="rodape-botoes">
+            <span class="btn">Pausar</span>
+            <span class="btn forte destaque">Iniciar</span>
+            <span class="btn">Concluir separação</span>
+          </div>
+        </div>
+        <aside class="card">
+          <strong>Progresso da separação</strong>
+          <p class="sub">0 de 10 UN</p>
+          <div class="barra-prog"><span></span></div>
+          <p class="sub" style="text-align:right">0%</p>
+          <div class="endereco">
+            <small>Endereço de coleta</small>
+            <strong>A-01-02</strong>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+  <div class="nota">
+    <strong>Pausar</strong> trava a leitura. <strong>Retomar</strong> libera de novo.
+    <strong>Cancelar requisição</strong> pede motivo e só aparece depois do clique.
+  </div>
+</section>
+
+<section class="folha">
+  <h2>6. Quando a tela não deixa seguir</h2>
+  <div class="tela">
+    <div class="barra">Avisos na mesma página</div>
+    <div class="conteudo" style="padding:12px">
+      <div class="alerta">
+        <strong>PRODUTO INCORRETO</strong>
+        Este produto não pertence à requisição. A quantidade não sobe.
+      </div>
+      <div class="alerta">
+        <strong>Iniciar só aparece para o responsável</strong>
+        A ordem está Atribuída a outra pessoa. Quem pode editar abre a ficha, troca <strong>Atribuir a</strong> para o próprio usuário e clica <strong>Atribuir</strong>. Aí o botão <strong>Iniciar</strong> aparece.
+      </div>
+      <div class="alerta">
+        <strong>Concluir separação</strong>
+        O botão só conclui quando a quantidade separada iguala a pedida. Falta unidade: a ordem permanece em execução.
+      </div>
+      <div class="alerta">
+        <strong>Separação concluída</strong>
+        O aviso abre na mesma página. Fechar permanece na ordem. O estoque físico já foi baixado.
+      </div>
+    </div>
+  </div>
+  <div class="nota">
+    Resumo do caminho: <strong>Logística → Requisições → Separação de pedidos</strong>.
+    Crie a ordem, disponibilize se estiver Pendente, inicie, bipe até completar e conclua.
+  </div>
+</section>
+
+</body>
+</html>

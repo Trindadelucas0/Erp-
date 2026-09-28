@@ -143,7 +143,7 @@ function ConteudoLista() {
 
 export default function PaginaSeparacao() {
   return (
-    <ProtegerRota chaveDaPagina="requisicoes">
+    <ProtegerRota chaveDaPagina="separacao" chavesDaPagina={['requisicoes']}>
       <ConteudoLista />
     </ProtegerRota>
   )
