@@ -223,6 +223,11 @@ export function podeIniciarGuardar(item: RequisicaoWms) {
   )
 }
 
+export function caminhoExecucaoRequisicao(item: Pick<RequisicaoWms, 'id' | 'tipoOperacao'>) {
+  if (item.tipoOperacao === 'separacao') return `/separacao/${item.id}`
+  return `/requisicoes/${item.id}/executar`
+}
+
 export function podeConcluirExecucao(item: RequisicaoWms, usuarioId: string) {
   return item.status === 'em_execucao' && item.responsavelId === usuarioId && item.conferenciaOk
 }

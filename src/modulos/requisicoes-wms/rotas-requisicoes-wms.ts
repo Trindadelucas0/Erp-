@@ -22,6 +22,7 @@ export async function rotasDeRequisicoesWms(aplicacao: FastifyInstance) {
   aplicacao.post('/:id/retomar', { preHandler: ver }, controladorDeRequisicoesWms.retomar)
   aplicacao.post('/:id/concluir', { preHandler: ver }, controladorDeRequisicoesWms.concluir)
   aplicacao.post('/:id/conferir', { preHandler: ver }, controladorDeRequisicoesWms.conferir)
+  aplicacao.post('/:id/bipar', { preHandler: ver }, controladorDeRequisicoesWms.bipar)
   aplicacao.post('/:id/cancelar', { preHandler: editar }, controladorDeRequisicoesWms.cancelar)
   aplicacao.post('/:id/bloquear', { preHandler: editar }, controladorDeRequisicoesWms.bloquear)
   aplicacao.post('/:id/desbloquear', { preHandler: editar }, controladorDeRequisicoesWms.desbloquear)

@@ -14,6 +14,7 @@ import { TelaExecucaoRequisicao } from '@/components/requisicoes-wms/tela-execuc
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import {
+  caminhoExecucaoRequisicao,
   formatarNumeroRequisicao,
   type EtapaConferencia,
   type RequisicaoWms,
@@ -49,6 +50,12 @@ function ConteudoExecutar() {
   useEffect(() => {
     void carregar()
   }, [carregar])
+
+  useEffect(() => {
+    if (item?.tipoOperacao === 'separacao') {
+      router.replace(caminhoExecucaoRequisicao(item))
+    }
+  }, [item, router])
 
   async function conferir(etapa: EtapaConferencia, valor: string) {
     setOcupado('conferir')
@@ -117,6 +124,8 @@ function ConteudoExecutar() {
 
       {!item ? (
         !erro ? <p className="text-sm text-muted-foreground">Carregando…</p> : null
+      ) : item.tipoOperacao === 'separacao' ? (
+        <p className="text-sm text-muted-foreground">Abrindo a separação…</p>
       ) : item.status !== 'em_execucao' && item.status !== 'pausada' ? (
         <p className="text-sm text-muted-foreground">
           Esta requisição não está em execução.{' '}

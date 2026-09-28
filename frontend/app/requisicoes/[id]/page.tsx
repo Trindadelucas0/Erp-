@@ -26,6 +26,7 @@ import {
 } from '@/components/requisicoes-wms/formulario-campos-requisicao'
 import {
   formatarNumeroRequisicao,
+  caminhoExecucaoRequisicao,
   rotuloNfDaRequisicao,
   ROTULO_TIPO_OPERACAO,
   type RequisicaoWms,
@@ -107,8 +108,8 @@ function ConteudoFicha() {
           ? `/contagens?nfeRecebidaId=${encodeURIComponent(item.nfeRecebidaId)}`
           : '/contagens'
         router.push(destino)
-      } else if (acao === 'iniciar') {
-        router.push(`/requisicoes/${id}/executar`)
+      } else if (acao === 'iniciar' && item) {
+        router.push(caminhoExecucaoRequisicao(item))
       }
     } catch (err) {
       setErro(extrairMensagemApi(err, 'Não foi possível executar a ação.'))

@@ -44,6 +44,10 @@ export const esquemaConferir = z.object({
   valor: z.string().trim().min(1, 'Informe o valor conferido').max(120),
 })
 
+export const esquemaBipar = z.object({
+  valor: z.string().trim().min(1, 'Informe o código bipado').max(120),
+})
+
 export const esquemaFiltroListagem = z.object({
   q: z.string().optional(),
   status: z.enum(STATUS_REQUISICAO).optional().or(z.literal('')),
@@ -67,3 +71,4 @@ export type DadosCorpoRequisicao = z.infer<typeof esquemaCorpoRequisicao>
 export type DadosEdicaoRequisicao = z.infer<typeof esquemaEdicaoRequisicao>
 export type FiltroListagemRequisicao = z.infer<typeof esquemaFiltroListagem>
 export type DadosConferirRequisicao = z.infer<typeof esquemaConferir>
+export type DadosBiparRequisicao = z.infer<typeof esquemaBipar>

@@ -97,13 +97,22 @@ function ConteudoLista() {
         subtitulo="Ordens do armazém — Separação reserva e baixa o kardex; reposição não muda o total da empresa."
         aoLadoDoTitulo={
           podeCriar ? (
-            <BotaoPrimario asChild>
-              <Link href="/requisicoes/nova">
-                <Plus className="mr-1 size-4" />
-                Nova requisição
-              </Link>
-            </BotaoPrimario>
-          ) : null
+            <span className="flex flex-wrap gap-2">
+              <Button asChild variant="outline">
+                <Link href="/separacao">Separação de pedidos</Link>
+              </Button>
+              <BotaoPrimario asChild>
+                <Link href="/requisicoes/nova">
+                  <Plus className="mr-1 size-4" />
+                  Nova requisição
+                </Link>
+              </BotaoPrimario>
+            </span>
+          ) : (
+            <Button asChild variant="outline">
+              <Link href="/separacao">Separação de pedidos</Link>
+            </Button>
+          )
         }
       >
         Requisições

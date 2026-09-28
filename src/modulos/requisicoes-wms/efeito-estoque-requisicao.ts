@@ -85,13 +85,7 @@ export function passosExigidos(os: CamposOsConferencia): EtapaConferencia[] {
   const temProduto = Boolean(os.produtoId)
   const temQtd = os.quantidade != null && os.quantidade > 0
 
-  if (tipo === 'separacao') {
-    const passos: EtapaConferencia[] = []
-    if (temOrigem) passos.push('origem')
-    passos.push('produto', 'quantidade')
-    if (temDestino) passos.push('destino')
-    return passos
-  }
+  if (tipo === 'separacao') return ['quantidade']
   if (tipo === 'reposicao') {
     return ['origem', 'produto', 'quantidade', 'destino']
   }
@@ -127,6 +121,9 @@ export function conferenciaCompleta(os: CamposOsConferencia, flags: FlagsConferi
     if (passo === 'origem') return Boolean(flags.conferidoOrigemEm)
     if (passo === 'produto') return Boolean(flags.conferidoProdutoEm)
     if (passo === 'destino') return Boolean(flags.conferidoDestinoEm)
+    if (os.tipoOperacao === 'separacao') {
+      return quantidadeConfere(os.quantidade ?? Number.NaN, flags.qtdExecutada ?? Number.NaN)
+    }
     return flags.qtdExecutada != null
   })
 }

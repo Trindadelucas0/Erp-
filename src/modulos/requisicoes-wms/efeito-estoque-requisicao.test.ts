@@ -33,7 +33,7 @@ describe('efeito-estoque-requisicao', () => {
     expect([...ORDEM_MOVIMENTOS_CONCLUIR]).toEqual(['estornoReserva', 'saida'])
   })
 
-  it('Separação exige produto e qtd; origem/destino só se a OS tiver', () => {
+  it('Separação só exige a quantidade bipada, mesmo com endereço', () => {
     expect(
       passosExigidos({
         tipoOperacao: 'separacao',
@@ -42,7 +42,7 @@ describe('efeito-estoque-requisicao', () => {
         produtoId: 'p1',
         quantidade: 10,
       })
-    ).toEqual(['produto', 'quantidade'])
+    ).toEqual(['quantidade'])
     expect(
       passosExigidos({
         tipoOperacao: 'separacao',
@@ -51,7 +51,7 @@ describe('efeito-estoque-requisicao', () => {
         produtoId: 'p1',
         quantidade: 10,
       })
-    ).toEqual(['origem', 'produto', 'quantidade', 'destino'])
+    ).toEqual(['quantidade'])
   })
 
   it('Reposição exige os quatro passos', () => {
@@ -111,11 +111,37 @@ describe('efeito-estoque-requisicao', () => {
     ).toEqual([])
   })
 
-  it('conferência completa exige todos os passos persistidos', () => {
+  it('Separação só fecha quando a quantidade bipada iguala a pedida', () => {
     const os = {
       tipoOperacao: 'separacao',
       origemEnderecoId: 'o1',
-      destinoEnderecoId: null,
+      destinoEnderecoId: 'd1',
+      produtoId: 'p1',
+      quantidade: 2,
+    }
+    expect(
+      conferenciaCompleta(os, {
+        conferidoOrigemEm: null,
+        conferidoProdutoEm: null,
+        conferidoDestinoEm: null,
+        qtdExecutada: 1,
+      })
+    ).toBe(false)
+    expect(
+      conferenciaCompleta(os, {
+        conferidoOrigemEm: null,
+        conferidoProdutoEm: null,
+        conferidoDestinoEm: null,
+        qtdExecutada: 2,
+      })
+    ).toBe(true)
+  })
+
+  it('conferência completa exige todos os passos persistidos', () => {
+    const os = {
+      tipoOperacao: 'reposicao',
+      origemEnderecoId: 'o1',
+      destinoEnderecoId: 'd1',
       produtoId: 'p1',
       quantidade: 2,
     }
@@ -131,7 +157,7 @@ describe('efeito-estoque-requisicao', () => {
       conferenciaCompleta(os, {
         conferidoOrigemEm: new Date(),
         conferidoProdutoEm: new Date(),
-        conferidoDestinoEm: null,
+        conferidoDestinoEm: new Date(),
         qtdExecutada: 2,
       })
     ).toBe(true)

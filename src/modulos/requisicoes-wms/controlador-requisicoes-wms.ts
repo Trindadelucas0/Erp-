@@ -3,6 +3,7 @@ import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { servicoDeRequisicoesWms } from './servico-requisicoes-wms.js'
 import {
   esquemaAtribuir,
+  esquemaBipar,
   esquemaConferir,
   esquemaCorpoRequisicao,
   esquemaEdicaoRequisicao,
@@ -99,6 +100,21 @@ async function atribuir(requisicao: FastifyRequest, resposta: FastifyReply) {
   return resposta.send({ requisicao: atualizado })
 }
 
+async function bipar(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id } = requisicao.params as { id: string }
+  const body = esquemaBipar.safeParse(requisicao.body)
+  if (!body.success) {
+    throw new ErroDaAplicacao(body.error.errors[0]?.message ?? 'Dados inválidos', 400)
+  }
+  const atualizado = await servicoDeRequisicoesWms.bipar(
+    companyId(requisicao),
+    id,
+    usuarioId(requisicao),
+    body.data
+  )
+  return resposta.send({ requisicao: atualizado })
+}
+
 async function conferir(requisicao: FastifyRequest, resposta: FastifyReply) {
   const { id } = requisicao.params as { id: string }
   const body = esquemaConferir.safeParse(requisicao.body)
@@ -146,6 +162,7 @@ export const controladorDeRequisicoesWms = {
   desbloquear: acaoSemCorpo('desbloquear'),
   atribuir,
   conferir,
+  bipar,
   cancelar: acaoComMotivo('cancelar'),
   bloquear: acaoComMotivo('bloquear'),
 }

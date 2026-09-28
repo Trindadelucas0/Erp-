@@ -4,7 +4,10 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { InputPadrao } from '@/components/ui/input-padrao'
-import type { RequisicaoWms } from '@/lib/requisicoes-wms'
+import {
+  caminhoExecucaoRequisicao,
+  type RequisicaoWms,
+} from '@/lib/requisicoes-wms'
 import { SelectPadrao } from '@/components/ui/select-padrao'
 
 type Operador = { id: string; name: string }
@@ -27,6 +30,7 @@ export function BarraAcoesRequisicao({
   onAcao,
 }: Props) {
   const [motivo, setMotivo] = useState('')
+  const [motivoAberto, setMotivoAberto] = useState(false)
   const [responsavel, setResponsavel] = useState(item.responsavelId ?? '')
   const ehResponsavel = item.responsavelId === usuarioId
   const busy = ocupado !== null
@@ -37,8 +41,19 @@ export function BarraAcoesRequisicao({
     setResponsavel(item.responsavelId ?? '')
   }, [item.responsavelId])
 
+  const nomeResponsavel = item.responsavelNome?.trim() || 'desta requisição'
+  const ordemDeOutro = item.status === 'atribuida' && !ehResponsavel
+
   return (
     <div className="space-y-3">
+      {ordemDeOutro ? (
+        <p className="text-sm text-muted-foreground">
+          Iniciar só aparece para o responsável ({nomeResponsavel}).
+          {podeEditar
+            ? ' Troque Atribuir a para o seu usuário, clique Atribuir, e o botão Iniciar aparece.'
+            : null}
+        </p>
+      ) : null}
       <div className="flex flex-wrap gap-2">
         {podeEditar && item.status === 'pendente' && (
           <Button
@@ -79,7 +94,7 @@ export function BarraAcoesRequisicao({
         {ehResponsavel && item.status === 'em_execucao' && item.tipoOperacao !== 'contagem_entrada' && (
           <>
             <Button asChild type="button" size="sm">
-              <Link href={`/requisicoes/${item.id}/executar`}>Executar</Link>
+              <Link href={caminhoExecucaoRequisicao(item)}>Executar</Link>
             </Button>
             <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onAcao('pausar')}>
               Pausar
@@ -89,7 +104,7 @@ export function BarraAcoesRequisicao({
         {ehResponsavel && item.status === 'pausada' && item.tipoOperacao !== 'contagem_entrada' && (
           <>
             <Button asChild type="button" size="sm" variant="outline">
-              <Link href={`/requisicoes/${item.id}/executar`}>Executar</Link>
+              <Link href={caminhoExecucaoRequisicao(item)}>Executar</Link>
             </Button>
             <Button type="button" size="sm" disabled={busy} onClick={() => onAcao('retomar')}>
               Retomar
@@ -131,11 +146,23 @@ export function BarraAcoesRequisicao({
         item.status !== 'concluida' &&
         item.status !== 'cancelada' && (
           <div className="space-y-2 border-t border-border pt-3">
-            <InputPadrao
-              rotulo="Motivo (obrigatório para cancelar ou bloquear)"
-              value={motivo}
-              onChange={(e) => setMotivo(e.target.value)}
-            />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              aria-expanded={motivoAberto}
+              onClick={() => setMotivoAberto((aberto) => !aberto)}
+            >
+              Cancelar ou bloquear
+            </Button>
+            {motivoAberto ? (
+              <InputPadrao
+                rotulo="Motivo (obrigatório para cancelar ou bloquear)"
+                value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}
+              />
+            ) : null}
+            {motivoAberto ? (
             <div className="flex flex-wrap gap-2">
               {item.status !== 'bloqueada' &&
                 item.status !== 'em_execucao' &&
@@ -166,6 +193,7 @@ export function BarraAcoesRequisicao({
                 </Button>
               )}
             </div>
+            ) : null}
           </div>
         )}
     </div>

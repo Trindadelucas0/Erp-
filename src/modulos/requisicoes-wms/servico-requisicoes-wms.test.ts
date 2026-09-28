@@ -401,6 +401,7 @@ describe('servicoDeRequisicoesWms', () => {
       row({
         status: 'em_execucao',
         responsavelId: 'eu',
+        tipoOperacao: 'reposicao',
         origemEnderecoId: 'o1',
         origemEndereco: { codigoCompleto: 'A-RC-20-01-2-05', ativo: true, status: 'ativo' },
         produtoId: 'p1',
@@ -659,5 +660,87 @@ describe('servicoDeRequisicoesWms', () => {
       expect.objectContaining({ status: 'atribuida', responsavelId: 'u3' }),
       expect.objectContaining({ acao: 'atribuir', deStatus: 'atribuida', paraStatus: 'atribuida' })
     )
+  })
+
+  it('bipar Separação soma 1, recusa código alheio e a terceira leitura', async () => {
+    const base = row({
+      status: 'em_execucao',
+      responsavelId: 'eu',
+      tipoOperacao: 'separacao',
+      produtoId: 'p1',
+      quantidade: 2,
+      qtdExecutada: null,
+      origemEndereco: { codigoCompleto: 'A-01-02-03', ativo: true, status: 'ativo' },
+      produto: {
+        sku: 'TRN-001',
+        codigoBarras: '7891234567890',
+        controlaEstoque: true,
+        permiteEstoqueNegativo: false,
+        embalagensMaster: [],
+      },
+    })
+    vi.mocked(repositorioDeRequisicoesWms.buscarPorId).mockResolvedValue(base as never)
+    vi.mocked(repositorioDeRequisicoesWms.atualizar).mockImplementation(
+      async (_c, _id, patch) => ({ ...base, ...patch, eventos: [] }) as never
+    )
+
+    const primeiro = await servicoDeRequisicoesWms.bipar('c1', 'req-1', 'eu', {
+      valor: '7891234567890',
+    })
+    expect(primeiro.qtdExecutada).toBe(1)
+    expect(primeiro.conferenciaOk).toBe(false)
+
+    vi.mocked(repositorioDeRequisicoesWms.buscarPorId).mockResolvedValue({
+      ...base,
+      qtdExecutada: 1,
+    } as never)
+    const segundo = await servicoDeRequisicoesWms.bipar('c1', 'req-1', 'eu', {
+      valor: '7891234567890',
+    })
+    expect(segundo.qtdExecutada).toBe(2)
+    expect(segundo.conferenciaOk).toBe(true)
+    expect(repositorioDeRequisicoesWms.atualizar).toHaveBeenLastCalledWith(
+      'c1',
+      'req-1',
+      expect.objectContaining({ qtdExecutada: 2, conferidoProdutoValor: '7891234567890' }),
+      expect.objectContaining({
+        acao: 'bipar_produto',
+        motivo: '7891234567890 · A-01-02-03 · 2/2',
+      })
+    )
+
+    vi.mocked(repositorioDeRequisicoesWms.buscarPorId).mockResolvedValue({
+      ...base,
+      qtdExecutada: 2,
+    } as never)
+    await expect(
+      servicoDeRequisicoesWms.bipar('c1', 'req-1', 'eu', { valor: '7891234567890' })
+    ).rejects.toMatchObject({ statusCode: 409 })
+
+    vi.mocked(repositorioDeRequisicoesWms.buscarPorId).mockResolvedValue({
+      ...base,
+      qtdExecutada: 1,
+    } as never)
+    await expect(
+      servicoDeRequisicoesWms.bipar('c1', 'req-1', 'eu', { valor: '000' })
+    ).rejects.toMatchObject({ statusCode: 400 })
+  })
+
+  it('conferir em Separação recusa', async () => {
+    vi.mocked(repositorioDeRequisicoesWms.buscarPorId).mockResolvedValue(
+      row({
+        status: 'em_execucao',
+        responsavelId: 'eu',
+        tipoOperacao: 'separacao',
+        produtoId: 'p1',
+        quantidade: 1,
+      }) as never
+    )
+    await expect(
+      servicoDeRequisicoesWms.conferir('c1', 'req-1', 'eu', {
+        etapa: 'quantidade',
+        valor: '1',
+      })
+    ).rejects.toMatchObject({ statusCode: 409 })
   })
 })

@@ -30,6 +30,7 @@ const TITULOS_POR_ROTA: Record<string, string> = {
   '/enderecos-wms': 'Endereços WMS',
   '/requisicoes': 'Requisições',
   '/requisicoes/nova': 'Nova requisição',
+  '/separacao': 'Separação de pedidos',
   '/estrutura-wms': 'Estrutura WMS',
   '/contas-a-pagar': 'Contas a Pagar',
   '/contas-a-receber': 'Contas a Receber',
@@ -42,6 +43,7 @@ const PREFIXOS_TITULO: { prefixo: string; titulo: string }[] = [
   { prefixo: '/entrada-notas/', titulo: 'Entrada de Notas' },
   { prefixo: '/contagens/', titulo: 'Contagem de entrada' },
   { prefixo: '/requisicoes/', titulo: 'Requisição' },
+  { prefixo: '/separacao/', titulo: 'Separação de pedidos' },
 ]
 
 function resolverTituloRota(caminho: string | null): string {

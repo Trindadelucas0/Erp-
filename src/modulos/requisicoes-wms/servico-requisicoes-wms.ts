@@ -11,6 +11,7 @@ import {
   type AcaoStatusRequisicao,
 } from './maquina-status-requisicao.js'
 import type {
+  DadosBiparRequisicao,
   DadosConferirRequisicao,
   DadosCorpoRequisicao,
   DadosEdicaoRequisicao,
@@ -604,6 +605,84 @@ async function transicionar(params: {
   return mapear(row)
 }
 
+function produtoDaOsConfere(
+  atual: RowFicha,
+  valor: string
+): boolean {
+  const barrasMaster = (atual.produto?.embalagensMaster ?? [])
+    .map((e) => e.codigoBarras)
+    .filter((c): c is string => Boolean(c?.trim()))
+  return (
+    produtoConfere({
+      sku: atual.produto?.sku,
+      codigoBarras: atual.produto?.codigoBarras,
+      gtin: barrasMaster[0] ?? null,
+      informado: valor,
+    }) ||
+    barrasMaster.some((c) =>
+      produtoConfere({ sku: null, codigoBarras: c, gtin: null, informado: valor })
+    )
+  )
+}
+
+async function bipar(
+  companyId: string,
+  id: string,
+  usuarioId: string,
+  dados: DadosBiparRequisicao
+) {
+  const atual = await obterOu404(companyId, id)
+  if (atual.tipoOperacao !== 'separacao') {
+    throw new ErroDaAplicacao('Só a Separação confirma pelo bip do produto.', 400)
+  }
+  if (atual.status !== 'em_execucao') {
+    throw new ErroDaAplicacao('Só é possível bipar com a requisição em execução', 409)
+  }
+  exigirOperador(atual, usuarioId)
+
+  const valor = dados.valor.trim()
+  if (!produtoDaOsConfere(atual, valor)) {
+    throw new ErroDaAplicacao(
+      'PRODUTO INCORRETO. Este produto não pertence à requisição.',
+      400
+    )
+  }
+
+  const esperada = decimalParaNumero(atual.quantidade)
+  const executada = decimalParaNumero(atual.qtdExecutada) ?? 0
+  if (esperada == null || esperada <= 0) {
+    throw new ErroDaAplicacao('Complete produto e quantidade na ficha', 400)
+  }
+  const restante = arredondarQtd(esperada - executada)
+  if (restante <= 0) {
+    throw new ErroDaAplicacao('Quantidade já completa.', 409)
+  }
+  const nova = arredondarQtd(executada + Math.min(1, restante))
+  const agora = new Date()
+  const completa = quantidadeConfere(esperada, nova)
+  const origem = atual.origemEndereco?.codigoCompleto ?? '—'
+  const motivo = `${valor} · ${origem} · ${nova}/${esperada}`
+
+  const row = await repositorioDeRequisicoesWms.atualizar(
+    companyId,
+    id,
+    {
+      qtdExecutada: nova,
+      ...(completa
+        ? { conferidoProdutoEm: agora, conferidoProdutoValor: valor }
+        : {}),
+    },
+    {
+      usuarioId,
+      acao: 'bipar_produto',
+      deStatus: atual.status,
+      paraStatus: atual.status,
+      motivo,
+    }
+  )
+  return mapear(row)
+}
+
 async function conferir(
   companyId: string,
   id: string,
@@ -611,6 +690,9 @@ async function conferir(
   dados: DadosConferirRequisicao
 ) {
   const atual = await obterOu404(companyId, id)
+  if (atual.tipoOperacao === 'separacao') {
+    throw new ErroDaAplicacao('A separação confirma pelo bip do produto.', 409)
+  }
   if (atual.tipoOperacao === 'contagem_entrada') {
     throw new ErroDaAplicacao('Contagem de entrada é conferida na tela Contagens.', 400)
   }
@@ -659,15 +741,7 @@ async function conferir(
             barrasMaster,
             informado: valor,
           })
-        : produtoConfere({
-            sku: atual.produto?.sku,
-            codigoBarras: atual.produto?.codigoBarras,
-            gtin: barrasMaster[0] ?? null,
-            informado: valor,
-          }) ||
-          barrasMaster.some((c) =>
-            produtoConfere({ sku: null, codigoBarras: c, gtin: null, informado: valor })
-          )
+        : produtoDaOsConfere(atual, valor)
     if (!ok) {
       throw new ErroDaAplicacao('Produto conferido não confere com a ordem', 400)
     }
@@ -704,5 +778,6 @@ export const servicoDeRequisicoesWms = {
   editar,
   transicionar,
   conferir,
+  bipar,
   listarOperadores,
 }
