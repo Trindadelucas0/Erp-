@@ -13,6 +13,7 @@ import { ListaDocumentosZapsign } from '@/components/assinatura-zapsign/lista-do
 import { PainelConfiguracaoFocusNfe } from '@/components/focus-nfe/painel-configuracao-focus-nfe'
 import { PainelUnidadesMedida } from '@/components/configuracoes/painel-unidades-medida'
 import { PainelParametrizacaoCustos } from '@/components/configuracoes/painel-parametrizacao-custos'
+import { PainelTiposVeiculo } from '@/components/configuracoes/painel-tipos-veiculo'
 import { ConteudoDaPaginaEstruturaWms } from '@/app/estrutura-wms/conteudo-pagina-estrutura-wms'
 import { ConteudoDaPaginaCfops } from '@/app/cfops/conteudo-pagina-cfops'
 import { ConteudoDaPaginaPlanosFinanceiros } from '@/app/planos-financeiros/conteudo-pagina-planos-financeiros'
@@ -45,7 +46,7 @@ type AbaConfig = 'geral' | 'vendas' | 'logistica' | 'financeiro' | 'fiscal'
 type SecaoGeral = 'usuarios' | 'papeis' | 'assinatura' | 'atalhos'
 type SecaoFiscal = 'cfop' | 'buscador'
 type SecaoFinanceiro = 'planos' | 'recorrencia' | 'adquirentes' | 'cartoes'
-type SecaoLogistica = 'unidades' | 'estrutura'
+type SecaoLogistica = 'unidades' | 'estrutura' | 'veiculos'
 
 const ABAS_GERAL = [
   { id: 'usuarios', rotulo: 'Usuários' },
@@ -74,6 +75,7 @@ const ABAS_FINANCEIRO = [
 const ABAS_LOGISTICA = [
   { id: 'unidades', rotulo: 'Unidades de medida' },
   { id: 'estrutura', rotulo: 'Estrutura WMS' },
+  { id: 'veiculos', rotulo: 'Tipos de Veículos' },
 ]
 
 function extrairMensagemDeErro(erro: unknown, mensagemPadrao: string): string {
@@ -377,7 +379,8 @@ function ConteudoDaPaginaDeConfiguracoes() {
   const podeAtalhos = ehAdmin || podeConfig
   const podeUnidades = ehAdmin || podeConfig || podeProdutos
   const podeEstruturaWms = ehAdmin || podeEstoque
-  const podeLogistica = podeUnidades || podeEstruturaWms
+  const podeTiposVeiculo = ehAdmin || podeConfig
+  const podeLogistica = podeUnidades || podeEstruturaWms || podeTiposVeiculo
   const podeFinanceiroAba = ehAdmin || podeFinanceiro
   const podeFiscalCfop = ehAdmin || podeFinanceiro
   const podeBuscadorNf = ehAdmin
@@ -449,9 +452,10 @@ function ConteudoDaPaginaDeConfiguracoes() {
     return ABAS_LOGISTICA.filter((s) => {
       if (s.id === 'unidades') return podeUnidades
       if (s.id === 'estrutura') return podeEstruturaWms
+      if (s.id === 'veiculos') return podeTiposVeiculo
       return false
     })
-  }, [podeUnidades, podeEstruturaWms])
+  }, [podeUnidades, podeEstruturaWms, podeTiposVeiculo])
 
   const secaoLogistica: SecaoLogistica = useMemo(() => {
     if (
@@ -554,6 +558,9 @@ function ConteudoDaPaginaDeConfiguracoes() {
           {secaoLogistica === 'unidades' && podeUnidades && <PainelUnidadesMedida />}
           {secaoLogistica === 'estrutura' && podeEstruturaWms && (
             <ConteudoDaPaginaEstruturaWms />
+          )}
+          {secaoLogistica === 'veiculos' && podeTiposVeiculo && (
+            <PainelTiposVeiculo podeAlterar={podeTiposVeiculo} />
           )}
         </div>
       )}

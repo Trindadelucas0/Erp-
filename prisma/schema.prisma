@@ -62,6 +62,7 @@ model Company {
   recorrenciasFinanceiras     RecorrenciaFinanceira[]
   adquirentes                 Adquirente[]
   cartoesPagamento            CartaoPagamento[]
+  tiposVeiculo                TipoVeiculo[]
   enderecosWms                EnderecoWms[]
   niveisEnderecoWms           NivelEnderecoWms[]
   requisicoesWms              RequisicaoWms[]
@@ -785,13 +786,33 @@ model DadosTransportadora {
   papelId String      @unique
   papel   PessoaPapel @relation(fields: [papelId], references: [id], onDelete: Cascade)
 
-  aceitaNFe55 Boolean @default(true)
-  antt        String?
-  tipoVeiculo String?
-  observacoes String?
+  aceitaNFe55   Boolean      @default(true)
+  antt          String?
+  tipoVeiculoId String?
+  tipoVeiculo   TipoVeiculo? @relation(fields: [tipoVeiculoId], references: [id], onDelete: Restrict)
+  observacoes   String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([tipoVeiculoId])
+}
+
+/// Catálogo de tipos de veículo da empresa (Configurações → Logística).
+model TipoVeiculo {
+  id                    String                @id @default(uuid())
+  companyId             String
+  company               Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  nome                  String
+  pesoMaximoKg          Int
+  icone                 String?
+  ativo                 Boolean               @default(true)
+  transportadoras       DadosTransportadora[]
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  @@unique([companyId, nome])
+  @@index([companyId, ativo])
 }
 
 model PessoaContato {

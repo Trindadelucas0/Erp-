@@ -2,7 +2,7 @@
 
 /**
  * Tela de transportadoras — CRUD completo PF/PJ com validação inline,
- * BrasilAPI, verificação de duplicidade e campos específicos (ANTT, tipo veículo).
+ * BrasilAPI, verificação de duplicidade e campos específicos (ANTT, tipo de veículo do catálogo).
  */
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CampoBuscaLista } from '@/components/compartilhado/campo-busca-lista'
@@ -15,6 +15,7 @@ import { RodapeModalVisualizacao } from '@/components/compartilhado/rodape-modal
 import { RodapeModalFormulario } from '@/components/compartilhado/rodape-modal-formulario'
 import { IndicadorEtapasModal } from '@/components/compartilhado/indicador-etapas-modal'
 import { CampoSelect } from '@/components/compartilhado/campo-select'
+import { IconeTipoVeiculo } from '@/lib/icones-tipo-veiculo'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { usePermissao } from '@/hooks/use-permissao'
 import { useRegistrarAtalhos } from '@/hooks/use-registrar-atalhos'
@@ -94,9 +95,14 @@ type Transportadora = {
   indicadorIe: string
   observacoes?: string | null
   antt?: string | null
+  tipoVeiculoId?: string | null
+  tipoVeiculoNome?: string | null
+  tipoVeiculoIcone?: string | null
   aceitaNFe55?: boolean
   dadosBancarios?: DadosBancarioForm[]
 }
+
+type TipoVeiculoOpcao = { id: string; nome: string; icone: string | null }
 
 type FormTransportadora = {
   tipo: TipoTransportadora
@@ -127,6 +133,7 @@ type FormTransportadora = {
   indicadorIe: string
   observacoes: string
   antt: string
+  tipoVeiculoId: string
   aceitaNFe55: boolean
   contatos: ContatoForm[]
   enderecos: EnderecoForm[]
@@ -176,6 +183,7 @@ const FORM_VAZIO: FormTransportadora = {
   indicadorIe: '9',
   observacoes: '',
   antt: '',
+  tipoVeiculoId: '',
   aceitaNFe55: true,
   contatos: [],
   enderecos: [],
@@ -220,6 +228,7 @@ function transportadoraParaForm(t: Transportadora): FormTransportadora {
     indicadorIe: t.indicadorIe || '9',
     observacoes: t.observacoes || '',
     antt: t.antt || '',
+    tipoVeiculoId: t.tipoVeiculoId || '',
     aceitaNFe55: t.aceitaNFe55 ?? true,
     contatos: Array.isArray((t as any).contatos)
       ? (t as any).contatos.map((ct: any) => ({
@@ -418,8 +427,9 @@ function ConteudoDaPaginaDeTransportadoras() {
   const [mensagemDeSucesso, setMensagemDeSucesso] = useState('')
   const [busca, setBusca] = useState('')
   const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<
-    'nome' | 'nomeFantasia' | 'documento' | 'antt' | 'estado' | 'status'
+    'nome' | 'nomeFantasia' | 'documento' | 'antt' | 'tipoVeiculo' | 'estado' | 'status'
   >()
+  const [tiposVeiculoAtivos, setTiposVeiculoAtivos] = useState<TipoVeiculoOpcao[]>([])
   const [carregandoLista, setCarregandoLista] = useState(false)
   const [alterandoStatus, setAlterandoStatus] = useState<string | null>(null)
 
@@ -669,7 +679,20 @@ function ConteudoDaPaginaDeTransportadoras() {
   useEffect(() => {
     if (carregandoSessao || !estaAutenticado) return
     carregarTransportadoras()
+    carregarTiposVeiculo()
   }, [carregandoSessao, estaAutenticado])
+
+  async function carregarTiposVeiculo() {
+    try {
+      const { data } = await clienteHttp.get<{ tiposVeiculo: TipoVeiculoOpcao[] }>(
+        '/tipos-veiculo',
+        { params: { somenteAtivos: true } }
+      )
+      setTiposVeiculoAtivos(data.tiposVeiculo ?? [])
+    } catch {
+      setTiposVeiculoAtivos([])
+    }
+  }
 
   async function carregarTransportadoras() {
     setCarregandoLista(true)
@@ -837,6 +860,7 @@ function ConteudoDaPaginaDeTransportadoras() {
       estado: form.estado || undefined, codigoIbge: form.codigoIbge || undefined,
       indicadorIe: form.indicadorIe || '9', observacoes: form.observacoes || undefined,
       antt: form.antt || undefined,
+      tipoVeiculoId: form.tipoVeiculoId || null,
     }
     const contatosPayload = form.contatos.length > 0
       ? { contatos: form.contatos.filter((c) => c.valor.trim()) }
@@ -900,6 +924,27 @@ function ConteudoDaPaginaDeTransportadoras() {
 
   const transportadoraEmVisualizacao = listaTransportadoras.find((item) => item.id === idEmEdicao)
 
+  const opcoesTipoVeiculo = useMemo(() => {
+    const opcoes = tiposVeiculoAtivos.map((t) => ({
+      value: t.id,
+      label: t.nome,
+      icone: <IconeTipoVeiculo icone={t.icone} className="h-4 w-4" />,
+    }))
+    const gravado = transportadoraEmVisualizacao
+    const gravadoInativo =
+      gravado?.tipoVeiculoId &&
+      gravado.tipoVeiculoNome &&
+      !opcoes.some((o) => o.value === gravado.tipoVeiculoId)
+    if (gravadoInativo) {
+      opcoes.push({
+        value: gravado.tipoVeiculoId!,
+        label: `${gravado.tipoVeiculoNome} (Inativo)`,
+        icone: <IconeTipoVeiculo icone={gravado.tipoVeiculoIcone} className="h-4 w-4" />,
+      })
+    }
+    return opcoes
+  }, [tiposVeiculoAtivos, transportadoraEmVisualizacao])
+
   const qualquerOperacaoAtiva = salvando || verificandoDocumento || carregandoBrasilApi
 
   useRegistrarAtalhos(
@@ -936,6 +981,8 @@ function ConteudoDaPaginaDeTransportadoras() {
             return t.tipo === 'PF' ? (t.cpf ?? '') : (t.cnpj ?? '')
           case 'antt':
             return t.antt ?? ''
+          case 'tipoVeiculo':
+            return t.tipoVeiculoNome ?? ''
           case 'estado':
             return t.estado ?? ''
           case 'status':
@@ -1158,8 +1205,9 @@ function ConteudoDaPaginaDeTransportadoras() {
 
                 <Separator />
 
-                <div>
+                <div className="grid gap-4 sm:grid-cols-2">
                   <CampoInput rotulo="ANTT (RNTRC)" valor={form.antt} aoMudar={(v) => set('antt', v)} placeholder="Registro ANTT" maxLength={20} ajuda="Registro Nacional de Transportadores" />
+                  <CampoSelect rotulo="Tipo de veículo" valor={form.tipoVeiculoId} aoMudar={(v) => set('tipoVeiculoId', v)} opcoes={opcoesTipoVeiculo} />
                 </div>
 
                 <div className="space-y-1">
@@ -1291,13 +1339,14 @@ function ConteudoDaPaginaDeTransportadoras() {
         </div>
 
         <div className="overflow-x-auto rounded-md border border-border">
-          <table className="w-full min-w-[800px] text-sm">
+          <table className="w-full min-w-[920px] text-sm">
             <colgroup>
-              <col className="w-[30%]" />
-              <col className="w-[22%]" />
+              <col className="w-[26%]" />
               <col className="w-[18%]" />
+              <col className="w-[16%]" />
               <col className="w-[10%]" />
-              <col className="w-[8%]" />
+              <col className="w-[12%]" />
+              <col className="w-[6%]" />
               <col className="w-[12%]" />
             </colgroup>
             <thead>
@@ -1306,6 +1355,7 @@ function ConteudoDaPaginaDeTransportadoras() {
                 <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Nome fantasia" coluna="nomeFantasia" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
                 <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="CPF/CNPJ" coluna="documento" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
                 <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="ANTT" coluna="antt" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
+                <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Tipo de veículo" coluna="tipoVeiculo" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
                 <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="UF" coluna="estado" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
                 <CabecalhoColunaOrdenavel className="px-2 py-2" rotulo="Status" coluna="status" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
               </tr>
@@ -1313,7 +1363,7 @@ function ConteudoDaPaginaDeTransportadoras() {
             <tbody>
               {carregandoLista && Array.from({ length: 3 }).map((_, i) => (
                 <tr key={i} className="border-b border-border last:border-0">
-                  {Array.from({ length: 6 }).map((__, j) => (
+                  {Array.from({ length: 7 }).map((__, j) => (
                     <td key={j} className="px-2 py-2"><div className="h-4 animate-pulse rounded bg-muted" /></td>
                   ))}
                 </tr>
@@ -1321,7 +1371,7 @@ function ConteudoDaPaginaDeTransportadoras() {
 
               {!carregandoLista && listaExibida.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
                     {listaTransportadoras.length === 0 ? 'Nenhuma transportadora cadastrada.' : 'Nenhuma transportadora encontrada.'}
                   </td>
                 </tr>
@@ -1353,6 +1403,19 @@ function ConteudoDaPaginaDeTransportadoras() {
                     </td>
                     <td className="whitespace-nowrap px-2 py-2 text-muted-foreground">
                       {t.antt || '—'}
+                    </td>
+                    <td
+                      className="max-w-0 truncate whitespace-nowrap px-2 py-2 text-muted-foreground"
+                      title={t.tipoVeiculoNome || undefined}
+                    >
+                      {t.tipoVeiculoNome ? (
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <IconeTipoVeiculo icone={t.tipoVeiculoIcone} className="h-4 w-4" />
+                          <span className="truncate">{t.tipoVeiculoNome}</span>
+                        </span>
+                      ) : (
+                        '—'
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-2 py-2 text-muted-foreground">
                       {t.estado || '—'}

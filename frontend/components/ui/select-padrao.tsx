@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown } from 'lucide-react'
 import { Label } from '@/components/ui/label'
@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 export type OpcaoSelect = {
   readonly value: string
   readonly label: string
+  readonly icone?: ReactNode
 }
 
 type PosicaoDropdown = {
@@ -169,10 +170,12 @@ export function SelectPadrao({
           aria-selected={valor === opcao.value}
           onClick={() => selecionar(opcao.value)}
           className={cn(
-            'block w-full px-3 py-2 text-left text-sm hover:bg-muted',
+            'w-full px-3 py-2 text-left text-sm hover:bg-muted',
+            opcao.icone ? 'flex items-center gap-2' : 'block',
             valor === opcao.value && 'bg-muted/60 font-medium'
           )}
         >
+          {opcao.icone}
           {opcao.label}
         </button>
       ))}
@@ -209,7 +212,10 @@ export function SelectPadrao({
             className
           )}
         >
-          <span className="min-w-0 truncate">{textoExibido}</span>
+          <span className="flex min-w-0 items-center gap-2">
+            {opcaoSelecionada?.icone}
+            <span className="truncate">{textoExibido}</span>
+          </span>
           <ChevronDown
             className={cn('size-4 shrink-0 opacity-50 transition-transform', aberto && 'rotate-180')}
           />

@@ -5,7 +5,23 @@ import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-auditoria.js'
 import { normalizarCnpj, normalizarCpf } from '../../compartilhado/validacoes/documentos.js'
 import { repositorioDeTransportadoras } from './repositorio-transportadoras.js'
+import { repositorioDeTiposVeiculo } from '../tipos-veiculo/repositorio-tipos-veiculo.js'
 import type { DadosParaCriarTransportadora, DadosParaEditarTransportadora } from './esquema-transportadoras.js'
+
+async function garantirTipoVeiculoValido(
+  companyId: string,
+  tipoVeiculoId: string | null | undefined,
+  tipoVeiculoIdAtual: string | null
+) {
+  if (!tipoVeiculoId) return
+  const tipo = await repositorioDeTiposVeiculo.buscarPorId(companyId, tipoVeiculoId)
+  if (!tipo) {
+    throw new ErroDaAplicacao('Tipo de veículo não encontrado nesta empresa', 400)
+  }
+  if (!tipo.ativo && tipo.id !== tipoVeiculoIdAtual) {
+    throw new ErroDaAplicacao('Tipo de veículo inativo — escolha um tipo ativo', 400)
+  }
+}
 
 async function listarTransportadoras(companyId: string) {
   if (!companyId) {
@@ -22,6 +38,8 @@ async function criarTransportadora(
   if (!companyId) {
     throw new ErroDaAplicacao('Empresa ativa não informada.', 400)
   }
+
+  await garantirTipoVeiculoValido(companyId, dados.tipoVeiculoId, null)
 
   const documento =
     dados.tipo === 'PF'
@@ -67,6 +85,8 @@ async function editarTransportadora(
   if (!existente || existente.companyId !== companyId) {
     throw new ErroDaAplicacao('Transportadora não encontrada', 404)
   }
+
+  await garantirTipoVeiculoValido(companyId, dados.tipoVeiculoId, existente.tipoVeiculoId)
 
   if (dados.tipo === 'PF' && dados.cpf) {
     const outro = await repositorioDeTransportadoras.buscarPorCpfNaEmpresa(dados.cpf, companyId)

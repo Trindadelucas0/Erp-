@@ -19,7 +19,7 @@ import {
 
 type PessoaComRelacoes = Prisma.PessoaGetPayload<{
   include: {
-    papeis: { include: { dadosTransportadora: true } }
+    papeis: { include: { dadosTransportadora: { include: { tipoVeiculo: true } } } }
     contatos: true
     enderecos: true
     dadosBancarios: true
@@ -84,6 +84,9 @@ function mapearParaTransportadoraView(pessoa: PessoaComRelacoes) {
     estado: enderecoPrincipal?.estado ?? null,
     codigoIbge: enderecoPrincipal?.codigoIbge ?? null,
     antt: papelTransportadora.dadosTransportadora?.antt ?? null,
+    tipoVeiculoId: papelTransportadora.dadosTransportadora?.tipoVeiculoId ?? null,
+    tipoVeiculoNome: papelTransportadora.dadosTransportadora?.tipoVeiculo?.nome ?? null,
+    tipoVeiculoIcone: papelTransportadora.dadosTransportadora?.tipoVeiculo?.icone ?? null,
     aceitaNFe55: papelTransportadora.dadosTransportadora?.aceitaNFe55 ?? true,
     contatos: pessoa.contatos,
     enderecos: pessoa.enderecos,
@@ -98,7 +101,7 @@ function mapearParaTransportadoraView(pessoa: PessoaComRelacoes) {
 const INCLUDE_COMPLETO = {
   papeis: {
     where: { papel: 'transportadora' },
-    include: { dadosTransportadora: true },
+    include: { dadosTransportadora: { include: { tipoVeiculo: true } } },
   },
   contatos: true,
   enderecos: true,
@@ -173,6 +176,7 @@ type CamposNormalizados = {
   estado: string | null
   codigoIbge: string | null
   antt: string | null
+  tipoVeiculoId: string | null
   aceitaNFe55: boolean
   contatosArray?: ContatoItem[]
   enderecosArray?: EnderecoItem[]
@@ -201,6 +205,7 @@ function normalizarCamposTransportadora(dados: DadosParaCriarTransportadora | Da
     estado: dados.estado || null,
     codigoIbge: dados.codigoIbge || null,
     antt: dados.antt || null,
+    tipoVeiculoId: dados.tipoVeiculoId || null,
     aceitaNFe55: dados.aceitaNFe55 ?? true,
     contatosArray: dados.contatos,
     enderecosArray: dados.enderecos,
@@ -356,6 +361,9 @@ async function buscarPessoaPorDocumentoNaEmpresa(
       companyId: pessoa.companyId,
       ...contatosEnderecos,
       antt: null,
+      tipoVeiculoId: null,
+      tipoVeiculoNome: null,
+      tipoVeiculoIcone: null,
       aceitaNFe55: true,
       createdAt: pessoa.createdAt,
       updatedAt: pessoa.updatedAt,
@@ -554,11 +562,13 @@ async function criar(dados: DadosParaCriarTransportadora, companyId: string) {
           where: { papelId: papelExistente.id },
           update: {
             antt: campos.antt,
+            tipoVeiculoId: campos.tipoVeiculoId,
             aceitaNFe55: campos.aceitaNFe55,
           },
           create: {
             papelId: papelExistente.id,
             antt: campos.antt,
+            tipoVeiculoId: campos.tipoVeiculoId,
             aceitaNFe55: campos.aceitaNFe55,
           },
         })
@@ -570,6 +580,7 @@ async function criar(dados: DadosParaCriarTransportadora, companyId: string) {
           data: {
             papelId: papel.id,
             antt: campos.antt,
+            tipoVeiculoId: campos.tipoVeiculoId,
             aceitaNFe55: campos.aceitaNFe55,
           },
         })
@@ -590,6 +601,7 @@ async function criar(dados: DadosParaCriarTransportadora, companyId: string) {
         data: {
           papelId: papel.id,
           antt: campos.antt,
+          tipoVeiculoId: campos.tipoVeiculoId,
           aceitaNFe55: campos.aceitaNFe55,
         },
       })
@@ -642,11 +654,13 @@ async function atualizar(id: string, dados: DadosParaEditarTransportadora) {
         where: { papelId: papelTransportadora.id },
         update: {
           antt: campos.antt,
+          tipoVeiculoId: campos.tipoVeiculoId,
           aceitaNFe55: campos.aceitaNFe55,
         },
         create: {
           papelId: papelTransportadora.id,
           antt: campos.antt,
+          tipoVeiculoId: campos.tipoVeiculoId,
           aceitaNFe55: campos.aceitaNFe55,
         },
       })

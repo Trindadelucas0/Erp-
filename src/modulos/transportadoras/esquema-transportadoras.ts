@@ -60,6 +60,7 @@ const camposComuns = {
   indicadorIe: z.enum(['1', '2', '9']).default('9'),
   observacoes: textoCadastroOpcional(500),
   antt: textoCadastroOpcional(20),
+  tipoVeiculoId: z.string().uuid('Tipo de veículo inválido').nullable().optional().or(z.literal('')),
   aceitaNFe55: z.boolean().optional().default(true),
 }
 

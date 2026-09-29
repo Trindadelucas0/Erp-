@@ -18,6 +18,7 @@ import { rotasDePlanosFinanceiros } from '../../modulos/planos-financeiros/rotas
 import { rotasDeRecorrenciasFinanceiras } from '../../modulos/recorrencias-financeiras/rotas-recorrencias-financeiras.js'
 import { rotasDeAdquirentes } from '../../modulos/adquirentes/rotas-adquirentes.js'
 import { rotasDeCartoesPagamento } from '../../modulos/cartoes-pagamento/rotas-cartoes-pagamento.js'
+import { rotasDeTiposVeiculo } from '../../modulos/tipos-veiculo/rotas-tipos-veiculo.js'
 import { rotasDeCfops } from '../../modulos/cfops/rotas-cfops.js'
 import { rotasDeAssinaturaZapsign } from '../../modulos/assinatura-zapsign/rotas-assinatura-zapsign.js'
 import { rotasFocusNfe } from '../../modulos/focus-nfe/rotas-focus-nfe.js'
@@ -69,6 +70,7 @@ export async function registrarRotas(aplicacao: FastifyInstance): Promise<void> 
   await aplicacao.register(rotasDeRecorrenciasFinanceiras, { prefix: '/recorrencias-financeiras' })
   await aplicacao.register(rotasDeAdquirentes, { prefix: '/adquirentes' })
   await aplicacao.register(rotasDeCartoesPagamento, { prefix: '/cartoes-pagamento' })
+  await aplicacao.register(rotasDeTiposVeiculo, { prefix: '/tipos-veiculo' })
   await aplicacao.register(rotasDeCfops, { prefix: '/cfops' })
   await aplicacao.register(rotasDeCatalogos, { prefix: '' })
   await aplicacao.register(rotasDeAssinaturaZapsign, { prefix: '/zapsign' })
