@@ -16,12 +16,12 @@ import { usePermissao } from '@/hooks/use-permissao'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import { filtrarCadastroPessoa } from '@/lib/normalizar-busca'
 import {
+  CHAVE_AVISO,
   RECEBER_PAGAMENTO_EM_DESENVOLVIMENTO,
   TEXTO_CARD_DESENVOLVIMENTO,
   TITULO_CARD_DESENVOLVIMENTO,
 } from '@/lib/receber-pagamento-desenvolvimento'
 import { clienteHttp } from '@/services/api'
-import { CHAVE_AVISO } from '../page'
 
 const LIMITE_CLIENTES = 80
 const MSG_INCOMPLETO = 'Informe o cliente e ao menos um produto com quantidade.'

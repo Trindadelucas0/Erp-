@@ -12,6 +12,7 @@ import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { usePermissao } from '@/hooks/use-permissao'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import {
+  CHAVE_AVISO,
   RECEBER_PAGAMENTO_EM_DESENVOLVIMENTO,
   TEXTO_CARD_DESENVOLVIMENTO,
   TITULO_CARD_DESENVOLVIMENTO,
@@ -25,8 +26,6 @@ type VendaPaga = {
   status: string
   separacoes: number[]
 }
-
-export const CHAVE_AVISO = 'receber-pagamento-aviso'
 
 function rotuloStatus(status: string) {
   if (status === 'paga') return 'Paga'
