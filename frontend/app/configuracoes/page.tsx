@@ -20,6 +20,7 @@ import { ConteudoDaPaginaPlanosFinanceiros } from '@/app/planos-financeiros/cont
 import { PainelRecorrenciasFinanceiras } from '@/components/recorrencias-financeiras/painel-recorrencias-financeiras'
 import { PainelAdquirentes } from '@/components/adquirentes/painel-adquirentes'
 import { PainelCartoesPagamento } from '@/components/cartoes-pagamento/painel-cartoes-pagamento'
+import { PainelParametrosBoleto } from '@/components/parametros-boleto/painel-parametros-boleto'
 import { ConteudoDaPaginaDeUsuarios } from '@/app/users/conteudo-pagina-usuarios'
 import { ConteudoDaPaginaDePapeis } from '@/app/papeis/conteudo-pagina-papeis'
 import { CardPadrao } from '@/components/ui/card-padrao'
@@ -45,7 +46,7 @@ import type { AtalhoConfigurado, ChaveDaAcao } from '@/lib/atalhos/tipos'
 type AbaConfig = 'geral' | 'vendas' | 'logistica' | 'financeiro' | 'fiscal'
 type SecaoGeral = 'usuarios' | 'papeis' | 'assinatura' | 'atalhos'
 type SecaoFiscal = 'cfop' | 'buscador'
-type SecaoFinanceiro = 'planos' | 'recorrencia' | 'adquirentes' | 'cartoes'
+type SecaoFinanceiro = 'planos' | 'recorrencia' | 'adquirentes' | 'cartoes' | 'boleto'
 type SecaoLogistica = 'unidades' | 'estrutura' | 'veiculos'
 
 const ABAS_GERAL = [
@@ -70,6 +71,7 @@ const ABAS_FINANCEIRO = [
   { id: 'recorrencia', rotulo: 'Recorrência' },
   { id: 'adquirentes', rotulo: 'Adquirentes' },
   { id: 'cartoes', rotulo: 'Cartões de Pagamento' },
+  { id: 'boleto', rotulo: 'Boleto' },
 ]
 
 const ABAS_LOGISTICA = [
@@ -441,7 +443,8 @@ function ConteudoDaPaginaDeConfiguracoes() {
       (secaoParam === 'planos' ||
         secaoParam === 'recorrencia' ||
         secaoParam === 'adquirentes' ||
-        secaoParam === 'cartoes')
+        secaoParam === 'cartoes' ||
+        secaoParam === 'boleto')
     ) {
       return secaoParam
     }
@@ -576,6 +579,7 @@ function ConteudoDaPaginaDeConfiguracoes() {
           {secaoFinanceiro === 'recorrencia' && <PainelRecorrenciasFinanceiras />}
           {secaoFinanceiro === 'adquirentes' && <PainelAdquirentes />}
           {secaoFinanceiro === 'cartoes' && <PainelCartoesPagamento />}
+          {secaoFinanceiro === 'boleto' && <PainelParametrosBoleto />}
         </div>
       )}
 

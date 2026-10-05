@@ -67,7 +67,50 @@ model Company {
   niveisEnderecoWms           NivelEnderecoWms[]
   requisicoesWms              RequisicaoWms[]
   parametrizacaoCustoVenda    ParametrizacaoCustoVenda?
+  configuracoesBoleto           ConfiguracaoBoleto[]
   createdAt                   DateTime                     @default(now())
+}
+
+// ─── Parâmetros de boleto (Configurações → Financeiro → Boleto) ───────────────
+
+model ConfiguracaoBoleto {
+  id                              String    @id @default(uuid())
+  companyId                       String
+  company                         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  nome                            String
+  ativo                           Boolean   @default(true)
+  padrao                          Boolean   @default(false)
+  valorMinimo                     Decimal?  @db.Decimal(18, 2)
+  valorMaximo                     Decimal?  @db.Decimal(18, 2)
+  prazoMedioMaximoDias            Int?
+  permitirParcelamento            Boolean   @default(false)
+  quantidadeMaximaParcelas        Int?
+  multaAtrasoPercentual           Decimal?  @db.Decimal(9, 4)
+  jurosAtrasoPercentualDia        Decimal?  @db.Decimal(9, 4)
+  permitirPagamentoAposVencimento Boolean   @default(false)
+  diasMaximosAposVencimento       Int?
+  negativarAutomaticamente        Boolean   @default(false)
+  diasParaNegativar               Int?
+  /// itau | bradesco | banco_do_brasil | santander | sicoob | c6
+  banco                           String?
+  /// producao | homologacao
+  ambiente                        String?
+  /// api
+  tipoIntegracao                  String?   @default("api")
+  urlApi                          String?
+  clientId                        String?
+  clientSecret                    String?
+  certificadoNome                 String?
+  certificadoCaminho              String?
+  certificadoMime                 String?
+  ultimoTesteEm                   DateTime?
+  ultimoTesteSucesso              Boolean?
+  ultimoTesteMensagem             String?
+  createdAt                       DateTime  @default(now())
+  updatedAt                       DateTime  @updatedAt
+
+  @@unique([companyId, nome])
+  @@index([companyId, ativo])
 }
 
 // ─── Jobs — fila durável do worker ───────────────────────────────────────────
