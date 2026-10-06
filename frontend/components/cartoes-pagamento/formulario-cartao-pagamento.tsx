@@ -16,6 +16,7 @@ import {
   type TipoCartaoPagamento,
 } from '@/lib/bandeiras-cartao'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
+import { tipoCartaoTravado } from '@/lib/trava-tipo-cartao'
 import { SelectBandeiraCartao } from './select-bandeira-cartao'
 import {
   formatarMoedaInput,
@@ -156,8 +157,21 @@ export function FormularioCartaoPagamento({
     }
   }
 
+  const tipoTravado = useMemo(
+    () =>
+      tipoCartaoTravado({
+        cartaoJaSalvo: Boolean(registro),
+        bandeira,
+        nomeExibicao,
+        adquirenteId,
+        taxas,
+      }),
+    [registro, bandeira, nomeExibicao, adquirenteId, taxas]
+  )
+
   function aplicarTipo(novo: TipoCartaoPagamento) {
     if (novo === tipo) return
+    if (tipoTravado) return
 
     const creditoSalvo: RascunhoPorTipo['credito'] =
       tipo === 'credito'
@@ -335,22 +349,32 @@ export function FormularioCartaoPagamento({
               Tipo <span className="text-destructive">*</span>
             </Label>
             <div className="flex rounded-md border border-border p-1">
-              {(['credito', 'debito'] as const).map((opcao) => (
-                <button
-                  key={opcao}
-                  type="button"
-                  disabled={!podeSalvar}
-                  onClick={() => aplicarTipo(opcao)}
-                  className={`flex-1 rounded px-3 py-2 text-sm font-medium transition-colors ${
-                    tipo === opcao
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:bg-muted'
-                  }`}
-                >
-                  {opcao === 'credito' ? 'Crédito' : 'Débito'}
-                </button>
-              ))}
+              {(['credito', 'debito'] as const).map((opcao) => {
+                const opcaoDesabilitada =
+                  !podeSalvar || (tipoTravado && opcao !== tipo)
+                return (
+                  <button
+                    key={opcao}
+                    type="button"
+                    disabled={opcaoDesabilitada}
+                    aria-disabled={opcaoDesabilitada}
+                    onClick={() => aplicarTipo(opcao)}
+                    className={`flex-1 rounded px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                      tipo === opcao
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:bg-muted'
+                    }`}
+                  >
+                    {opcao === 'credito' ? 'Crédito' : 'Débito'}
+                  </button>
+                )
+              })}
             </div>
+            {tipoTravado && (
+              <p className="text-xs text-muted-foreground">
+                O tipo fica travado neste cartão.
+              </p>
+            )}
           </div>
           <InputPadrao
             rotulo="Nome para exibição *"

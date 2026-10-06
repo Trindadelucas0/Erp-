@@ -141,6 +141,10 @@ async function editar(
   const existente = await repositorioDeCartoesPagamento.buscarPorId(companyId, id)
   if (!existente) throw new ErroDaAplicacao('Cartão de pagamento não encontrado', 404)
 
+  if (dados.tipo !== existente.tipo) {
+    throw new ErroDaAplicacao('O tipo do cartão não pode ser alterado', 400)
+  }
+
   const mesmaAdquirente = existente.adquirenteId === dados.adquirenteId
   await validarAdquirente(companyId, dados.adquirenteId, !mesmaAdquirente)
   await garantirUnicidade(companyId, dados.adquirenteId, dados.bandeira, dados.tipo, id)
