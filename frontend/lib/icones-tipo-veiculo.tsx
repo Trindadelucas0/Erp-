@@ -1,14 +1,5 @@
 import type { ComponentType } from 'react'
-import {
-  BicycleIcon,
-  BusIcon,
-  CarIcon,
-  JeepIcon,
-  MotorcycleIcon,
-  TruckIcon,
-  TruckTrailerIcon,
-  VanIcon,
-} from '@phosphor-icons/react'
+import { CarIcon, JeepIcon, MotorcycleIcon, TruckIcon } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
 
 type OpcaoIconeTipoVeiculo = {
@@ -19,14 +10,10 @@ type OpcaoIconeTipoVeiculo = {
 
 /** Mesmas chaves de `ICONES_TIPO_VEICULO` em `src/modulos/tipos-veiculo/esquema-tipos-veiculo.ts`. */
 export const OPCOES_ICONE_TIPO_VEICULO: readonly OpcaoIconeTipoVeiculo[] = [
-  { chave: 'van', rotulo: 'Van', Icone: VanIcon },
   { chave: 'caminhao', rotulo: 'Caminhão', Icone: TruckIcon },
-  { chave: 'carreta', rotulo: 'Carreta', Icone: TruckTrailerIcon },
   { chave: 'carro', rotulo: 'Carro', Icone: CarIcon },
-  { chave: 'utilitario', rotulo: 'Utilitário', Icone: JeepIcon },
+  { chave: 'utilitario', rotulo: 'Pick up', Icone: JeepIcon },
   { chave: 'moto', rotulo: 'Moto', Icone: MotorcycleIcon },
-  { chave: 'bicicleta', rotulo: 'Bicicleta', Icone: BicycleIcon },
-  { chave: 'onibus', rotulo: 'Ônibus', Icone: BusIcon },
 ]
 
 type Props = {

@@ -12,7 +12,7 @@ const LayoutPrincipal = dynamic(
 )
 
 const ROTAS_SEM_LAYOUT = ['/login']
-const PREFIXOS_SEM_LAYOUT = ['/portal-fornecedor']
+const PREFIXOS_SEM_LAYOUT = ['/portal-fornecedor', '/receber-pagamento/totem']
 
 type Props = {
   children: React.ReactNode

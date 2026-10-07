@@ -7,11 +7,14 @@ import {
   montarParagrafo,
 } from '../notificacoes-email/template-email-corporativo.js'
 import type { DadosOrcamento } from './esquema-orcamentos.js'
+import { repositorioParametrizacaoCustos } from '../configuracoes/repositorio-parametrizacao-custos.js'
 import {
   ehUnicidadeNumero,
   repositorioDeOrcamentos,
   type OrcamentoPersistido,
 } from './repositorio-orcamentos.js'
+
+const VALIDADE_ORCAMENTO_DIAS_PADRAO = 14
 
 function semNomeEmpresa<T extends { nomeEmpresa: string }>(registro: T) {
   const { nomeEmpresa: _nomeEmpresa, ...publico } = registro
@@ -27,6 +30,21 @@ async function numeroParaGravar(companyId: string, numeroInformado: string): Pro
   const numero = numeroInformado.trim()
   if (numero) return numero
   return repositorioDeOrcamentos.proximoNumero(companyId)
+}
+
+async function validadeOrcamentoDiasDaEmpresa(companyId: string): Promise<number> {
+  const registro = await repositorioParametrizacaoCustos.buscarDaEmpresa(companyId)
+  const dias = registro?.validadeOrcamentoDias
+  if (dias == null || !Number.isFinite(dias) || dias < 1) return VALIDADE_ORCAMENTO_DIAS_PADRAO
+  return dias
+}
+
+async function preenchimentoNovo(companyId: string) {
+  const [numero, validadeOrcamentoDias] = await Promise.all([
+    repositorioDeOrcamentos.proximoNumero(companyId),
+    validadeOrcamentoDiasDaEmpresa(companyId),
+  ])
+  return { numero, validadeOrcamentoDias }
 }
 
 async function listar(companyId: string) {
@@ -155,4 +173,5 @@ export const servicoDeOrcamentos = {
   atualizar,
   finalizar,
   enviarEmail,
+  preenchimentoNovo,
 }

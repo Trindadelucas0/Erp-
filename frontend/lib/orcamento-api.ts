@@ -1,6 +1,7 @@
 import {
   itemOrcamentoVazio,
   linhaPreenchida,
+  somarDiasCivil,
   type ItemOrcamentoLayout,
   type OrcamentoLayout,
 } from './orcamento-layout'
@@ -78,11 +79,16 @@ function dataDeHoje(): string {
   return `${hoje.getFullYear()}-${mes}-${dia}`
 }
 
-export function orcamentoEmBranco(): OrcamentoLayout {
+export function orcamentoEmBranco(opcoes?: {
+  numeroPreview?: string
+  validadeOrcamentoDias?: number
+}): OrcamentoLayout {
+  const data = dataDeHoje()
+  const dias = opcoes?.validadeOrcamentoDias ?? 14
   return {
-    numero: '',
-    data: dataDeHoje(),
-    validade: '',
+    numero: opcoes?.numeroPreview ?? '',
+    data,
+    validade: somarDiasCivil(data, dias),
     status: 'em_elaboracao',
     vendedorId: '',
     clienteCodigo: '',
@@ -92,14 +98,14 @@ export function orcamentoEmBranco(): OrcamentoLayout {
     email: '',
     contato: '',
     condicaoPagamento: '',
-    prazoEntrega: '',
+    prazoEntrega: 'no_ato',
     frete: '',
     mensagem: '',
     descontoTotal: 0,
     valorFrete: 0,
     outrasDespesas: 0,
     converterEmPedido: false,
-    itens: [itemOrcamentoVazio('linha-nova')],
+    itens: [],
   }
 }
 
@@ -111,10 +117,13 @@ export function montarCorpoOrcamento(
   orcamento: OrcamentoLayout,
   endereco: EnderecoOrcamento,
   complementares: string,
-  observacoes: string
+  observacoes: string,
+  opcoes?: { numeroAoCriar?: string }
 ) {
+  const numero =
+    opcoes?.numeroAoCriar !== undefined ? opcoes.numeroAoCriar : orcamento.numero
   return {
-    numero: orcamento.numero,
+    numero,
     data: orcamento.data,
     validade: orcamento.validade,
     status: statusAoSalvar(orcamento.status),
@@ -154,9 +163,7 @@ export function deOrcamentoApi(api: OrcamentoApi): {
   complementares: string
   observacoes: string
 } {
-  const itens: ItemOrcamentoLayout[] = api.itens.length
-    ? api.itens.map((item) => ({ ...item, estoque: null }))
-    : [itemOrcamentoVazio('linha-nova')]
+  const itens: ItemOrcamentoLayout[] = api.itens.map((item) => ({ ...item, estoque: null }))
 
   return {
     orcamento: {

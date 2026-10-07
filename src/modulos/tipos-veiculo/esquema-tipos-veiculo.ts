@@ -15,16 +15,7 @@ const pesoMaximoKg = z.coerce
   .min(1, 'Peso máximo deve ser maior que zero')
   .max(999999, 'Peso máximo deve ser no máximo 999.999 kg')
 
-export const ICONES_TIPO_VEICULO = [
-  'van',
-  'caminhao',
-  'carreta',
-  'carro',
-  'utilitario',
-  'moto',
-  'bicicleta',
-  'onibus',
-] as const
+export const ICONES_TIPO_VEICULO = ['caminhao', 'carro', 'utilitario', 'moto'] as const
 
 const icone = z
   .enum(ICONES_TIPO_VEICULO, { errorMap: () => ({ message: 'Ícone inválido' }) })

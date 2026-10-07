@@ -34,6 +34,11 @@ async function listar(requisicao: FastifyRequest, resposta: FastifyReply) {
   return resposta.send({ orcamentos })
 }
 
+async function proximoNumero(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const dados = await servicoDeOrcamentos.preenchimentoNovo(companyIdDaSessao(requisicao))
+  return resposta.send(dados)
+}
+
 async function obter(requisicao: FastifyRequest, resposta: FastifyReply) {
   const orcamento = await servicoDeOrcamentos.obter(companyIdDaSessao(requisicao), idDaUrl(requisicao))
   return resposta.send({ orcamento })
@@ -73,6 +78,11 @@ export async function rotasDeOrcamentos(aplicacao: FastifyInstance): Promise<voi
   const auth = [middlewareDeAutenticacao, middlewareEmpresaAtiva]
 
   aplicacao.get('/', { preHandler: [...auth, middlewareDeAutorizacao('vendas:view')] }, listar)
+  aplicacao.get(
+    '/proximo-numero',
+    { preHandler: [...auth, middlewareDeAutorizacao('vendas:view')] },
+    proximoNumero
+  )
   aplicacao.get('/:id', { preHandler: [...auth, middlewareDeAutorizacao('vendas:view')] }, obter)
   aplicacao.post('/', { preHandler: [...auth, middlewareDeAutorizacao('vendas:create')] }, criar)
   aplicacao.patch('/:id', { preHandler: [...auth, middlewareDeAutorizacao('vendas:edit')] }, atualizar)

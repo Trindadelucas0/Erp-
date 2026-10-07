@@ -68,6 +68,7 @@ model Company {
   requisicoesWms              RequisicaoWms[]
   parametrizacaoCustoVenda    ParametrizacaoCustoVenda?
   configuracoesBoleto           ConfiguracaoBoleto[]
+  contasEmpresa                 ContaEmpresa[]
   createdAt                   DateTime                     @default(now())
 }
 
@@ -506,10 +507,13 @@ model ContaPagarBaixa {
   usuarioId          String?
   usuario            User?            @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
   observacao         String?
+  contaEmpresaId     String?
+  contaEmpresa       ContaEmpresa?    @relation(fields: [contaEmpresaId], references: [id], onDelete: Restrict)
   createdAt          DateTime         @default(now())
 
   @@index([contaPagarParcelaId])
   @@index([companyId, pagoEm])
+  @@index([contaEmpresaId])
 }
 
 model ContaReceberCodigoSeq {
@@ -610,10 +614,13 @@ model ContaReceberBaixa {
   usuarioId            String?
   usuario              User?               @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
   observacao           String?
+  contaEmpresaId       String?
+  contaEmpresa         ContaEmpresa?       @relation(fields: [contaEmpresaId], references: [id], onDelete: Restrict)
   createdAt            DateTime            @default(now())
 
   @@index([contaReceberParcelaId])
   @@index([companyId, pagoEm])
+  @@index([contaEmpresaId])
 }
 
 model NfeRecebidaItem {
@@ -1244,6 +1251,32 @@ model Adquirente {
   @@index([companyId, ativo])
 }
 
+/// Conta bancária ou caixa da empresa (Financeiro → Contas).
+model ContaEmpresa {
+  id                      String              @id @default(uuid())
+  companyId               String
+  company                 Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  nome                    String
+  /// bancaria | caixa
+  tipo                    String
+  /// itau | bradesco | banco_do_brasil | santander | sicoob | c6 — só bancária
+  banco                   String?
+  agencia                 String?
+  digitoAgencia           String?
+  conta                   String?
+  digitoConta             String?
+  limiteChequeEspecial    Decimal?            @db.Decimal(18, 2)
+  ativo                   Boolean             @default(true)
+  contasPagarBaixas       ContaPagarBaixa[]
+  contasReceberBaixas     ContaReceberBaixa[]
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+
+  @@unique([companyId, nome])
+  @@index([companyId, ativo])
+  @@index([companyId, tipo])
+}
+
 /// Taxas e prazos de uma bandeira+tipo sob uma adquirente. Bandeiras fixas no código.
 model CartaoPagamento {
   id                    String                @id @default(uuid())
@@ -1785,6 +1818,8 @@ model ParametrizacaoCustoVenda {
   jurosMensaisCustoFinanOperac Decimal? @db.Decimal(18, 4)
   aliquotaCbs                  Decimal? @db.Decimal(18, 4)
   aliquotaIbs                  Decimal? @db.Decimal(18, 4)
+  /// Dias somados à data de emissão para preencher a validade do orçamento (Configurações → Vendas).
+  validadeOrcamentoDias        Int      @default(14)
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
 }
@@ -1849,20 +1884,23 @@ model OrcamentoItem {
 
 /// Venda já paga no caixa. Não é pedido de venda e não guarda preço.
 model VendaCaixa {
-  id          String           @id @default(uuid())
-  companyId   String
-  company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  numero      Int
-  clienteNome String
-  /// paga
-  status      String           @default("paga")
-  pagaEm      DateTime         @default(now())
-  itens       VendaCaixaItem[]
-  requisicoes RequisicaoWms[]
-  createdAt   DateTime         @default(now())
+  id             String           @id @default(uuid())
+  companyId      String
+  company        Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  numero         Int
+  clienteNome    String
+  /// paga | chamado_atendente
+  status         String           @default("paga")
+  /// dinheiro | pix | cartao_credito | cartao_debito | boleto — null em chamado ou vendas antigas
+  formaPagamento String?
+  pagaEm         DateTime         @default(now())
+  itens          VendaCaixaItem[]
+  requisicoes    RequisicaoWms[]
+  createdAt      DateTime         @default(now())
 
   @@unique([companyId, numero])
   @@index([companyId, pagaEm])
+  @@index([companyId, status])
 }
 
 model VendaCaixaItem {

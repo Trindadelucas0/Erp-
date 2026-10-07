@@ -18,6 +18,7 @@ type ParametrizacaoCustos = {
   jurosMensaisCustoFinanOperac: number | null
   aliquotaCbs: number | null
   aliquotaIbs: number | null
+  validadeOrcamentoDias: number
   totalVenda: number
 }
 
@@ -48,6 +49,7 @@ export function PainelParametrizacaoCustos() {
     jurosMensaisCustoFinanOperac: '',
     aliquotaCbs: '',
     aliquotaIbs: '',
+    validadeOrcamentoDias: '14',
   })
   const [carregando, setCarregando] = useState(true)
   const [salvando, setSalvando] = useState(false)
@@ -88,6 +90,7 @@ export function PainelParametrizacaoCustos() {
         jurosMensaisCustoFinanOperac: textoPercentual(p.jurosMensaisCustoFinanOperac),
         aliquotaCbs: textoPercentual(p.aliquotaCbs),
         aliquotaIbs: textoPercentual(p.aliquotaIbs),
+        validadeOrcamentoDias: String(p.validadeOrcamentoDias ?? 14),
       })
     } catch (e) {
       setErro(extrairMensagemApi(e, 'Não foi possível carregar a parametrização de custos.'))
@@ -119,6 +122,7 @@ export function PainelParametrizacaoCustos() {
         jurosMensaisCustoFinanOperac: parsePercentual(form.jurosMensaisCustoFinanOperac),
         aliquotaCbs: parsePercentual(form.aliquotaCbs),
         aliquotaIbs: parsePercentual(form.aliquotaIbs),
+        validadeOrcamentoDias: parseInt(form.validadeOrcamentoDias, 10) || 14,
       })
       setMensagem('Parametrização gravada.')
     } catch (e) {
@@ -190,6 +194,18 @@ export function PainelParametrizacaoCustos() {
                 value={`${formatarTotal(totalVenda)}%`}
                 readOnly
                 disabled
+              />
+            </div>
+          </div>
+
+          <div>
+            <h3 className="mb-3 text-sm font-medium">Orçamentos</h3>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <InputPadrao
+                rotulo="Validade padrão do orçamento (dias)"
+                inputMode="numeric"
+                value={form.validadeOrcamentoDias}
+                onChange={(e) => alterarCampo('validadeOrcamentoDias', e.target.value.replace(/\D/g, ''))}
               />
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { mascaraCnpj, mascaraCpf, mascaraTelefone } from '@/lib/documentos'
+import { mascaraCep, mascaraCnpj, mascaraCpf, mascaraTelefone } from '@/lib/documentos'
 
 export const AVISO_SEM_GRAVACAO =
   'Gravação, impressão e envio ficam para a próxima etapa.'
@@ -30,12 +30,28 @@ export const OPCOES_CONDICAO_PAGAMENTO: readonly OpcaoFixa[] = [
   { value: 'a_vista', label: 'À vista' },
 ]
 
-export const OPCOES_PRAZO_ENTREGA: readonly OpcaoFixa[] = [
-  { value: 'a_combinar', label: 'A combinar' },
-  { value: '7', label: '7 dias' },
-  { value: '15', label: '15 dias' },
-  { value: '30', label: '30 dias' },
+export const OPCOES_TIPO_ENTREGA: readonly OpcaoFixa[] = [
+  { value: 'no_ato', label: 'No ato' },
+  { value: 'a_retirar', label: 'A retirar' },
+  { value: 'entregar', label: 'Entregar' },
+  { value: 'por_encomenda', label: 'Por encomenda' },
 ]
+
+const LEGADO_TIPO_ENTREGA: readonly OpcaoFixa[] = [
+  { value: 'a_combinar', label: 'A combinar (legado)' },
+  { value: '7', label: '7 dias (legado)' },
+  { value: '15', label: '15 dias (legado)' },
+  { value: '30', label: '30 dias (legado)' },
+]
+
+export function opcoesTipoEntregaOrcamento(valorAtual: string): readonly OpcaoFixa[] {
+  if (!valorAtual || OPCOES_TIPO_ENTREGA.some((opcao) => opcao.value === valorAtual)) {
+    return OPCOES_TIPO_ENTREGA
+  }
+  const legado = LEGADO_TIPO_ENTREGA.find((opcao) => opcao.value === valorAtual)
+  if (legado) return [...OPCOES_TIPO_ENTREGA, legado]
+  return [...OPCOES_TIPO_ENTREGA, { value: valorAtual, label: valorAtual }]
+}
 
 export const OPCOES_FRETE: readonly OpcaoFixa[] = [
   { value: 'cif', label: 'CIF - Pago por nós' },
@@ -146,6 +162,19 @@ export function formatarDataCivil(iso: string): string {
   return `${dia}/${mes}/${ano}`
 }
 
+export function somarDiasCivil(isoData: string, dias: number): string {
+  const partes = isoData.split('-').map(Number)
+  const ano = partes[0]
+  const mes = partes[1]
+  const dia = partes[2]
+  if (!ano || !mes || !dia) return isoData
+  const data = new Date(ano, mes - 1, dia)
+  data.setDate(data.getDate() + dias)
+  const mesStr = String(data.getMonth() + 1).padStart(2, '0')
+  const diaStr = String(data.getDate()).padStart(2, '0')
+  return `${data.getFullYear()}-${mesStr}-${diaStr}`
+}
+
 export function formatarQuantidade(valor: number): string {
   return valor.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 })
 }
@@ -172,7 +201,7 @@ export const EXEMPLO_ORCAMENTO: OrcamentoLayout = {
   email: 'contato@bef.com.br',
   contato: 'João Silva',
   condicaoPagamento: 'cartao_credito',
-  prazoEntrega: 'a_combinar',
+  prazoEntrega: 'no_ato',
   frete: 'cif',
   mensagem: MENSAGEM_CLIENTE_EXEMPLO,
   descontoTotal: 41.24,
@@ -252,6 +281,21 @@ export type ClienteCadastroOrcamento = {
   cpf?: string | null
   email?: string | null
   telefone?: string | null
+  cep?: string | null
+  logradouro?: string | null
+  numero?: string | null
+  bairro?: string | null
+  cidade?: string | null
+  estado?: string | null
+}
+
+export type EnderecoEntregaOrcamento = {
+  cep: string
+  logradouro: string
+  numero: string
+  bairro: string
+  cidade: string
+  uf: string
 }
 
 export const CLIENTE_ORCAMENTO_VAZIO: DadosClienteOrcamento = {
@@ -276,6 +320,19 @@ export function aplicarClienteNoOrcamento(cliente: ClienteCadastroOrcamento): Da
     telefone: cliente.telefone ? mascaraTelefone(cliente.telefone) : '',
     email: cliente.email?.trim() ?? '',
     contato: '',
+  }
+}
+
+export function enderecoEntregaDoCliente(
+  cliente: ClienteCadastroOrcamento
+): EnderecoEntregaOrcamento {
+  return {
+    cep: cliente.cep ? mascaraCep(String(cliente.cep)) : '',
+    logradouro: cliente.logradouro?.trim() ?? '',
+    numero: cliente.numero?.trim() ?? '',
+    bairro: cliente.bairro?.trim() ?? '',
+    cidade: cliente.cidade?.trim() ?? '',
+    uf: cliente.estado?.trim() ?? '',
   }
 }
 

@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   EXEMPLO_ORCAMENTO,
   aplicarClienteNoOrcamento,
+  enderecoEntregaDoCliente,
   modoClienteDoOrcamento,
   resumirOrcamento,
+  somarDiasCivil,
 } from './orcamento-layout'
 
 describe('resumirOrcamento', () => {
@@ -28,6 +30,35 @@ describe('modoClienteDoOrcamento', () => {
 
   it('trata código preenchido como busca', () => {
     expect(modoClienteDoOrcamento('11.838')).toBe('buscar')
+  })
+})
+
+describe('somarDiasCivil', () => {
+  it('soma dias na data civil sem deslocar fuso', () => {
+    expect(somarDiasCivil('2026-09-16', 14)).toBe('2026-09-30')
+  })
+})
+
+describe('enderecoEntregaDoCliente', () => {
+  it('copia o endereço principal do cadastro', () => {
+    expect(
+      enderecoEntregaDoCliente({
+        nome: 'Cliente',
+        cep: '01310100',
+        logradouro: 'Av. Paulista',
+        numero: '1000',
+        bairro: 'Bela Vista',
+        cidade: 'São Paulo',
+        estado: 'SP',
+      })
+    ).toEqual({
+      cep: '01310-100',
+      logradouro: 'Av. Paulista',
+      numero: '1000',
+      bairro: 'Bela Vista',
+      cidade: 'São Paulo',
+      uf: 'SP',
+    })
   })
 })
 

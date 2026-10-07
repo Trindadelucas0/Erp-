@@ -485,7 +485,7 @@ export function FormularioParametrosBoleto({
               placeholder="0,00"
             />
             <InputPadrao
-              rotulo="Juros por atraso (% ao dia)"
+              rotulo="Juros por atraso (% ao mês)"
               value={jurosAtrasoPercentualDia}
               onChange={(e) => setJurosAtrasoPercentualDia(e.target.value)}
               disabled={desabilitado}

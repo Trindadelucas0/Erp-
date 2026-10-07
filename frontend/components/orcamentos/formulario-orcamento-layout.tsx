@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Mail, Printer, Trash2 } from 'lucide-react'
 import { Abas } from '@/components/ui/abas'
@@ -15,6 +15,10 @@ import { Label } from '@/components/ui/label'
 import { SelectPadrao } from '@/components/ui/select-padrao'
 import { TextareaPadrao } from '@/components/ui/textarea-padrao'
 import { TituloPagina } from '@/components/ui/titulo-pagina'
+import {
+  ComboboxProduto,
+  type ProdutoOpcao,
+} from '@/components/pedidos-compra/combobox-produto'
 import {
   ENDERECO_ORCAMENTO_VAZIO,
   deOrcamentoApi,
@@ -31,10 +35,10 @@ import {
   CLIENTE_ORCAMENTO_VAZIO,
   OPCOES_CONDICAO_PAGAMENTO,
   OPCOES_FRETE,
-  OPCOES_PRAZO_ENTREGA,
-  OPCOES_STATUS_ORCAMENTO,
   OPCOES_VENDEDOR_ORCAMENTO,
   aplicarClienteNoOrcamento,
+  enderecoEntregaDoCliente,
+  opcoesTipoEntregaOrcamento,
   formatarEstoque,
   formatarPrecoUnitario,
   formatarQuantidade,
@@ -64,6 +68,12 @@ type ClienteLista = {
   cnpj?: string | null
   email?: string | null
   telefone?: string | null
+  cep?: string | null
+  logradouro?: string | null
+  numero?: string | null
+  bairro?: string | null
+  cidade?: string | null
+  estado?: string | null
 }
 
 type AbaOrcamento =
@@ -120,11 +130,42 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
       ? iniciais!.endereco.cep.replace(/\D/g, '')
       : null
   )
+  const clienteEnderecoRef = useRef<ClienteLista | null>(null)
+  const [produtoId, setProdutoId] = useState('')
+  const [produtosBusca, setProdutosBusca] = useState<ProdutoOpcao[]>([])
+  const [carregandoProdutos, setCarregandoProdutos] = useState(false)
   const resumo = useMemo(() => resumirOrcamento(orcamento), [orcamento])
+  const opcoesTipoEntrega = useMemo(
+    () => opcoesTipoEntregaOrcamento(orcamento.prazoEntrega),
+    [orcamento.prazoEntrega]
+  )
   const clientesFiltrados = useMemo(
     () => filtrarCadastroPessoa(clientes, buscaCliente).slice(0, LIMITE_CLIENTES),
     [clientes, buscaCliente]
   )
+
+  useEffect(() => {
+    if (orcamentoId || iniciais) return
+    let cancelado = false
+    clienteHttp
+      .get<{ numero: string; validadeOrcamentoDias: number }>('/orcamentos/proximo-numero')
+      .then(({ data }) => {
+        if (cancelado) return
+        setOrcamento(
+          orcamentoEmBranco({
+            numeroPreview: data.numero,
+            validadeOrcamentoDias: data.validadeOrcamentoDias,
+          })
+        )
+      })
+      .catch(() => {
+        if (cancelado) return
+        setOrcamento(orcamentoEmBranco())
+      })
+    return () => {
+      cancelado = true
+    }
+  }, [orcamentoId, iniciais])
 
   useEffect(() => {
     if (modoCliente !== 'buscar' || clientesConsultados) return
@@ -222,13 +263,103 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
     setModoCliente(proximo)
     setBuscaCliente('')
     setBuscaClienteAberta(false)
+    clienteEnderecoRef.current = null
     setOrcamento((atual) => ({ ...atual, ...CLIENTE_ORCAMENTO_VAZIO }))
   }
 
+  const aplicarEnderecoDoCliente = useCallback((cliente: ClienteLista) => {
+    const enderecoCliente = enderecoEntregaDoCliente(cliente)
+    const digitos = enderecoCliente.cep.replace(/\D/g, '')
+    cepConsultado.current = digitos.length === 8 ? digitos : null
+    setEndereco(enderecoCliente)
+    setMensagemCep('')
+  }, [])
+
   function escolherCliente(cliente: ClienteLista) {
+    clienteEnderecoRef.current = cliente
     setOrcamento((atual) => ({ ...atual, ...aplicarClienteNoOrcamento(cliente) }))
+    aplicarEnderecoDoCliente(cliente)
     setBuscaCliente('')
     setBuscaClienteAberta(false)
+  }
+
+  function usarEnderecoDoCadastro() {
+    const cliente = clienteEnderecoRef.current
+    if (!cliente) {
+      mostrarAviso('Escolha um cliente em Buscar cliente antes de usar o endereço do cadastro.', true)
+      return
+    }
+    const enderecoCliente = enderecoEntregaDoCliente(cliente)
+    if (
+      !enderecoCliente.cep &&
+      !enderecoCliente.logradouro &&
+      !enderecoCliente.cidade
+    ) {
+      mostrarAviso('O cadastro deste cliente não tem endereço para copiar.', true)
+      return
+    }
+    aplicarEnderecoDoCliente(cliente)
+    mostrarAviso('Endereço do cadastro aplicado.')
+  }
+
+  async function buscarProdutos(termo: string) {
+    setCarregandoProdutos(true)
+    try {
+      const { data } = await clienteHttp.get('/produtos', {
+        params: { q: termo, resumo: 'true', limite: 40, pagina: 1 },
+      })
+      const lista = (data.produtos ?? data.itens ?? []) as Array<{
+        id: string
+        nomeVenda: string
+        sku: string | null
+        unidade?: string
+      }>
+      setProdutosBusca(
+        lista.map((produto) => ({
+          id: produto.id,
+          nomeVenda: produto.nomeVenda,
+          sku: produto.sku,
+          unidade: produto.unidade ?? 'UN',
+        }))
+      )
+    } catch {
+      setProdutosBusca([])
+    } finally {
+      setCarregandoProdutos(false)
+    }
+  }
+
+  async function adicionarProdutoSelecionado() {
+    if (!produtoId) {
+      mostrarAviso('Selecione um produto na busca antes de adicionar.', true)
+      return
+    }
+    setOcupado(true)
+    try {
+      const { data } = await clienteHttp.get<{ produto: Record<string, unknown> }>(
+        `/produtos/${produtoId}`
+      )
+      const produto = data.produto
+      const novaLinha: ItemOrcamentoLayout = {
+        ...itemOrcamentoVazio(`linha-${Date.now()}`),
+        codigo: String(produto.sku ?? ''),
+        descricao: String(produto.nomeVenda ?? ''),
+        ncm: String(produto.ncm ?? ''),
+        unidade: String(produto.unidade ?? 'UN'),
+        precoUnitario:
+          produto.precoVenda != null && Number.isFinite(Number(produto.precoVenda))
+            ? Number(produto.precoVenda)
+            : 0,
+        estoque: null,
+      }
+      setOrcamento((atual) => ({ ...atual, itens: [...atual.itens, novaLinha] }))
+      setProdutoId('')
+      setProdutosBusca([])
+    } catch (erro) {
+      mostrarAviso(extrairMensagemApi(erro, 'Não foi possível carregar o produto.'), true)
+    } finally {
+      setOcupado(false)
+    }
   }
 
   function atualizar<K extends keyof OrcamentoLayout>(campo: K, valor: OrcamentoLayout[K]) {
@@ -242,13 +373,6 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
     }))
   }
 
-  function adicionarLinha() {
-    setOrcamento((atual) => ({
-      ...atual,
-      itens: [...atual.itens, itemOrcamentoVazio(`linha-${Date.now()}`)],
-    }))
-  }
-
   function removerLinha(id: string) {
     setOrcamento((atual) => ({
       ...atual,
@@ -257,11 +381,17 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
   }
 
   function limparItens() {
-    setOrcamento((atual) => ({ ...atual, itens: [itemOrcamentoVazio('linha-nova')] }))
+    setOrcamento((atual) => ({ ...atual, itens: [] }))
   }
 
   async function gravar(): Promise<OrcamentoApi> {
-    const corpo = montarCorpoOrcamento(orcamento, endereco, complementares, observacoes)
+    const corpo = montarCorpoOrcamento(
+      orcamento,
+      endereco,
+      complementares,
+      observacoes,
+      idGravado ? undefined : { numeroAoCriar: '' }
+    )
     if (idGravado) {
       const { data } = await clienteHttp.patch<{ orcamento: OrcamentoApi }>(
         `/orcamentos/${idGravado}`,
@@ -391,27 +521,31 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
               rotulo="Nº do Orçamento"
               name="numero-orcamento"
               value={orcamento.numero}
-              onChange={(evento) => atualizar('numero', evento.target.value)}
+              readOnly
+              className="bg-muted"
             />
             <InputPadrao
               rotulo="Data"
               name="data-orcamento"
               type="date"
               value={orcamento.data}
-              onChange={(evento) => atualizar('data', evento.target.value)}
+              readOnly
+              className="bg-muted"
             />
             <InputPadrao
               rotulo="Validade"
               name="validade-orcamento"
               type="date"
               value={orcamento.validade}
-              onChange={(evento) => atualizar('validade', evento.target.value)}
+              readOnly
+              className="bg-muted"
             />
-            <SelectPadrao
+            <InputPadrao
               rotulo="Status"
-              valor={orcamento.status}
-              aoMudar={(valor) => atualizar('status', valor)}
-              opcoes={OPCOES_STATUS_ORCAMENTO}
+              name="status-orcamento"
+              value={rotuloStatusOrcamento(orcamento.status)}
+              readOnly
+              className="bg-muted"
             />
             <SelectPadrao
               rotulo="Vendedor"
@@ -431,10 +565,10 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
               opcoes={OPCOES_CONDICAO_PAGAMENTO}
             />
             <SelectPadrao
-              rotulo="Prazo de entrega"
+              rotulo="Tipo de entrega"
               valor={orcamento.prazoEntrega}
               aoMudar={(valor) => atualizar('prazoEntrega', valor)}
-              opcoes={OPCOES_PRAZO_ENTREGA}
+              opcoes={opcoesTipoEntrega}
             />
             <SelectPadrao
               rotulo="Frete"
@@ -583,10 +717,22 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
         />
 
         <div className={abaAtiva === 'itens' ? 'space-y-4' : 'hidden space-y-4 print:block'}>
-          <div className="flex flex-wrap gap-2 print:hidden">
-            <Button type="button" onClick={adicionarLinha}>
+          <div className="grid gap-3 print:hidden sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            <ComboboxProduto
+              rotulo="Produto"
+              produtos={produtosBusca}
+              valor={produtoId}
+              aoMudar={setProdutoId}
+              aoBuscar={buscarProdutos}
+              carregandoBusca={carregandoProdutos}
+              disabled={ocupado}
+              aoEnterComProdutoSelecionado={() => void adicionarProdutoSelecionado()}
+            />
+            <Button type="button" onClick={() => void adicionarProdutoSelecionado()} disabled={ocupado}>
               Adicionar
             </Button>
+          </div>
+          <div className="flex flex-wrap gap-2 print:hidden">
             <Button type="button" variant="outline" onClick={() => mostrarAviso(AVISO_AINDA_NAO)}>
               Importar do pedido
             </Button>
@@ -626,28 +772,25 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
                     <td className="px-2 py-2">
                       <input
                         aria-label={`Código da linha ${indice + 1}`}
-                        className={classesCampoCompacto}
+                        className={cn(classesCampoCompacto, 'bg-muted')}
                         value={item.codigo}
-                        onChange={(evento) => atualizarItem(item.id, { codigo: evento.target.value })}
+                        readOnly
                       />
                     </td>
                     <td className="px-2 py-2">
                       <input
                         aria-label={`Descrição da linha ${indice + 1}`}
-                        className={classesCampoCompacto}
+                        className={cn(classesCampoCompacto, 'bg-muted')}
                         value={item.descricao}
-                        placeholder="Descrição do produto"
-                        onChange={(evento) =>
-                          atualizarItem(item.id, { descricao: evento.target.value })
-                        }
+                        readOnly
                       />
                     </td>
                     <td className="px-2 py-2">
                       <input
                         aria-label={`NCM da linha ${indice + 1}`}
-                        className={classesCampoCompacto}
+                        className={cn(classesCampoCompacto, 'bg-muted')}
                         value={item.ncm}
-                        onChange={(evento) => atualizarItem(item.id, { ncm: evento.target.value })}
+                        readOnly
                       />
                     </td>
                     <td className="px-2 py-2 tabular-nums text-muted-foreground">
@@ -772,7 +915,11 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
         </div>
 
         {abaAtiva === 'endereco' ? (
-          <div className="grid gap-3 print:hidden sm:grid-cols-2 lg:grid-cols-3">
+          <div className="space-y-3 print:hidden">
+            <Button type="button" variant="outline" size="sm" onClick={usarEnderecoDoCadastro}>
+              Usar endereço do cadastro
+            </Button>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <InputPadrao
               rotulo="CEP"
               name="entrega-cep"
@@ -822,6 +969,7 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
               value={endereco.uf}
               onChange={(evento) => setEndereco((atual) => ({ ...atual, uf: evento.target.value }))}
             />
+            </div>
           </div>
         ) : null}
 

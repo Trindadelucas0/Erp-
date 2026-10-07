@@ -29,6 +29,7 @@ function paraResposta(
     jurosMensaisCustoFinanOperac: unknown
     aliquotaCbs: unknown
     aliquotaIbs: unknown
+    validadeOrcamentoDias?: number
   } | null
 ) {
   const campos = {
@@ -45,6 +46,7 @@ function paraResposta(
   return {
     id: registro?.id ?? null,
     ...campos,
+    validadeOrcamentoDias: registro?.validadeOrcamentoDias ?? 14,
     totalVenda: somarTotalVenda(campos),
   }
 }

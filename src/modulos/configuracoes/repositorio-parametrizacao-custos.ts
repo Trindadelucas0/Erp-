@@ -24,6 +24,7 @@ async function upsert(companyId: string, dados: DadosParametrizacaoCustos) {
     jurosMensaisCustoFinanOperac: decimalOuNull(dados.jurosMensaisCustoFinanOperac),
     aliquotaCbs: decimalOuNull(dados.aliquotaCbs),
     aliquotaIbs: decimalOuNull(dados.aliquotaIbs),
+    validadeOrcamentoDias: dados.validadeOrcamentoDias,
   }
 
   return clientePrisma.parametrizacaoCustoVenda.upsert({

@@ -6,21 +6,37 @@ import {
 
 describe('esquema tipos de veículo', () => {
   it('aceita nome e peso inteiro e assume ativo', () => {
-    const r = esquemaDeCriacaoDeTipoVeiculo.safeParse({ nome: '  Van  ', pesoMaximoKg: 1500 })
+    const r = esquemaDeCriacaoDeTipoVeiculo.safeParse({
+      nome: '  Caminhão 3/4  ',
+      pesoMaximoKg: 3500,
+    })
     expect(r.success).toBe(true)
     if (!r.success) return
-    expect(r.data).toEqual({ nome: 'Van', pesoMaximoKg: 1500, icone: null, ativo: true })
+    expect(r.data).toEqual({
+      nome: 'Caminhão 3/4',
+      pesoMaximoKg: 3500,
+      icone: null,
+      ativo: true,
+    })
   })
 
   it('aceita ícone da galeria', () => {
-    const r = esquemaDeCriacaoDeTipoVeiculo.safeParse({ nome: 'Van', pesoMaximoKg: 1500, icone: 'van' })
+    const r = esquemaDeCriacaoDeTipoVeiculo.safeParse({
+      nome: 'Pick up',
+      pesoMaximoKg: 1500,
+      icone: 'utilitario',
+    })
     expect(r.success).toBe(true)
     if (!r.success) return
-    expect(r.data.icone).toBe('van')
+    expect(r.data.icone).toBe('utilitario')
   })
 
   it('aceita ícone nulo', () => {
-    const r = esquemaDeCriacaoDeTipoVeiculo.safeParse({ nome: 'Van', pesoMaximoKg: 1500, icone: null })
+    const r = esquemaDeCriacaoDeTipoVeiculo.safeParse({
+      nome: 'Carro de Passeio',
+      pesoMaximoKg: 500,
+      icone: null,
+    })
     expect(r.success).toBe(true)
   })
 
@@ -35,15 +51,34 @@ describe('esquema tipos de veículo', () => {
     expect(r.error.issues[0]?.message).toBe('Ícone inválido')
   })
 
+  it.each(['van', 'carreta', 'bicicleta', 'onibus'])(
+    'rejeita ícone removido da galeria: %s',
+    (icone) => {
+      const r = esquemaDeCriacaoDeTipoVeiculo.safeParse({
+        nome: 'Teste',
+        pesoMaximoKg: 1000,
+        icone,
+      })
+      expect(r.success).toBe(false)
+    }
+  )
+
   it('edição sem ícone mantém o campo indefinido', () => {
-    const r = esquemaDeEdicaoDeTipoVeiculo.safeParse({ nome: 'Van', pesoMaximoKg: 1500, ativo: true })
+    const r = esquemaDeEdicaoDeTipoVeiculo.safeParse({
+      nome: 'Moto',
+      pesoMaximoKg: 200,
+      ativo: true,
+    })
     expect(r.success).toBe(true)
     if (!r.success) return
     expect(r.data.icone).toBeUndefined()
   })
 
   it('aceita peso enviado como texto numérico', () => {
-    const r = esquemaDeCriacaoDeTipoVeiculo.safeParse({ nome: 'Carreta', pesoMaximoKg: '30000' })
+    const r = esquemaDeCriacaoDeTipoVeiculo.safeParse({
+      nome: 'Caminhão Truck',
+      pesoMaximoKg: '15000',
+    })
     expect(r.success).toBe(true)
   })
 
