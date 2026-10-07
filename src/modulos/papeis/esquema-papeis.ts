@@ -7,6 +7,15 @@ export const esquemaDeSalvarPermissoesDoPapel = z.object({
   idsDasPermissoes: z.array(z.string().uuid()),
 })
 
+export const esquemaDeSalvarTelasDoPapel = z.object({
+  telas: z.array(
+    z.object({
+      pageKey: z.string().min(1),
+      abas: z.array(z.string().min(1)),
+    })
+  ),
+})
+
 export const esquemaDeCriacaoDePapel = z.object({
   nome: z
     .string()

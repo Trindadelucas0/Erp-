@@ -30,6 +30,8 @@ export type PerfilDoUsuario = {
   usuario: UsuarioDaSessao
   ehAdmin: boolean
   paginasPermitidas: PaginaDoSistema[]
+  /** Abas permitidas por pageKey; vazio/ausente para admin = todas. */
+  abasPorPagina?: Record<string, string[]>
   permissoesEfetivas: string[]
   empresas: EmpresaDaSessao[]
 }

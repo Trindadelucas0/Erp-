@@ -6,12 +6,21 @@ import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { servicoDePapeis } from './servico-papeis.js'
 import {
   esquemaDeSalvarPermissoesDoPapel,
+  esquemaDeSalvarTelasDoPapel,
   esquemaDeCriacaoDePapel,
 } from './esquema-papeis.js'
 
 async function listarPapeis(_requisicao: FastifyRequest, resposta: FastifyReply) {
   const papeis = await servicoDePapeis.listarPapeis()
   return resposta.send({ papeis })
+}
+
+async function listarCatalogoTelas(
+  _requisicao: FastifyRequest,
+  resposta: FastifyReply
+) {
+  const grupos = servicoDePapeis.listarCatalogoTelas()
+  return resposta.send({ grupos })
 }
 
 async function buscarPapelPorId(
@@ -42,6 +51,21 @@ async function salvarPermissoesDoPapel(
   return resposta.send({ papel })
 }
 
+async function salvarTelasDoPapel(
+  requisicao: FastifyRequest,
+  resposta: FastifyReply
+) {
+  const { id } = requisicao.params as { id: string }
+  const resultado = esquemaDeSalvarTelasDoPapel.safeParse(requisicao.body)
+
+  if (!resultado.success) {
+    throw new ErroDaAplicacao(resultado.error.errors[0].message, 400)
+  }
+
+  const papel = await servicoDePapeis.salvarTelasDoPapel(id, resultado.data.telas)
+  return resposta.send({ papel })
+}
+
 async function criarPapel(requisicao: FastifyRequest, resposta: FastifyReply) {
   const resultado = esquemaDeCriacaoDePapel.safeParse(requisicao.body)
 
@@ -65,8 +89,10 @@ async function excluirPapel(requisicao: FastifyRequest, resposta: FastifyReply) 
 
 export const controladorDePapeis = {
   listarPapeis,
+  listarCatalogoTelas,
   buscarPapelPorId,
   salvarPermissoesDoPapel,
+  salvarTelasDoPapel,
   criarPapel,
   excluirPapel,
 }

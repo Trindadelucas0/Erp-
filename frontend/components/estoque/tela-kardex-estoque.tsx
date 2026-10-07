@@ -34,6 +34,7 @@ import { PainelProdutoKardex } from '@/components/estoque/painel-produto-kardex'
 import { ResumoPorTipoKardex } from '@/components/estoque/resumo-por-tipo-kardex'
 import { ModalAjusteInventario } from '@/components/estoque/modal-ajuste-inventario'
 import { cn } from '@/lib/utils'
+import { filtrarAbasPagina, primeiraAbaPermitida } from '@/lib/filtrar-abas-pagina'
 
 const TIPOS: { valor: TipoEstoqueVisao; rotulo: string }[] = [
   { valor: 'disponivel', rotulo: 'Disponível' },
@@ -61,9 +62,28 @@ export function TelaKardexEstoque() {
 
   const [de, setDe] = useState(inicioDoMesIso)
   const [ate, setAte] = useState(hojeIso)
+  const tiposVisiveis = useMemo(() => {
+    const abas = TIPOS.map((t) => ({ id: t.valor, rotulo: t.rotulo }))
+    const filtradas = filtrarAbasPagina(perfil, 'estoque', abas)
+    return TIPOS.filter((t) => filtradas.some((f) => f.id === t.valor))
+  }, [perfil])
+
   const [tipoEstoque, setTipoEstoque] = useState<TipoEstoqueVisao>(() =>
     tipoEstoqueVisaoValido(tipoQuery) ? tipoQuery : 'fisico'
   )
+
+  useEffect(() => {
+    if (tiposVisiveis.length === 0) return
+    if (!tiposVisiveis.some((t) => t.valor === tipoEstoque)) {
+      const padrao = primeiraAbaPermitida(
+        perfil,
+        'estoque',
+        TIPOS.map((t) => ({ id: t.valor, rotulo: t.rotulo })),
+        'fisico'
+      ) as TipoEstoqueVisao
+      setTipoEstoque(padrao)
+    }
+  }, [tiposVisiveis, tipoEstoque, perfil])
   const [produto, setProduto] = useState<ProdutoBuscaEstoque | null>(null)
   const [kardex, setKardex] = useState<RespostaKardex | null>(null)
   const [carregando, setCarregando] = useState(false)
@@ -239,7 +259,7 @@ export function TelaKardexEstoque() {
         <div className="mt-4 space-y-2">
           <Label>Tipo de estoque</Label>
           <div className="flex flex-wrap gap-2">
-            {TIPOS.map((t) => {
+            {tiposVisiveis.map((t) => {
               const ativo = tipoEstoque === t.valor
               return (
                 <button

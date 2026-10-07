@@ -13,6 +13,12 @@ const camposDoPapel = {
       permission: true,
     },
   },
+  paginas: {
+    select: { pageKey: true },
+  },
+  abas: {
+    select: { pageKey: true, tabKey: true },
+  },
 } as const
 
 /**
@@ -26,6 +32,8 @@ async function listarTodos() {
       permissions: {
         include: { permission: true },
       },
+      paginas: { select: { pageKey: true } },
+      abas: { select: { pageKey: true, tabKey: true } },
     },
   })
 }

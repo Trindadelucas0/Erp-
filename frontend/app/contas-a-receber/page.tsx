@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, Suspense } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { clienteHttp } from '@/services/api'
@@ -21,6 +21,7 @@ import { TelaBaixasContasAReceber } from '@/components/contas-a-receber/tela-bai
 import { TelaHistoricoBaixasContasAReceber } from '@/components/contas-a-receber/tela-historico-baixas-contas-a-receber'
 import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
+import { filtrarAbasPagina, primeiraAbaPermitida } from '@/lib/filtrar-abas-pagina'
 import {
   BadgeOrigemContaReceber,
   BadgeStatusContaReceber,
@@ -74,6 +75,12 @@ const FILTROS_VAZIOS: Filtros = {
 }
 
 const DEBOUNCE_FILTRO_TEXTO_MS = 400
+
+const ABAS_CONTAS_RECEBER = [
+  { id: 'titulos', rotulo: 'Títulos' },
+  { id: 'baixas', rotulo: 'Baixas' },
+  { id: 'recebimentos', rotulo: 'Recebimentos' },
+] as const
 
 function ConteudoContasAReceber() {
   const searchParams = useSearchParams()
@@ -287,6 +294,20 @@ function ConteudoContasAReceber() {
   const [aba, setAba] = useState('titulos')
   const [tokenHistorico, setTokenHistorico] = useState(0)
 
+  const abasVisiveis = useMemo(
+    () => filtrarAbasPagina(perfil, 'contas-a-receber', [...ABAS_CONTAS_RECEBER]),
+    [perfil]
+  )
+
+  useEffect(() => {
+    if (abasVisiveis.length === 0) return
+    if (!abasVisiveis.some((item) => item.id === aba)) {
+      setAba(
+        primeiraAbaPermitida(perfil, 'contas-a-receber', [...ABAS_CONTAS_RECEBER], 'titulos')
+      )
+    }
+  }, [abasVisiveis, aba, perfil])
+
   function aoMudarAba(nova: string) {
     setAba(nova)
     if (nova === 'titulos') {
@@ -301,11 +322,7 @@ function ConteudoContasAReceber() {
           className="mb-4"
           abaAtiva={aba}
           aoMudar={aoMudarAba}
-          abas={[
-            { id: 'titulos', rotulo: 'Títulos' },
-            { id: 'baixas', rotulo: 'Baixas' },
-            { id: 'recebimentos', rotulo: 'Recebimentos' },
-          ]}
+          abas={abasVisiveis}
         />
 
         {aba === 'baixas' ? (

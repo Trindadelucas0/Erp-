@@ -11,6 +11,13 @@ import {
   GradePermissoes,
   type Permissao,
 } from '@/components/compartilhado/grade-permissoes'
+import {
+  ArvoreTelasPapel,
+  selecaoFromPapel,
+  selecaoParaPayload,
+  type GrupoTelasCatalogo,
+  type SelecaoTelasPapel,
+} from '@/components/compartilhado/arvore-telas-papel'
 import { ConfirmacaoComSenha } from '@/components/compartilhado/confirmacao-com-senha'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
@@ -24,6 +31,8 @@ type Papel = {
   name: string
   description?: string
   permissions: { permission: Permissao }[]
+  paginas?: { pageKey: string }[]
+  abas?: { pageKey: string; tabKey: string }[]
 }
 
 const PAPEL_PROTEGIDO = 'admin'
@@ -33,6 +42,9 @@ export function ConteudoDaPaginaDePapeis() {
     useSessaoDoUsuario()
   const [listaDePapeis, setListaDePapeis] = useState<Papel[]>([])
   const [listaDePermissoes, setListaDePermissoes] = useState<Permissao[]>([])
+  const [catalogoTelas, setCatalogoTelas] = useState<GrupoTelasCatalogo[]>([])
+  const [selecaoTelas, setSelecaoTelas] = useState<SelecaoTelasPapel>({})
+  const [salvandoTelas, setSalvandoTelas] = useState(false)
   const [carregandoLista, setCarregandoLista] = useState(true)
   const [papelSelecionado, setPapelSelecionado] = useState<Papel | null>(null)
   const [idsDasPermissoes, setIdsDasPermissoes] = useState<string[]>([])
@@ -55,12 +67,14 @@ export function ConteudoDaPaginaDePapeis() {
   async function carregarDados() {
     setCarregandoLista(true)
     try {
-      const [respostaPapeis, respostaPermissoes] = await Promise.all([
+      const [respostaPapeis, respostaPermissoes, respostaCatalogo] = await Promise.all([
         clienteHttp.get('/roles'),
         clienteHttp.get('/permissions'),
+        clienteHttp.get('/roles/catalogo-telas'),
       ])
       setListaDePapeis(respostaPapeis.data.papeis)
       setListaDePermissoes(respostaPermissoes.data.permissoes)
+      setCatalogoTelas(respostaCatalogo.data.grupos ?? [])
     } catch {
       setMensagem('Erro ao carregar dados.')
     } finally {
@@ -71,7 +85,32 @@ export function ConteudoDaPaginaDePapeis() {
   function selecionarPapel(papel: Papel) {
     setPapelSelecionado(papel)
     setIdsDasPermissoes(papel.permissions.map((item) => item.permission.id))
+    setSelecaoTelas(selecaoFromPapel(papel))
     setMensagem('')
+  }
+
+  async function salvarTelas() {
+    if (!papelSelecionado) return
+    setSalvandoTelas(true)
+    setMensagem('')
+    try {
+      await clienteHttp.put(`/roles/${papelSelecionado.id}/telas`, {
+        telas: selecaoParaPayload(selecaoTelas),
+      })
+      setMensagem('Telas e abas salvas com sucesso!')
+      await carregarDados()
+      const atualizado = (await clienteHttp.get(`/roles/${papelSelecionado.id}`)).data
+        .papel as Papel
+      setPapelSelecionado(atualizado)
+      setSelecaoTelas(selecaoFromPapel(atualizado))
+    } catch (erro: unknown) {
+      const msg =
+        (erro as { response?: { data?: { mensagem?: string } } })?.response?.data
+          ?.mensagem || 'Erro ao salvar telas'
+      setMensagem(msg)
+    } finally {
+      setSalvandoTelas(false)
+    }
   }
 
   async function salvarPermissoes() {
@@ -284,7 +323,28 @@ export function ConteudoDaPaginaDePapeis() {
               O papel admin tem acesso total ao sistema e não pode ser editado.
             </p>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <p className="text-sm font-medium">Telas e abas</p>
+                <p className="text-xs text-muted-foreground">
+                  Marque as telas do menu e, quando existirem, as abas que este papel
+                  pode abrir. Sem marcação, o usuário não vê a tela.
+                </p>
+                {catalogoTelas.length > 0 ? (
+                  <ArvoreTelasPapel
+                    grupos={catalogoTelas}
+                    selecao={selecaoTelas}
+                    aoAlterar={setSelecaoTelas}
+                  />
+                ) : null}
+                <BotaoPrimario
+                  type="button"
+                  onClick={salvarTelas}
+                  disabled={salvandoTelas}
+                >
+                  {salvandoTelas ? 'Salvando...' : 'Salvar telas e abas'}
+                </BotaoPrimario>
+              </div>
               <GradePermissoes
                 listaDePermissoes={listaDePermissoes}
                 idsSelecionados={idsDasPermissoes}

@@ -43,10 +43,9 @@ import { ModalLiberarParaContagem } from '@/components/entrada-notas/modal-liber
 import { formatarNumeroRequisicao } from '@/lib/requisicoes-wms'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import {
-  PAINEL_ENTRADA_PADRAO_ADMINISTRATIVO,
-  painelEntradaAdministrativoPermitido,
-  perfilRestritoEntradaAdministrativo,
-} from '@/lib/acesso-entrada-notas'
+  filtrarAbasPagina,
+  primeiraAbaPermitida,
+} from '@/lib/filtrar-abas-pagina'
 
 type NotaPendente = {
   id: string
@@ -299,23 +298,23 @@ function ConteudoEntradaNotas() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { perfil } = useSessaoDoUsuario()
-  const restritoAdministrativo = perfilRestritoEntradaAdministrativo(perfil)
-  const paineisVisiveis = useMemo(() => {
-    if (!restritoAdministrativo) return PAINEIS
-    return PAINEIS.filter((p) => painelEntradaAdministrativoPermitido(p.id))
-  }, [restritoAdministrativo])
+  const paineisVisiveis = useMemo(
+    () => filtrarAbasPagina(perfil, 'entrada-notas', PAINEIS),
+    [perfil]
+  )
 
   const normalizarPainelDoUsuario = useCallback(
     (valor: PainelEntrada | null | undefined): PainelEntrada => {
-      if (!restritoAdministrativo) {
-        return valor && PAINEIS.some((p) => p.id === valor) ? valor : 'analise'
-      }
-      if (valor && painelEntradaAdministrativoPermitido(valor)) {
-        return valor
-      }
-      return PAINEL_ENTRADA_PADRAO_ADMINISTRATIVO
+      const padrao = primeiraAbaPermitida(
+        perfil,
+        'entrada-notas',
+        PAINEIS,
+        'analise'
+      ) as PainelEntrada
+      if (valor && paineisVisiveis.some((p) => p.id === valor)) return valor
+      return padrao
     },
-    [restritoAdministrativo]
+    [perfil, paineisVisiveis]
   )
 
   const [painel, setPainel] = useState<PainelEntrada>('analise')
@@ -405,11 +404,11 @@ function ConteudoEntradaNotas() {
       setDataAte(salvos.dataAte)
       setBusca(salvos.busca)
       setBuscaDebounced(salvos.busca.trim())
-    } else if (restritoAdministrativo) {
-      setPainel(PAINEL_ENTRADA_PADRAO_ADMINISTRATIVO)
+    } else if (paineisVisiveis.length > 0) {
+      setPainel(normalizarPainelDoUsuario(undefined))
     }
     setFiltrosProntos(true)
-  }, [searchParams, paineisVisiveis, normalizarPainelDoUsuario, restritoAdministrativo])
+  }, [searchParams, paineisVisiveis, normalizarPainelDoUsuario])
 
   useEffect(() => {
     if (!filtrosProntos) return

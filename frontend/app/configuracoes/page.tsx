@@ -7,6 +7,7 @@ import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { useAtalhos } from '@/components/compartilhado/provedor-de-atalhos'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { usePermissao } from '@/hooks/use-permissao'
+import { usuarioTemAbaConfig } from '@/lib/filtrar-abas-pagina'
 import { PortaoAssinaturaComSenha } from '@/components/compartilhado/portao-assinatura-com-senha'
 import { PainelConfiguracaoZapsign } from '@/components/assinatura-zapsign/painel-configuracao-zapsign'
 import { ListaDocumentosZapsign } from '@/components/assinatura-zapsign/lista-documentos-zapsign'
@@ -376,24 +377,49 @@ function ConteudoDaPaginaDeConfiguracoes() {
 
   const podeProdutos = usePermissao('produtos:view')
   const podeEstoque = usePermissao('estoque:view')
-  const podeGeral = ehAdmin || podeConfig
-  const podeAssinatura = ehAdmin
-  const podeAtalhos = ehAdmin || podeConfig
-  const podeUnidades = ehAdmin || podeConfig || podeProdutos
-  const podeEstruturaWms = ehAdmin || podeEstoque
-  const podeTiposVeiculo = ehAdmin || podeConfig
+  const podeGeral =
+    (ehAdmin || podeConfig) &&
+    (usuarioTemAbaConfig(perfil, 'geral:usuarios') ||
+      usuarioTemAbaConfig(perfil, 'geral:papeis') ||
+      usuarioTemAbaConfig(perfil, 'geral:assinatura:configuracao') ||
+      usuarioTemAbaConfig(perfil, 'geral:assinatura:documentos') ||
+      usuarioTemAbaConfig(perfil, 'geral:atalhos'))
+  const podeAssinatura =
+    ehAdmin &&
+    (usuarioTemAbaConfig(perfil, 'geral:assinatura:configuracao') ||
+      usuarioTemAbaConfig(perfil, 'geral:assinatura:documentos'))
+  const podeAtalhos =
+    (ehAdmin || podeConfig) && usuarioTemAbaConfig(perfil, 'geral:atalhos')
+  const podeUnidades =
+    (ehAdmin || podeConfig || podeProdutos) &&
+    usuarioTemAbaConfig(perfil, 'logistica:unidades')
+  const podeEstruturaWms =
+    (ehAdmin || podeEstoque) && usuarioTemAbaConfig(perfil, 'logistica:estrutura')
+  const podeTiposVeiculo =
+    (ehAdmin || podeConfig) && usuarioTemAbaConfig(perfil, 'logistica:veiculos')
   const podeLogistica = podeUnidades || podeEstruturaWms || podeTiposVeiculo
-  const podeFinanceiroAba = ehAdmin || podeFinanceiro
-  const podeFiscalCfop = ehAdmin || podeFinanceiro
-  const podeBuscadorNf = ehAdmin
+  const podeFinanceiroAba =
+    (ehAdmin || podeFinanceiro) &&
+    (usuarioTemAbaConfig(perfil, 'financeiro:planos:receitas') ||
+      usuarioTemAbaConfig(perfil, 'financeiro:planos:despesas') ||
+      usuarioTemAbaConfig(perfil, 'financeiro:planos:resultado') ||
+      usuarioTemAbaConfig(perfil, 'financeiro:recorrencia') ||
+      usuarioTemAbaConfig(perfil, 'financeiro:adquirentes') ||
+      usuarioTemAbaConfig(perfil, 'financeiro:cartoes') ||
+      usuarioTemAbaConfig(perfil, 'financeiro:boleto'))
+  const podeFiscalCfop =
+    (ehAdmin || podeFinanceiro) && usuarioTemAbaConfig(perfil, 'fiscal:cfop')
+  const podeBuscadorNf = ehAdmin && usuarioTemAbaConfig(perfil, 'fiscal:buscador')
   const podeFiscal = podeFiscalCfop || podeBuscadorNf
+  const podeVendasParam =
+    ehAdmin && usuarioTemAbaConfig(perfil, 'vendas:parametrizacao')
 
   const abasDisponiveis = useMemo(() => {
     const lista: Array<{ id: AbaConfig; rotulo: string }> = []
     if (podeGeral || podeAssinatura || podeAtalhos) {
       lista.push({ id: 'geral', rotulo: 'Geral' })
     }
-    if (ehAdmin) {
+    if (podeVendasParam) {
       lista.push({ id: 'vendas', rotulo: 'Vendas' })
     }
     if (podeLogistica) lista.push({ id: 'logistica', rotulo: 'Logística' })
@@ -404,7 +430,7 @@ function ConteudoDaPaginaDeConfiguracoes() {
     podeGeral,
     podeAssinatura,
     podeAtalhos,
-    ehAdmin,
+    podeVendasParam,
     podeLogistica,
     podeFinanceiroAba,
     podeFiscal,
@@ -473,13 +499,17 @@ function ConteudoDaPaginaDeConfiguracoes() {
 
   const secoesGeral = useMemo(() => {
     return ABAS_GERAL.filter((s) => {
-      if (s.id === 'usuarios' || s.id === 'papeis' || s.id === 'assinatura') {
-        return ehAdmin
+      if (s.id === 'usuarios') {
+        return ehAdmin && usuarioTemAbaConfig(perfil, 'geral:usuarios')
       }
+      if (s.id === 'papeis') {
+        return ehAdmin && usuarioTemAbaConfig(perfil, 'geral:papeis')
+      }
+      if (s.id === 'assinatura') return podeAssinatura
       if (s.id === 'atalhos') return podeAtalhos
       return false
     })
-  }, [ehAdmin, podeAtalhos])
+  }, [ehAdmin, podeAssinatura, podeAtalhos, perfil])
 
   const secaoGeral: SecaoGeral = useMemo(() => {
     if (
@@ -547,7 +577,7 @@ function ConteudoDaPaginaDeConfiguracoes() {
         </div>
       )}
 
-      {abaAtiva === 'vendas' && ehAdmin && <PainelParametrizacaoCustos />}
+      {abaAtiva === 'vendas' && podeVendasParam && <PainelParametrizacaoCustos />}
 
       {abaAtiva === 'logistica' && podeLogistica && (
         <div className="space-y-4">

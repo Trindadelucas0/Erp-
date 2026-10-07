@@ -1050,6 +1050,25 @@ model Role {
   description String?
   permissions RolePermission[]
   users       UserRole[]
+  paginas     RolePageAccess[]
+  abas        RoleTabAccess[]
+}
+
+model RolePageAccess {
+  roleId  String
+  pageKey String
+  role    Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, pageKey])
+}
+
+model RoleTabAccess {
+  roleId  String
+  pageKey String
+  tabKey  String
+  role    Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, pageKey, tabKey])
 }
 
 model Permission {

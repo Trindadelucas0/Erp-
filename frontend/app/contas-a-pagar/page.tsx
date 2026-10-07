@@ -20,6 +20,7 @@ import { TelaBaixasContasAPagar } from '@/components/contas-a-pagar/tela-baixas-
 import { TelaHistoricoBaixasContasAPagar } from '@/components/contas-a-pagar/tela-historico-baixas-contas-a-pagar'
 import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
+import { filtrarAbasPagina, primeiraAbaPermitida } from '@/lib/filtrar-abas-pagina'
 import {
   BadgeOrigemContaPagar,
   BadgeStatusContaPagar,
@@ -80,6 +81,12 @@ const FILTROS_VAZIOS: Filtros = {
 }
 
 const DEBOUNCE_FILTRO_TEXTO_MS = 400
+
+const ABAS_CONTAS_PAGAR = [
+  { id: 'titulos', rotulo: 'Títulos' },
+  { id: 'baixas', rotulo: 'Baixas' },
+  { id: 'pagamentos', rotulo: 'Pagamentos' },
+] as const
 
 function ConteudoContasAPagar() {
   const podeCriar = usePermissao('financeiro:create')
@@ -304,6 +311,20 @@ function ConteudoContasAPagar() {
   const [aba, setAba] = useState('titulos')
   const [tokenHistorico, setTokenHistorico] = useState(0)
 
+  const abasVisiveis = useMemo(
+    () => filtrarAbasPagina(perfil, 'contas-a-pagar', [...ABAS_CONTAS_PAGAR]),
+    [perfil]
+  )
+
+  useEffect(() => {
+    if (abasVisiveis.length === 0) return
+    if (!abasVisiveis.some((item) => item.id === aba)) {
+      setAba(
+        primeiraAbaPermitida(perfil, 'contas-a-pagar', [...ABAS_CONTAS_PAGAR], 'titulos')
+      )
+    }
+  }, [abasVisiveis, aba, perfil])
+
   const linhasTitulos = useMemo(() => expandirLinhasTitulosContaPagar(contas), [contas])
 
   function aoMudarAba(nova: string) {
@@ -320,11 +341,7 @@ function ConteudoContasAPagar() {
           className="mb-4"
           abaAtiva={aba}
           aoMudar={aoMudarAba}
-          abas={[
-            { id: 'titulos', rotulo: 'Títulos' },
-            { id: 'baixas', rotulo: 'Baixas' },
-            { id: 'pagamentos', rotulo: 'Pagamentos' },
-          ]}
+          abas={abasVisiveis}
         />
 
         {aba === 'baixas' ? (

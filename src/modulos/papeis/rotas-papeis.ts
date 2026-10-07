@@ -21,6 +21,14 @@ export async function rotasDePapeis(
   )
 
   aplicacao.get(
+    '/catalogo-telas',
+    {
+      preHandler: [middlewareDeAutenticacao, middlewareSomenteAdmin],
+    },
+    controladorDePapeis.listarCatalogoTelas
+  )
+
+  aplicacao.get(
     '/:id',
     {
       preHandler: [middlewareDeAutenticacao, middlewareSomenteAdmin],
@@ -34,6 +42,14 @@ export async function rotasDePapeis(
       preHandler: [middlewareDeAutenticacao, middlewareSomenteAdmin],
     },
     controladorDePapeis.salvarPermissoesDoPapel
+  )
+
+  aplicacao.put(
+    '/:id/telas',
+    {
+      preHandler: [middlewareDeAutenticacao, middlewareSomenteAdmin],
+    },
+    controladorDePapeis.salvarTelasDoPapel
   )
 
   aplicacao.post(

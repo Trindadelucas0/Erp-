@@ -11,6 +11,9 @@ import {
   montarPaginasPermitidasParaUsuario,
   usuarioEhAdmin,
 } from '../../compartilhado/paginas/registro-de-paginas.js'
+import { paginaPossuiAbasNoCatalogo } from '../../compartilhado/paginas/registro-de-abas.js'
+import { montarAbasPorPaginaDaUniao } from '../../compartilhado/paginas/montar-abas-por-pagina.js'
+import { repositorioDeAcessoTelas } from '../acesso/repositorio-acesso-telas.js'
 import { DadosDeLogin } from './esquema-autenticacao.js'
 
 /**
@@ -63,21 +66,32 @@ async function buscarPerfilDoUsuarioLogado(idDoUsuario: string) {
     : await repositorioDeEmpresas.buscarPorIdDoUsuario(idDoUsuario)
   const empresas = empresasRaw.map((empresa) => ({ company: empresa }))
 
-  const chavesDasPaginas = usuario.paginasPermitidas.map(
-    (item) => item.pageKey
+  const roleIds = usuario.roles.map(
+    (item) => (item as { roleId: string }).roleId ?? item.role.id
   )
-  const papeisDoUsuario = usuario.roles.map((item) => ({ nome: item.role.name }))
+  const [chavesPaginasDosPapeis, linhasAbas] = await Promise.all([
+    repositorioDeAcessoTelas.buscarPaginasPorRoleIds(roleIds),
+    repositorioDeAcessoTelas.buscarAbasPorRoleIds(roleIds),
+  ])
   const paginasPermitidas = montarPaginasPermitidasParaUsuario(
     ehAdmin,
-    chavesDasPaginas,
-    permissoesEfetivas,
-    papeisDoUsuario
+    chavesPaginasDosPapeis
   )
+  let abasPorPagina: Record<string, string[]> = {}
+  if (!ehAdmin) {
+    abasPorPagina = montarAbasPorPaginaDaUniao(linhasAbas)
+    for (const pageKey of chavesPaginasDosPapeis) {
+      if (paginaPossuiAbasNoCatalogo(pageKey) && !abasPorPagina[pageKey]) {
+        abasPorPagina[pageKey] = []
+      }
+    }
+  }
 
   return {
     usuario,
     ehAdmin,
     paginasPermitidas,
+    abasPorPagina,
     permissoesDosPapeis,
     permissoesExtras,
     permissoesEfetivas,

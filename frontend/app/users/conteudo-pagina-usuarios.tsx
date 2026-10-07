@@ -581,7 +581,7 @@ export function ConteudoDaPaginaDeUsuarios() {
       idsDosPapeis: idsDosPapeisSelecionados,
       idsDasEmpresas: idsDasEmpresasSelecionadas,
       idsDasPermissoesExtras,
-      chavesDasPaginasPermitidas: chavesDasPaginasSelecionadas,
+      chavesDasPaginasPermitidas: [],
       ...(senha ? { senha } : {}),
     }
 
@@ -1001,43 +1001,10 @@ export function ConteudoDaPaginaDeUsuarios() {
           {/* Aba 3: Permissões */}
           {abaAtiva === 'permissoes' && (
             <div className="min-w-0 space-y-6">
-              <div className="space-y-3">
-                <TituloSecao className="mb-0">Páginas liberadas</TituloSecao>
-                <p className="text-xs text-muted-foreground">
-                  Selecione quais páginas o usuário poderá acessar no menu.
-                  Marcar uma página com permissão Ver no papel também libera
-                  automaticamente.
-                </p>
-                {listaDePaginasVinculaveis.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    Nenhuma página disponível para vínculo ainda.
-                  </p>
-                ) : (
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {listaDePaginasVinculaveis.map((pagina) => (
-                      <label
-                        key={pagina.chave}
-                        className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 hover:bg-muted/50"
-                      >
-                        <Checkbox
-                          checked={chavesDasPaginasSelecionadas.includes(
-                            pagina.chave
-                          )}
-                          onCheckedChange={() =>
-                            setChavesDasPaginasSelecionadas((l) =>
-                              alternarIdNaLista(l, pagina.chave)
-                            )
-                          }
-                        />
-                        <span className="text-sm">{pagina.rotulo}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <Separator />
-
+              <p className="text-xs text-muted-foreground">
+                O menu e as abas de cada tela vêm dos papéis escolhidos na aba
+                Acesso. Ajuste telas e abas em Configurações → Geral → Papéis.
+              </p>
               <div className="space-y-3">
                 <TituloSecao className="mb-0">
                   Permissões extras (opcional)

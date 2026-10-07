@@ -9,13 +9,17 @@ import {
   esquemaFiltroListagemContasReceber,
   esquemaUploadAnexoContaReceber,
 } from './esquema-contas-a-receber.js'
+import { exigirAcessoAba } from '../acesso/servico-acesso-aba.js'
 import { servicoDeContasAReceber } from './servico-contas-a-receber.js'
+
+const PAGE = 'contas-a-receber'
 
 function companyId(requisicao: FastifyRequest) {
   return requisicao.empresaAtivaId || ''
 }
 
 async function listar(requisicao: FastifyRequest, resposta: FastifyReply) {
+  await exigirAcessoAba(requisicao.idDoUsuario!, PAGE, 'titulos')
   const parse = esquemaFiltroListagemContasReceber.safeParse(requisicao.query ?? {})
   if (!parse.success) {
     throw new ErroDaAplicacao(parse.error.errors[0]?.message ?? 'Filtro inválido', 400)
@@ -25,6 +29,7 @@ async function listar(requisicao: FastifyRequest, resposta: FastifyReply) {
 }
 
 async function listarParaBaixar(requisicao: FastifyRequest, resposta: FastifyReply) {
+  await exigirAcessoAba(requisicao.idDoUsuario!, PAGE, 'baixas')
   const parse = esquemaFiltroListagemContasReceber.safeParse(requisicao.query ?? {})
   if (!parse.success) {
     throw new ErroDaAplicacao(parse.error.errors[0]?.message ?? 'Filtro inválido', 400)
@@ -34,6 +39,7 @@ async function listarParaBaixar(requisicao: FastifyRequest, resposta: FastifyRep
 }
 
 async function listarHistoricoBaixas(requisicao: FastifyRequest, resposta: FastifyReply) {
+  await exigirAcessoAba(requisicao.idDoUsuario!, PAGE, 'recebimentos')
   const parse = esquemaFiltroHistoricoBaixas.safeParse(requisicao.query ?? {})
   if (!parse.success) {
     throw new ErroDaAplicacao(parse.error.errors[0]?.message ?? 'Filtro inválido', 400)
@@ -46,12 +52,14 @@ async function listarHistoricoBaixas(requisicao: FastifyRequest, resposta: Fasti
 }
 
 async function obter(requisicao: FastifyRequest, resposta: FastifyReply) {
+  await exigirAcessoAba(requisicao.idDoUsuario!, PAGE, 'titulos')
   const { id } = requisicao.params as { id: string }
   const conta = await servicoDeContasAReceber.obter(companyId(requisicao), id)
   return resposta.send({ conta })
 }
 
 async function criar(requisicao: FastifyRequest, resposta: FastifyReply) {
+  await exigirAcessoAba(requisicao.idDoUsuario!, PAGE, 'titulos')
   const parse = esquemaDeCriacaoDeContaReceber.safeParse(requisicao.body)
   if (!parse.success) {
     throw new ErroDaAplicacao(parse.error.errors[0]?.message ?? 'Dados inválidos', 400)
@@ -65,6 +73,7 @@ async function criar(requisicao: FastifyRequest, resposta: FastifyReply) {
 }
 
 async function editar(requisicao: FastifyRequest, resposta: FastifyReply) {
+  await exigirAcessoAba(requisicao.idDoUsuario!, PAGE, 'titulos')
   const { id } = requisicao.params as { id: string }
   const parse = esquemaDeEdicaoDeContaReceber.safeParse(requisicao.body)
   if (!parse.success) {
@@ -90,6 +99,7 @@ async function excluir(requisicao: FastifyRequest, resposta: FastifyReply) {
 }
 
 async function baixar(requisicao: FastifyRequest, resposta: FastifyReply) {
+  await exigirAcessoAba(requisicao.idDoUsuario!, PAGE, 'baixas')
   const parse = esquemaBaixaLote.safeParse(requisicao.body)
   if (!parse.success) {
     throw new ErroDaAplicacao(parse.error.errors[0]?.message ?? 'Dados de baixa inválidos', 400)
