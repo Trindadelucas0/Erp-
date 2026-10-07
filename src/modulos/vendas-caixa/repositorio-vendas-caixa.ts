@@ -33,7 +33,13 @@ async function listarChamados(companyId: string) {
   return clientePrisma.vendaCaixa.findMany({
     where: { companyId, status: STATUS_CHAMADO_ATENDENTE },
     orderBy: { numero: 'asc' },
-    include: {
+    select: {
+      id: true,
+      numero: true,
+      clienteNome: true,
+      status: true,
+      formaPagamento: true,
+      orcamentoId: true,
       itens: {
         select: {
           produtoId: true,
@@ -56,10 +62,31 @@ async function obterPorId(companyId: string, id: string) {
   })
 }
 
+async function obterPorOrcamentoId(companyId: string, orcamentoId: string) {
+  return clientePrisma.vendaCaixa.findFirst({
+    where: { companyId, orcamentoId },
+    include: {
+      itens: {
+        select: { produtoId: true, quantidade: true },
+      },
+    },
+  })
+}
+
+async function orcamentoIdsPagos(companyId: string) {
+  const vendas = await clientePrisma.vendaCaixa.findMany({
+    where: { companyId, status: STATUS_VENDA_PAGA, orcamentoId: { not: null } },
+    select: { orcamentoId: true },
+  })
+  return new Set(vendas.map((venda) => venda.orcamentoId).filter(Boolean) as string[])
+}
+
 export const repositorioDeVendasCaixa = {
   proximoNumero,
   executarEmTransacao,
   listarPagas,
   listarChamados,
   obterPorId,
+  obterPorOrcamentoId,
+  orcamentoIdsPagos,
 }

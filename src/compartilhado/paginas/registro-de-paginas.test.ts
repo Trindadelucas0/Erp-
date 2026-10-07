@@ -47,6 +47,65 @@ describe('montarPaginasPermitidasParaUsuario', () => {
     expect(pagina?.rotulo).toBe('Empresas')
   })
 
+  it('admin e financeiro:view veem Contas; estoque:view não', () => {
+    const admin = montarPaginasPermitidasParaUsuario(true, [], []).map((p) => p.chave)
+    const financeiro = montarPaginasPermitidasParaUsuario(false, [], ['financeiro:view']).map(
+      (p) => p.chave
+    )
+    const estoque = montarPaginasPermitidasParaUsuario(false, [], ['estoque:view']).map(
+      (p) => p.chave
+    )
+
+    expect(admin).toContain('contas')
+    expect(financeiro).toContain('contas')
+    expect(estoque).not.toContain('contas')
+  })
+
+  it('papel comprador vê Pedidos e Entrada sem Auditoria nem Pendências', () => {
+    const paginas = montarPaginasPermitidasParaUsuario(
+      false,
+      [],
+      ['compras:view', 'compras:create', 'compras:edit'],
+      [{ nome: 'comprador' }]
+    )
+    const chaves = paginas.map((p) => p.chave)
+
+    expect(chaves).toContain('pedidos-compra')
+    expect(chaves).toContain('entrada-notas')
+    expect(chaves).not.toContain('auditoria-entradas')
+    expect(chaves).not.toContain('contagens')
+    expect(chaves).not.toContain('pendencias')
+    expect(chaves).not.toContain('configuracoes')
+  })
+
+  it('papel administrativo vê só Entrada de notas', () => {
+    const paginas = montarPaginasPermitidasParaUsuario(false, [], [], [
+      { nome: 'administrativo' },
+    ])
+    const chaves = paginas.map((p) => p.chave)
+
+    expect(chaves).toEqual(['entrada-notas'])
+  })
+
+  it('papel logistica vê grupo Logística sem Configurações', () => {
+    const paginas = montarPaginasPermitidasParaUsuario(
+      false,
+      [],
+      ['estoque:view', 'estoque:create', 'estoque:edit'],
+      [{ nome: 'logistica' }]
+    )
+    const chaves = paginas.map((p) => p.chave)
+
+    expect(chaves).toContain('contagens')
+    expect(chaves).toContain('estoque')
+    expect(chaves).toContain('enderecos-wms')
+    expect(chaves).toContain('requisicoes')
+    expect(chaves).toContain('guardar-mercadorias')
+    expect(chaves).toContain('separacao')
+    expect(chaves).not.toContain('configuracoes')
+    expect(chaves).not.toContain('pendencias')
+  })
+
   it('admin vê Orçamentos e usuário sem a página não', () => {
     const admin = montarPaginasPermitidasParaUsuario(true, [], []).map((p) => p.chave)
     const estoque = montarPaginasPermitidasParaUsuario(false, [], ['estoque:view']).map((p) => p.chave)

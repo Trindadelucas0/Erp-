@@ -30,6 +30,7 @@ function paraResposta(
     aliquotaCbs: unknown
     aliquotaIbs: unknown
     validadeOrcamentoDias?: number
+    chavePix?: string | null
   } | null
 ) {
   const campos = {
@@ -47,6 +48,7 @@ function paraResposta(
     id: registro?.id ?? null,
     ...campos,
     validadeOrcamentoDias: registro?.validadeOrcamentoDias ?? 14,
+    chavePix: registro?.chavePix?.trim() || null,
     totalVenda: somarTotalVenda(campos),
   }
 }

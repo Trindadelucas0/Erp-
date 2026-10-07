@@ -248,6 +248,48 @@ async function buscarPorId(companyId: string, id: string) {
   return registro ? mapear(registro) : null
 }
 
+function soDigitosDocumento(valor: string) {
+  return valor.replace(/\D/g, '')
+}
+
+async function buscarParaRecebimento(companyId: string, termo: string) {
+  const trimmed = termo.trim()
+  if (!trimmed) return []
+
+  const digitos = soDigitosDocumento(trimmed)
+  const registros = await clientePrisma.orcamento.findMany({
+    where: {
+      companyId,
+      status: { in: ['enviado', 'aprovado'] },
+    },
+    include: includeOrcamento,
+    orderBy: { updatedAt: 'desc' },
+    take: 50,
+  })
+
+  return registros
+    .filter((registro) => {
+      if (registro.numero.trim() === trimmed) return true
+      if (digitos.length >= 11 && soDigitosDocumento(registro.cnpj) === digitos) return true
+      return false
+    })
+    .map((registro) => mapear(registro))
+}
+
+async function listarRecebiveis(companyId: string, idsPagos: Set<string>) {
+  const idsExcluir = [...idsPagos]
+  const registros = await clientePrisma.orcamento.findMany({
+    where: {
+      companyId,
+      status: { in: ['enviado', 'aprovado'] },
+      ...(idsExcluir.length > 0 ? { id: { notIn: idsExcluir } } : {}),
+    },
+    include: includeOrcamento,
+    orderBy: { updatedAt: 'desc' },
+  })
+  return registros.map((registro) => mapear(registro))
+}
+
 async function criar(companyId: string, dados: DadosOrcamento, numero: string, status: string) {
   const registro = await clientePrisma.orcamento.create({
     data: {
@@ -304,6 +346,8 @@ async function atualizarStatus(companyId: string, id: string, status: string) {
 export const repositorioDeOrcamentos = {
   listar,
   buscarPorId,
+  buscarParaRecebimento,
+  listarRecebiveis,
   criar,
   atualizar,
   atualizarStatus,

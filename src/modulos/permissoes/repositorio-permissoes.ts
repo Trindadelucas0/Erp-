@@ -108,10 +108,19 @@ async function buscarChavesPorIdDoUsuario(idDoUsuario: string) {
   return [...new Set([...dosPapeis, ...extras])]
 }
 
+async function buscarNomesDosPapeisPorIdDoUsuario(idDoUsuario: string) {
+  const papeis = await clientePrisma.userRole.findMany({
+    where: { userId: idDoUsuario },
+    select: { role: { select: { name: true } } },
+  })
+  return papeis.map((item) => item.role.name)
+}
+
 export const repositorioDePermissoes = {
   listarTodas,
   usuarioPossuiPermissao,
   buscarChavesDosPapeisPorIdDoUsuario,
   buscarChavesExtrasPorIdDoUsuario,
   buscarChavesPorIdDoUsuario,
+  buscarNomesDosPapeisPorIdDoUsuario,
 }

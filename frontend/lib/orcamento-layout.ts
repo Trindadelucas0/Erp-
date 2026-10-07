@@ -25,8 +25,11 @@ export const OPCOES_VENDEDOR_ORCAMENTO: readonly OpcaoFixa[] = [
 ]
 
 export const OPCOES_CONDICAO_PAGAMENTO: readonly OpcaoFixa[] = [
+  { value: 'pix', label: 'Pix' },
   { value: 'cartao_credito', label: 'Cartão de Crédito' },
+  { value: 'cartao_debito', label: 'Cartão de Débito' },
   { value: 'boleto', label: 'Boleto' },
+  { value: 'dinheiro', label: 'Dinheiro' },
   { value: 'a_vista', label: 'À vista' },
 ]
 

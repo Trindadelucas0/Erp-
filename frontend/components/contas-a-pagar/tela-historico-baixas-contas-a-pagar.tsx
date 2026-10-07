@@ -215,7 +215,11 @@ export function TelaHistoricoBaixasContasAPagar({ recarregarToken = 0 }: Props) 
           <div className="space-y-4 text-sm">
             <div className="flex flex-wrap gap-2">
               <BadgeStatusContaPagar status={detalhe.status} />
-              <BadgeOrigemContaPagar origem={detalhe.origem} />
+              <BadgeOrigemContaPagar
+                origem={detalhe.origem}
+                numeroNota={detalhe.numeroNota}
+                nfeRecebidaId={detalhe.nfeRecebidaId}
+              />
             </div>
 
             <div className="grid gap-2 rounded-md border bg-muted/20 p-3 sm:grid-cols-2">

@@ -7,6 +7,14 @@ export const MSG_FORMA_ORIGEM_INVALIDA = 'Forma de pagamento não permitida nest
 
 export const MSG_CHAMADO_JA_RECEBIDO = 'Este chamado já foi recebido.'
 
+export const MSG_ORCAMENTO_NAO_ENCONTRADO = 'Orçamento não encontrado.'
+
+export const MSG_ORCAMENTO_JA_RECEBIDO = 'Este orçamento já foi recebido.'
+
+export const MSG_VALOR_RECEBIDO_INSUFICIENTE = 'Valor recebido menor que o total do pedido.'
+
+export const STATUS_ORCAMENTO_RECEBIVEL = ['enviado', 'aprovado'] as const
+
 export const FORMAS_PAGAMENTO = [
   'dinheiro',
   'pix',
@@ -54,8 +62,20 @@ export const esquemaConfirmarChamado = z.object({
   }),
 })
 
+export const esquemaReceberOrcamento = z.object({
+  formaPagamento: z.enum(FORMAS_PAGAMENTO, {
+    errorMap: () => ({ message: MSG_FORMA_ORIGEM_INVALIDA }),
+  }),
+  origem: z.enum(ORIGENS_PAGAMENTO, {
+    errorMap: () => ({ message: MSG_FORMA_ORIGEM_INVALIDA }),
+  }),
+  valorRecebido: z.coerce.number().finite().optional(),
+  observacao: z.string().trim().max(500).optional(),
+})
+
 export type DadosConfirmarPagamento = z.infer<typeof esquemaConfirmarPagamento>
 export type DadosChamarAtendente = z.infer<typeof esquemaChamarAtendente>
 export type DadosConfirmarChamado = z.infer<typeof esquemaConfirmarChamado>
+export type DadosReceberOrcamento = z.infer<typeof esquemaReceberOrcamento>
 export type FormaPagamento = (typeof FORMAS_PAGAMENTO)[number]
 export type OrigemPagamento = (typeof ORIGENS_PAGAMENTO)[number]

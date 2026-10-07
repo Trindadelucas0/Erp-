@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client'
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import type { FiltroListagemContasPagar } from './esquema-contas-a-pagar.js'
+import { numeroNotaContaPagar } from './numero-nota-conta-pagar.js'
 
 export class ErroBaixa extends Error {
   constructor(message: string) {
@@ -12,6 +13,7 @@ export class ErroBaixa extends Error {
 const includeDetalhe = {
   pessoa: { select: { id: true, nome: true, nomeFantasia: true, cnpj: true, cpf: true } },
   planoFinanceiro: { select: { id: true, codigo: true, nome: true } },
+  nfeRecebida: { select: { chaveNfe: true } },
   parcelas: {
     orderBy: { numeroParcela: 'asc' as const },
     include: {
@@ -136,6 +138,11 @@ export function mapearContaPagar(
       : null,
     origem: row.origem,
     nfeRecebidaId: row.nfeRecebidaId,
+    numeroNota: numeroNotaContaPagar(
+      row.origem,
+      row.nfeRecebida?.chaveNfe,
+      row.numeroDocumento
+    ),
     despesaEntradaId: row.despesaEntradaId,
     numeroDocumento: row.numeroDocumento,
     dataEmissao: row.dataEmissao?.toISOString() ?? null,

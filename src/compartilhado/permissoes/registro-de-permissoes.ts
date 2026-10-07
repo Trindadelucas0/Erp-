@@ -37,7 +37,23 @@ export const PAPEIS_DO_SISTEMA = [
   'vendedor',
   'financeiro',
   'estoque',
+  'comprador',
+  'administrativo',
+  'logistica',
 ] as const
+
+/** Papéis com menu fixo por página — não expandem todo o módulo via `:view`. */
+export const PAPEIS_MENU_EXPLICITO = [
+  'comprador',
+  'administrativo',
+  'logistica',
+] as const
+
+export type PapelMenuExplicito = (typeof PAPEIS_MENU_EXPLICITO)[number]
+
+export function papelUsaMenuExplicito(nome: string): nome is PapelMenuExplicito {
+  return (PAPEIS_MENU_EXPLICITO as readonly string[]).includes(nome)
+}
 
 export type NomeDoPapel = (typeof PAPEIS_DO_SISTEMA)[number]
 
@@ -96,6 +112,9 @@ export const PERMISSOES_PADRAO_POR_PAPEL: Record<NomeDoPapel, string[]> = {
     'estoque:create',
     'estoque:edit',
   ],
+  comprador: ['compras:view', 'compras:create', 'compras:edit'],
+  administrativo: [],
+  logistica: ['estoque:view', 'estoque:create', 'estoque:edit'],
 }
 
 /** Gera todas as chaves de permissão (modulo:acao). */

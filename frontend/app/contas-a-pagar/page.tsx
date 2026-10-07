@@ -513,8 +513,12 @@ function ConteudoContasAPagar() {
                     <td className="px-3 py-2">
                       <BadgeTipoContaPagar tipo={linha.tipo} />
                     </td>
-                    <td className="px-3 py-2">
-                      <BadgeOrigemContaPagar origem={linha.origem} />
+                    <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                      <BadgeOrigemContaPagar
+                        origem={linha.origem}
+                        numeroNota={linha.numeroNota}
+                        nfeRecebidaId={linha.nfeRecebidaId}
+                      />
                     </td>
                     <td className="px-3 py-2">
                       <BadgeStatusContaPagar status={linha.status} />
@@ -547,7 +551,11 @@ function ConteudoContasAPagar() {
             <div className="mt-2 flex flex-wrap gap-2">
               <BadgeStatusContaPagar status={editando.status} />
               <BadgeTipoContaPagar tipo={editando.tipo} />
-              <BadgeOrigemContaPagar origem={editando.origem} />
+              <BadgeOrigemContaPagar
+                origem={editando.origem}
+                numeroNota={editando.numeroNota}
+                nfeRecebidaId={editando.nfeRecebidaId}
+              />
             </div>
           ) : undefined
         }

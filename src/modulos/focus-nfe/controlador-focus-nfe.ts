@@ -10,7 +10,12 @@ import {
   esquemaImportarXml,
   esquemaRegrasFiscais,
 } from './esquema-focus-nfe.js'
-import { normalizarPainelEntradaListagem } from './paineis-entrada-listagem.js'
+import {
+  normalizarPainelEntradaListagem,
+  parsePainelEntradaListagem,
+} from './paineis-entrada-listagem.js'
+import { exigirAcessoPainelEntradaNotas } from '../entrada-notas/servico-acesso-painel-entrada.js'
+import { repositorioFocusNfe } from './repositorio-focus-nfe.js'
 
 function companyIdDe(requisicao: FastifyRequest): string {
   const companyId = requisicao.empresaAtivaId || ''
@@ -70,13 +75,19 @@ async function statusJob(requisicao: FastifyRequest, resposta: FastifyReply) {
 }
 
 async function listarPendentes(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const idDoUsuario = requisicao.idDoUsuario
+  if (!idDoUsuario) throw new ErroDaAplicacao('Não autenticado', 401)
+
   const q = requisicao.query as {
     dataDe?: string
     dataAte?: string
     painel?: string
     busca?: string
   }
-  const painel = normalizarPainelEntradaListagem(q.painel)
+  const painelInformado = parsePainelEntradaListagem(q.painel)
+  const painel = painelInformado ?? normalizarPainelEntradaListagem(q.painel)
+
+  await exigirAcessoPainelEntradaNotas(idDoUsuario, { painel })
 
   const resultado = await servicoFocusNfe.listarPendentes(companyIdDe(requisicao), {
     dataDe: q.dataDe,
@@ -92,9 +103,19 @@ async function listarPendentes(requisicao: FastifyRequest, resposta: FastifyRepl
 }
 
 async function obterXml(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const idDoUsuario = requisicao.idDoUsuario
+  if (!idDoUsuario) throw new ErroDaAplicacao('Não autenticado', 401)
+
   const { id } = requisicao.params as { id: string }
   const q = requisicao.query as { modo?: string }
   const visualizar = (q.modo ?? '').toLowerCase() === 'visualizar'
+  const companyId = companyIdDe(requisicao)
+  const nota = await repositorioFocusNfe.buscarPorId(companyId, id)
+  if (nota) {
+    await exigirAcessoPainelEntradaNotas(idDoUsuario, {
+      statusEntrada: nota.statusEntrada,
+    })
+  }
   const dados = await servicoFocusNfe.obterXmlNota(
     companyIdDe(requisicao),
     id,
@@ -128,8 +149,18 @@ async function buscarRecursosDocumento(requisicao: FastifyRequest, resposta: Fas
 }
 
 async function obterDanfe(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const idDoUsuario = requisicao.idDoUsuario
+  if (!idDoUsuario) throw new ErroDaAplicacao('Não autenticado', 401)
+
   const { id } = requisicao.params as { id: string }
-  const dados = await servicoFocusNfe.obterDanfeNota(companyIdDe(requisicao), id)
+  const companyId = companyIdDe(requisicao)
+  const nota = await repositorioFocusNfe.buscarPorId(companyId, id)
+  if (nota) {
+    await exigirAcessoPainelEntradaNotas(idDoUsuario, {
+      statusEntrada: nota.statusEntrada,
+    })
+  }
+  const dados = await servicoFocusNfe.obterDanfeNota(companyId, id)
   const prefixo =
     dados.tipoDocumento === 'nfse'
       ? 'DANFSe'
@@ -144,6 +175,11 @@ async function obterDanfe(requisicao: FastifyRequest, resposta: FastifyReply) {
 }
 
 async function importarXml(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const idDoUsuario = requisicao.idDoUsuario
+  if (!idDoUsuario) throw new ErroDaAplicacao('Não autenticado', 401)
+
+  await exigirAcessoPainelEntradaNotas(idDoUsuario, { painel: 'analise' })
+
   const resultado = esquemaImportarXml.safeParse(requisicao.body)
   if (!resultado.success) {
     throw new ErroDaAplicacao(resultado.error.errors[0].message, 400)

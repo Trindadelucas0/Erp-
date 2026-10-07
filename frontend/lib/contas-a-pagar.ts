@@ -35,6 +35,8 @@ export type ContaPagarLista = {
   planoFinanceiro: { id: string; codigo: string; nome: string } | null
   origem: string
   nfeRecebidaId?: string | null
+  /** nNF da chave ou documento do título — selo NFe na UI (não confundir com nDup da parcela). */
+  numeroNota?: string | null
   despesaEntradaId?: string | null
   numeroDocumento: string | null
   dataEmissao: string | null

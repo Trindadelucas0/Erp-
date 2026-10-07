@@ -25,6 +25,10 @@ export const esquemaGravarParametrizacaoCustos = z.object({
   aliquotaCbs: percentualOpcional,
   aliquotaIbs: percentualOpcional,
   validadeOrcamentoDias: diasValidadeOrcamento,
+  chavePix: z.preprocess((valor) => {
+    if (valor === '' || valor === undefined || valor === null) return null
+    return valor
+  }, z.string().trim().max(200, 'Chave Pix muito longa').nullable()),
 })
 
 export type DadosParametrizacaoCustos = z.infer<typeof esquemaGravarParametrizacaoCustos>

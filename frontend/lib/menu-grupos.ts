@@ -3,6 +3,7 @@ import {
   Archive,
   Banknote,
   HandCoins,
+  Landmark,
   Bell,
   Building2,
   CircleDollarSign,
@@ -71,7 +72,7 @@ export const GRUPOS_DO_MENU: readonly GrupoDoMenu[] = [
   {
     id: 'financeiro',
     rotulo: 'Financeiro',
-    chaves: ['contas-a-pagar', 'contas-a-receber'],
+    chaves: ['contas-a-pagar', 'contas-a-receber', 'contas'],
   },
 ]
 
@@ -100,6 +101,7 @@ const ICONES_POR_CHAVE: Record<string, LucideIcon> = {
   separacao: PackageCheck,
   'contas-a-pagar': Banknote,
   'contas-a-receber': CircleDollarSign,
+  contas: Landmark,
   pendencias: Bell,
   configuracoes: Settings,
   usuarios: UserCog,

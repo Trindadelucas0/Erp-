@@ -41,6 +41,12 @@ import {
 import { extrairSerieNumeroChave } from '@/lib/chave-acesso-nfe'
 import { ModalLiberarParaContagem } from '@/components/entrada-notas/modal-liberar-para-contagem'
 import { formatarNumeroRequisicao } from '@/lib/requisicoes-wms'
+import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
+import {
+  PAINEL_ENTRADA_PADRAO_ADMINISTRATIVO,
+  painelEntradaAdministrativoPermitido,
+  perfilRestritoEntradaAdministrativo,
+} from '@/lib/acesso-entrada-notas'
 
 type NotaPendente = {
   id: string
@@ -292,6 +298,26 @@ function tituloPainel(painel: PainelEntrada): string {
 function ConteudoEntradaNotas() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { perfil } = useSessaoDoUsuario()
+  const restritoAdministrativo = perfilRestritoEntradaAdministrativo(perfil)
+  const paineisVisiveis = useMemo(() => {
+    if (!restritoAdministrativo) return PAINEIS
+    return PAINEIS.filter((p) => painelEntradaAdministrativoPermitido(p.id))
+  }, [restritoAdministrativo])
+
+  const normalizarPainelDoUsuario = useCallback(
+    (valor: PainelEntrada | null | undefined): PainelEntrada => {
+      if (!restritoAdministrativo) {
+        return valor && PAINEIS.some((p) => p.id === valor) ? valor : 'analise'
+      }
+      if (valor && painelEntradaAdministrativoPermitido(valor)) {
+        return valor
+      }
+      return PAINEL_ENTRADA_PADRAO_ADMINISTRATIVO
+    },
+    [restritoAdministrativo]
+  )
+
   const [painel, setPainel] = useState<PainelEntrada>('analise')
   const [notas, setNotas] = useState<NotaPendente[]>([])
   const [carregando, setCarregando] = useState(true)
@@ -359,14 +385,14 @@ function ConteudoEntradaNotas() {
 
   useEffect(() => {
     const painelQuery = searchParams.get('painel')?.trim().toLowerCase() ?? ''
-    const painelValidos = PAINEIS.map((p) => p.id)
+    const painelValidos = paineisVisiveis.map((p) => p.id)
     const painelDaUrl = painelValidos.includes(painelQuery as PainelEntrada)
       ? (painelQuery as PainelEntrada)
       : null
 
     const salvos = lerFiltrosSalvos()
     if (painelDaUrl) {
-      setPainel(painelDaUrl)
+      setPainel(normalizarPainelDoUsuario(painelDaUrl))
       if (salvos) {
         setDataDe(salvos.dataDe)
         setDataAte(salvos.dataAte)
@@ -374,14 +400,16 @@ function ConteudoEntradaNotas() {
         setBuscaDebounced(salvos.busca.trim())
       }
     } else if (salvos) {
-      setPainel(salvos.painel)
+      setPainel(normalizarPainelDoUsuario(salvos.painel))
       setDataDe(salvos.dataDe)
       setDataAte(salvos.dataAte)
       setBusca(salvos.busca)
       setBuscaDebounced(salvos.busca.trim())
+    } else if (restritoAdministrativo) {
+      setPainel(PAINEL_ENTRADA_PADRAO_ADMINISTRATIVO)
     }
     setFiltrosProntos(true)
-  }, [searchParams])
+  }, [searchParams, paineisVisiveis, normalizarPainelDoUsuario, restritoAdministrativo])
 
   useEffect(() => {
     if (!filtrosProntos) return
@@ -1032,7 +1060,7 @@ function ConteudoEntradaNotas() {
       </TituloPagina>
 
       <div className="flex flex-wrap gap-2">
-        {PAINEIS.map((p) => (
+        {paineisVisiveis.map((p) => (
           <Button
             key={p.id}
             type="button"

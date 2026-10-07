@@ -4,11 +4,7 @@
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import { decodificarTextoXml } from '../../compartilhado/normalizacao/entidades-xml.js'
 import { normalizarDocumento } from '../../compartilhado/validacoes/documentos.js'
-import {
-  STATUS_AGUARDANDO_CHEGADA,
-  STATUS_PAINEL_CONTAGEM,
-  STATUS_PAINEL_PRONTA_CONSOLIDAR,
-} from '../entrada-notas/status-entrada-contagem.js'
+import { STATUS_ENTRADA_POR_PAINEL_LISTAGEM } from './paineis-entrada-listagem.js'
 import { REGRAS_FISCAIS_PADRAO } from './esquema-focus-nfe.js'
 import { xmlNfeTemItensParseaveis } from './parser-xml-nfe.js'
 
@@ -161,16 +157,9 @@ async function listarNfesPorPainel(
   }
 ) {
   const painel = filtros?.painel ?? 'analise'
-  const statusPorPainel: Record<string, string[]> = {
-    analise: ['pendente', 'em_analise', 'stand_by'],
-    aguardando_chegada: [STATUS_AGUARDANDO_CHEGADA],
-    contagem: [...STATUS_PAINEL_CONTAGEM],
-    pronta_consolidar: [...STATUS_PAINEL_PRONTA_CONSOLIDAR],
-    consolidada: ['entrada_consolidada'],
-    problemas: ['com_problema', 'problema_resolvido'],
-    cancelada: ['cancelada'],
-  }
-  const statuses = statusPorPainel[painel] ?? statusPorPainel.analise
+  const statuses =
+    STATUS_ENTRADA_POR_PAINEL_LISTAGEM[painel] ??
+    STATUS_ENTRADA_POR_PAINEL_LISTAGEM.analise
 
   const dataFiltro =
     filtros?.dataDe || filtros?.dataAte
@@ -257,16 +246,9 @@ async function contarCtesForaDoFiltroData(
   if (filtros.painel === 'cancelada') return 0
 
   const painel = filtros.painel ?? 'analise'
-  const statusPorPainel: Record<string, string[]> = {
-    analise: ['pendente', 'em_analise', 'stand_by'],
-    aguardando_chegada: [STATUS_AGUARDANDO_CHEGADA],
-    contagem: [...STATUS_PAINEL_CONTAGEM],
-    pronta_consolidar: [...STATUS_PAINEL_PRONTA_CONSOLIDAR],
-    consolidada: ['entrada_consolidada'],
-    problemas: ['com_problema', 'problema_resolvido'],
-    cancelada: ['cancelada'],
-  }
-  const statuses = statusPorPainel[painel] ?? statusPorPainel.analise
+  const statuses =
+    STATUS_ENTRADA_POR_PAINEL_LISTAGEM[painel] ??
+    STATUS_ENTRADA_POR_PAINEL_LISTAGEM.analise
 
   const foraDoIntervalo: Array<Record<string, unknown>> = [{ dataEmissao: null }]
   if (filtros.dataDe) {

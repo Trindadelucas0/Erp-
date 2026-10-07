@@ -1820,6 +1820,8 @@ model ParametrizacaoCustoVenda {
   aliquotaIbs                  Decimal? @db.Decimal(18, 4)
   /// Dias somados à data de emissão para preencher a validade do orçamento (Configurações → Vendas).
   validadeOrcamentoDias        Int      @default(14)
+  /// Chave Pix exibida no totem ao receber por Pix (Configurações → Vendas).
+  chavePix                     String?
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
 }
@@ -1859,6 +1861,7 @@ model Orcamento {
   complementares    String          @default("")
   observacoes       String          @default("")
   itens             OrcamentoItem[]
+  vendasCaixa       VendaCaixa[]
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
@@ -1887,20 +1890,27 @@ model VendaCaixa {
   id             String           @id @default(uuid())
   companyId      String
   company        Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  orcamentoId    String?
+  orcamento      Orcamento?       @relation(fields: [orcamentoId], references: [id], onDelete: Restrict)
   numero         Int
   clienteNome    String
   /// paga | chamado_atendente
   status         String           @default("paga")
   /// dinheiro | pix | cartao_credito | cartao_debito | boleto — null em chamado ou vendas antigas
   formaPagamento String?
+  /// Valor recebido em dinheiro (troco = valorRecebido − total do orçamento).
+  valorRecebido  Decimal?         @db.Decimal(15, 2)
+  observacao     String?
   pagaEm         DateTime         @default(now())
   itens          VendaCaixaItem[]
   requisicoes    RequisicaoWms[]
   createdAt      DateTime         @default(now())
 
   @@unique([companyId, numero])
+  @@unique([companyId, orcamentoId])
   @@index([companyId, pagaEm])
   @@index([companyId, status])
+  @@index([orcamentoId])
 }
 
 model VendaCaixaItem {

@@ -19,6 +19,7 @@ type ParametrizacaoCustos = {
   aliquotaCbs: number | null
   aliquotaIbs: number | null
   validadeOrcamentoDias: number
+  chavePix: string | null
   totalVenda: number
 }
 
@@ -50,6 +51,7 @@ export function PainelParametrizacaoCustos() {
     aliquotaCbs: '',
     aliquotaIbs: '',
     validadeOrcamentoDias: '14',
+    chavePix: '',
   })
   const [carregando, setCarregando] = useState(true)
   const [salvando, setSalvando] = useState(false)
@@ -91,6 +93,7 @@ export function PainelParametrizacaoCustos() {
         aliquotaCbs: textoPercentual(p.aliquotaCbs),
         aliquotaIbs: textoPercentual(p.aliquotaIbs),
         validadeOrcamentoDias: String(p.validadeOrcamentoDias ?? 14),
+        chavePix: p.chavePix ?? '',
       })
     } catch (e) {
       setErro(extrairMensagemApi(e, 'Não foi possível carregar a parametrização de custos.'))
@@ -123,6 +126,7 @@ export function PainelParametrizacaoCustos() {
         aliquotaCbs: parsePercentual(form.aliquotaCbs),
         aliquotaIbs: parsePercentual(form.aliquotaIbs),
         validadeOrcamentoDias: parseInt(form.validadeOrcamentoDias, 10) || 14,
+        chavePix: form.chavePix.trim() || null,
       })
       setMensagem('Parametrização gravada.')
     } catch (e) {
@@ -206,6 +210,12 @@ export function PainelParametrizacaoCustos() {
                 inputMode="numeric"
                 value={form.validadeOrcamentoDias}
                 onChange={(e) => alterarCampo('validadeOrcamentoDias', e.target.value.replace(/\D/g, ''))}
+              />
+              <InputPadrao
+                rotulo="Chave Pix"
+                value={form.chavePix}
+                onChange={(e) => alterarCampo('chavePix', e.target.value)}
+                placeholder="Exibida no totem ao receber por Pix"
               />
             </div>
           </div>

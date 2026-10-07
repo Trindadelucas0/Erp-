@@ -41,6 +41,28 @@ type Props = {
    */
   alturaMinimaConteudo?: AlturaMinimaConteudo | string
   manterPosicao?: boolean
+  /** Segundo modal sobre outro (ex.: Visualizar nota sobre título). */
+  camada?: 'padrao' | 'superior'
+}
+
+const modalEscapeStack: Array<() => void> = []
+let escapeListenerAtivo = false
+
+function registrarListenerEscapeGlobal() {
+  if (escapeListenerAtivo) return
+  escapeListenerAtivo = true
+  document.addEventListener(
+    'keydown',
+    (evento) => {
+      if (evento.key !== 'Escape') return
+      const topo = modalEscapeStack[modalEscapeStack.length - 1]
+      if (!topo) return
+      evento.preventDefault()
+      evento.stopImmediatePropagation()
+      topo()
+    },
+    true
+  )
 }
 
 export function Modal({
@@ -54,19 +76,16 @@ export function Modal({
   cabecalhoExtra,
   alturaMinimaConteudo,
   manterPosicao = false,
+  camada = 'padrao',
 }: Props) {
   useEffect(() => {
     if (!aberto) return
-
-    function aoPressionarEsc(evento: KeyboardEvent) {
-      if (evento.key === 'Escape') {
-        evento.preventDefault()
-        aoFechar()
-      }
+    registrarListenerEscapeGlobal()
+    modalEscapeStack.push(aoFechar)
+    return () => {
+      const idx = modalEscapeStack.lastIndexOf(aoFechar)
+      if (idx >= 0) modalEscapeStack.splice(idx, 1)
     }
-
-    document.addEventListener('keydown', aoPressionarEsc, true)
-    return () => document.removeEventListener('keydown', aoPressionarEsc, true)
   }, [aberto, aoFechar])
 
   if (!aberto) return null
@@ -80,7 +99,8 @@ export function Modal({
   return (
     <div
       className={cn(
-        'fixed inset-0 z-50 flex justify-center bg-black/60 p-2 sm:p-4',
+        'fixed inset-0 flex justify-center bg-black/60 p-2 sm:p-4',
+        camada === 'superior' ? 'z-[60]' : 'z-50',
         manterPosicao ? 'items-start pt-[6vh] sm:pt-[8vh]' : 'items-center'
       )}
     >

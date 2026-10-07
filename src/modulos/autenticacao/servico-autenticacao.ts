@@ -66,10 +66,12 @@ async function buscarPerfilDoUsuarioLogado(idDoUsuario: string) {
   const chavesDasPaginas = usuario.paginasPermitidas.map(
     (item) => item.pageKey
   )
+  const papeisDoUsuario = usuario.roles.map((item) => ({ nome: item.role.name }))
   const paginasPermitidas = montarPaginasPermitidasParaUsuario(
     ehAdmin,
     chavesDasPaginas,
-    permissoesEfetivas
+    permissoesEfetivas,
+    papeisDoUsuario
   )
 
   return {

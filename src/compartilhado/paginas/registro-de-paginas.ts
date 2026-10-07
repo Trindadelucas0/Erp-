@@ -2,6 +2,10 @@
  * Registro central de páginas do frontend.
  * Ao criar nova rota no Next.js, adicionar em PAGINAS_VINCULAVEIS.
  */
+import {
+  PAPEIS_MENU_EXPLICITO,
+  papelUsaMenuExplicito,
+} from '../permissoes/registro-de-permissoes.js'
 
 export type PaginaDoSistema = {
   chave: string
@@ -130,6 +134,12 @@ export const PAGINAS_VINCULAVEIS: readonly PaginaDoSistema[] = [
     modulo: 'financeiro',
   },
   {
+    chave: 'contas',
+    caminho: '/contas',
+    rotulo: 'Contas',
+    modulo: 'financeiro',
+  },
+  {
     chave: 'pendencias',
     caminho: '/pendencias',
     rotulo: 'Pendências',
@@ -179,6 +189,27 @@ export const PAGINAS_SOMENTE_ADMIN: readonly PaginaDoSistema[] = [
 /** Rota de fallback para usuários sem páginas liberadas. */
 export const CAMINHO_INICIO = '/inicio'
 
+/** Chaves de menu por papel com lista explícita (ver `PAPEIS_MENU_EXPLICITO`). */
+export const PAGINAS_PADRAO_POR_PAPEL_MENU: Record<
+  (typeof PAPEIS_MENU_EXPLICITO)[number],
+  readonly string[]
+> = {
+  comprador: ['pedidos-compra', 'entrada-notas'],
+  administrativo: ['entrada-notas'],
+  logistica: [
+    'contagens',
+    'estoque',
+    'enderecos-wms',
+    'requisicoes',
+    'guardar-mercadorias',
+    'separacao',
+  ],
+}
+
+export type PapelDoUsuarioParaMenu = {
+  nome: string
+}
+
 export function listarPaginasVinculaveis(): PaginaDoSistema[] {
   return PAGINAS_VINCULAVEIS.filter((pagina) => pagina.exibirNoMenu !== false)
 }
@@ -223,34 +254,59 @@ function filtrarParaMenu(paginas: PaginaDoSistema[]): PaginaDoSistema[] {
 export function montarPaginasPermitidasParaUsuario(
   ehAdmin: boolean,
   chavesDoUsuario: string[],
-  permissoesEfetivas: string[] = []
+  permissoesEfetivas: string[] = [],
+  papeisDoUsuario: PapelDoUsuarioParaMenu[] = []
 ): PaginaDoSistema[] {
   if (ehAdmin) {
     return filtrarParaMenu([...PAGINAS_SOMENTE_ADMIN, ...PAGINAS_VINCULAVEIS])
   }
 
   const paginasPorChave = new Map<string, PaginaDoSistema>()
+  const temPapelMenuExplicito = papeisDoUsuario.some((p) => papelUsaMenuExplicito(p.nome))
+  const temPapelComExpansaoModulo = papeisDoUsuario.some(
+    (p) => !papelUsaMenuExplicito(p.nome)
+  )
 
   for (const chave of chavesDoUsuario) {
     const pagina = resolverPaginaPorChave(chave)
     if (pagina) paginasPorChave.set(pagina.chave, pagina)
   }
 
-  for (const pagina of PAGINAS_VINCULAVEIS) {
-    if (paginaLiberadaPorPermissaoView(pagina, permissoesEfetivas)) {
-      paginasPorChave.set(pagina.chave, pagina)
+  for (const papel of papeisDoUsuario) {
+    if (!papelUsaMenuExplicito(papel.nome)) continue
+    const chaves = PAGINAS_PADRAO_POR_PAPEL_MENU[papel.nome]
+    for (const chave of chaves) {
+      const pagina = resolverPaginaPorChave(chave)
+      if (pagina) paginasPorChave.set(pagina.chave, pagina)
     }
   }
+
+  if (temPapelComExpansaoModulo || !temPapelMenuExplicito) {
+    for (const pagina of PAGINAS_VINCULAVEIS) {
+      if (paginaLiberadaPorPermissaoView(pagina, permissoesEfetivas)) {
+        paginasPorChave.set(pagina.chave, pagina)
+      }
+    }
+  }
+
+  const injetaConfiguracoes =
+    temPapelComExpansaoModulo ||
+    (!temPapelMenuExplicito &&
+      (permissoesEfetivas.includes('financeiro:view') ||
+        permissoesEfetivas.includes('produtos:view') ||
+        permissoesEfetivas.includes('estoque:view')))
 
   const temParametroFinanceiro =
     paginasPorChave.has('cfops') ||
     paginasPorChave.has('planos-financeiros') ||
-    permissoesEfetivas.includes('financeiro:view')
+    (temPapelComExpansaoModulo && permissoesEfetivas.includes('financeiro:view'))
   const temParametroLogistica =
     paginasPorChave.has('estrutura-wms') ||
-    permissoesEfetivas.includes('produtos:view') ||
-    permissoesEfetivas.includes('estoque:view')
+    (temPapelComExpansaoModulo &&
+      (permissoesEfetivas.includes('produtos:view') ||
+        permissoesEfetivas.includes('estoque:view')))
   if (
+    injetaConfiguracoes &&
     (temParametroFinanceiro || temParametroLogistica) &&
     !paginasPorChave.has('configuracoes')
   ) {
@@ -264,10 +320,11 @@ export function montarPaginasPermitidasParaUsuario(
   }
 
   const temPendencias =
-    permissoesEfetivas.includes('financeiro:view') ||
-    permissoesEfetivas.includes('compras:view') ||
-    permissoesEfetivas.includes('estoque:view') ||
-    permissoesEfetivas.includes('clientes:view')
+    temPapelComExpansaoModulo &&
+    (permissoesEfetivas.includes('financeiro:view') ||
+      permissoesEfetivas.includes('compras:view') ||
+      permissoesEfetivas.includes('estoque:view') ||
+      permissoesEfetivas.includes('clientes:view'))
   if (temPendencias && !paginasPorChave.has('pendencias')) {
     const pendencias = resolverPaginaPorChave('pendencias')
     if (pendencias) paginasPorChave.set('pendencias', pendencias)
