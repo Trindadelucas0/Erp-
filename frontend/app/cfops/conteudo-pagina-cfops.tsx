@@ -36,6 +36,7 @@ import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Modal } from '@/components/ui/modal'
+import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { Label } from '@/components/ui/label'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
@@ -88,6 +89,8 @@ export function ConteudoDaPaginaCfops() {
   const [mensagem, setMensagem] = useState('')
   const [erro, setErro] = useState('')
   const [planosFinanceiros, setPlanosFinanceiros] = useState<PlanoFinanceiroOpcao[]>([])
+  const [cfopParaExcluir, setCfopParaExcluir] = useState<Cfop | null>(null)
+  const [excluindo, setExcluindo] = useState(false)
   const { ordenacao, alternarOrdenacao } = useOrdenacaoColunas<ColunaCfop>()
 
   const classificacaoAtual = useMemo(
@@ -262,6 +265,24 @@ export function ConteudoDaPaginaCfops() {
     [lista, ordenacao]
   )
 
+  async function confirmarExclusao() {
+    if (!cfopParaExcluir || excluindo) return
+    setExcluindo(true)
+    setErro('')
+    try {
+      await clienteHttp.delete(`/cfops/${cfopParaExcluir.id}`)
+      const idRemovido = cfopParaExcluir.id
+      setLista((atual) => atual.filter((item) => item.id !== idRemovido))
+      setCfopParaExcluir(null)
+      setMensagem('CFOP excluído.')
+    } catch (err: unknown) {
+      setErro(extrairMensagemApi(err, 'Erro ao excluir CFOP.'))
+      setCfopParaExcluir(null)
+    } finally {
+      setExcluindo(false)
+    }
+  }
+
   const podeSalvar = modoEdicao ? podeEditar : podeCriar
 
   return (
@@ -295,13 +316,13 @@ export function ConteudoDaPaginaCfops() {
           />
         </div>
         <div className="overflow-x-auto rounded-lg border border-border bg-card">
-          <table className="w-full min-w-[640px] text-sm">
+          <table className="w-full min-w-[760px] text-sm">
             <colgroup>
               <col className="w-[12%]" />
-              <col className="w-[38%]" />
               <col className="w-[32%]" />
+              <col className="w-[26%]" />
               <col className="w-[12%]" />
-              <col className="w-[6%]" />
+              <col className="w-[18%]" />
             </colgroup>
             <thead>
               <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
@@ -309,7 +330,7 @@ export function ConteudoDaPaginaCfops() {
                 <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Nome" coluna="nome" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
                 <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Tipo" coluna="tipo" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
                 <CabecalhoColunaOrdenavel className="px-4 py-3" rotulo="Situação" coluna="situacao" ordenacao={ordenacao} onOrdenar={alternarOrdenacao} />
-                <th className="px-2 py-3" />
+                <th className="px-2 py-3 text-right font-medium">Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -342,11 +363,24 @@ export function ConteudoDaPaginaCfops() {
                           {cfop.ativo ? 'Ativo' : 'Inativo'}
                         </BadgeStatus>
                       </td>
-                      <td className="px-2 py-3">
+                      <td className="whitespace-nowrap px-2 py-3 text-right">
                         {podeEditar && (
-                          <Button type="button" variant="ghost" size="sm" onClick={() => abrirEdicao(cfop)}>
-                            Editar
-                          </Button>
+                          <div className="flex justify-end gap-1">
+                            <Button type="button" variant="ghost" size="sm" onClick={() => abrirEdicao(cfop)}>
+                              Editar
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setErro('')
+                                setCfopParaExcluir(cfop)
+                              }}
+                            >
+                              Excluir
+                            </Button>
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -516,6 +550,20 @@ export function ConteudoDaPaginaCfops() {
           )}
         </form>
       </Modal>
+
+      <ModalConfirmacao
+        aberto={Boolean(cfopParaExcluir)}
+        titulo={cfopParaExcluir ? `Excluir CFOP ${cfopParaExcluir.codigo}?` : 'Excluir CFOP?'}
+        mensagem={cfopParaExcluir?.nome ?? ''}
+        textoConfirmar={excluindo ? 'Excluindo…' : 'Excluir'}
+        textoCancelar="Cancelar"
+        aoCancelar={() => {
+          if (!excluindo) setCfopParaExcluir(null)
+        }}
+        aoConfirmar={() => {
+          if (!excluindo) void confirmarExclusao()
+        }}
+      />
     </div>
   )
 }

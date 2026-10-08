@@ -173,10 +173,35 @@ async function editarCfop(
   return paraRespostaApi(cfop)
 }
 
+async function excluirCfop(companyId: string, id: string, idDoAutor: string) {
+  const existente = await repositorioDeCfops.buscarPorId(companyId, id)
+  if (!existente) throw new ErroDaAplicacao('CFOP não encontrado', 404)
+
+  const uso = await repositorioDeCfops.contarUsoEmEntrada(companyId, id)
+  if (uso > 0) {
+    throw new ErroDaAplicacao(
+      'Este CFOP está em uso na Entrada de notas e não pode ser excluído.',
+      409
+    )
+  }
+
+  const removidos = await repositorioDeCfops.remover(companyId, id)
+  if (removidos === 0) throw new ErroDaAplicacao('CFOP não encontrado', 404)
+
+  await registrarAuditoria({
+    usuarioId: idDoAutor,
+    acao: 'excluir',
+    entidade: 'cfop',
+    entidadeId: id,
+    valoresAntes: { codigo: existente.codigo, nome: existente.nome },
+  })
+}
+
 export const servicoDeCfops = {
   listarParaGestao,
   listarParaCatalogo,
   buscarPorId,
   criarCfop,
   editarCfop,
+  excluirCfop,
 }

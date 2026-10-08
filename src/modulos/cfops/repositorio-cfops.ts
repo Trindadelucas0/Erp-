@@ -224,6 +224,25 @@ async function validarIdsEntradaFornecedor(companyId: string, ids: string[]) {
   }
 }
 
+async function contarUsoEmEntrada(companyId: string, id: string) {
+  const [notas, itens] = await Promise.all([
+    clientePrisma.nfeRecebida.count({
+      where: { companyId, cfopEntradaId: id },
+    }),
+    clientePrisma.nfeRecebidaItem.count({
+      where: { cfopEntradaId: id, nfeRecebida: { companyId } },
+    }),
+  ])
+  return notas + itens
+}
+
+async function remover(companyId: string, id: string) {
+  const resultado = await clientePrisma.cfop.deleteMany({
+    where: { id, companyId },
+  })
+  return resultado.count
+}
+
 async function validarPlanoFinanceiroAtivo(companyId: string, id: string) {
   const plano = await clientePrisma.planoFinanceiro.findFirst({
     where: { id, companyId, ativo: true },
@@ -240,6 +259,8 @@ export const repositorioDeCfops = {
   buscarPorCodigo,
   criar,
   atualizar,
+  contarUsoEmEntrada,
+  remover,
   mapear,
   validarIdsEntradaFornecedor,
   validarPlanoFinanceiroAtivo,

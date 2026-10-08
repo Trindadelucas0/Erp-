@@ -11,6 +11,8 @@ vi.mock('./repositorio-cfops.js', () => ({
     buscarPorId: vi.fn(),
     criar: vi.fn(),
     atualizar: vi.fn(),
+    contarUsoEmEntrada: vi.fn(),
+    remover: vi.fn(),
     validarIdsEntradaFornecedor: vi.fn(),
     validarPlanoFinanceiroAtivo: vi.fn(),
     mapear: vi.fn((cfop) => cfop),
@@ -375,5 +377,49 @@ describe('servicoDeCfops.planoFinanceiroPadrao', () => {
       expect.objectContaining({ planoFinanceiroPadraoId: null }),
       '5.101'
     )
+  })
+})
+
+describe('servicoDeCfops.excluirCfop', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('não apaga quando o CFOP está em uso na entrada e responde 409', async () => {
+    vi.mocked(repositorioDeCfops.buscarPorId).mockResolvedValue({
+      id: 'cfop-saida-001',
+      codigo: '5.201',
+      nome: 'Saída teste',
+      companyId: 'company-001',
+    } as never)
+    vi.mocked(repositorioDeCfops.contarUsoEmEntrada).mockResolvedValue(2)
+
+    await expect(
+      servicoDeCfops.excluirCfop('company-001', 'cfop-saida-001', 'user-001')
+    ).rejects.toMatchObject({
+      codigoHttp: 409,
+      message: 'Este CFOP está em uso na Entrada de notas e não pode ser excluído.',
+    })
+
+    expect(repositorioDeCfops.remover).not.toHaveBeenCalled()
+  })
+
+  it('apaga quando nenhuma nota usa o CFOP', async () => {
+    vi.mocked(repositorioDeCfops.buscarPorId).mockResolvedValue({
+      id: 'cfop-saida-001',
+      codigo: '5.201',
+      nome: 'Saída teste',
+      companyId: 'company-001',
+    } as never)
+    vi.mocked(repositorioDeCfops.contarUsoEmEntrada).mockResolvedValue(0)
+    vi.mocked(repositorioDeCfops.remover).mockResolvedValue(1)
+
+    await servicoDeCfops.excluirCfop('company-001', 'cfop-saida-001', 'user-001')
+
+    expect(repositorioDeCfops.contarUsoEmEntrada).toHaveBeenCalledWith(
+      'company-001',
+      'cfop-saida-001'
+    )
+    expect(repositorioDeCfops.remover).toHaveBeenCalledWith('company-001', 'cfop-saida-001')
   })
 })
