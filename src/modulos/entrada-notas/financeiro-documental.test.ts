@@ -31,6 +31,7 @@ vi.mock('../contagens/repositorio-contagens.js', () => ({
 
 vi.mock('../contas-a-pagar/resolver-plano-financeiro-entrada.js', () => ({
   resolverPlanoFinanceiroEntrada: vi.fn().mockResolvedValue(null),
+  parUnicoPlanoCfopFornecedor: vi.fn().mockResolvedValue(null),
 }))
 
 vi.mock('../contas-a-pagar/resolver-parcelas-recorrencia.js', () => ({

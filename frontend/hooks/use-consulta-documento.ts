@@ -45,6 +45,8 @@ type Retorno = {
   aoSairDocumento: () => Promise<void>
   carregandoBrasilApi: boolean
   verificandoDocumento: boolean
+  erroConsultaCnpj: string
+  limparErroConsulta: () => void
   resetarConsulta: () => void
 }
 
@@ -58,17 +60,24 @@ export function useConsultaDocumento(params: Params): Retorno {
 
   const [carregandoBrasilApi, setCarregandoBrasilApi] = useState(false)
   const [verificandoDocumento, setVerificandoDocumento] = useState(false)
+  const [erroConsultaCnpj, setErroConsultaCnpj] = useState('')
+
+  const limparErroConsulta = useCallback(() => {
+    setErroConsultaCnpj('')
+  }, [])
 
   const resetarConsulta = useCallback(() => {
     consultandoRef.current = false
     setCarregandoBrasilApi(false)
     setVerificandoDocumento(false)
+    setErroConsultaCnpj('')
   }, [])
 
   const aoSairDocumento = useCallback(async () => {
     const p = paramsRef.current
 
     p.tocarCampo('documento')
+    setErroConsultaCnpj('')
     if (p.getModoEdicao() || p.getSomenteLeitura?.()) return
     // Mutex: se já está consultando, ignora o 2º blur
     if (consultandoRef.current) return
@@ -90,9 +99,18 @@ export function useConsultaDocumento(params: Params): Retorno {
     try {
       if (form.tipo === 'PJ') {
         setCarregandoBrasilApi(true)
-        const dados = await buscarDadosCnpj(nums)
-        setCarregandoBrasilApi(false)
-        if (dados) p.aoAplicarDadosCnpj(dados)
+        try {
+          const dados = await buscarDadosCnpj(nums)
+          if (dados) p.aoAplicarDadosCnpj(dados)
+        } catch (erro) {
+          setErroConsultaCnpj(
+            erro instanceof Error
+              ? erro.message
+              : 'Não foi possível consultar a Receita Federal'
+          )
+        } finally {
+          setCarregandoBrasilApi(false)
+        }
       }
 
       setVerificandoDocumento(true)
@@ -112,5 +130,12 @@ export function useConsultaDocumento(params: Params): Retorno {
     }
   }, [])
 
-  return { aoSairDocumento, carregandoBrasilApi, verificandoDocumento, resetarConsulta }
+  return {
+    aoSairDocumento,
+    carregandoBrasilApi,
+    verificandoDocumento,
+    erroConsultaCnpj,
+    limparErroConsulta,
+    resetarConsulta,
+  }
 }

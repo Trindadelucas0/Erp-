@@ -78,3 +78,20 @@ export const esquemaOrcamento = z.object({
 
 export type DadosOrcamento = z.infer<typeof esquemaOrcamento>
 export type DadosItemOrcamento = z.infer<typeof esquemaItemOrcamento>
+
+export function enderecoPersistido(
+  prazoEntrega: string,
+  endereco: DadosOrcamento['endereco']
+): DadosOrcamento['endereco'] {
+  if (prazoEntrega === 'no_ato') return { ...enderecoVazio }
+  return endereco
+}
+
+export function fretePersistido(
+  prazoEntrega: string,
+  frete: string,
+  valorFrete: number
+): { frete: string; valorFrete: number } {
+  if (prazoEntrega === 'no_ato') return { frete: '', valorFrete: 0 }
+  return { frete, valorFrete }
+}

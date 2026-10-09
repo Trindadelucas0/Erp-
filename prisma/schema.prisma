@@ -1311,6 +1311,7 @@ model CartaoPagamento {
   ativo                 Boolean               @default(true)
   permitirParcelamento  Boolean               @default(true)
   taxas                 CartaoPagamentoTaxa[]
+  vendasCaixa           VendaCaixa[]
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
 
@@ -1917,6 +1918,10 @@ model VendaCaixa {
   status         String           @default("paga")
   /// dinheiro | pix | cartao_credito | cartao_debito | boleto — null em chamado ou vendas antigas
   formaPagamento String?
+  /// Parcelas na maquininha (crédito); null em Pix/débito/dinheiro ou vendas antigas.
+  numeroParcelas Int?
+  cartaoPagamentoId String?
+  cartaoPagamento   CartaoPagamento? @relation(fields: [cartaoPagamentoId], references: [id], onDelete: SetNull)
   /// Valor recebido em dinheiro (troco = valorRecebido − total do orçamento).
   valorRecebido  Decimal?         @db.Decimal(15, 2)
   observacao     String?
@@ -1930,6 +1935,7 @@ model VendaCaixa {
   @@index([companyId, pagaEm])
   @@index([companyId, status])
   @@index([orcamentoId])
+  @@index([cartaoPagamentoId])
 }
 
 model VendaCaixaItem {

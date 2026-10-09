@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
-import { esquemaOrcamento } from './esquema-orcamentos.js'
+import { enderecoPersistido, esquemaOrcamento, fretePersistido } from './esquema-orcamentos.js'
 
 vi.mock('./repositorio-orcamentos.js', () => ({
   ehUnicidadeNumero: vi.fn(() => false),
@@ -183,5 +183,43 @@ describe('servico de orçamentos', () => {
       codigoHttp: 503,
     })
     expect(enviarEmailResend).not.toHaveBeenCalled()
+  })
+})
+
+describe('enderecoPersistido', () => {
+  const enderecoPreenchido = {
+    cep: '01310-100',
+    logradouro: 'Av. Paulista',
+    numero: '1000',
+    bairro: 'Bela Vista',
+    cidade: 'São Paulo',
+    uf: 'SP',
+  }
+
+  it('zera endereço quando prazoEntrega é no_ato', () => {
+    expect(enderecoPersistido('no_ato', enderecoPreenchido)).toEqual({
+      cep: '',
+      logradouro: '',
+      numero: '',
+      bairro: '',
+      cidade: '',
+      uf: '',
+    })
+  })
+
+  it('mantém endereço nos demais tipos de entrega', () => {
+    expect(enderecoPersistido('entregar', enderecoPreenchido)).toEqual(enderecoPreenchido)
+    expect(enderecoPersistido('a_retirar', enderecoPreenchido)).toEqual(enderecoPreenchido)
+  })
+})
+
+describe('fretePersistido', () => {
+  it('zera frete e valor quando prazoEntrega é no_ato', () => {
+    expect(fretePersistido('no_ato', 'cif', 25)).toEqual({ frete: '', valorFrete: 0 })
+  })
+
+  it('mantém frete nos demais tipos de entrega', () => {
+    expect(fretePersistido('entregar', 'cif', 25)).toEqual({ frete: 'cif', valorFrete: 25 })
+    expect(fretePersistido('a_retirar', 'fob', 10)).toEqual({ frete: 'fob', valorFrete: 10 })
   })
 })

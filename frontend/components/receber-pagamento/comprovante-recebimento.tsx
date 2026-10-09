@@ -11,6 +11,7 @@ type Props = {
   empresaNome: string
   orcamento: OrcamentoRecebimento
   formaPagamento?: string | null
+  numeroParcelas?: number | null
   valorRecebido?: number | null
   pago?: boolean
 }
@@ -19,6 +20,7 @@ export function ComprovanteRecebimento({
   empresaNome,
   orcamento,
   formaPagamento,
+  numeroParcelas,
   valorRecebido,
   pago = false,
 }: Props) {
@@ -86,6 +88,9 @@ export function ComprovanteRecebimento({
       {formaPagamento ? (
         <p>
           Forma: <strong>{rotuloFormaParaComprovante(formaPagamento)}</strong>
+          {formaPagamento === 'cartao_credito' && numeroParcelas && numeroParcelas > 1 ? (
+            <span> · {numeroParcelas}x</span>
+          ) : null}
         </p>
       ) : null}
       {valorRecebido != null && formaPagamento === 'dinheiro' ? (

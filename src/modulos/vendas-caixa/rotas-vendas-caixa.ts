@@ -47,6 +47,11 @@ async function chavePix(requisicao: FastifyRequest, resposta: FastifyReply) {
   return resposta.send(dados)
 }
 
+async function opcoesTotem(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const dados = await servicoDeVendasCaixa.obterOpcoesTotem(companyIdDaSessao(requisicao))
+  return resposta.send(dados)
+}
+
 async function buscarOrcamentos(requisicao: FastifyRequest, resposta: FastifyReply) {
   const { termo } = requisicao.query as { termo?: string }
   const limpo = termo?.trim() ?? ''
@@ -140,6 +145,11 @@ export async function rotasDeVendasCaixa(aplicacao: FastifyInstance): Promise<vo
     '/chave-pix',
     { preHandler: [...auth, middlewareDeAutorizacao('vendas:view')] },
     chavePix
+  )
+  aplicacao.get(
+    '/opcoes-totem',
+    { preHandler: [...auth, middlewareDeAutorizacao('vendas:create')] },
+    opcoesTotem
   )
   aplicacao.get(
     '/orcamentos/busca',

@@ -47,6 +47,10 @@ const LEGADO_TIPO_ENTREGA: readonly OpcaoFixa[] = [
   { value: '30', label: '30 dias (legado)' },
 ]
 
+export function entregaNoAto(prazoEntrega: string): boolean {
+  return prazoEntrega === 'no_ato'
+}
+
 export function opcoesTipoEntregaOrcamento(valorAtual: string): readonly OpcaoFixa[] {
   if (!valorAtual || OPCOES_TIPO_ENTREGA.some((opcao) => opcao.value === valorAtual)) {
     return OPCOES_TIPO_ENTREGA

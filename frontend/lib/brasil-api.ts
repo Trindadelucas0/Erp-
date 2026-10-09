@@ -52,7 +52,17 @@ function normalizarTelefones(dados: DadosCnpj): DadosCnpj {
   }
 }
 
-const _consultasEmAndamento = new Map<string, Promise<DadosCnpj | null>>()
+const MSG_FALHA_CONSULTA = 'Não foi possível consultar a Receita Federal'
+const _consultasEmAndamento = new Map<string, Promise<DadosCnpj>>()
+
+function erroConsultaCnpj(erro: unknown): Error {
+  if (typeof erro === 'object' && erro !== null && 'response' in erro) {
+    const data = (erro as { response?: { data?: { mensagem?: string } } }).response?.data
+    const mensagem = data?.mensagem?.trim()
+    if (mensagem) return new Error(mensagem)
+  }
+  return new Error(MSG_FALHA_CONSULTA)
+}
 
 export async function buscarDadosCnpj(cnpj: string): Promise<DadosCnpj | null> {
   const limpo = normalizarCnpj(cnpj)
@@ -65,8 +75,8 @@ export async function buscarDadosCnpj(cnpj: string): Promise<DadosCnpj | null> {
     try {
       const { data } = await clienteHttp.get<DadosCnpj>(`/integracoes/cnpj/${encodeURIComponent(limpo)}`)
       return normalizarTelefones(data)
-    } catch {
-      return null
+    } catch (erro) {
+      throw erroConsultaCnpj(erro)
     }
   })().finally(() => _consultasEmAndamento.delete(limpo))
 

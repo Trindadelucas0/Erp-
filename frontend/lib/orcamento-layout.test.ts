@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ENDERECO_ORCAMENTO_VAZIO,
+  montarCorpoOrcamento,
+  orcamentoEmBranco,
+} from './orcamento-api'
+import {
   EXEMPLO_ORCAMENTO,
   aplicarClienteNoOrcamento,
   enderecoEntregaDoCliente,
+  entregaNoAto,
   modoClienteDoOrcamento,
   resumirOrcamento,
   somarDiasCivil,
@@ -59,6 +65,61 @@ describe('enderecoEntregaDoCliente', () => {
       cidade: 'São Paulo',
       uf: 'SP',
     })
+  })
+})
+
+describe('montarCorpoOrcamento — endereço', () => {
+  const enderecoPreenchido = {
+    cep: '01310-100',
+    logradouro: 'Av. Paulista',
+    numero: '1000',
+    bairro: 'Bela Vista',
+    cidade: 'São Paulo',
+    uf: 'SP',
+  }
+
+  it('zera endereço quando Tipo de entrega é No ato', () => {
+    const orcamento = { ...orcamentoEmBranco(), prazoEntrega: 'no_ato' }
+    const corpo = montarCorpoOrcamento(orcamento, enderecoPreenchido, '', '')
+    expect(corpo.endereco).toEqual(ENDERECO_ORCAMENTO_VAZIO)
+  })
+
+  it('zera frete e valorFrete quando Tipo de entrega é No ato', () => {
+    const orcamento = {
+      ...orcamentoEmBranco(),
+      prazoEntrega: 'no_ato',
+      frete: 'cif',
+      valorFrete: 25,
+    }
+    const corpo = montarCorpoOrcamento(orcamento, enderecoPreenchido, '', '')
+    expect(corpo.frete).toBe('')
+    expect(corpo.valorFrete).toBe(0)
+  })
+
+  it('mantém endereço quando Tipo de entrega é Entregar', () => {
+    const orcamento = { ...orcamentoEmBranco(), prazoEntrega: 'entregar' }
+    const corpo = montarCorpoOrcamento(orcamento, enderecoPreenchido, '', '')
+    expect(corpo.endereco).toEqual(enderecoPreenchido)
+  })
+
+  it('mantém frete quando Tipo de entrega é Entregar', () => {
+    const orcamento = {
+      ...orcamentoEmBranco(),
+      prazoEntrega: 'entregar',
+      frete: 'cif',
+      valorFrete: 25,
+    }
+    const corpo = montarCorpoOrcamento(orcamento, enderecoPreenchido, '', '')
+    expect(corpo.frete).toBe('cif')
+    expect(corpo.valorFrete).toBe(25)
+  })
+})
+
+describe('entregaNoAto', () => {
+  it('reconhece só o tipo No ato', () => {
+    expect(entregaNoAto('no_ato')).toBe(true)
+    expect(entregaNoAto('a_retirar')).toBe(false)
+    expect(entregaNoAto('entregar')).toBe(false)
   })
 })
 

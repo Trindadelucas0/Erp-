@@ -1,34 +1,37 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Headphones, Search } from 'lucide-react'
 import { ComprovanteRecebimento } from '@/components/receber-pagamento/comprovante-recebimento'
+import { PassoPagamentoTotem } from '@/components/receber-pagamento/passo-pagamento-totem'
+import { TecladoNumericoTotem } from '@/components/receber-pagamento/teclado-numerico-totem'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
-import { CardPadrao } from '@/components/ui/card-padrao'
-import { InputPadrao } from '@/components/ui/input-padrao'
 import { usePermissao } from '@/hooks/use-permissao'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
-import {
-  FORMAS_TOTEM_UI,
-  fraseSeparacoes,
-  type FormaPagamentoUi,
-} from '@/lib/receber-pagamento-desenvolvimento'
+import { fraseSeparacoes, type FormaPagamentoUi } from '@/lib/receber-pagamento-desenvolvimento'
 import {
   formaConfirmavelNoTotem,
-  formaEhCartao,
   formaPadraoDoOrcamento,
   formatarMoeda,
-  rotuloCondicaoPagamento,
-  totalLinhaOrcamento,
+  formatarVisorTotem,
+  limiteDigitosTotem,
+  soDigitosTotem,
+  termoBuscaLeitor,
+  termoBuscaTotem,
+  type ModoBuscaTotem,
   type OrcamentoRecebimento,
 } from '@/lib/receber-pagamento-orcamento'
+import {
+  normalizarFormaTotemTouch,
+  type FormaTotemTouch,
+  type OpcoesTotemRecebimento,
+} from '@/lib/receber-pagamento-totem'
+import { cn } from '@/lib/utils'
 import { clienteHttp } from '@/services/api'
 
 type PassoTotem = 'identificacao' | 'pagamento' | 'confirmacao'
-type ModoBusca = 'numero' | 'documento'
 
 function PassoIndicador({ passo }: { passo: PassoTotem }) {
   const passos: Array<{ id: PassoTotem; rotulo: string }> = [
@@ -38,13 +41,16 @@ function PassoIndicador({ passo }: { passo: PassoTotem }) {
   ]
   const ordem = passos.findIndex((item) => item.id === passo)
   return (
-    <ol className="flex flex-wrap items-center justify-center gap-2 text-sm print:hidden">
+    <ol className="flex flex-wrap items-center justify-center gap-2 text-xs print:hidden sm:text-sm">
       {passos.map((item, indice) => {
         const ativo = indice <= ordem
         return (
           <li
             key={item.id}
-            className={`rounded-full px-3 py-1 ${ativo ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
+            className={cn(
+              'rounded-full px-3 py-1.5',
+              ativo ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+            )}
           >
             {indice + 1}. {item.rotulo}
           </li>
@@ -54,22 +60,40 @@ function PassoIndicador({ passo }: { passo: PassoTotem }) {
   )
 }
 
+function CabecalhoTotem({ empresaNome, agora }: { empresaNome: string; agora: string }) {
+  return (
+    <header className="flex items-start justify-between gap-4 print:hidden">
+      <div>
+        <p className="text-sm text-muted-foreground">Autoatendimento</p>
+        <h1 className="text-xl font-bold text-foreground sm:text-2xl">{empresaNome}</h1>
+      </div>
+      <p className="shrink-0 text-right text-sm text-muted-foreground">{agora}</p>
+    </header>
+  )
+}
+
 function ConteudoTotem() {
   const { perfil, encerrarSessao } = useSessaoDoUsuario()
   const podeCriar = usePermissao('vendas:create')
   const [passo, setPasso] = useState<PassoTotem>('identificacao')
-  const [modoBusca, setModoBusca] = useState<ModoBusca>('numero')
-  const [termo, setTermo] = useState('')
+  const [modoBusca, setModoBusca] = useState<ModoBuscaTotem>('numero')
+  const [digitos, setDigitos] = useState('')
   const [buscando, setBuscando] = useState(false)
   const [erro, setErro] = useState('')
   const [resultados, setResultados] = useState<OrcamentoRecebimento[]>([])
   const [orcamento, setOrcamento] = useState<OrcamentoRecebimento | null>(null)
-  const [alterarForma, setAlterarForma] = useState(false)
-  const [forma, setForma] = useState<FormaPagamentoUi>('pix')
-  const [chavePix, setChavePix] = useState<string | null>(null)
+  const [modoTrocarForma, setModoTrocarForma] = useState(false)
+  const [forma, setForma] = useState<FormaTotemTouch>('pix')
+  const [numeroParcelas, setNumeroParcelas] = useState<number | null>(null)
+  const [opcoesTotem, setOpcoesTotem] = useState<OpcoesTotemRecebimento>({
+    chavePix: null,
+    parcelasCredito: [],
+  })
   const [gravando, setGravando] = useState(false)
   const [mensagemOk, setMensagemOk] = useState('')
   const [formaConfirmada, setFormaConfirmada] = useState<string | null>(null)
+  const [parcelasConfirmadas, setParcelasConfirmadas] = useState<number | null>(null)
+  const [exibirItens, setExibirItens] = useState(false)
 
   const empresaNome = useMemo(() => {
     const empresaId = typeof window !== 'undefined' ? localStorage.getItem('empresaAtivaId') : null
@@ -85,72 +109,156 @@ function ConteudoTotem() {
     }).format(new Date())
   }, [])
 
+  const visor = useMemo(() => formatarVisorTotem(modoBusca, digitos), [modoBusca, digitos])
+  const termoValido = useMemo(
+    () => termoBuscaTotem(modoBusca, digitos),
+    [modoBusca, digitos]
+  )
+
   useEffect(() => {
     if (!podeCriar) return
     clienteHttp
-      .get<{ chavePix: string | null }>('/receber-pagamento/chave-pix')
-      .then(({ data }) => setChavePix(data.chavePix))
-      .catch(() => setChavePix(null))
+      .get<OpcoesTotemRecebimento>('/receber-pagamento/opcoes-totem')
+      .then(({ data }) =>
+        setOpcoesTotem({
+          chavePix: data.chavePix ?? null,
+          parcelasCredito: data.parcelasCredito ?? [],
+        })
+      )
+      .catch(() =>
+        setOpcoesTotem({
+          chavePix: null,
+          parcelasCredito: [],
+        })
+      )
   }, [podeCriar])
 
   const podeConfirmarForma = useMemo(() => {
     if (!orcamento) return false
-    return formaConfirmavelNoTotem(orcamento.condicaoPagamento, forma)
+    return formaConfirmavelNoTotem(orcamento.condicaoPagamento, forma as FormaPagamentoUi)
   }, [orcamento, forma])
 
   const reiniciar = useCallback(() => {
     setPasso('identificacao')
-    setTermo('')
+    setDigitos('')
     setResultados([])
     setOrcamento(null)
-    setAlterarForma(false)
+    setModoTrocarForma(false)
     setForma('pix')
+    setNumeroParcelas(null)
     setErro('')
     setMensagemOk('')
     setFormaConfirmada(null)
+    setParcelasConfirmadas(null)
+    setExibirItens(false)
   }, [])
 
-  async function buscar() {
-    const limpo = termo.trim()
-    if (!limpo) return
-    setBuscando(true)
-    setErro('')
-    setResultados([])
-    try {
-      const { data } = await clienteHttp.get<{ orcamentos: OrcamentoRecebimento[] }>(
-        '/receber-pagamento/orcamentos/busca',
-        { params: { termo: limpo } }
-      )
-      const lista = data.orcamentos ?? []
-      if (lista.length === 0) {
-        setErro('Orçamento não encontrado.')
-        return
-      }
-      const recebidos = lista.filter((item) => item.jaRecebido)
-      if (recebidos.length === lista.length && lista.length === 1) {
-        setErro('Este orçamento já foi recebido.')
-        return
-      }
-      const abertos = lista.filter((item) => !item.jaRecebido)
-      if (abertos.length === 1) {
-        abrirOrcamento(abertos[0]!)
-        return
-      }
-      setResultados(abertos)
-    } catch (falha: unknown) {
-      setErro(extrairMensagemApi(falha, 'Não foi possível buscar o orçamento.'))
-    } finally {
-      setBuscando(false)
-    }
-  }
-
-  function abrirOrcamento(item: OrcamentoRecebimento) {
+  const abrirOrcamento = useCallback((item: OrcamentoRecebimento) => {
+    const formaInicial = normalizarFormaTotemTouch(formaPadraoDoOrcamento(item.condicaoPagamento))
     setOrcamento(item)
-    setForma(formaPadraoDoOrcamento(item.condicaoPagamento))
-    setAlterarForma(false)
+    setForma(formaInicial)
+    setNumeroParcelas(
+      formaInicial === 'cartao_credito'
+        ? (opcoesTotem.parcelasCredito[0]?.numeroParcelas ?? null)
+        : null
+    )
+    setModoTrocarForma(false)
     setPasso('pagamento')
     setErro('')
     setResultados([])
+    setExibirItens(false)
+  }, [opcoesTotem.parcelasCredito])
+
+  const executarBusca = useCallback(
+    async (termoApi: string) => {
+      setBuscando(true)
+      setErro('')
+      setResultados([])
+      setMensagemOk('')
+      try {
+        const { data } = await clienteHttp.get<{ orcamentos: OrcamentoRecebimento[] }>(
+          '/receber-pagamento/orcamentos/busca',
+          { params: { termo: termoApi } }
+        )
+        const lista = data.orcamentos ?? []
+        if (lista.length === 0) {
+          setErro('Orçamento não encontrado.')
+          return
+        }
+        const recebidos = lista.filter((item) => item.jaRecebido)
+        if (recebidos.length === lista.length && lista.length === 1) {
+          setErro('Este orçamento já foi recebido.')
+          return
+        }
+        const abertos = lista.filter((item) => !item.jaRecebido)
+        if (abertos.length === 1) {
+          abrirOrcamento(abertos[0]!)
+          return
+        }
+        setResultados(abertos)
+      } catch (falha: unknown) {
+        setErro(extrairMensagemApi(falha, 'Não foi possível buscar o orçamento.'))
+      } finally {
+        setBuscando(false)
+      }
+    },
+    [abrirOrcamento]
+  )
+
+  const buscar = useCallback(() => {
+    const termo = termoBuscaTotem(modoBusca, digitos)
+    if (!termo) return
+    void executarBusca(termo)
+  }, [modoBusca, digitos, executarBusca])
+
+  useEffect(() => {
+    if (passo !== 'identificacao' || resultados.length > 0) return
+
+    let buffer = ''
+    let timer: number | undefined
+
+    function limparBuffer() {
+      buffer = ''
+    }
+
+    function onKeyDown(evento: KeyboardEvent) {
+      if (evento.ctrlKey || evento.altKey || evento.metaKey) return
+      if (evento.key === 'Enter') {
+        if (!buffer.trim()) return
+        evento.preventDefault()
+        const termo = termoBuscaLeitor(buffer)
+        buffer = ''
+        if (termo) void executarBusca(termo)
+        return
+      }
+      if (evento.key.length === 1) {
+        buffer += evento.key
+        window.clearTimeout(timer)
+        timer = window.setTimeout(limparBuffer, 500)
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.clearTimeout(timer)
+    }
+  }, [passo, resultados.length, executarBusca])
+
+  function trocarModoBusca(modo: ModoBuscaTotem) {
+    setModoBusca(modo)
+    setDigitos('')
+    setErro('')
+    setResultados([])
+  }
+
+  function adicionarDigito(digito: string) {
+    setErro('')
+    setDigitos((atual) => {
+      const limpo = soDigitosTotem(atual + digito)
+      const max = limiteDigitosTotem(modoBusca)
+      return limpo.slice(0, max)
+    })
   }
 
   async function chamarAtendente() {
@@ -163,7 +271,8 @@ function ConteudoTotem() {
       setPasso('identificacao')
       setOrcamento(null)
       setResultados([])
-      setTermo('')
+      setDigitos('')
+      setExibirItens(false)
     } catch (falha: unknown) {
       setErro(extrairMensagemApi(falha, 'Não foi possível chamar o atendente.'))
     } finally {
@@ -176,11 +285,19 @@ function ConteudoTotem() {
     setGravando(true)
     setErro('')
     try {
-      const { data } = await clienteHttp.post<{ venda: { separacoes: number[] } }>(
-        `/receber-pagamento/orcamentos/${orcamento.id}`,
-        { formaPagamento: forma, origem: 'totem' }
-      )
+      const corpo: {
+        formaPagamento: FormaTotemTouch
+        origem: 'totem'
+        numeroParcelas?: number
+      } = { formaPagamento: forma, origem: 'totem' }
+      if (forma === 'cartao_credito' && numeroParcelas) {
+        corpo.numeroParcelas = numeroParcelas
+      }
+      const { data } = await clienteHttp.post<{
+        venda: { separacoes: number[]; numeroParcelas?: number | null }
+      }>(`/receber-pagamento/orcamentos/${orcamento.id}`, corpo)
       setFormaConfirmada(forma)
+      setParcelasConfirmadas(data.venda.numeroParcelas ?? numeroParcelas)
       setMensagemOk(fraseSeparacoes(data.venda.separacoes ?? []))
       setPasso('confirmacao')
       window.setTimeout(() => window.print(), 300)
@@ -191,9 +308,18 @@ function ConteudoTotem() {
     }
   }
 
+  function selecionarForma(nova: FormaTotemTouch) {
+    setForma(nova)
+    if (nova === 'cartao_credito') {
+      setNumeroParcelas(opcoesTotem.parcelasCredito[0]?.numeroParcelas ?? null)
+    } else {
+      setNumeroParcelas(null)
+    }
+  }
+
   if (!podeCriar) {
     return (
-      <div className="mx-auto flex min-h-screen max-w-5xl flex-col justify-center gap-4 p-6">
+      <div className="mx-auto flex min-h-dvh max-w-3xl flex-col justify-center gap-4 p-6">
         <p className="text-lg text-muted-foreground">Sem permissão para confirmar o pagamento.</p>
         <Button type="button" variant="outline" onClick={encerrarSessao}>
           Sair
@@ -203,256 +329,181 @@ function ConteudoTotem() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 p-4 md:p-8">
-      <header className="flex flex-wrap items-start justify-between gap-4 print:hidden">
-        <div>
-          <p className="text-sm text-muted-foreground">Autoatendimento</p>
-          <h1 className="text-2xl font-bold text-foreground">{empresaNome}</h1>
-        </div>
-        <div className="text-right text-sm text-muted-foreground">
-          <p>{agora}</p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="mt-2"
-            onClick={() => {
-              if (!orcamento) {
-                setErro('Informe o orçamento antes de chamar um atendente.')
-                return
-              }
-              void chamarAtendente()
-            }}
-          >
-            <Headphones className="mr-1 size-4" />
-            Precisa de ajuda?
-          </Button>
-        </div>
-      </header>
+    <div className="flex min-h-dvh justify-center bg-background print:min-h-0">
+      <div className="flex w-full max-w-3xl flex-col gap-5 p-4 pb-8 pt-[max(1rem,env(safe-area-inset-top))] sm:gap-6 sm:p-6">
+        <CabecalhoTotem empresaNome={empresaNome} agora={agora} />
+        <PassoIndicador passo={passo} />
 
-      <PassoIndicador passo={passo} />
-
-      {passo === 'identificacao' ? (
-        <CardPadrao titulo="Olá! Vamos receber o seu pedido?">
-          <p className="mb-4 text-muted-foreground">
-            Informe o número do orçamento ou o seu CPF/CNPJ para continuar.
-          </p>
-          <div className="mb-4 flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant={modoBusca === 'numero' ? 'default' : 'outline'}
-              onClick={() => setModoBusca('numero')}
-            >
-              Número do orçamento
-            </Button>
-            <Button
-              type="button"
-              variant={modoBusca === 'documento' ? 'default' : 'outline'}
-              onClick={() => setModoBusca('documento')}
-            >
-              CPF/CNPJ
-            </Button>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <InputPadrao
-              rotulo={modoBusca === 'numero' ? 'Número do orçamento' : 'CPF/CNPJ'}
-              value={termo}
-              onChange={(evento) => setTermo(evento.target.value)}
-              onKeyDown={(evento) => {
-                if (evento.key === 'Enter') void buscar()
-              }}
-              placeholder={modoBusca === 'numero' ? 'Digite ou bipe o número' : 'Somente números'}
-            />
-            <BotaoPrimario
-              type="button"
-              className="min-h-11 sm:self-end"
-              disabled={buscando || !termo.trim()}
-              onClick={() => void buscar()}
-            >
-              <Search className="mr-1 size-4" />
-              {buscando ? 'Buscando…' : 'Buscar'}
-            </BotaoPrimario>
-          </div>
-          {resultados.length > 0 ? (
-            <ul className="mt-4 space-y-2">
-              {resultados.map((item) => (
-                <li key={item.id}>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-auto w-full justify-start py-3 text-left"
-                    onClick={() => abrirOrcamento(item)}
-                  >
-                    <span className="font-medium">{item.numero}</span>
-                    <span className="mx-2 text-muted-foreground">·</span>
-                    <span>{item.clienteNome}</span>
-                    <span className="ml-auto">{formatarMoeda(item.total)}</span>
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </CardPadrao>
-      ) : null}
-
-      {passo === 'pagamento' && orcamento ? (
-        <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
-          <CardPadrao titulo="Forma de pagamento do seu pedido">
-            <div className="mb-4 flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
-                Pré-definida: {rotuloCondicaoPagamento(orcamento.condicaoPagamento)}
-              </span>
-              <Button type="button" size="sm" variant="outline" onClick={() => setAlterarForma((v) => !v)}>
-                Alterar
-              </Button>
-            </div>
-            {(alterarForma || !orcamento.condicaoPagamento) && (
-              <div className="mb-4 grid gap-2 sm:grid-cols-2">
-                {FORMAS_TOTEM_UI.map((opcao) => (
-                  <Button
-                    key={opcao.valor}
-                    type="button"
-                    size="lg"
-                    variant={forma === opcao.valor ? 'default' : 'outline'}
-                    disabled={gravando}
-                    onClick={() => setForma(opcao.valor)}
-                  >
-                    {opcao.rotulo}
-                  </Button>
-                ))}
-              </div>
-            )}
-
-            {forma === 'pix' && podeConfirmarForma ? (
-              <div className="mb-4 rounded-lg border border-border bg-muted/40 p-4">
-                <p className="font-medium">Pix — aprovação imediata</p>
-                {chavePix ? (
-                  <p className="mt-2 break-all text-lg">{chavePix}</p>
-                ) : (
-                  <p className="mt-2 text-muted-foreground">Chave Pix não cadastrada.</p>
-                )}
-                <BotaoPrimario
-                  type="button"
-                  className="mt-4 min-h-12 w-full"
-                  disabled={gravando}
-                  onClick={() => void confirmarPagamento()}
-                >
-                  {gravando ? 'Confirmando…' : 'Confirmar pagamento'}
-                </BotaoPrimario>
-              </div>
-            ) : null}
-
-            {formaEhCartao(forma) && podeConfirmarForma ? (
-              <div className="mb-4 rounded-lg border border-border bg-muted/40 p-4">
-                <p className="font-medium">Passe o cartão na maquininha.</p>
-                <p className="text-sm text-muted-foreground">A venda só conclui após aprovação.</p>
-                <BotaoPrimario
-                  type="button"
-                  className="mt-4 min-h-12 w-full"
-                  disabled={gravando}
-                  onClick={() => void confirmarPagamento()}
-                >
-                  {gravando ? 'Aguardando…' : 'Aprovado na maquininha'}
-                </BotaoPrimario>
-              </div>
-            ) : null}
-
-            {forma === 'boleto' && podeConfirmarForma ? (
-              <div className="mb-4">
-                <p className="mb-3 text-sm text-muted-foreground">Boleto — confirme para registrar e separar o pedido.</p>
-                <BotaoPrimario
-                  type="button"
-                  className="min-h-12 w-full"
-                  disabled={gravando}
-                  onClick={() => void confirmarPagamento()}
-                >
-                  Confirmar pagamento
-                </BotaoPrimario>
-              </div>
-            ) : null}
-
-            {!podeConfirmarForma ? (
-              <p className="text-sm text-muted-foreground">
-                Para dinheiro ou à vista, chame um atendente no caixa.
-              </p>
-            ) : null}
-
-            <div className="mt-6 flex flex-wrap gap-3 print:hidden">
-              <Button type="button" variant="outline" onClick={() => setPasso('identificacao')}>
-                Voltar
-              </Button>
-              <Button type="button" variant="outline" disabled={gravando} onClick={() => void chamarAtendente()}>
-                Chame um atendente
-              </Button>
-            </div>
-          </CardPadrao>
-
-          <CardPadrao titulo={`Orçamento ${orcamento.numero}`}>
-            <p className="font-medium">{orcamento.clienteNome}</p>
-            <p className="text-sm text-muted-foreground">{orcamento.data}</p>
-            <ul className="mt-4 space-y-3">
-              {orcamento.itens.map((item) => (
-                <li key={item.id} className="flex justify-between gap-2 border-b border-border/60 pb-2 text-sm">
-                  <span>
-                    {item.descricao || item.codigo} · {item.quantidade} {item.unidade}
-                  </span>
-                  <span>{formatarMoeda(totalLinhaOrcamento(item))}</span>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-4 space-y-1 border-t pt-3 text-sm">
-              <div className="flex justify-between">
-                <span>Desconto</span>
-                <span>{formatarMoeda(orcamento.descontoTotal)}</span>
-              </div>
-              <div className="flex justify-between text-base font-bold text-primary">
-                <span>Total do pedido</span>
-                <span>{formatarMoeda(orcamento.total)}</span>
-              </div>
-            </div>
-            <p className="mt-4 text-xs text-muted-foreground">
-              Após a confirmação do pagamento, seu pedido será liberado automaticamente para separação.
-            </p>
-          </CardPadrao>
-        </div>
-      ) : null}
-
-      {passo === 'confirmacao' && orcamento ? (
-        <div className="space-y-4">
-          <p className="text-center text-lg font-medium print:hidden" role="status">
+        {mensagemOk && passo === 'identificacao' ? (
+          <p className="text-center text-sm font-medium text-emerald-700 dark:text-emerald-300" role="status">
             {mensagemOk}
           </p>
-          <ComprovanteRecebimento
-            empresaNome={empresaNome}
-            orcamento={orcamento}
-            formaPagamento={formaConfirmada}
-            pago
-          />
-          <div className="flex flex-wrap justify-center gap-3 print:hidden">
-            <Button type="button" variant="outline" onClick={() => window.print()}>
-              Imprimir
-            </Button>
-            <BotaoPrimario type="button" onClick={reiniciar}>
-              Novo recebimento
-            </BotaoPrimario>
+        ) : null}
+
+        {passo === 'identificacao' ? (
+          <div className="flex flex-1 flex-col gap-5 print:hidden">
+            {resultados.length === 0 ? (
+              <>
+                <div>
+                  <p className="mb-3 text-center text-lg font-semibold text-foreground">
+                    Como você quer buscar?
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => trocarModoBusca('numero')}
+                      className={cn(
+                        'flex min-h-[88px] flex-col items-center justify-center rounded-xl border-2 px-3 py-4 text-center transition-colors',
+                        modoBusca === 'numero'
+                          ? 'border-primary bg-primary/10 text-foreground'
+                          : 'border-border bg-card text-muted-foreground'
+                      )}
+                    >
+                      <span className="text-base font-semibold">Número do</span>
+                      <span className="text-base font-semibold">orçamento</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => trocarModoBusca('documento')}
+                      className={cn(
+                        'flex min-h-[88px] flex-col items-center justify-center rounded-xl border-2 px-3 py-4 text-center transition-colors',
+                        modoBusca === 'documento'
+                          ? 'border-primary bg-primary/10 text-foreground'
+                          : 'border-border bg-card text-muted-foreground'
+                      )}
+                    >
+                      <span className="text-base font-semibold">CPF / CNPJ</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  className="rounded-xl border border-border bg-muted/30 px-4 py-6 text-center"
+                  aria-live="polite"
+                >
+                  <p className="font-mono text-2xl font-bold tracking-wide text-foreground sm:text-3xl">
+                    {visor || (modoBusca === 'numero' ? 'ORC-' : '—')}
+                  </p>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {modoBusca === 'numero'
+                      ? 'Digite até 6 dígitos do orçamento'
+                      : 'Informe CPF (11) ou CNPJ (14 dígitos)'}
+                  </p>
+                </div>
+
+                {erro ? (
+                  <p className="text-center text-sm text-destructive" role="alert">
+                    {erro}
+                  </p>
+                ) : null}
+
+                <TecladoNumericoTotem
+                  buscando={buscando}
+                  buscarHabilitado={Boolean(termoValido)}
+                  onDigito={adicionarDigito}
+                  onApagar={() => setDigitos((d) => soDigitosTotem(d).slice(0, -1))}
+                  onLimpar={() => {
+                    setDigitos('')
+                    setErro('')
+                  }}
+                  onBuscar={buscar}
+                />
+              </>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-center font-medium">Escolha o seu pedido</p>
+                <ul className="space-y-2">
+                  {resultados.map((item) => (
+                    <li key={item.id}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-auto min-h-14 w-full flex-col items-start gap-1 py-3 text-left sm:flex-row sm:items-center"
+                        onClick={() => abrirOrcamento(item)}
+                      >
+                        <span className="font-semibold">{item.numero}</span>
+                        <span className="text-muted-foreground">{item.clienteNome}</span>
+                        <span className="sm:ml-auto sm:font-medium">{formatarMoeda(item.total)}</span>
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full min-h-11"
+                  onClick={() => {
+                    setResultados([])
+                    setDigitos('')
+                    setErro('')
+                  }}
+                >
+                  Nova busca
+                </Button>
+              </div>
+            )}
           </div>
-        </div>
-      ) : null}
+        ) : null}
 
-      {erro ? (
-        <p className="text-center text-sm text-destructive print:hidden" role="alert">
-          {erro}
+        {passo === 'pagamento' && orcamento ? (
+          <PassoPagamentoTotem
+            orcamento={orcamento}
+            opcoes={opcoesTotem}
+            forma={forma}
+            numeroParcelas={numeroParcelas}
+            modoTrocarForma={modoTrocarForma}
+            exibirItens={exibirItens}
+            gravando={gravando}
+            erro={erro}
+            podeConfirmarForma={podeConfirmarForma}
+            onTrocarModoForma={setModoTrocarForma}
+            onForma={selecionarForma}
+            onParcelas={setNumeroParcelas}
+            onToggleItens={() => setExibirItens((v) => !v)}
+            onConfirmar={() => void confirmarPagamento()}
+            onChamarAtendente={() => void chamarAtendente()}
+            onVoltar={() => {
+              setPasso('identificacao')
+              setOrcamento(null)
+              setErro('')
+              setExibirItens(false)
+              setModoTrocarForma(false)
+            }}
+          />
+        ) : null}
+
+        {passo === 'confirmacao' && orcamento ? (
+          <div className="space-y-4">
+            <p className="text-center text-lg font-medium print:hidden" role="status">
+              {mensagemOk}
+            </p>
+            <ComprovanteRecebimento
+              empresaNome={empresaNome}
+              orcamento={orcamento}
+              formaPagamento={formaConfirmada}
+              numeroParcelas={parcelasConfirmadas}
+              pago
+            />
+            <div className="flex flex-col gap-2 print:hidden">
+              <Button type="button" variant="outline" className="min-h-11" onClick={() => window.print()}>
+                Imprimir
+              </Button>
+              <BotaoPrimario type="button" className="min-h-14" onClick={reiniciar}>
+                Novo recebimento
+              </BotaoPrimario>
+            </div>
+          </div>
+        ) : null}
+
+        <p className="text-center text-xs text-muted-foreground print:hidden">
+          Pagamento 100% seguro — Seus dados são protegidos
         </p>
-      ) : null}
 
-      <p className="text-center text-xs text-muted-foreground print:hidden">
-        Pagamento 100% seguro — Seus dados são protegidos
-      </p>
-
-      <div className="print:hidden">
-        <Button type="button" variant="ghost" size="sm" className="text-muted-foreground" onClick={encerrarSessao}>
-          Sair
-        </Button>
+        <div className="print:hidden">
+          <Button type="button" variant="ghost" size="sm" className="text-muted-foreground" onClick={encerrarSessao}>
+            Sair
+          </Button>
+        </div>
       </div>
     </div>
   )

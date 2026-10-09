@@ -40,13 +40,25 @@ vi.mock('./gerar-os-separacao-venda.js', async (importOriginal) => {
   }
 })
 
+vi.mock('./opcoes-totem-vendas.js', () => ({
+  listarParcelasCreditoTotem: vi.fn(),
+  resolverCartaoPagamentoCredito: vi.fn(),
+}))
+
 import { repositorioDeOrcamentos } from '../orcamentos/repositorio-orcamentos.js'
 import { repositorioDeProdutos } from '../produtos/repositorio-produtos.js'
 import { repositorioDeRequisicoesWms } from '../requisicoes-wms/repositorio-requisicoes-wms.js'
 import { gerarOsSeparacaoDaVenda } from './gerar-os-separacao-venda.js'
 import {
+  listarParcelasCreditoTotem,
+  resolverCartaoPagamentoCredito,
+} from './opcoes-totem-vendas.js'
+import {
+  MSG_BOLETO_NAO_NO_TOTEM,
   MSG_FORMA_ORIGEM_INVALIDA,
   MSG_ORCAMENTO_JA_RECEBIDO,
+  MSG_PARCELA_INVALIDA,
+  MSG_PARCELA_OBRIGATORIA,
   MSG_VALOR_RECEBIDO_INSUFICIENTE,
 } from './esquema-vendas-caixa.js'
 import { repositorioDeVendasCaixa } from './repositorio-vendas-caixa.js'
@@ -277,6 +289,47 @@ describe('servico-vendas-caixa', () => {
     ).rejects.toMatchObject({ statusCode: 409, message: MSG_ORCAMENTO_JA_RECEBIDO })
   })
 
+  it('totem com boleto responde 400', async () => {
+    vi.mocked(repositorioDeOrcamentos.buscarPorId).mockResolvedValue(ORCAMENTO_BASE as never)
+    vi.mocked(repositorioDeVendasCaixa.obterPorOrcamentoId).mockResolvedValue(null)
+
+    await expect(
+      servicoDeVendasCaixa.receberOrcamento('c1', 'u1', ORCAMENTO, {
+        formaPagamento: 'boleto',
+        origem: 'totem',
+      })
+    ).rejects.toMatchObject({ statusCode: 400, message: MSG_BOLETO_NAO_NO_TOTEM })
+    expect(repositorioDeVendasCaixa.executarEmTransacao).not.toHaveBeenCalled()
+  })
+
+  it('crédito no totem sem parcelas responde 400', async () => {
+    vi.mocked(repositorioDeOrcamentos.buscarPorId).mockResolvedValue(ORCAMENTO_BASE as never)
+    vi.mocked(repositorioDeVendasCaixa.obterPorOrcamentoId).mockResolvedValue(null)
+
+    await expect(
+      servicoDeVendasCaixa.receberOrcamento('c1', 'u1', ORCAMENTO, {
+        formaPagamento: 'cartao_credito',
+        origem: 'totem',
+      })
+    ).rejects.toMatchObject({ statusCode: 400, message: MSG_PARCELA_OBRIGATORIA })
+    expect(repositorioDeVendasCaixa.executarEmTransacao).not.toHaveBeenCalled()
+  })
+
+  it('crédito com parcela inválida responde 400', async () => {
+    vi.mocked(repositorioDeOrcamentos.buscarPorId).mockResolvedValue(ORCAMENTO_BASE as never)
+    vi.mocked(repositorioDeVendasCaixa.obterPorOrcamentoId).mockResolvedValue(null)
+    vi.mocked(repositorioDeProdutos.buscarPorSkuNaEmpresa).mockResolvedValue({ id: PRODUTO } as never)
+    vi.mocked(listarParcelasCreditoTotem).mockResolvedValue([{ numeroParcelas: 1 }])
+
+    await expect(
+      servicoDeVendasCaixa.receberOrcamento('c1', 'u1', ORCAMENTO, {
+        formaPagamento: 'cartao_credito',
+        origem: 'totem',
+        numeroParcelas: 12,
+      })
+    ).rejects.toMatchObject({ statusCode: 400, message: MSG_PARCELA_INVALIDA })
+  })
+
   it('receber orçamento Pix gera Separação', async () => {
     vi.mocked(repositorioDeOrcamentos.buscarPorId).mockResolvedValue(ORCAMENTO_BASE as never)
     vi.mocked(repositorioDeVendasCaixa.obterPorOrcamentoId).mockResolvedValue(null)
@@ -305,5 +358,47 @@ describe('servico-vendas-caixa', () => {
     expect(resultado.total).toBe(100)
     expect(resultado.venda.separacoes).toEqual([22])
     expect(gerarOsSeparacaoDaVenda).toHaveBeenCalledTimes(1)
+  })
+
+  it('receber orçamento crédito grava parcelas', async () => {
+    vi.mocked(repositorioDeOrcamentos.buscarPorId).mockResolvedValue({
+      ...ORCAMENTO_BASE,
+      condicaoPagamento: 'cartao_credito',
+    } as never)
+    vi.mocked(repositorioDeVendasCaixa.obterPorOrcamentoId).mockResolvedValue(null)
+    vi.mocked(repositorioDeProdutos.buscarPorSkuNaEmpresa).mockResolvedValue({ id: PRODUTO } as never)
+    vi.mocked(listarParcelasCreditoTotem).mockResolvedValue([
+      { numeroParcelas: 1 },
+      { numeroParcelas: 3 },
+    ])
+    vi.mocked(resolverCartaoPagamentoCredito).mockResolvedValue('cartao-1')
+    vi.mocked(gerarOsSeparacaoDaVenda).mockResolvedValue([{ id: 'r1', numero: 22, produtoId: PRODUTO }])
+    const create = vi.fn().mockResolvedValue({
+      id: 'v2',
+      numero: 8,
+      clienteNome: 'João Silva',
+      status: 'paga',
+      formaPagamento: 'cartao_credito',
+    })
+    vi.mocked(repositorioDeVendasCaixa.executarEmTransacao).mockImplementation(async (fn) =>
+      fn({ vendaCaixa: { create } } as never)
+    )
+    vi.mocked(repositorioDeVendasCaixa.proximoNumero).mockResolvedValue(8)
+
+    const resultado = await servicoDeVendasCaixa.receberOrcamento('c1', 'u1', ORCAMENTO, {
+      formaPagamento: 'cartao_credito',
+      origem: 'totem',
+      numeroParcelas: 3,
+    })
+
+    expect(resultado.venda.numeroParcelas).toBe(3)
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          numeroParcelas: 3,
+          cartaoPagamentoId: 'cartao-1',
+        }),
+      })
+    )
   })
 })

@@ -550,6 +550,8 @@ function ConteudoDaPaginaDeTransportadoras() {
     aoSairDocumento,
     carregandoBrasilApi,
     verificandoDocumento,
+    erroConsultaCnpj,
+    limparErroConsulta,
     resetarConsulta,
   } = useConsultaDocumento({
     getForm: () => ({ documento: formRef.current.documento, tipo: formRef.current.tipo }),
@@ -626,7 +628,8 @@ function ConteudoDaPaginaDeTransportadoras() {
   function erroDocumentoVisivel(): string | undefined {
     if (!camposTocados.has('documento')) return undefined
     if (documentoDuplicado) return avisoDuplicidade?.mensagem
-    return errosForm.documento
+    if (errosForm.documento) return errosForm.documento
+    return erroConsultaCnpj || undefined
   }
 
   const tocarCamposDaAba = useCallback((abaId: string) => {
@@ -824,6 +827,7 @@ function ConteudoDaPaginaDeTransportadoras() {
 
   function aoMudarDocumento(valor: string) {
     tocarCampo('documento')
+    limparErroConsulta()
     setForm((f) => ({
       ...f,
       documento: mascaraPorTipo(valor, f.tipo),

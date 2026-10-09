@@ -96,6 +96,49 @@ async function planoPadraoDoCfop(
   return cfop.planoFinanceiroPadraoId
 }
 
+export type ParUnicoPlanoCfop = {
+  planoFinanceiroId: string
+  cfopId: string
+}
+
+/** Um único par Plano + CFOP no fornecedor, com CFOP de entrada/importação e plano ativos. */
+export async function parUnicoPlanoCfopFornecedor(
+  companyId: string,
+  fornecedorPessoaId: string | null
+): Promise<ParUnicoPlanoCfop | null> {
+  if (!fornecedorPessoaId) return null
+  const papel = await clientePrisma.pessoaPapel.findFirst({
+    where: { pessoaId: fornecedorPessoaId, papel: 'fornecedor', ativo: true, pessoa: { companyId } },
+    select: {
+      dadosFornecedor: {
+        select: {
+          paresPlanoCfopPadrao: {
+            orderBy: { ordem: 'asc' },
+            select: {
+              planoFinanceiroId: true,
+              cfopId: true,
+              cfop: { select: { ativo: true, natureza: true, companyId: true } },
+              planoFinanceiro: { select: { ativo: true, companyId: true } },
+            },
+          },
+        },
+      },
+    },
+  })
+  const pares = papel?.dadosFornecedor?.paresPlanoCfopPadrao ?? []
+  if (pares.length !== 1) return null
+  const par = pares[0]
+  if (!par) return null
+  const cfopOk =
+    Boolean(par.cfop?.ativo) &&
+    par.cfop.companyId === companyId &&
+    (par.cfop.natureza === 'entrada' || par.cfop.natureza === 'importacao')
+  const planoOk =
+    Boolean(par.planoFinanceiro?.ativo) && par.planoFinanceiro.companyId === companyId
+  if (!cfopOk || !planoOk) return null
+  return { planoFinanceiroId: par.planoFinanceiroId, cfopId: par.cfopId }
+}
+
 async function planoDoParFornecedorCfop(
   companyId: string,
   fornecedorPessoaId: string | null,

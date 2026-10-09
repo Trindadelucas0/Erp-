@@ -11,6 +11,7 @@ vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import {
   cfopEntradaPrevalenteDosItens,
+  parUnicoPlanoCfopFornecedor,
   resolverPlanoFinanceiroEntrada,
   resolverPlanoFinanceiroMercadoriaNfe,
 } from './resolver-plano-financeiro-entrada.js'
@@ -162,5 +163,88 @@ describe('resolverPlanoFinanceiroEntrada — prioridade fornecedor → CFOP → 
     })
 
     expect(plano).toBe('plano-forn')
+  })
+})
+
+function parAtivo(overrides: {
+  planoFinanceiroId?: string
+  cfopId?: string
+  cfop?: { ativo: boolean; natureza: string; companyId: string }
+  planoFinanceiro?: { ativo: boolean; companyId: string }
+} = {}) {
+  return {
+    planoFinanceiroId: overrides.planoFinanceiroId ?? 'plano-par',
+    cfopId: overrides.cfopId ?? 'cfop-par',
+    cfop: overrides.cfop ?? { ativo: true, natureza: 'entrada', companyId: 'company-1' },
+    planoFinanceiro: overrides.planoFinanceiro ?? { ativo: true, companyId: 'company-1' },
+  }
+}
+
+describe('parUnicoPlanoCfopFornecedor', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('retorna o par quando o fornecedor tem exatamente um par ativo', async () => {
+    vi.mocked(clientePrisma.pessoaPapel.findFirst).mockResolvedValue({
+      dadosFornecedor: { paresPlanoCfopPadrao: [parAtivo()] },
+    } as never)
+
+    await expect(parUnicoPlanoCfopFornecedor('company-1', 'forn-1')).resolves.toEqual({
+      planoFinanceiroId: 'plano-par',
+      cfopId: 'cfop-par',
+    })
+  })
+
+  it('retorna null sem fornecedor ou sem pares', async () => {
+    expect(await parUnicoPlanoCfopFornecedor('company-1', null)).toBeNull()
+    vi.mocked(clientePrisma.pessoaPapel.findFirst).mockResolvedValue({
+      dadosFornecedor: { paresPlanoCfopPadrao: [] },
+    } as never)
+    expect(await parUnicoPlanoCfopFornecedor('company-1', 'forn-1')).toBeNull()
+  })
+
+  it('retorna null com dois ou mais pares', async () => {
+    vi.mocked(clientePrisma.pessoaPapel.findFirst).mockResolvedValue({
+      dadosFornecedor: {
+        paresPlanoCfopPadrao: [
+          parAtivo({ cfopId: 'cfop-a', planoFinanceiroId: 'plano-a' }),
+          parAtivo({ cfopId: 'cfop-b', planoFinanceiroId: 'plano-b' }),
+        ],
+      },
+    } as never)
+
+    expect(await parUnicoPlanoCfopFornecedor('company-1', 'forn-1')).toBeNull()
+  })
+
+  it('retorna null quando o CFOP está inativo ou não é de entrada', async () => {
+    vi.mocked(clientePrisma.pessoaPapel.findFirst).mockResolvedValue({
+      dadosFornecedor: {
+        paresPlanoCfopPadrao: [
+          parAtivo({ cfop: { ativo: false, natureza: 'entrada', companyId: 'company-1' } }),
+        ],
+      },
+    } as never)
+    expect(await parUnicoPlanoCfopFornecedor('company-1', 'forn-1')).toBeNull()
+
+    vi.mocked(clientePrisma.pessoaPapel.findFirst).mockResolvedValue({
+      dadosFornecedor: {
+        paresPlanoCfopPadrao: [
+          parAtivo({ cfop: { ativo: true, natureza: 'saida', companyId: 'company-1' } }),
+        ],
+      },
+    } as never)
+    expect(await parUnicoPlanoCfopFornecedor('company-1', 'forn-1')).toBeNull()
+  })
+
+  it('retorna null quando o plano está inativo', async () => {
+    vi.mocked(clientePrisma.pessoaPapel.findFirst).mockResolvedValue({
+      dadosFornecedor: {
+        paresPlanoCfopPadrao: [
+          parAtivo({ planoFinanceiro: { ativo: false, companyId: 'company-1' } }),
+        ],
+      },
+    } as never)
+    expect(await parUnicoPlanoCfopFornecedor('company-1', 'forn-1')).toBeNull()
   })
 })

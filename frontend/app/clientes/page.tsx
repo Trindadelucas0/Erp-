@@ -707,6 +707,8 @@ function ConteudoDaPaginaDeClientes() {
     aoSairDocumento,
     carregandoBrasilApi,
     verificandoDocumento,
+    erroConsultaCnpj,
+    limparErroConsulta,
     resetarConsulta,
   } = useConsultaDocumento({
     getForm: () => ({ documento: formRef.current.documento, tipo: formRef.current.tipo }),
@@ -786,7 +788,8 @@ function ConteudoDaPaginaDeClientes() {
   function erroDocumentoVisivel(): string | undefined {
     if (!camposTocados.has('documento')) return undefined
     if (documentoDuplicado) return avisoDuplicidade?.mensagem
-    return errosForm.documento
+    if (errosForm.documento) return errosForm.documento
+    return erroConsultaCnpj || undefined
   }
 
   // ─── Dados ────────────────────────────────────────────────────────────────
@@ -987,6 +990,7 @@ function ConteudoDaPaginaDeClientes() {
 
   function aoMudarDocumento(valor: string) {
     tocarCampo('documento')
+    limparErroConsulta()
     setForm((f) => ({
       ...f,
       documento: mascaraPorTipo(valor, f.tipo),

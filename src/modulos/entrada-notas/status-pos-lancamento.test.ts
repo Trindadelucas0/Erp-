@@ -114,6 +114,7 @@ vi.mock('../contas-a-pagar/resolver-parcelas-recorrencia.js', () => ({
 
 vi.mock('../contas-a-pagar/resolver-plano-financeiro-entrada.js', () => ({
   resolverPlanoFinanceiroEntrada: vi.fn().mockResolvedValue(null),
+  parUnicoPlanoCfopFornecedor: vi.fn().mockResolvedValue(null),
   cfopEntradaPrevalenteDosItens: vi.fn(),
 }))
 
@@ -137,6 +138,7 @@ import { servicoEntradaNotas } from './servico-pipeline-entrada.js'
 import { gravarLiberacaoContagemComOs } from '../requisicoes-wms/os-contagem-entrada.js'
 import { gerarOsArmazenagemAposConsolidar } from '../requisicoes-wms/os-armazenagem-entrada.js'
 import { gerarTitulosContasPagarDaEntrada } from '../contas-a-pagar/gerar-titulos-entrada.js'
+import { parUnicoPlanoCfopFornecedor } from '../contas-a-pagar/resolver-plano-financeiro-entrada.js'
 import { servicoDeEstoque } from '../estoque/servico-estoque.js'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { repositorioDeRecorrenciasFinanceiras } from '../recorrencias-financeiras/repositorio-recorrencias-financeiras.js'
@@ -323,6 +325,7 @@ function ligarRecorrenciaCasada(valor = 100) {
 describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(parUnicoPlanoCfopFornecedor).mockResolvedValue(null)
   })
 
   it('NF de mercadoria com pedido tipoCompra="revenda" cai em aguardando_chegada ao lançar automaticamente', async () => {
@@ -761,6 +764,78 @@ describe('Status pós-lançamento — "Aguardando chegada" (NFe 55 com produto)'
     expect(fake.getEstado().statusEntrada).toBe('pronta_para_consolidar')
     expect(detalhe.nota.statusEntrada).toBe('pronta_para_consolidar')
     expect(analisarFiscalItens).not.toHaveBeenCalled()
+  })
+
+  it('NFS-e com um par padrão preenche CFOP e plano e sai do fiscal', async () => {
+    ligarAnaliseSempreOk()
+    vi.mocked(parUnicoPlanoCfopFornecedor).mockResolvedValue({
+      cfopId: 'cfop-par',
+      planoFinanceiroId: 'plano-par',
+    })
+    vi.mocked(repositorioEntradaNotas.buscarCfopEntradaAtivo).mockResolvedValue({
+      id: 'cfop-par',
+      codigo: '1933',
+      nome: 'Aquisição de serviço',
+      subtipoCfop: null,
+    } as never)
+    const fake = ligarRepositorioFake(notaNfse({ cfopEntradaId: null, planoFinanceiroId: null }))
+
+    const detalhe = await servicoEntradaNotas.analisarNota('c1', 'nota-1', {
+      importarFocusSeAusente: false,
+    })
+
+    expect(fake.getEstado().cfopEntradaId).toBe('cfop-par')
+    expect(fake.getEstado().planoFinanceiroId).toBe('plano-par')
+    expect(fake.getEstado().statusEntrada).toBe('pronta_para_consolidar')
+    expect(detalhe.nota.statusEntrada).toBe('pronta_para_consolidar')
+  })
+
+  it('NFS-e com CFOP já gravado não troca pelo par do fornecedor', async () => {
+    ligarAnaliseSempreOk()
+    vi.mocked(parUnicoPlanoCfopFornecedor).mockResolvedValue({
+      cfopId: 'cfop-par',
+      planoFinanceiroId: 'plano-par',
+    })
+    const fake = ligarRepositorioFake(
+      notaNfse({ cfopEntradaId: 'cfop-ent', planoFinanceiroId: 'plano-nota' })
+    )
+
+    await servicoEntradaNotas.analisarNota('c1', 'nota-1', { importarFocusSeAusente: false })
+
+    expect(parUnicoPlanoCfopFornecedor).not.toHaveBeenCalled()
+    expect(fake.getEstado().cfopEntradaId).toBe('cfop-ent')
+    expect(fake.getEstado().planoFinanceiroId).toBe('plano-nota')
+  })
+
+  it('abrir detalhe de NFS-e sem CFOP aplica o par único e reanalisa', async () => {
+    ligarAnaliseSempreOk()
+    vi.mocked(parUnicoPlanoCfopFornecedor).mockResolvedValue({
+      cfopId: 'cfop-par',
+      planoFinanceiroId: 'plano-par',
+    })
+    vi.mocked(repositorioEntradaNotas.buscarCfopEntradaAtivo).mockResolvedValue({
+      id: 'cfop-par',
+      codigo: '1933',
+      nome: 'Aquisição de serviço',
+      subtipoCfop: null,
+    } as never)
+    const fake = ligarRepositorioFake(
+      notaNfse({
+        cfopEntradaId: null,
+        planoFinanceiroId: null,
+        analiseJson: {
+          versao: 1,
+          cadastro: { status: 'ok', avisos: [], bloqueios: [] },
+          fiscal: { status: 'bloqueante', avisos: [], bloqueios: [] },
+        },
+      })
+    )
+
+    const detalhe = await servicoEntradaNotas.obterDetalhe('c1', 'nota-1')
+
+    expect(fake.getEstado().cfopEntradaId).toBe('cfop-par')
+    expect(fake.getEstado().planoFinanceiroId).toBe('plano-par')
+    expect(detalhe.nota.statusEntrada).toBe('pronta_para_consolidar')
   })
 
   it('lancar consolidar NFe uso_consumo gera título e não mexe estoque', async () => {

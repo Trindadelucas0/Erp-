@@ -1,6 +1,11 @@
 import { Prisma } from '@prisma/client'
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
-import type { DadosItemOrcamento, DadosOrcamento } from './esquema-orcamentos.js'
+import {
+  enderecoPersistido,
+  fretePersistido,
+  type DadosItemOrcamento,
+  type DadosOrcamento,
+} from './esquema-orcamentos.js'
 
 function decimalNum(valor: unknown): number {
   if (valor == null) return 0
@@ -172,6 +177,12 @@ function itensPreenchidos(itens: DadosItemOrcamento[]) {
 }
 
 function dadosEscalares(dados: DadosOrcamento, numero: string, status: string) {
+  const endereco = enderecoPersistido(dados.prazoEntrega, dados.endereco)
+  const { frete, valorFrete } = fretePersistido(
+    dados.prazoEntrega,
+    dados.frete,
+    dados.valorFrete
+  )
   return {
     numero,
     data: dataParaDate(dados.data),
@@ -186,18 +197,18 @@ function dadosEscalares(dados: DadosOrcamento, numero: string, status: string) {
     contato: dados.contato,
     condicaoPagamento: dados.condicaoPagamento,
     prazoEntrega: dados.prazoEntrega,
-    frete: dados.frete,
+    frete,
     mensagem: dados.mensagem,
     descontoTotal: dados.descontoTotal,
-    valorFrete: dados.valorFrete,
+    valorFrete,
     outrasDespesas: dados.outrasDespesas,
     converterEmPedido: dados.converterEmPedido,
-    cep: dados.endereco.cep,
-    logradouro: dados.endereco.logradouro,
-    numeroEndereco: dados.endereco.numero,
-    bairro: dados.endereco.bairro,
-    cidade: dados.endereco.cidade,
-    uf: dados.endereco.uf,
+    cep: endereco.cep,
+    logradouro: endereco.logradouro,
+    numeroEndereco: endereco.numero,
+    bairro: endereco.bairro,
+    cidade: endereco.cidade,
+    uf: endereco.uf,
     complementares: dados.complementares,
     observacoes: dados.observacoes,
   }

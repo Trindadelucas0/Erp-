@@ -38,6 +38,7 @@ import {
   OPCOES_VENDEDOR_ORCAMENTO,
   aplicarClienteNoOrcamento,
   enderecoEntregaDoCliente,
+  entregaNoAto,
   opcoesTipoEntregaOrcamento,
   formatarEstoque,
   formatarPrecoUnitario,
@@ -58,6 +59,7 @@ import { cn } from '@/lib/utils'
 const LIMITE_MENSAGEM = 1000
 const LIMITE_CLIENTES = 80
 const AVISO_AINDA_NAO = 'Esta ação ainda não está disponível.'
+const CHAVE_MODAL_FINALIZADO = 'erp.orcamento.finalizado'
 
 type ClienteLista = {
   id: string
@@ -134,11 +136,37 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
   const [produtoId, setProdutoId] = useState('')
   const [produtosBusca, setProdutosBusca] = useState<ProdutoOpcao[]>([])
   const [carregandoProdutos, setCarregandoProdutos] = useState(false)
-  const resumo = useMemo(() => resumirOrcamento(orcamento), [orcamento])
+  const [modalFinalizadoAberto, setModalFinalizadoAberto] = useState(false)
+  const noAto = entregaNoAto(orcamento.prazoEntrega)
+  const resumo = useMemo(
+    () => resumirOrcamento(noAto ? { ...orcamento, valorFrete: 0 } : orcamento),
+    [noAto, orcamento]
+  )
   const opcoesTipoEntrega = useMemo(
     () => opcoesTipoEntregaOrcamento(orcamento.prazoEntrega),
     [orcamento.prazoEntrega]
   )
+  const abasOrcamento = useMemo(() => {
+    const base: Array<{ id: AbaOrcamento; rotulo: string; contador?: number }> = [
+      { id: 'itens', rotulo: 'Itens', contador: resumo.qtdItens },
+    ]
+    if (!noAto) {
+      base.push({ id: 'endereco', rotulo: 'Endereço de entrega' })
+    }
+    base.push(
+      { id: 'complementares', rotulo: 'Informações complementares' },
+      { id: 'observacoes', rotulo: 'Observações' },
+      { id: 'anexos', rotulo: 'Anexos' },
+      { id: 'historico', rotulo: 'Histórico' }
+    )
+    return base
+  }, [noAto, resumo.qtdItens])
+
+  useEffect(() => {
+    if (noAto && abaAtiva === 'endereco') {
+      setAbaAtiva('itens')
+    }
+  }, [noAto, abaAtiva])
   const clientesFiltrados = useMemo(
     () => filtrarCadastroPessoa(clientes, buscaCliente).slice(0, LIMITE_CLIENTES),
     [clientes, buscaCliente]
@@ -166,6 +194,19 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
       cancelado = true
     }
   }, [orcamentoId, iniciais])
+
+  useEffect(() => {
+    if (!orcamentoId || typeof window === 'undefined') return
+    try {
+      const pendente = sessionStorage.getItem(CHAVE_MODAL_FINALIZADO)
+      if (pendente === orcamentoId) {
+        sessionStorage.removeItem(CHAVE_MODAL_FINALIZADO)
+        setModalFinalizadoAberto(true)
+      }
+    } catch {
+      /* storage bloqueado */
+    }
+  }, [orcamentoId])
 
   useEffect(() => {
     if (modoCliente !== 'buscar' || clientesConsultados) return
@@ -406,15 +447,20 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
   async function salvar() {
     setOcupado(true)
     try {
-      const gravado = await gravar()
-      aplicarGravado(gravado)
-      mostrarAviso('Orçamento salvo.')
-      if (!orcamentoId) roteador.replace(`/orcamentos/${gravado.id}`)
+      await gravar()
+      setAviso('')
+      setAvisoErro(false)
+      roteador.push('/orcamentos')
     } catch (erro) {
       mostrarAviso(extrairMensagemApi(erro, 'Não foi possível salvar o orçamento.'), true)
     } finally {
       setOcupado(false)
     }
+  }
+
+  function voltarListaPosFinalizar() {
+    setModalFinalizadoAberto(false)
+    roteador.push('/orcamentos')
   }
 
   async function finalizar() {
@@ -425,12 +471,18 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
         `/orcamentos/${gravado.id}/finalizar`
       )
       aplicarGravado(data.orcamento)
-      mostrarAviso('Orçamento enviado.')
+      setAviso('')
+      setAvisoErro(false)
       if (!orcamentoId) {
-        roteador.replace(`/orcamentos/${gravado.id}?imprimir=1`)
+        try {
+          sessionStorage.setItem(CHAVE_MODAL_FINALIZADO, gravado.id)
+        } catch {
+          /* storage bloqueado */
+        }
+        roteador.replace(`/orcamentos/${gravado.id}`)
         return
       }
-      window.setTimeout(() => window.print(), 0)
+      setModalFinalizadoAberto(true)
     } catch (erro) {
       mostrarAviso(extrairMensagemApi(erro, 'Não foi possível finalizar o orçamento.'), true)
     } finally {
@@ -494,10 +546,10 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
             Enviar por e-mail
           </Button>
           <Button type="button" variant="outline" onClick={() => void salvar()} disabled={ocupado}>
-            Salvar rascunho
+            Salvar
           </Button>
           <BotaoPrimario type="button" onClick={() => void finalizar()} disabled={ocupado}>
-            Finalizar e gerar proposta
+            Salvar e finalizar
           </BotaoPrimario>
         </div>
       </div>
@@ -570,12 +622,14 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
               aoMudar={(valor) => atualizar('prazoEntrega', valor)}
               opcoes={opcoesTipoEntrega}
             />
-            <SelectPadrao
-              rotulo="Frete"
-              valor={orcamento.frete}
-              aoMudar={(valor) => atualizar('frete', valor)}
-              opcoes={OPCOES_FRETE}
-            />
+            {noAto ? null : (
+              <SelectPadrao
+                rotulo="Frete"
+                valor={orcamento.frete}
+                aoMudar={(valor) => atualizar('frete', valor)}
+                opcoes={OPCOES_FRETE}
+              />
+            )}
           </div>
         </CardPadrao>
       </div>
@@ -706,14 +760,7 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
           className="mb-4 print:hidden"
           abaAtiva={abaAtiva}
           aoMudar={(id) => setAbaAtiva(id as AbaOrcamento)}
-          abas={[
-            { id: 'itens', rotulo: 'Itens', contador: resumo.qtdItens },
-            { id: 'endereco', rotulo: 'Endereço de entrega' },
-            { id: 'complementares', rotulo: 'Informações complementares' },
-            { id: 'observacoes', rotulo: 'Observações' },
-            { id: 'anexos', rotulo: 'Anexos' },
-            { id: 'historico', rotulo: 'Histórico' },
-          ]}
+          abas={abasOrcamento}
         />
 
         <div className={abaAtiva === 'itens' ? 'space-y-4' : 'hidden space-y-4 print:block'}>
@@ -898,10 +945,12 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
                 <dt>Desconto total</dt>
                 <dd className="tabular-nums">{formatarMoeda(resumo.descontoTotal)}</dd>
               </div>
-              <div className="flex justify-between gap-3">
-                <dt>Frete</dt>
-                <dd className="tabular-nums">{formatarMoeda(resumo.frete)}</dd>
-              </div>
+              {noAto ? null : (
+                <div className="flex justify-between gap-3">
+                  <dt>Frete</dt>
+                  <dd className="tabular-nums">{formatarMoeda(resumo.frete)}</dd>
+                </div>
+              )}
               <div className="flex justify-between gap-3">
                 <dt>Outras despesas</dt>
                 <dd className="tabular-nums">{formatarMoeda(resumo.outrasDespesas)}</dd>
@@ -1022,11 +1071,63 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
           <Button type="button" variant="outline" onClick={() => roteador.push('/orcamentos')}>
             Cancelar
           </Button>
-          <BotaoPrimario type="button" onClick={() => void salvar()} disabled={ocupado}>
-            Salvar orçamento
+          <Button type="button" variant="outline" onClick={() => void salvar()} disabled={ocupado}>
+            Salvar
+          </Button>
+          <BotaoPrimario type="button" onClick={() => void finalizar()} disabled={ocupado}>
+            Salvar e finalizar
           </BotaoPrimario>
         </div>
       </div>
+
+      {modalFinalizadoAberto ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 print:hidden"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) voltarListaPosFinalizar()
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') voltarListaPosFinalizar()
+          }}
+          role="presentation"
+        >
+          <div
+            className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl"
+            role="alertdialog"
+            aria-labelledby="modal-orcamento-finalizado-titulo"
+            aria-describedby="modal-orcamento-finalizado-mensagem"
+          >
+            <h2 id="modal-orcamento-finalizado-titulo" className="text-lg font-semibold">
+              Orçamento finalizado
+            </h2>
+            <p
+              id="modal-orcamento-finalizado-mensagem"
+              className="mt-2 text-sm text-muted-foreground"
+            >
+              A proposta foi gerada com status Enviado. Deseja imprimir ou ir para Receber
+              pagamento?
+            </p>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+              <Button type="button" variant="outline" onClick={voltarListaPosFinalizar}>
+                Voltar à lista
+              </Button>
+              <Button type="button" variant="outline" onClick={() => window.print()}>
+                <Printer className="size-4" />
+                Imprimir proposta
+              </Button>
+              <BotaoPrimario
+                type="button"
+                onClick={() => {
+                  setModalFinalizadoAberto(false)
+                  roteador.push('/receber-pagamento')
+                }}
+              >
+                Ir para Receber pagamento
+              </BotaoPrimario>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

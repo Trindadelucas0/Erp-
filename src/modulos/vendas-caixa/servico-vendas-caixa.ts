@@ -7,8 +7,11 @@ import {
   MSG_CHAMADO_JA_RECEBIDO,
   MSG_FORMA_ORIGEM_INVALIDA,
   MSG_ORCAMENTO_JA_RECEBIDO,
+  MSG_BOLETO_NAO_NO_TOTEM,
   MSG_ORCAMENTO_NAO_ENCONTRADO,
   MSG_PAGAMENTO_INCOMPLETO,
+  MSG_PARCELA_INVALIDA,
+  MSG_PARCELA_OBRIGATORIA,
   MSG_VALOR_RECEBIDO_INSUFICIENTE,
   STATUS_CHAMADO_ATENDENTE,
   STATUS_ORCAMENTO_RECEBIVEL,
@@ -20,6 +23,10 @@ import {
   type FormaPagamento,
 } from './esquema-vendas-caixa.js'
 import { agruparItensVenda, gerarOsSeparacaoDaVenda } from './gerar-os-separacao-venda.js'
+import {
+  listarParcelasCreditoTotem,
+  resolverCartaoPagamentoCredito,
+} from './opcoes-totem-vendas.js'
 import { repositorioDeVendasCaixa } from './repositorio-vendas-caixa.js'
 
 function exigirEmpresa(companyId: string) {
@@ -32,6 +39,7 @@ function mapearVenda(venda: {
   clienteNome: string
   status: string
   formaPagamento?: string | null
+  numeroParcelas?: number | null
   separacoes?: number[]
   itens?: Array<{ produtoId: string; quantidade: number; produtoNome?: string }>
 }) {
@@ -41,9 +49,30 @@ function mapearVenda(venda: {
     clienteNome: venda.clienteNome,
     status: venda.status,
     formaPagamento: venda.formaPagamento ?? null,
+    numeroParcelas: venda.numeroParcelas ?? null,
     separacoes: venda.separacoes ?? [],
     ...(venda.itens ? { itens: venda.itens } : {}),
   }
+}
+
+async function resolverDadosParcelasVenda(
+  companyId: string,
+  formaPagamento: FormaPagamento,
+  numeroParcelas?: number
+): Promise<{ numeroParcelas: number | null; cartaoPagamentoId: string | null }> {
+  if (formaPagamento !== 'cartao_credito') {
+    return { numeroParcelas: null, cartaoPagamentoId: null }
+  }
+  const n = numeroParcelas ?? 0
+  const permitidas = await listarParcelasCreditoTotem(companyId)
+  if (!permitidas.some((p) => p.numeroParcelas === n)) {
+    throw new ErroDaAplicacao(MSG_PARCELA_INVALIDA, 400)
+  }
+  const cartaoPagamentoId = await resolverCartaoPagamentoCredito(companyId, n)
+  if (!cartaoPagamentoId) {
+    throw new ErroDaAplicacao(MSG_PARCELA_INVALIDA, 400)
+  }
+  return { numeroParcelas: n, cartaoPagamentoId }
 }
 
 async function validarItens(companyId: string, itens: Array<{ produtoId: string; quantidade: number }>) {
@@ -337,6 +366,18 @@ export const servicoDeVendasCaixa = {
     return { chavePix: chave && chave.length > 0 ? chave : null }
   },
 
+  async obterOpcoesTotem(companyId: string) {
+    exigirEmpresa(companyId)
+    const [chavePix, parcelasCredito] = await Promise.all([
+      servicoDeVendasCaixa.obterChavePix(companyId),
+      listarParcelasCreditoTotem(companyId),
+    ])
+    return {
+      chavePix: chavePix.chavePix,
+      parcelasCredito,
+    }
+  },
+
   async buscarOrcamentos(companyId: string, termo: string) {
     exigirEmpresa(companyId)
     const encontrados = await repositorioDeOrcamentos.buscarParaRecebimento(companyId, termo)
@@ -442,6 +483,12 @@ export const servicoDeVendasCaixa = {
   ) {
     exigirEmpresa(companyId)
     validarFormaReceberOrcamento(dados.origem, dados.formaPagamento)
+    if (dados.origem === 'totem' && dados.formaPagamento === 'boleto') {
+      throw new ErroDaAplicacao(MSG_BOLETO_NAO_NO_TOTEM, 400)
+    }
+    if (dados.formaPagamento === 'cartao_credito' && dados.numeroParcelas == null) {
+      throw new ErroDaAplicacao(MSG_PARCELA_OBRIGATORIA, 400)
+    }
 
     const orcamento = await repositorioDeOrcamentos.buscarPorId(companyId, orcamentoId)
     if (!orcamento) throw new ErroDaAplicacao(MSG_ORCAMENTO_NAO_ENCONTRADO, 404)
@@ -468,6 +515,11 @@ export const servicoDeVendasCaixa = {
     const valorRecebidoGravado =
       dados.formaPagamento === 'dinheiro' ? (dados.valorRecebido ?? total) : null
     const observacao = dados.observacao?.trim() || null
+    const parcelasVenda = await resolverDadosParcelasVenda(
+      companyId,
+      dados.formaPagamento,
+      dados.numeroParcelas
+    )
 
     return repositorioDeVendasCaixa.executarEmTransacao(async (tx) => {
       if (vendaExistente?.status === STATUS_CHAMADO_ATENDENTE) {
@@ -480,6 +532,8 @@ export const servicoDeVendasCaixa = {
           data: {
             status: STATUS_VENDA_PAGA,
             formaPagamento: dados.formaPagamento,
+            numeroParcelas: parcelasVenda.numeroParcelas,
+            cartaoPagamentoId: parcelasVenda.cartaoPagamentoId,
             valorRecebido: valorRecebidoGravado,
             observacao,
             pagaEm: new Date(),
@@ -505,6 +559,7 @@ export const servicoDeVendasCaixa = {
             clienteNome: vendaExistente.clienteNome,
             status: STATUS_VENDA_PAGA,
             formaPagamento: dados.formaPagamento,
+            numeroParcelas: parcelasVenda.numeroParcelas,
             separacoes: requisicoes.map((requisicao) => requisicao.numero),
           }),
           total,
@@ -524,6 +579,8 @@ export const servicoDeVendasCaixa = {
           clienteNome: orcamento.clienteNome.trim(),
           status: STATUS_VENDA_PAGA,
           formaPagamento: dados.formaPagamento,
+          numeroParcelas: parcelasVenda.numeroParcelas,
+          cartaoPagamentoId: parcelasVenda.cartaoPagamentoId,
           valorRecebido: valorRecebidoGravado,
           observacao,
           pagaEm: new Date(),
@@ -555,6 +612,7 @@ export const servicoDeVendasCaixa = {
       return {
         venda: mapearVenda({
           ...venda,
+          numeroParcelas: parcelasVenda.numeroParcelas,
           separacoes: requisicoes.map((requisicao) => requisicao.numero),
         }),
         total,

@@ -66,7 +66,10 @@ import {
 } from '../requisicoes-wms/os-contagem-entrada.js'
 import { gerarOsArmazenagemAposConsolidar } from '../requisicoes-wms/os-armazenagem-entrada.js'
 import { gerarTitulosContasPagarDaEntrada } from '../contas-a-pagar/gerar-titulos-entrada.js'
-import { resolverPlanoFinanceiroEntrada } from '../contas-a-pagar/resolver-plano-financeiro-entrada.js'
+import {
+  parUnicoPlanoCfopFornecedor,
+  resolverPlanoFinanceiroEntrada,
+} from '../contas-a-pagar/resolver-plano-financeiro-entrada.js'
 import {
   extrairFlagsFornecedorDaNota,
   finalidadeHabilitadaNoFornecedor,
@@ -836,6 +839,28 @@ async function sugerirPlanoFinanceiroNaNota(companyId: string, notaId: string) {
   }
 }
 
+/** NFS-e / uso e consumo: um único par do fornecedor preenche CFOP (e plano se vazio). Não sobrescreve. */
+async function sugerirParUnicoDocumentalNaNota(
+  companyId: string,
+  nota: {
+    id: string
+    cfopEntradaId?: string | null
+    planoFinanceiroId?: string | null
+    fornecedorPessoaId?: string | null
+  }
+): Promise<boolean> {
+  if (nota.cfopEntradaId) return false
+  const par = await parUnicoPlanoCfopFornecedor(companyId, nota.fornecedorPessoaId ?? null)
+  if (!par) return false
+  const cfop = await repositorioEntradaNotas.buscarCfopEntradaAtivo(companyId, par.cfopId)
+  if (!cfop) return false
+  await repositorioEntradaNotas.atualizarNota(nota.id, {
+    cfopEntradaId: cfop.id,
+    ...(nota.planoFinanceiroId ? {} : { planoFinanceiroId: par.planoFinanceiroId }),
+  })
+  return true
+}
+
 function parcelasFinanceirasDaNota(nota: {
   valorTotal: unknown
   parcelasFinanceiras: unknown
@@ -1193,6 +1218,15 @@ async function analisarNotaDocumental(
       }
     }
     return await obterDetalhe(companyId, notaId, { jaRetentouVinculoCte: true })
+  }
+
+  if (tipo !== 'cte') {
+    await sugerirParUnicoDocumentalNaNota(companyId, {
+      id: nota.id,
+      cfopEntradaId: nota.cfopEntradaId,
+      planoFinanceiroId: nota.planoFinanceiroId,
+      fornecedorPessoaId: cadastro.fornecedorPessoaId ?? nota.fornecedorPessoaId,
+    })
   }
 
   analise.autoLancado = true
@@ -2234,6 +2268,17 @@ async function obterDetalhe(
   ) {
     const preMarcacao = await aplicarFinalidadePreMarcacao(companyId, nota)
     if (preMarcacao.alterou) {
+      return analisarNota(companyId, notaId, { importarFocusSeAusente: false })
+    }
+  }
+
+  if (
+    statusesAbertos.includes(nota.statusEntrada) &&
+    !nota.cfopEntradaId &&
+    (nota.tipoDocumento === 'nfse' || notaEhDocumentalSemEstoque(nota))
+  ) {
+    const gravouPar = await sugerirParUnicoDocumentalNaNota(companyId, nota)
+    if (gravouPar) {
       return analisarNota(companyId, notaId, { importarFocusSeAusente: false })
     }
   }
