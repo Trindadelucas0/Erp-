@@ -70,9 +70,16 @@ async function editarCfop(requisicao: FastifyRequest, resposta: FastifyReply) {
   return resposta.send({ cfop })
 }
 
+async function excluirCfop(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const { id } = requisicao.params as { id: string }
+  await servicoDeCfops.excluirCfop(companyId(requisicao), id, requisicao.idDoUsuario!)
+  return resposta.status(204).send()
+}
+
 export const controladorDeCfops = {
   listarCfops,
   buscarCfop,
   criarCfop,
   editarCfop,
+  excluirCfop,
 }
