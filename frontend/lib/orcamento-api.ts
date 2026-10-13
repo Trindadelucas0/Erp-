@@ -1,5 +1,6 @@
 import {
-  entregaNoAto,
+  entregaSemFrete,
+  entregaSemEndereco,
   itemOrcamentoVazio,
   linhaPreenchida,
   somarDiasCivil,
@@ -123,8 +124,10 @@ export function montarCorpoOrcamento(
 ) {
   const numero =
     opcoes?.numeroAoCriar !== undefined ? opcoes.numeroAoCriar : orcamento.numero
-  const noAto = entregaNoAto(orcamento.prazoEntrega)
-  const enderecoGravar = noAto ? ENDERECO_ORCAMENTO_VAZIO : endereco
+  const semFrete = entregaSemFrete(orcamento.prazoEntrega)
+  const enderecoGravar = entregaSemEndereco(orcamento.prazoEntrega)
+    ? ENDERECO_ORCAMENTO_VAZIO
+    : endereco
   return {
     numero,
     data: orcamento.data,
@@ -139,10 +142,10 @@ export function montarCorpoOrcamento(
     contato: orcamento.contato,
     condicaoPagamento: orcamento.condicaoPagamento,
     prazoEntrega: orcamento.prazoEntrega,
-    frete: noAto ? '' : orcamento.frete,
+    frete: semFrete ? '' : orcamento.frete,
     mensagem: orcamento.mensagem,
     descontoTotal: orcamento.descontoTotal,
-    valorFrete: noAto ? 0 : orcamento.valorFrete,
+    valorFrete: semFrete ? 0 : orcamento.valorFrete,
     outrasDespesas: orcamento.outrasDespesas,
     converterEmPedido: orcamento.converterEmPedido,
     endereco: enderecoGravar,

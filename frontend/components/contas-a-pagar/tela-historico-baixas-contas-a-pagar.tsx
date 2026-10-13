@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { LinhasSkeletonTabela } from '@/components/ui/linhas-skeleton-tabela'
 import { Modal } from '@/components/ui/modal'
+import { ModalConfirmacao } from '@/components/compartilhado/modal-confirmacao'
+import { usePermissao } from '@/hooks/use-permissao'
 import {
   BadgeOrigemContaPagar,
   BadgeStatusContaPagar,
@@ -25,6 +27,7 @@ type Props = {
 }
 
 export function TelaHistoricoBaixasContasAPagar({ recarregarToken = 0 }: Props) {
+  const podeEditar = usePermissao('financeiro:edit')
   const [linhas, setLinhas] = useState<HistoricoBaixaLista[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
@@ -33,6 +36,8 @@ export function TelaHistoricoBaixasContasAPagar({ recarregarToken = 0 }: Props) 
   const [q, setQ] = useState('')
   const [detalhe, setDetalhe] = useState<ContaPagarLista | null>(null)
   const [carregandoDetalhe, setCarregandoDetalhe] = useState(false)
+  const [baixaParaCancelar, setBaixaParaCancelar] = useState<HistoricoBaixaLista | null>(null)
+  const [cancelando, setCancelando] = useState(false)
 
   const carregar = useCallback(async () => {
     setCarregando(true)
@@ -70,6 +75,22 @@ export function TelaHistoricoBaixasContasAPagar({ recarregarToken = 0 }: Props) 
       setErro(extrairMensagemApi(e, 'Falha ao abrir o título.'))
     } finally {
       setCarregandoDetalhe(false)
+    }
+  }
+
+  async function cancelarBaixa() {
+    if (!baixaParaCancelar || cancelando) return
+    setCancelando(true)
+    setErro(null)
+    try {
+      await clienteHttp.post(`/contas-a-pagar/baixas/${baixaParaCancelar.id}/cancelar`)
+      setBaixaParaCancelar(null)
+      await carregar()
+      if (detalhe?.id === baixaParaCancelar.contaPagarId) await abrirDetalhe(detalhe.id)
+    } catch (e) {
+      setErro(extrairMensagemApi(e, 'Não foi possível cancelar esta baixa.'))
+    } finally {
+      setCancelando(false)
     }
   }
 
@@ -151,14 +172,15 @@ export function TelaHistoricoBaixasContasAPagar({ recarregarToken = 0 }: Props) 
               <th className="px-3 py-2 font-medium">Total pago</th>
               <th className="px-3 py-2 font-medium">Saldo título</th>
               <th className="px-3 py-2 font-medium">Status</th>
+              <th className="px-3 py-2 font-medium">Ação</th>
             </tr>
           </thead>
           <tbody>
             {carregando ? (
-              <LinhasSkeletonTabela colunas={11} linhas={6} />
+              <LinhasSkeletonTabela colunas={12} linhas={6} />
             ) : linhas.length === 0 ? (
               <tr>
-                <td colSpan={11} className="px-3 py-8 text-center text-muted-foreground">
+                <td colSpan={12} className="px-3 py-8 text-center text-muted-foreground">
                   Nenhum pagamento encontrado.
                 </td>
               </tr>
@@ -188,7 +210,13 @@ export function TelaHistoricoBaixasContasAPagar({ recarregarToken = 0 }: Props) 
                     {formatarMoedaBr(linha.saldoDevedorTitulo)}
                   </td>
                   <td className="px-3 py-2">
-                    <BadgeStatusContaPagar status={linha.statusConta} />
+                    {linha.canceladaEm ? <span className="text-muted-foreground">Cancelada</span> : <BadgeStatusContaPagar status={linha.statusConta} />}
+                  </td>
+                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                    {podeEditar && !linha.canceladaEm && (
+                      <Button type="button" size="sm" variant="outline"
+                        onClick={() => { setErro(null); setBaixaParaCancelar(linha) }}>Cancelar</Button>
+                    )}
                   </td>
                 </tr>
               ))
@@ -290,7 +318,7 @@ export function TelaHistoricoBaixasContasAPagar({ recarregarToken = 0 }: Props) 
                     <tbody>
                       {detalhe.baixas!.map((b) => (
                         <tr key={b.id} className="border-t">
-                          <td className="px-3 py-2">{formatarDataBr(b.pagoEm)}</td>
+                          <td className="px-3 py-2">{formatarDataBr(b.pagoEm)}{b.canceladaEm && <span className="ml-2 text-muted-foreground">Cancelada</span>}</td>
                           <td className="px-3 py-2">{b.numeroParcela ?? '—'}</td>
                           <td className="px-3 py-2 tabular-nums">
                             {formatarMoedaBr(b.valorPrincipal)}
@@ -315,6 +343,15 @@ export function TelaHistoricoBaixasContasAPagar({ recarregarToken = 0 }: Props) 
           </div>
         )}
       </Modal>
+      <ModalConfirmacao
+        aberto={Boolean(baixaParaCancelar)}
+        titulo="Cancelar esta baixa?"
+        mensagem={baixaParaCancelar ? `Título ${baixaParaCancelar.codigoExibicao ?? formatarCodigoContaPagar(baixaParaCancelar.codigo)} · ${formatarDataBr(baixaParaCancelar.pagoEm)} · principal ${formatarMoedaBr(baixaParaCancelar.valorPrincipal)}. O saldo do título será recalculado e devolvido.${erro ? `\n${erro}` : ''}` : undefined}
+        textoConfirmar={cancelando ? 'Cancelando…' : 'Cancelar baixa'}
+        textoCancelar="Voltar"
+        aoConfirmar={() => void cancelarBaixa()}
+        aoCancelar={() => { if (!cancelando) setBaixaParaCancelar(null) }}
+      />
     </div>
   )
 }

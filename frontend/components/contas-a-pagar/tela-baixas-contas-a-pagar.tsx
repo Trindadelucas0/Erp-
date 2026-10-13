@@ -34,6 +34,7 @@ import {
 } from '@/lib/contas-empresa'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
+import { ComboboxPessoa } from '@/components/pedidos-compra/combobox-pessoa'
 
 const TH = 'px-2 py-1.5 font-medium whitespace-nowrap'
 const TD = 'px-2 py-1 whitespace-nowrap'
@@ -77,8 +78,14 @@ export function TelaBaixasContasAPagar({ fornecedores, planos, aoBaixar }: Props
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
   const [baixando, setBaixando] = useState(false)
+  const [avisoAberto, setAvisoAberto] = useState(false)
   const [pagoEm, setPagoEm] = useState(() => new Date().toISOString().slice(0, 10))
   const [contaEmpresaId, setContaEmpresaId] = useState('')
+  const [pessoaId, setPessoaId] = useState('')
+  const [vencimentoDe, setVencimentoDe] = useState('')
+  const [vencimentoAte, setVencimentoAte] = useState('')
+  const [emissaoDe, setEmissaoDe] = useState('')
+  const [emissaoAte, setEmissaoAte] = useState('')
   const [contasEmpresa, setContasEmpresa] = useState<ContaEmpresaLista[]>([])
   const [detalhe, setDetalhe] = useState<{ conta: ContaPagarLista; form: FormContaPagar } | null>(
     null
@@ -104,8 +111,15 @@ export function TelaBaixasContasAPagar({ fornecedores, planos, aoBaixar }: Props
     setCarregando(true)
     setErro(null)
     try {
+      const params: Record<string, string> = {}
+      if (pessoaId) params.pessoaId = pessoaId
+      if (vencimentoDe) params.vencimentoDe = vencimentoDe
+      if (vencimentoAte) params.vencimentoAte = vencimentoAte
+      if (emissaoDe) params.emissaoDe = emissaoDe
+      if (emissaoAte) params.emissaoAte = emissaoAte
       const { data } = await clienteHttp.get<{ contas: ContaPagarLista[] }>(
-        '/contas-a-pagar/para-baixar'
+        '/contas-a-pagar/para-baixar',
+        { params }
       )
       setLinhas(
         (data.contas ?? [])
@@ -125,7 +139,7 @@ export function TelaBaixasContasAPagar({ fornecedores, planos, aoBaixar }: Props
     } finally {
       setCarregando(false)
     }
-  }, [])
+  }, [pessoaId, vencimentoDe, vencimentoAte, emissaoDe, emissaoAte])
 
   useEffect(() => {
     void carregar()
@@ -168,10 +182,6 @@ export function TelaBaixasContasAPagar({ fornecedores, planos, aoBaixar }: Props
       setErro('Selecione ao menos um título.')
       return
     }
-    if (!contaEmpresaId) {
-      setErro('Selecione a conta de pagamento.')
-      return
-    }
     for (const l of selecionadas) {
       const principal = parseNum(l.valorPrincipal)
       const saldo = l.conta.saldoDevedor ?? 0
@@ -187,6 +197,12 @@ export function TelaBaixasContasAPagar({ fornecedores, planos, aoBaixar }: Props
       }
     }
 
+    setErro(null)
+    setAvisoAberto(true)
+  }
+
+  async function confirmarBaixa() {
+    if (!podeEditar || !contaEmpresaId || !pagoEm) return
     setBaixando(true)
     setErro(null)
     try {
@@ -202,6 +218,7 @@ export function TelaBaixasContasAPagar({ fornecedores, planos, aoBaixar }: Props
         })),
       })
       await carregar()
+      setAvisoAberto(false)
       aoBaixar?.()
     } catch (e) {
       setErro(extrairMensagemApi(e, 'Não foi possível baixar os títulos.'))
@@ -218,40 +235,25 @@ export function TelaBaixasContasAPagar({ fornecedores, planos, aoBaixar }: Props
         <strong className="text-foreground">Multa</strong> entram no pagamento sem reduzir o saldo.
       </div>
 
-      <div className="flex min-w-0 flex-wrap items-end justify-between gap-3">
-        <div className="flex min-w-0 flex-wrap items-end gap-3">
-          <div className="min-w-[10rem] shrink-0">
-            <InputPadrao
-              rotulo="Data pagamento"
-              type="date"
-              value={pagoEm}
-              onChange={(e) => setPagoEm(e.target.value)}
-            />
-          </div>
-          <div className="min-w-[14rem] max-w-md flex-1 shrink-0">
-            <SelectPadrao
-              rotulo="Conta"
-              obrigatorio
-              valor={contaEmpresaId}
-              aoMudar={setContaEmpresaId}
-              placeholder="Selecione a conta"
-              opcoes={contasEmpresa.map((c) => ({
-                value: c.id,
-                label: rotuloOpcaoContaEmpresa(c),
-              }))}
-              disabled={contasEmpresa.length === 0}
-            />
-          </div>
+      <div className="grid min-w-0 grid-cols-1 gap-3 rounded-md border bg-muted/10 p-3 sm:grid-cols-2 xl:grid-cols-5">
+        <ComboboxPessoa rotulo="Fornecedor" pessoas={fornecedores} valor={pessoaId}
+          aoMudar={setPessoaId} aoConfirmar={setPessoaId} permitirVazio rotuloVazio="Todos" />
+        <InputPadrao rotulo="Vencimento de" type="date" value={vencimentoDe}
+          onChange={(e) => setVencimentoDe(e.target.value)} />
+        <InputPadrao rotulo="Vencimento até" type="date" value={vencimentoAte}
+          onChange={(e) => setVencimentoAte(e.target.value)} />
+        <InputPadrao rotulo="Emissão de" type="date" value={emissaoDe}
+          onChange={(e) => setEmissaoDe(e.target.value)} />
+        <InputPadrao rotulo="Emissão até" type="date" value={emissaoAte}
+          onChange={(e) => setEmissaoAte(e.target.value)} />
+        <div className="flex items-end">
+          <Button type="button" variant="outline" size="sm" onClick={() => {
+            setPessoaId(''); setVencimentoDe(''); setVencimentoAte(''); setEmissaoDe(''); setEmissaoAte('')
+          }}>Limpar filtros</Button>
         </div>
-        {contasEmpresa.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            Nenhuma conta ativa.{' '}
-            <Link href="/contas" className="text-primary underline-offset-2 hover:underline">
-              Cadastre em Contas
-            </Link>
-            .
-          </p>
-        )}
+      </div>
+
+      <div className="flex min-w-0 flex-wrap items-end justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-end justify-end gap-2 sm:gap-3">
           <div className="flex flex-wrap gap-2">
             <Button
@@ -318,7 +320,7 @@ export function TelaBaixasContasAPagar({ fornecedores, planos, aoBaixar }: Props
         </div>
       </div>
 
-      {erro && (
+      {erro && !avisoAberto && (
         <p className="text-sm text-destructive" role="alert">
           {erro}
         </p>
@@ -356,7 +358,9 @@ export function TelaBaixasContasAPagar({ fornecedores, planos, aoBaixar }: Props
             ) : linhas.length === 0 ? (
               <tr>
                 <td colSpan={12} className="px-3 py-8 text-center text-muted-foreground">
-                  Nenhum título aberto para baixa.
+                  {pessoaId || vencimentoDe || vencimentoAte || emissaoDe || emissaoAte
+                    ? 'Nenhum título encontrado com esses filtros.'
+                    : 'Nenhum título aberto para baixa.'}
                 </td>
               </tr>
             ) : (
@@ -469,6 +473,47 @@ export function TelaBaixasContasAPagar({ fornecedores, planos, aoBaixar }: Props
           </tbody>
         </table>
       </div>
+
+      <Modal
+        aberto={avisoAberto}
+        aoFechar={() => { if (!baixando) setAvisoAberto(false) }}
+        titulo="Baixar selecionados"
+        descricao="Confira a data, a conta e os valores antes de confirmar o pagamento."
+        largura="md"
+        rodape={
+          <>
+            <Button type="button" variant="outline" onClick={() => setAvisoAberto(false)} disabled={baixando}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={() => void confirmarBaixa()}
+              disabled={baixando || !contaEmpresaId || !pagoEm}>
+              {baixando ? 'Baixando…' : 'Confirmar baixa'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <InputPadrao rotulo="Data da baixa" type="date" obrigatorio value={pagoEm}
+            onChange={(e) => setPagoEm(e.target.value)} />
+          <SelectPadrao rotulo="Conta" obrigatorio valor={contaEmpresaId} aoMudar={setContaEmpresaId}
+            placeholder="Selecione a conta" opcoes={contasEmpresa.map((c) => ({
+              value: c.id, label: rotuloOpcaoContaEmpresa(c),
+            }))} disabled={contasEmpresa.length === 0} />
+          {contasEmpresa.length === 0 && (
+            <p className="text-sm text-muted-foreground">Nenhuma conta ativa.{' '}
+              <Link href="/contas" className="text-primary underline-offset-2 hover:underline">Cadastre em Contas</Link>.
+            </p>
+          )}
+          <p className="text-sm">Selecionados: <strong>{totais.qtd}</strong></p>
+          <div className="grid grid-cols-2 gap-2 rounded-md border bg-muted/20 p-3 text-sm">
+            <span>Principal</span><strong className="text-right">{formatarMoedaBr(totais.principal)}</strong>
+            <span>Juros</span><strong className="text-right">{formatarMoedaBr(totais.juros)}</strong>
+            <span>Multa</span><strong className="text-right">{formatarMoedaBr(totais.multa)}</strong>
+            <span>Total</span><strong className="text-right">{formatarMoedaBr(totais.total)}</strong>
+          </div>
+          {erro && <p className="text-sm text-destructive" role="alert">{erro}</p>}
+        </div>
+      </Modal>
 
       <Modal
         aberto={Boolean(detalhe)}

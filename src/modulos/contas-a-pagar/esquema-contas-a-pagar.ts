@@ -67,6 +67,8 @@ export const esquemaFiltroListagemContasPagar = z.object({
   numeroDocumento: z.string().trim().max(60).optional(),
   vencimentoDe: z.string().trim().optional(),
   vencimentoAte: z.string().trim().optional(),
+  emissaoDe: z.string().trim().optional(),
+  emissaoAte: z.string().trim().optional(),
   valorMin: z.coerce.number().finite().optional(),
   valorMax: z.coerce.number().finite().optional(),
   status: z.string().trim().optional(),

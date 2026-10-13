@@ -32,6 +32,12 @@ export async function rotasDeContasAPagar(aplicacao: FastifyInstance) {
     controladorDeContasAPagar.baixar
   )
 
+  aplicacao.post(
+    '/baixas/:baixaId/cancelar',
+    { preHandler: [...auth, middlewareDeAutorizacao('financeiro:edit')] },
+    controladorDeContasAPagar.cancelarBaixa
+  )
+
   aplicacao.get(
     '/:id/anexos',
     { preHandler: [...auth, middlewareDeAutorizacao('financeiro:view')] },

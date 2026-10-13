@@ -38,7 +38,8 @@ import {
   OPCOES_VENDEDOR_ORCAMENTO,
   aplicarClienteNoOrcamento,
   enderecoEntregaDoCliente,
-  entregaNoAto,
+  entregaSemFrete,
+  entregaSemEndereco,
   opcoesTipoEntregaOrcamento,
   formatarEstoque,
   formatarPrecoUnitario,
@@ -137,10 +138,11 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
   const [produtosBusca, setProdutosBusca] = useState<ProdutoOpcao[]>([])
   const [carregandoProdutos, setCarregandoProdutos] = useState(false)
   const [modalFinalizadoAberto, setModalFinalizadoAberto] = useState(false)
-  const noAto = entregaNoAto(orcamento.prazoEntrega)
+  const semFrete = entregaSemFrete(orcamento.prazoEntrega)
+  const semEndereco = entregaSemEndereco(orcamento.prazoEntrega)
   const resumo = useMemo(
-    () => resumirOrcamento(noAto ? { ...orcamento, valorFrete: 0 } : orcamento),
-    [noAto, orcamento]
+    () => resumirOrcamento(semFrete ? { ...orcamento, valorFrete: 0 } : orcamento),
+    [semFrete, orcamento]
   )
   const opcoesTipoEntrega = useMemo(
     () => opcoesTipoEntregaOrcamento(orcamento.prazoEntrega),
@@ -150,7 +152,7 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
     const base: Array<{ id: AbaOrcamento; rotulo: string; contador?: number }> = [
       { id: 'itens', rotulo: 'Itens', contador: resumo.qtdItens },
     ]
-    if (!noAto) {
+    if (!semEndereco) {
       base.push({ id: 'endereco', rotulo: 'Endereço de entrega' })
     }
     base.push(
@@ -160,13 +162,13 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
       { id: 'historico', rotulo: 'Histórico' }
     )
     return base
-  }, [noAto, resumo.qtdItens])
+  }, [semEndereco, resumo.qtdItens])
 
   useEffect(() => {
-    if (noAto && abaAtiva === 'endereco') {
+    if (semEndereco && abaAtiva === 'endereco') {
       setAbaAtiva('itens')
     }
-  }, [noAto, abaAtiva])
+  }, [semEndereco, abaAtiva])
   const clientesFiltrados = useMemo(
     () => filtrarCadastroPessoa(clientes, buscaCliente).slice(0, LIMITE_CLIENTES),
     [clientes, buscaCliente]
@@ -622,7 +624,7 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
               aoMudar={(valor) => atualizar('prazoEntrega', valor)}
               opcoes={opcoesTipoEntrega}
             />
-            {noAto ? null : (
+            {semFrete ? null : (
               <SelectPadrao
                 rotulo="Frete"
                 valor={orcamento.frete}
@@ -945,7 +947,7 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
                 <dt>Desconto total</dt>
                 <dd className="tabular-nums">{formatarMoeda(resumo.descontoTotal)}</dd>
               </div>
-              {noAto ? null : (
+              {semFrete ? null : (
                 <div className="flex justify-between gap-3">
                   <dt>Frete</dt>
                   <dd className="tabular-nums">{formatarMoeda(resumo.frete)}</dd>

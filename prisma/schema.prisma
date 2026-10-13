@@ -507,7 +507,10 @@ model ContaPagarBaixa {
   valorMulta         Decimal          @default(0) @db.Decimal(18, 2)
   valorDesconto      Decimal          @default(0) @db.Decimal(18, 2)
   usuarioId          String?
-  usuario            User?            @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  usuario            User?            @relation("BaixaPagarUsuario", fields: [usuarioId], references: [id], onDelete: SetNull)
+  canceladaEm        DateTime?
+  canceladaPorId     String?
+  canceladaPor       User?             @relation("BaixaPagarCanceladaPor", fields: [canceladaPorId], references: [id], onDelete: SetNull)
   observacao         String?
   contaEmpresaId     String?
   contaEmpresa       ContaEmpresa?    @relation(fields: [contaEmpresaId], references: [id], onDelete: Restrict)
@@ -517,6 +520,7 @@ model ContaPagarBaixa {
   @@index([contaPagarParcelaId])
   @@index([companyId, pagoEm])
   @@index([contaEmpresaId])
+  @@index([canceladaEm])
 }
 
 model ContaReceberCodigoSeq {
@@ -1021,7 +1025,8 @@ model User {
   estoqueMovimentos EstoqueMovimento[]
   contagensEntrada  ContagemEntrada[]
   contagensEntradaRevisoes ContagemEntradaRevisao[]
-  contasPagarBaixas ContaPagarBaixa[]
+  contasPagarBaixas ContaPagarBaixa[] @relation("BaixaPagarUsuario")
+  contasPagarBaixasCanceladas ContaPagarBaixa[] @relation("BaixaPagarCanceladaPor")
   contasPagarAnexos ContaPagarAnexo[]
   contasReceberBaixas ContaReceberBaixa[]
   contasReceberAnexos ContaReceberAnexo[]

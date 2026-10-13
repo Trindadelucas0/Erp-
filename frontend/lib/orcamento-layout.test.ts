@@ -9,6 +9,8 @@ import {
   aplicarClienteNoOrcamento,
   enderecoEntregaDoCliente,
   entregaNoAto,
+  entregaSemFrete,
+  entregaSemEndereco,
   modoClienteDoOrcamento,
   resumirOrcamento,
   somarDiasCivil,
@@ -102,6 +104,19 @@ describe('montarCorpoOrcamento — endereço', () => {
     expect(corpo.endereco).toEqual(enderecoPreenchido)
   })
 
+  it('zera endereço e Frete quando Tipo de entrega é A retirar', () => {
+    const orcamento = {
+      ...orcamentoEmBranco(),
+      prazoEntrega: 'a_retirar',
+      frete: 'fob',
+      valorFrete: 10,
+    }
+    const corpo = montarCorpoOrcamento(orcamento, enderecoPreenchido, '', '')
+    expect(corpo.endereco).toEqual(ENDERECO_ORCAMENTO_VAZIO)
+    expect(corpo.frete).toBe('')
+    expect(corpo.valorFrete).toBe(0)
+  })
+
   it('mantém frete quando Tipo de entrega é Entregar', () => {
     const orcamento = {
       ...orcamentoEmBranco(),
@@ -120,6 +135,24 @@ describe('entregaNoAto', () => {
     expect(entregaNoAto('no_ato')).toBe(true)
     expect(entregaNoAto('a_retirar')).toBe(false)
     expect(entregaNoAto('entregar')).toBe(false)
+  })
+})
+
+describe('entregaSemEndereco', () => {
+  it('reconhece No ato e A retirar, sem incluir Entregar ou Por encomenda', () => {
+    expect(entregaSemEndereco('no_ato')).toBe(true)
+    expect(entregaSemEndereco('a_retirar')).toBe(true)
+    expect(entregaSemEndereco('entregar')).toBe(false)
+    expect(entregaSemEndereco('por_encomenda')).toBe(false)
+  })
+})
+
+describe('entregaSemFrete', () => {
+  it('reconhece No ato e A retirar, sem incluir Entregar ou Por encomenda', () => {
+    expect(entregaSemFrete('no_ato')).toBe(true)
+    expect(entregaSemFrete('a_retirar')).toBe(true)
+    expect(entregaSemFrete('entregar')).toBe(false)
+    expect(entregaSemFrete('por_encomenda')).toBe(false)
   })
 })
 

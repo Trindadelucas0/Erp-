@@ -207,9 +207,17 @@ describe('enderecoPersistido', () => {
     })
   })
 
-  it('mantém endereço nos demais tipos de entrega', () => {
+  it('mantém endereço apenas nos tipos que podem entregar', () => {
     expect(enderecoPersistido('entregar', enderecoPreenchido)).toEqual(enderecoPreenchido)
-    expect(enderecoPersistido('a_retirar', enderecoPreenchido)).toEqual(enderecoPreenchido)
+    expect(enderecoPersistido('por_encomenda', enderecoPreenchido)).toEqual(enderecoPreenchido)
+    expect(enderecoPersistido('a_retirar', enderecoPreenchido)).toEqual({
+      cep: '',
+      logradouro: '',
+      numero: '',
+      bairro: '',
+      cidade: '',
+      uf: '',
+    })
   })
 })
 
@@ -218,8 +226,12 @@ describe('fretePersistido', () => {
     expect(fretePersistido('no_ato', 'cif', 25)).toEqual({ frete: '', valorFrete: 0 })
   })
 
-  it('mantém frete nos demais tipos de entrega', () => {
+  it('zera frete para No ato e A retirar', () => {
+    expect(fretePersistido('a_retirar', 'fob', 10)).toEqual({ frete: '', valorFrete: 0 })
+  })
+
+  it('mantém frete nos tipos que permitem entrega', () => {
     expect(fretePersistido('entregar', 'cif', 25)).toEqual({ frete: 'cif', valorFrete: 25 })
-    expect(fretePersistido('a_retirar', 'fob', 10)).toEqual({ frete: 'fob', valorFrete: 10 })
+    expect(fretePersistido('por_encomenda', 'fob', 10)).toEqual({ frete: 'fob', valorFrete: 10 })
   })
 })

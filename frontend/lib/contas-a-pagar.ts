@@ -132,6 +132,7 @@ export type ContaPagarBaixaItem = {
   valorJuros: number
   valorMulta: number
   valorDesconto: number
+  canceladaEm: string | null
   valorTotalPago: number
   observacao: string | null
   createdAt: string

@@ -271,6 +271,26 @@ async function baixar(
   }
 }
 
+async function cancelarBaixa(companyId: string, usuarioId: string, baixaId: string) {
+  try {
+    const resultado = await repositorioDeContasAPagar.cancelarBaixa(companyId, usuarioId, baixaId)
+    await registrarAuditoria({
+      usuarioId,
+      acao: 'cancelar_baixa',
+      entidade: 'ContaPagarBaixa',
+      entidadeId: baixaId,
+      valoresDepois: resultado,
+    })
+    return { ok: true, ...resultado }
+  } catch (e) {
+    if (e instanceof ErroBaixa) {
+      const status = e.message === 'Baixa não encontrada' ? 404 : 400
+      throw new ErroDaAplicacao(e.message, status)
+    }
+    throw e
+  }
+}
+
 function assertContaPermiteAnexoMutacao(conta: { status: string }) {
   if (conta.status === 'cancelado') {
     throw new ErroDaAplicacao('Não é possível anexar/excluir em título cancelado', 400)
@@ -364,6 +384,7 @@ export const servicoDeContasAPagar = {
   editar,
   excluir,
   baixar,
+  cancelarBaixa,
   listarAnexos,
   enviarAnexo,
   baixarAnexoArquivo,

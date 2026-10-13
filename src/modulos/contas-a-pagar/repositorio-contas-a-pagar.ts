@@ -53,6 +53,7 @@ function mapearBaixa(
     valorJuros: Prisma.Decimal | number
     valorMulta: Prisma.Decimal | number
     valorDesconto: Prisma.Decimal | number
+    canceladaEm: Date | null
     observacao: string | null
     createdAt: Date
     usuario?: { id: string; name: string } | null
@@ -71,6 +72,7 @@ function mapearBaixa(
     valorMulta: multa,
     valorDesconto: desconto,
     valorTotalPago: Math.round((principal + juros + multa - desconto) * 100) / 100,
+    canceladaEm: b.canceladaEm?.toISOString() ?? null,
     observacao: b.observacao,
     createdAt: b.createdAt.toISOString(),
     usuario: b.usuario ? { id: b.usuario.id, name: b.usuario.name } : null,
@@ -109,10 +111,11 @@ export function mapearContaPagar(
   const todasBaixas = parcelas.flatMap((p) =>
     p.baixas.map((b) => ({ ...b, numeroParcela: p.numeroParcela, parcelaId: p.id }))
   )
+  const baixasAtivas = todasBaixas.filter((b) => b.canceladaEm == null)
   const totalJurosBaixas =
-    Math.round(todasBaixas.reduce((acc, b) => acc + b.valorJuros, 0) * 100) / 100
+    Math.round(baixasAtivas.reduce((acc, b) => acc + b.valorJuros, 0) * 100) / 100
   const totalMultaBaixas =
-    Math.round(todasBaixas.reduce((acc, b) => acc + b.valorMulta, 0) * 100) / 100
+    Math.round(baixasAtivas.reduce((acc, b) => acc + b.valorMulta, 0) * 100) / 100
 
   return {
     id: row.id,
@@ -245,6 +248,20 @@ function montarWhere(
   if (Object.keys(vencimentoFiltro).length > 0) {
     where.parcelas = { some: { vencimento: vencimentoFiltro } }
   }
+
+  const emissaoFiltro: Prisma.DateTimeFilter = {}
+  if (filtro.emissaoDe) {
+    const d = new Date(filtro.emissaoDe)
+    if (!Number.isNaN(d.getTime())) emissaoFiltro.gte = d
+  }
+  if (filtro.emissaoAte) {
+    const d = new Date(filtro.emissaoAte)
+    if (!Number.isNaN(d.getTime())) {
+      d.setHours(23, 59, 59, 999)
+      emissaoFiltro.lte = d
+    }
+  }
+  if (Object.keys(emissaoFiltro).length > 0) where.dataEmissao = emissaoFiltro
 
   if (filtro.q) {
     const q = filtro.q.trim()
@@ -740,11 +757,19 @@ export const repositorioDeContasAPagar = {
       take: 500,
     })
     const saida: ReturnType<typeof mapearContaPagar>[] = []
+    const vencimentoDe = filtro.vencimentoDe ? new Date(filtro.vencimentoDe) : null
+    const vencimentoAte = filtro.vencimentoAte ? new Date(filtro.vencimentoAte) : null
+    if (vencimentoAte && !Number.isNaN(vencimentoAte.getTime())) {
+      vencimentoAte.setHours(23, 59, 59, 999)
+    }
     for (const row of rows) {
       const mapped = mapearContaPagar(row)
       for (const p of mapped.parcelas) {
         if (p.status === 'paga' || p.status === 'cancelada') continue
         if (p.saldoDevedor <= 0) continue
+        const vencimento = new Date(p.vencimento)
+        if (vencimentoDe && !Number.isNaN(vencimentoDe.getTime()) && vencimento < vencimentoDe) continue
+        if (vencimentoAte && !Number.isNaN(vencimentoAte.getTime()) && vencimento > vencimentoAte) continue
         saida.push({
           ...mapped,
           parcelaId: p.id,
@@ -947,5 +972,63 @@ export const repositorioDeContasAPagar = {
 
       return resultados
     })
+  },
+
+  async cancelarBaixa(companyId: string, usuarioId: string, baixaId: string) {
+    return clientePrisma.$transaction(async (tx) => {
+      const baixa = await tx.contaPagarBaixa.findFirst({
+        where: { id: baixaId, companyId },
+        include: {
+          parcela: {
+            include: { contaPagar: { select: { id: true, status: true } } },
+          },
+        },
+      })
+      if (!baixa) throw new ErroBaixa('Baixa não encontrada')
+      if (baixa.canceladaEm) throw new ErroBaixa('Esta baixa já foi cancelada')
+      if (baixa.parcela.contaPagar.status === 'cancelado') {
+        throw new ErroBaixa('Não é possível cancelar baixa de título cancelado')
+      }
+
+      const marcada = await tx.contaPagarBaixa.updateMany({
+        where: { id: baixaId, companyId, canceladaEm: null },
+        data: { canceladaEm: new Date(), canceladaPorId: usuarioId },
+      })
+      if (marcada.count !== 1) throw new ErroBaixa('Esta baixa já foi cancelada')
+
+      const baixasAtivas = await tx.contaPagarBaixa.findMany({
+        where: { contaPagarParcelaId: baixa.contaPagarParcelaId, canceladaEm: null },
+        orderBy: [{ pagoEm: 'desc' }, { createdAt: 'desc' }],
+        select: { valorPrincipal: true, pagoEm: true },
+      })
+      const parcela = await tx.contaPagarParcela.findUniqueOrThrow({
+        where: { id: baixa.contaPagarParcelaId },
+        select: { id: true, contaPagarId: true, valor: true },
+      })
+      const valor = decimalParaNumero(parcela.valor)
+      const valorPago = Math.round(
+        baixasAtivas.reduce((total, item) => total + decimalParaNumero(item.valorPrincipal), 0) * 100
+      ) / 100
+      const saldo = Math.max(0, Math.round((valor - valorPago) * 100) / 100)
+      const statusParcela = saldo <= 0.009 ? 'paga' : valorPago <= 0 ? 'aberta' : 'parcial'
+      const pagoEm = statusParcela === 'paga' ? baixasAtivas[0]?.pagoEm ?? null : null
+
+      await tx.contaPagarParcela.update({
+        where: { id: parcela.id },
+        data: { valorPago, status: statusParcela, pagoEm },
+      })
+      const parcelas = await tx.contaPagarParcela.findMany({
+        where: { contaPagarId: parcela.contaPagarId },
+        select: { status: true },
+      })
+      const todasPagas = parcelas.every((item) => item.status === 'paga')
+      const algumaMovida = parcelas.some((item) => item.status === 'parcial' || item.status === 'paga')
+      const statusConta = todasPagas ? 'pago' : algumaMovida ? 'parcial' : 'aberto'
+      await tx.contaPagar.update({
+        where: { id: parcela.contaPagarId },
+        data: { status: statusConta },
+      })
+      return { saldoDevedor: saldo, statusConta, statusParcela }
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
   },
 }

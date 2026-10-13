@@ -83,7 +83,9 @@ export function enderecoPersistido(
   prazoEntrega: string,
   endereco: DadosOrcamento['endereco']
 ): DadosOrcamento['endereco'] {
-  if (prazoEntrega === 'no_ato') return { ...enderecoVazio }
+  if (prazoEntrega === 'no_ato' || prazoEntrega === 'a_retirar') {
+    return { ...enderecoVazio }
+  }
   return endereco
 }
 
@@ -92,6 +94,8 @@ export function fretePersistido(
   frete: string,
   valorFrete: number
 ): { frete: string; valorFrete: number } {
-  if (prazoEntrega === 'no_ato') return { frete: '', valorFrete: 0 }
+  if (prazoEntrega === 'no_ato' || prazoEntrega === 'a_retirar') {
+    return { frete: '', valorFrete: 0 }
+  }
   return { frete, valorFrete }
 }

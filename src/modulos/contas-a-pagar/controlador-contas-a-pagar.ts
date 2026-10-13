@@ -112,6 +112,17 @@ async function baixar(requisicao: FastifyRequest, resposta: FastifyReply) {
   return resposta.status(201).send(resultado)
 }
 
+async function cancelarBaixa(requisicao: FastifyRequest, resposta: FastifyReply) {
+  await exigirAcessoAba(requisicao.idDoUsuario!, PAGE, 'pagamentos')
+  const { baixaId } = requisicao.params as { baixaId: string }
+  const resultado = await servicoDeContasAPagar.cancelarBaixa(
+    companyId(requisicao),
+    requisicao.idDoUsuario!,
+    baixaId
+  )
+  return resposta.send(resultado)
+}
+
 async function listarAnexos(requisicao: FastifyRequest, resposta: FastifyReply) {
   const { id } = requisicao.params as { id: string }
   const anexos = await servicoDeContasAPagar.listarAnexos(companyId(requisicao), id)
@@ -166,6 +177,7 @@ export const controladorDeContasAPagar = {
   editar,
   excluir,
   baixar,
+  cancelarBaixa,
   listarAnexos,
   enviarAnexo,
   baixarAnexo,

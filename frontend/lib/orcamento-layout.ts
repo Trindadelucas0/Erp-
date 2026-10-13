@@ -51,6 +51,14 @@ export function entregaNoAto(prazoEntrega: string): boolean {
   return prazoEntrega === 'no_ato'
 }
 
+export function entregaSemEndereco(prazoEntrega: string): boolean {
+  return prazoEntrega === 'no_ato' || prazoEntrega === 'a_retirar'
+}
+
+export function entregaSemFrete(prazoEntrega: string): boolean {
+  return prazoEntrega === 'no_ato' || prazoEntrega === 'a_retirar'
+}
+
 export function opcoesTipoEntregaOrcamento(valorAtual: string): readonly OpcaoFixa[] {
   if (!valorAtual || OPCOES_TIPO_ENTREGA.some((opcao) => opcao.value === valorAtual)) {
     return OPCOES_TIPO_ENTREGA
