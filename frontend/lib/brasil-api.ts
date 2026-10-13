@@ -37,6 +37,14 @@ export type DadosCnpj = {
   codigoIbge: string
 }
 
+export type BancoBrasilApi = {
+  ispb: string
+  code: string | null
+  name: string
+  fullName: string
+  rotulo: string
+}
+
 function normalizarTelefones(dados: DadosCnpj): DadosCnpj {
   return {
     ...dados,
@@ -54,6 +62,7 @@ function normalizarTelefones(dados: DadosCnpj): DadosCnpj {
 
 const MSG_FALHA_CONSULTA = 'Não foi possível consultar a Receita Federal'
 const _consultasEmAndamento = new Map<string, Promise<DadosCnpj>>()
+let _consultaBancos: Promise<BancoBrasilApi[]> | null = null
 
 function erroConsultaCnpj(erro: unknown): Error {
   if (typeof erro === 'object' && erro !== null && 'response' in erro) {
@@ -82,4 +91,18 @@ export async function buscarDadosCnpj(cnpj: string): Promise<DadosCnpj | null> {
 
   _consultasEmAndamento.set(limpo, promessa)
   return promessa
+}
+
+export async function listarBancos(): Promise<BancoBrasilApi[]> {
+  if (_consultaBancos) return _consultaBancos
+
+  _consultaBancos = clienteHttp
+    .get<{ bancos: BancoBrasilApi[] }>('/integracoes/bancos')
+    .then(({ data }) => data.bancos ?? [])
+    .catch((erro) => {
+      _consultaBancos = null
+      throw erro
+    })
+
+  return _consultaBancos
 }

@@ -122,6 +122,12 @@ export const PAGINAS_VINCULAVEIS: readonly PaginaDoSistema[] = [
     exibirNoMenu: false,
   },
   {
+    chave: 'contas',
+    caminho: '/contas',
+    rotulo: 'Contas',
+    modulo: 'financeiro',
+  },
+  {
     chave: 'contas-a-pagar',
     caminho: '/contas-a-pagar',
     rotulo: 'Contas a Pagar',
@@ -134,9 +140,33 @@ export const PAGINAS_VINCULAVEIS: readonly PaginaDoSistema[] = [
     modulo: 'financeiro',
   },
   {
-    chave: 'contas',
-    caminho: '/contas',
-    rotulo: 'Contas',
+    chave: 'fluxo-de-caixa',
+    caminho: '/fluxo-de-caixa',
+    rotulo: 'Fluxo de caixa',
+    modulo: 'financeiro',
+  },
+  {
+    chave: 'conciliacao-bancaria',
+    caminho: '/conciliacao-bancaria',
+    rotulo: 'Conciliação bancária',
+    modulo: 'financeiro',
+  },
+  {
+    chave: 'movimentacoes-financeiras',
+    caminho: '/movimentacoes-financeiras',
+    rotulo: 'Movimentações',
+    modulo: 'financeiro',
+  },
+  {
+    chave: 'extratos-bancarios',
+    caminho: '/extratos-bancarios',
+    rotulo: 'Extratos',
+    modulo: 'financeiro',
+  },
+  {
+    chave: 'relatorios-financeiros',
+    caminho: '/relatorios-financeiros',
+    rotulo: 'Relatórios',
     modulo: 'financeiro',
   },
   {

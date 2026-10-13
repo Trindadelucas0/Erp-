@@ -94,17 +94,48 @@ export const esquemaDeEnderecoItem = z.object({
     .refine((v) => !v || /^\d{7}$/.test(v), 'Código IBGE deve ter 7 dígitos'),
 })
 
-export const esquemaDeDadosBancarioItem = z.object({
-  apelido: textoCadastroOpcional(100),
-  banco: textoCadastroOpcional(100),
-  agencia: z.string().max(20).optional(),
-  conta: z.string().max(30).optional(),
-  tipoConta: z.enum(['corrente', 'poupanca']).optional(),
-  pix: z.string().max(200).optional(),
-  favorecido: textoCadastroOpcional(200),
-  documentoFavorecido: z.string().max(18).optional(),
-  principal: z.boolean().optional(),
-})
+export const esquemaDeDadosBancarioItem = z
+  .object({
+    apelido: textoCadastroOpcional(100),
+    banco: textoCadastroOpcional(180),
+    agencia: z.string().max(20).optional(),
+    conta: z.string().max(30).optional(),
+    digitoConta: z
+      .string()
+      .trim()
+      .regex(/^[0-9Xx]$/, 'Dígito inválido (use 0-9 ou X)')
+      .transform((v) => v.toUpperCase())
+      .optional(),
+    tipoConta: z.enum(['corrente', 'poupanca']).optional(),
+    pix: z.string().max(200).optional(),
+    favorecido: textoCadastroOpcional(200),
+    documentoFavorecido: z.string().max(18).optional(),
+    principal: z.boolean().optional(),
+  })
+  .superRefine((dados, ctx) => {
+    const temAlgumCampo = [
+      dados.apelido,
+      dados.banco,
+      dados.agencia,
+      dados.conta,
+      dados.digitoConta,
+      dados.pix,
+      dados.favorecido,
+      dados.documentoFavorecido,
+    ].some((valor) => Boolean(valor?.trim()))
+    if (!temAlgumCampo) return
+
+    for (const [campo, mensagem] of [
+      ['banco', 'Banco é obrigatório'],
+      ['agencia', 'Agência é obrigatória'],
+      ['conta', 'Conta é obrigatória'],
+      ['digitoConta', 'Dígito da conta é obrigatório'],
+    ] as const) {
+      if (!dados[campo]?.trim()) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [campo], message: mensagem })
+      }
+    }
+  })
 
 const camposArrays = {
   contatos: z.array(esquemaDeContatoItem).optional(),

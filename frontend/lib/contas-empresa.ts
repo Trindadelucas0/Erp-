@@ -13,19 +13,23 @@ export type ContaEmpresaLista = {
   ativo: boolean
 }
 
-export const OPCOES_BANCO_CONTA = [
-  { value: 'itau', label: 'Itaú' },
-  { value: 'bradesco', label: 'Bradesco' },
-  { value: 'banco_do_brasil', label: 'Banco do Brasil' },
-  { value: 'santander', label: 'Santander' },
-  { value: 'sicoob', label: 'Sicoob' },
-  { value: 'c6', label: 'C6' },
-] as const
-
 export const OPCOES_TIPO_CONTA = [
   { value: 'bancaria', label: 'Bancária' },
   { value: 'caixa', label: 'Caixa' },
 ] as const
+
+const ROTULOS_BANCO_LEGADO: Record<string, string> = {
+  itau: 'Itaú',
+  bradesco: 'Bradesco',
+  banco_do_brasil: 'Banco do Brasil',
+  santander: 'Santander',
+  sicoob: 'Sicoob',
+  c6: 'C6',
+}
+
+export function bancoSelecionadoBrasilApi(valor: string): boolean {
+  return /^(?:\d{3}|ISPB \d+) - .+/.test(valor.trim())
+}
 
 export function rotuloTipoConta(tipo: string): string {
   if (tipo === 'caixa') return 'Caixa'
@@ -44,4 +48,12 @@ export function formatarAgenciaExibicao(
 export function formatarContaExibicao(conta: string | null, digito: string | null): string {
   if (!conta?.trim()) return '—'
   return digito?.trim() ? `${conta}-${digito}` : conta
+}
+
+export function rotuloOpcaoContaEmpresa(item: ContaEmpresaLista): string {
+  if (item.tipo === 'caixa') return item.nome
+  const banco = item.banco ? ROTULOS_BANCO_LEGADO[item.banco] ?? item.banco : ''
+  const cc = formatarContaExibicao(item.conta, item.digitoConta)
+  if (banco && cc !== '—') return `${item.nome} · ${banco} · CC ${cc}`
+  return item.nome
 }

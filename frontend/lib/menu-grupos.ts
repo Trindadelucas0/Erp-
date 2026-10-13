@@ -72,7 +72,16 @@ export const GRUPOS_DO_MENU: readonly GrupoDoMenu[] = [
   {
     id: 'financeiro',
     rotulo: 'Financeiro',
-    chaves: ['contas-a-pagar', 'contas-a-receber', 'contas'],
+    chaves: [
+      'contas',
+      'contas-a-pagar',
+      'contas-a-receber',
+      'fluxo-de-caixa',
+      'conciliacao-bancaria',
+      'movimentacoes-financeiras',
+      'extratos-bancarios',
+      'relatorios-financeiros',
+    ],
   },
 ]
 
@@ -102,6 +111,11 @@ const ICONES_POR_CHAVE: Record<string, LucideIcon> = {
   'contas-a-pagar': Banknote,
   'contas-a-receber': CircleDollarSign,
   contas: Landmark,
+  'fluxo-de-caixa': CircleDollarSign,
+  'conciliacao-bancaria': Landmark,
+  'movimentacoes-financeiras': ScrollText,
+  'extratos-bancarios': FileText,
+  'relatorios-financeiros': FileText,
   pendencias: Bell,
   configuracoes: Settings,
   usuarios: UserCog,

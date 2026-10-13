@@ -288,9 +288,12 @@ function gerarPendenciasDaAba(abaId: string, form: FormTransportadora): string[]
 
 function erroDadosBancariosTransp(dados: DadosBancarioForm[]): string | undefined {
   for (const db of dados) {
-    const temAlgum = [db.apelido, db.banco, db.agencia, db.conta, db.pix, db.favorecido, db.documentoFavorecido].some((v) => v.trim().length > 0)
-    if (temAlgum && (!db.banco.trim() || !db.agencia.trim() || !db.conta.trim())) {
-      return 'contas parcialmente preenchidas devem ter banco, agência e conta'
+    const temAlgum = [db.apelido, db.banco, db.agencia, db.conta, db.digitoConta, db.pix, db.favorecido, db.documentoFavorecido].some((v) => v.trim().length > 0)
+    if (
+      temAlgum &&
+      (!db.banco.trim() || !db.agencia.trim() || !db.conta.trim() || !db.digitoConta.trim())
+    ) {
+      return 'contas parcialmente preenchidas devem ter banco, agência, conta e dígito'
     }
   }
   return undefined
@@ -873,10 +876,10 @@ function ConteudoDaPaginaDeTransportadoras() {
       ? { enderecos: form.enderecos.map((e) => ({ ...e, cep: e.cep.replace(/\D/g, '') || undefined })) }
       : { cep: form.cep || undefined, logradouro: form.logradouro || undefined, numero: form.numero || undefined, complemento: form.complemento || undefined, bairro: form.bairro || undefined, cidade: form.cidade || undefined, estado: form.estado || undefined, codigoIbge: form.codigoIbge || undefined }
     const dadosBancariosPayload = form.dadosBancarios.filter((db) =>
-      [db.apelido, db.banco, db.agencia, db.conta, db.pix, db.favorecido, db.documentoFavorecido].some((v) => v.trim())
+      [db.apelido, db.banco, db.agencia, db.conta, db.digitoConta, db.pix, db.favorecido, db.documentoFavorecido].some((v) => v.trim())
     ).map((db) => ({
       apelido: db.apelido || undefined, banco: db.banco || undefined, agencia: db.agencia || undefined,
-      conta: db.conta || undefined, tipoConta: db.tipoConta || undefined, pix: db.pix || undefined,
+      conta: db.conta || undefined, digitoConta: db.digitoConta || undefined, tipoConta: db.tipoConta || undefined, pix: db.pix || undefined,
       favorecido: db.favorecido || undefined, documentoFavorecido: normalizarDocumento(db.documentoFavorecido) || undefined,
       principal: db.principal,
     }))

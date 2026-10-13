@@ -19,6 +19,7 @@ const includeDetalhe = {
         orderBy: { pagoEm: 'desc' as const },
         include: {
           usuario: { select: { id: true, name: true } },
+          contaEmpresa: { select: { id: true, nome: true } },
         },
       },
     },
@@ -53,6 +54,7 @@ function mapearBaixa(
     observacao: string | null
     createdAt: Date
     usuario?: { id: string; name: string } | null
+    contaEmpresa?: { id: string; nome: string } | null
   }
 ) {
   const principal = decimalParaNumero(b.valorPrincipal)
@@ -70,6 +72,7 @@ function mapearBaixa(
     observacao: b.observacao,
     createdAt: b.createdAt.toISOString(),
     usuario: b.usuario ? { id: b.usuario.id, name: b.usuario.name } : null,
+    conta: b.contaEmpresa ? { id: b.contaEmpresa.id, nome: b.contaEmpresa.nome } : null,
   }
 }
 
@@ -550,6 +553,7 @@ export const repositorioDeContasAReceber = {
       where,
       include: {
         usuario: { select: { id: true, name: true } },
+        contaEmpresa: { select: { id: true, nome: true } },
         parcela: {
           include: {
             contaReceber: {
@@ -589,6 +593,7 @@ export const repositorioDeContasAReceber = {
     companyId: string,
     usuarioId: string,
     pagoEm: Date,
+    contaEmpresaId: string,
     itens: Array<{
       parcelaId: string
       valorPrincipal: number
@@ -642,6 +647,7 @@ export const repositorioDeContasAReceber = {
           data: {
             contaReceberParcelaId: parcela.id,
             companyId,
+            contaEmpresaId,
             pagoEm,
             valorPrincipal: item.valorPrincipal,
             valorJuros: item.valorJuros,

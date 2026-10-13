@@ -21,10 +21,21 @@ describe('esquemaDeCriacaoDeConta', () => {
     expect(gravacao.conta).toBeNull()
   })
 
-  it('bancária exige banco, agência e conta', () => {
+  it('bancária exige banco, agência, conta e dígito da conta', () => {
     const parse = esquemaDeCriacaoDeConta.safeParse({
       nome: 'Itaú matriz',
       tipo: 'bancaria',
+    })
+    expect(parse.success).toBe(false)
+  })
+
+  it('bancária recusa conta sem dígito', () => {
+    const parse = esquemaDeCriacaoDeConta.safeParse({
+      nome: 'Itaú matriz',
+      tipo: 'bancaria',
+      banco: '341 - ITAÚ UNIBANCO S.A.',
+      agencia: '1234',
+      conta: '99887',
     })
     expect(parse.success).toBe(false)
   })
@@ -33,7 +44,7 @@ describe('esquemaDeCriacaoDeConta', () => {
     const parse = esquemaDeCriacaoDeConta.safeParse({
       nome: 'Itaú matriz',
       tipo: 'bancaria',
-      banco: 'itau',
+      banco: '341 - ITAÚ UNIBANCO S.A.',
       agencia: '1234',
       digitoAgencia: 'x',
       conta: '99887',

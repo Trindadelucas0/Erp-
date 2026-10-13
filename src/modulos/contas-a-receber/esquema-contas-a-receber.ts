@@ -60,6 +60,7 @@ export const esquemaItemBaixa = z.object({
 })
 
 export const esquemaBaixaLote = z.object({
+  contaId: z.string().uuid('Conta inválida'),
   pagoEm: dataIso.nullable().optional(),
   itens: z.array(esquemaItemBaixa).min(1, 'Selecione ao menos um título'),
 })

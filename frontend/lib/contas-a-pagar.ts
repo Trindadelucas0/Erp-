@@ -136,6 +136,7 @@ export type ContaPagarBaixaItem = {
   observacao: string | null
   createdAt: string
   usuario: { id: string; name: string } | null
+  conta: { id: string; nome: string } | null
   numeroParcela?: number
   parcelaId?: string
 }

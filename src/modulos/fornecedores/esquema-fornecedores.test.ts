@@ -1,8 +1,31 @@
 import { describe, it, expect } from 'vitest'
 import {
   esquemaDeCriacaoDeFornecedor,
+  esquemaDeDadosBancarioItem,
   esquemaDeEdicaoDeFornecedor,
-} from './esquema-fornecedores'
+} from './esquema-fornecedores.js'
+
+describe('Dados bancários do fornecedor', () => {
+  it('exige dígito em conta preenchida', () => {
+    const resultado = esquemaDeDadosBancarioItem.safeParse({
+      banco: '001 - BCO DO BRASIL S.A.',
+      agencia: '1234',
+      conta: '98765',
+    })
+    expect(resultado.success).toBe(false)
+  })
+
+  it('aceita e normaliza o dígito da conta', () => {
+    const resultado = esquemaDeDadosBancarioItem.safeParse({
+      banco: '001 - BCO DO BRASIL S.A.',
+      agencia: '1234',
+      conta: '98765',
+      digitoConta: 'x',
+    })
+    expect(resultado.success).toBe(true)
+    if (resultado.success) expect(resultado.data.digitoConta).toBe('X')
+  })
+})
 
 describe('Esquema de fornecedores — prestador de serviço', () => {
   const basePF = {

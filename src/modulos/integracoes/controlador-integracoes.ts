@@ -10,6 +10,12 @@ async function consultarCnpj(requisicao: FastifyRequest, resposta: FastifyReply)
   return resposta.send(dados)
 }
 
+async function listarBancos(_requisicao: FastifyRequest, resposta: FastifyReply) {
+  const bancos = await servicoBrasilApi.listarBancos()
+  return resposta.send({ bancos })
+}
+
 export const controladorDeIntegracoes = {
   consultarCnpj,
+  listarBancos,
 }

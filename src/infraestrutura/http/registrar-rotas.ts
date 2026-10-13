@@ -41,6 +41,7 @@ import { rotasDeRequisicoesWms } from '../../modulos/requisicoes-wms/rotas-requi
 import { rotasJobs } from '../../modulos/jobs/rotas-jobs.js'
 import { rotasDeUploads } from './rotas-uploads.js'
 import { rotasDoPortalFornecedor } from '../../modulos/portal-fornecedor/rotas-portal-fornecedor.js'
+import { rotasConciliacaoBancaria } from '../../modulos/conciliacao-bancaria/rotas-conciliacao-bancaria.js'
 
 /**
  * Conecta cada módulo às suas rotas HTTP.
@@ -62,6 +63,7 @@ export async function registrarRotas(aplicacao: FastifyInstance): Promise<void> 
   await aplicacao.register(rotasDeContasAPagar, { prefix: '/contas-a-pagar' })
   await aplicacao.register(rotasDeContasAReceber, { prefix: '/contas-a-receber' })
   await aplicacao.register(rotasDeContas, { prefix: '/contas' })
+  await aplicacao.register(rotasConciliacaoBancaria)
   await aplicacao.register(rotasDePendencias, { prefix: '/pendencias' })
   await aplicacao.register(rotasDeEnderecosWms, { prefix: '/enderecos-wms' })
   await aplicacao.register(rotasDeEstruturaWms, { prefix: '/estrutura-wms' })

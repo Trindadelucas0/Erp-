@@ -141,6 +141,7 @@ export function TelaHistoricoBaixasContasAReceber({ recarregarToken = 0 }: Props
           <thead className="bg-muted/50 text-muted-foreground">
             <tr>
               <th className="px-3 py-2 font-medium">Pago em</th>
+              <th className="px-3 py-2 font-medium">Conta</th>
               <th className="px-3 py-2 font-medium">Código</th>
               <th className="px-3 py-2 font-medium">Cliente</th>
               <th className="px-3 py-2 font-medium">Documento</th>
@@ -154,10 +155,10 @@ export function TelaHistoricoBaixasContasAReceber({ recarregarToken = 0 }: Props
           </thead>
           <tbody>
             {carregando ? (
-              <LinhasSkeletonTabela colunas={10} linhas={6} />
+              <LinhasSkeletonTabela colunas={11} linhas={6} />
             ) : linhas.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">
+                <td colSpan={11} className="px-3 py-8 text-center text-muted-foreground">
                   Nenhum recebimento encontrado.
                 </td>
               </tr>
@@ -169,6 +170,7 @@ export function TelaHistoricoBaixasContasAReceber({ recarregarToken = 0 }: Props
                   onClick={() => void abrirDetalhe(linha.contaReceberId)}
                 >
                   <td className="px-3 py-2">{formatarDataBr(linha.pagoEm)}</td>
+                  <td className="px-3 py-2">{linha.conta?.nome ?? '—'}</td>
                   <td className="px-3 py-2 font-medium">
                     {linha.codigoExibicao ?? formatarCodigoContaReceber(linha.codigo)}
                   </td>

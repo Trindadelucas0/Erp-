@@ -1,5 +1,6 @@
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { registrarAuditoria } from '../../compartilhado/auditoria/registrar-auditoria.js'
+import { servicoBrasilApi } from '../integracoes/servico-brasil-api.js'
 import type { DadosParaCriarConta, DadosParaEditarConta } from './esquema-contas.js'
 import { normalizarDadosContaParaGravacao } from './esquema-contas.js'
 import { repositorioDeContas } from './repositorio-contas.js'
@@ -36,6 +37,15 @@ async function garantirUnicidade(
   }
 }
 
+async function garantirBancoValido(
+  dados: ReturnType<typeof normalizarDadosContaParaGravacao>
+) {
+  if (dados.tipo !== 'bancaria' || !dados.banco) return
+  if (!(await servicoBrasilApi.bancoEhValido(dados.banco))) {
+    throw new ErroDaAplicacao('Selecione o banco na lista', 400)
+  }
+}
+
 async function listar(
   companyId: string,
   filtro: { q?: string; incluirInativos?: boolean; somenteAtivos?: boolean }
@@ -59,6 +69,7 @@ async function obterContaAtivaParaBaixa(companyId: string, contaId: string) {
 
 async function criar(companyId: string, dados: DadosParaCriarConta, usuarioId: string) {
   const normalizado = normalizarDadosContaParaGravacao(dados)
+  await garantirBancoValido(normalizado)
   await garantirUnicidade(companyId, normalizado)
   const registro = await repositorioDeContas.criar(companyId, normalizado)
 
@@ -83,6 +94,7 @@ async function editar(
   if (!existente) throw new ErroDaAplicacao('Conta não encontrada', 404)
 
   const normalizado = normalizarDadosContaParaGravacao(dados)
+  await garantirBancoValido(normalizado)
   await garantirUnicidade(companyId, normalizado, id)
   const registro = await repositorioDeContas.atualizar(companyId, id, normalizado)
   if (!registro) throw new ErroDaAplicacao('Conta não encontrada', 404)

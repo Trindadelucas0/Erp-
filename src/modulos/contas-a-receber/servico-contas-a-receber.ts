@@ -171,6 +171,7 @@ async function baixar(
   companyId: string,
   usuarioId: string,
   dados: {
+    contaId: string
     pagoEm?: string | null
     itens: Array<{
       parcelaId: string
@@ -188,11 +189,15 @@ async function baixar(
 
   const pagoEm = parseData(dados.pagoEm ?? null) ?? new Date()
 
+  const { servicoDeContas } = await import('../contas/servico-contas.js')
+  await servicoDeContas.obterContaAtivaParaBaixa(companyId, dados.contaId)
+
   try {
     const resultados = await repositorioDeContasAReceber.executarBaixas(
       companyId,
       usuarioId,
       pagoEm,
+      dados.contaId,
       dados.itens.map((i) => ({
         parcelaId: i.parcelaId,
         valorPrincipal: i.valorPrincipal,

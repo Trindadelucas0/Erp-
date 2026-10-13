@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import { BANCOS_BOLETO } from '../parametros-boleto/esquema-parametros-boleto.js'
 
 export const TIPOS_CONTA_EMPRESA = ['bancaria', 'caixa'] as const
 
@@ -9,6 +8,13 @@ const digitoOpcional = z
   .max(1, 'Dígito deve ter no caractere')
   .regex(/^[0-9Xx]$/, 'Dígito inválido (use 0-9 ou X)')
   .transform((v) => v.toUpperCase())
+  .nullable()
+  .optional()
+
+const bancoOpcional = z
+  .string()
+  .trim()
+  .max(180, 'Banco deve ter no máximo 180 caracteres')
   .nullable()
   .optional()
 
@@ -32,7 +38,7 @@ const camposBase = {
     .min(2, 'Nome deve ter pelo menos 2 caracteres')
     .max(80, 'Nome deve ter no máximo 80 caracteres'),
   tipo: z.enum(TIPOS_CONTA_EMPRESA, { required_error: 'Tipo é obrigatório' }),
-  banco: z.enum(BANCOS_BOLETO).nullable().optional(),
+  banco: bancoOpcional,
   agencia: z
     .string()
     .trim()
@@ -49,6 +55,8 @@ const camposBase = {
   digitoConta: digitoOpcional,
   limiteChequeEspecial: limiteOpcional,
 }
+
+const esquemaCorpoContaBase = z.object(camposBase)
 
 function validarPorTipo(
   data: z.infer<typeof esquemaCorpoContaBase>,
@@ -73,9 +81,14 @@ function validarPorTipo(
       path: ['conta'],
     })
   }
+  if (!data.digitoConta?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Dígito da conta é obrigatório',
+      path: ['digitoConta'],
+    })
+  }
 }
-
-const esquemaCorpoContaBase = z.object(camposBase)
 
 export const esquemaDeCriacaoDeConta = esquemaCorpoContaBase
   .extend({ ativo: z.boolean().optional().default(true) })

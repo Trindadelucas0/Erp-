@@ -6,9 +6,11 @@ import { decodificarEntidadesXml } from '../../compartilhado/normalizacao/entida
 import { normalizarCnpj, validarCnpj } from '../../compartilhado/validacoes/documentos.js'
 
 const URL_BRASIL_API = 'https://brasilapi.com.br/api/cnpj/v1'
+const URL_BANCOS_BRASIL_API = 'https://brasilapi.com.br/api/banks/v1'
 const URL_OPEN_CNPJ = 'https://api.opencnpj.org'
 const URL_VIA_CEP = 'https://viacep.com.br/ws'
 const TIMEOUT_MS = 8_000
+const CACHE_BANCOS_MS = 24 * 60 * 60 * 1_000
 const MSG_NAO_ENCONTRADO = 'CNPJ não encontrado na Receita Federal'
 const MSG_FALHA_CONSULTA = 'Não foi possível consultar a Receita Federal'
 const HEADERS = {
@@ -43,6 +45,23 @@ export type DadosCnpj = {
   estado: string
   codigoIbge: string
 }
+
+export type BancoBrasilApi = {
+  ispb: string
+  code: string | null
+  name: string
+  fullName: string
+  rotulo: string
+}
+
+type RespostaBancoBrasilApi = {
+  ispb?: string
+  code?: number | null
+  name?: string
+  fullName?: string
+}
+
+let cacheBancos: { bancos: BancoBrasilApi[]; atualizadoEm: number } | null = null
 
 type CnaeSecundarioBrasilApi = {
   codigo?: number
@@ -306,6 +325,59 @@ async function buscarDadosCnpj(nums: string): Promise<DadosCnpj> {
   }
 }
 
+function mapearBanco(item: RespostaBancoBrasilApi): BancoBrasilApi | null {
+  const ispb = String(item.ispb ?? '').trim()
+  const name = decodificarEntidadesXml(String(item.name ?? '').trim())
+  const fullName = decodificarEntidadesXml(String(item.fullName ?? '').trim())
+  if (!ispb || (!name && !fullName)) return null
+
+  const code =
+    typeof item.code === 'number' && Number.isInteger(item.code)
+      ? String(item.code).padStart(3, '0')
+      : null
+  const nomeExibicao = name || fullName
+
+  return {
+    ispb,
+    code,
+    name,
+    fullName,
+    rotulo: code ? `${code} - ${nomeExibicao}` : `ISPB ${ispb} - ${nomeExibicao}`,
+  }
+}
+
+async function buscarBancosBrasilApi(): Promise<BancoBrasilApi[]> {
+  try {
+    const { status, corpo } = await fetchJson(URL_BANCOS_BRASIL_API)
+    if (status !== 200 || !Array.isArray(corpo)) {
+      throw new ErroDaAplicacao('Não foi possível consultar os bancos', 502)
+    }
+
+    const bancos = corpo
+      .map((item) => mapearBanco(item as RespostaBancoBrasilApi))
+      .filter((item): item is BancoBrasilApi => item !== null)
+      .sort((a, b) => a.rotulo.localeCompare(b.rotulo, 'pt-BR'))
+
+    if (bancos.length === 0) {
+      throw new ErroDaAplicacao('Não foi possível consultar os bancos', 502)
+    }
+
+    cacheBancos = { bancos, atualizadoEm: Date.now() }
+    return bancos
+  } catch (erro) {
+    if (cacheBancos) return cacheBancos.bancos
+    if (erro instanceof ErroDaAplicacao) throw erro
+    throw new ErroDaAplicacao('Não foi possível consultar os bancos', 502)
+  }
+}
+
+async function listarBancos(): Promise<BancoBrasilApi[]> {
+  if (cacheBancos && Date.now() - cacheBancos.atualizadoEm < CACHE_BANCOS_MS) {
+    return cacheBancos.bancos
+  }
+  return buscarBancosBrasilApi()
+}
+
 export const servicoBrasilApi = {
   async consultarCnpj(documento: string): Promise<DadosCnpj> {
     const limpo = normalizarCnpj(documento)
@@ -313,5 +385,10 @@ export const servicoBrasilApi = {
       throw new ErroDaAplicacao('CNPJ inválido', 400)
     }
     return buscarDadosCnpj(limpo)
+  },
+  listarBancos,
+  async bancoEhValido(rotulo: string): Promise<boolean> {
+    const bancos = await listarBancos()
+    return bancos.some((banco) => banco.rotulo === rotulo)
   },
 }

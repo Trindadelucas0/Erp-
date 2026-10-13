@@ -26,6 +26,12 @@ import {
   formatarMoedaBr,
   tituloVencido,
 } from '@/lib/contas-a-receber'
+import { SelectPadrao } from '@/components/ui/select-padrao'
+import {
+  type ContaEmpresaLista,
+  rotuloOpcaoContaEmpresa,
+} from '@/lib/contas-empresa'
+import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
 const TH = 'px-2 py-1.5 font-medium whitespace-nowrap'
@@ -71,9 +77,27 @@ export function TelaBaixasContasAReceber({ clientes, planos, aoBaixar }: Props) 
   const [erro, setErro] = useState<string | null>(null)
   const [baixando, setBaixando] = useState(false)
   const [pagoEm, setPagoEm] = useState(() => new Date().toISOString().slice(0, 10))
+  const [contaEmpresaId, setContaEmpresaId] = useState('')
+  const [contasEmpresa, setContasEmpresa] = useState<ContaEmpresaLista[]>([])
   const [detalhe, setDetalhe] = useState<{ conta: ContaReceberLista; form: FormContaReceber } | null>(
     null
   )
+
+  const carregarContasEmpresa = useCallback(async () => {
+    try {
+      const { data } = await clienteHttp.get<{ contas: ContaEmpresaLista[] }>('/contas', {
+        params: { somenteAtivos: true },
+      })
+      const lista = data.contas ?? []
+      setContasEmpresa(lista)
+      setContaEmpresaId((atual) => {
+        if (atual && lista.some((c) => c.id === atual)) return atual
+        return lista.length === 1 ? lista[0].id : atual
+      })
+    } catch {
+      setContasEmpresa([])
+    }
+  }, [])
 
   const carregar = useCallback(async () => {
     setCarregando(true)
@@ -104,7 +128,8 @@ export function TelaBaixasContasAReceber({ clientes, planos, aoBaixar }: Props) 
 
   useEffect(() => {
     void carregar()
-  }, [carregar])
+    void carregarContasEmpresa()
+  }, [carregar, carregarContasEmpresa])
 
   const selecionadas = useMemo(() => linhas.filter((l) => l.selecionado), [linhas])
 
@@ -142,6 +167,10 @@ export function TelaBaixasContasAReceber({ clientes, planos, aoBaixar }: Props) 
       setErro('Selecione ao menos um título.')
       return
     }
+    if (!contaEmpresaId) {
+      setErro('Selecione a conta de recebimento.')
+      return
+    }
     for (const l of selecionadas) {
       const principal = parseNum(l.valorPrincipal)
       const saldo = l.conta.saldoDevedor ?? 0
@@ -161,6 +190,7 @@ export function TelaBaixasContasAReceber({ clientes, planos, aoBaixar }: Props) 
     setErro(null)
     try {
       await clienteHttp.post('/contas-a-receber/baixas', {
+        contaId: contaEmpresaId,
         pagoEm: pagoEm || null,
         itens: selecionadas.map((l) => ({
           parcelaId: l.parcelaId,
@@ -188,14 +218,39 @@ export function TelaBaixasContasAReceber({ clientes, planos, aoBaixar }: Props) 
       </div>
 
       <div className="flex min-w-0 flex-wrap items-end justify-between gap-3">
-        <div className="min-w-[10rem] shrink-0">
-          <InputPadrao
-            rotulo="Data recebimento"
-            type="date"
-            value={pagoEm}
-            onChange={(e) => setPagoEm(e.target.value)}
-          />
+        <div className="flex min-w-0 flex-wrap items-end gap-3">
+          <div className="min-w-[10rem] shrink-0">
+            <InputPadrao
+              rotulo="Data recebimento"
+              type="date"
+              value={pagoEm}
+              onChange={(e) => setPagoEm(e.target.value)}
+            />
+          </div>
+          <div className="min-w-[14rem] max-w-md flex-1 shrink-0">
+            <SelectPadrao
+              rotulo="Conta"
+              obrigatorio
+              valor={contaEmpresaId}
+              aoMudar={setContaEmpresaId}
+              placeholder="Selecione a conta"
+              opcoes={contasEmpresa.map((c) => ({
+                value: c.id,
+                label: rotuloOpcaoContaEmpresa(c),
+              }))}
+              disabled={contasEmpresa.length === 0}
+            />
+          </div>
         </div>
+        {contasEmpresa.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            Nenhuma conta ativa.{' '}
+            <Link href="/contas" className="text-primary underline-offset-2 hover:underline">
+              Cadastre em Contas
+            </Link>
+            .
+          </p>
+        )}
         <div className="flex min-w-0 flex-wrap items-end justify-end gap-2 sm:gap-3">
           <div className="flex flex-wrap gap-2">
             <Button
@@ -253,7 +308,7 @@ export function TelaBaixasContasAReceber({ clientes, planos, aoBaixar }: Props) 
             <Button
               type="button"
               size="sm"
-              disabled={baixando || selecionadas.length === 0}
+              disabled={baixando || selecionadas.length === 0 || !contaEmpresaId}
               onClick={() => void baixarSelecionados()}
             >
               {baixando ? 'Recebendo…' : `Receber selecionados (${selecionadas.length})`}

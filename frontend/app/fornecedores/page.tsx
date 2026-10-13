@@ -367,6 +367,7 @@ function contaBancariaTemAlgumCampo(db: DadosBancarioForm): boolean {
     db.banco,
     db.agencia,
     db.conta,
+    db.digitoConta,
     db.pix,
     db.favorecido,
     db.documentoFavorecido,
@@ -376,8 +377,13 @@ function contaBancariaTemAlgumCampo(db: DadosBancarioForm): boolean {
 function validarDadosBancarios(dados: DadosBancarioForm[]): string | undefined {
   for (const db of dados) {
     if (!contaBancariaTemAlgumCampo(db)) continue
-    if (!db.banco.trim() || !db.agencia.trim() || !db.conta.trim()) {
-      return 'contas parcialmente preenchidas devem ter banco, agência e conta'
+    if (
+      !db.banco.trim() ||
+      !db.agencia.trim() ||
+      !db.conta.trim() ||
+      !db.digitoConta.trim()
+    ) {
+      return 'contas parcialmente preenchidas devem ter banco, agência, conta e dígito'
     }
   }
   return undefined
@@ -1236,6 +1242,7 @@ function ConteudoDaPaginaDeFornecedores() {
         banco: db.banco || undefined,
         agencia: db.agencia || undefined,
         conta: db.conta || undefined,
+        digitoConta: db.digitoConta || undefined,
         tipoConta: db.tipoConta || undefined,
         pix: db.pix || undefined,
         favorecido: db.favorecido || undefined,

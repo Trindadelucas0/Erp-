@@ -123,3 +123,38 @@ describe('servicoBrasilApi.consultarCnpj', () => {
     expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2)
   })
 })
+
+describe('servicoBrasilApi.listarBancos', () => {
+  it('normaliza código COMPE e usa ISPB quando o código é nulo', async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(200, [
+        {
+          ispb: '00000000',
+          code: 1,
+          name: 'BCO DO BRASIL S.A.',
+          fullName: 'Banco do Brasil S.A.',
+        },
+        {
+          ispb: '18236120',
+          code: null,
+          name: 'NU PAGAMENTOS S.A.',
+          fullName: 'Nu Pagamentos S.A. - Instituição de Pagamento',
+        },
+      ])
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const bancos = await servicoBrasilApi.listarBancos()
+
+    expect(bancos).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: '001', rotulo: '001 - BCO DO BRASIL S.A.' }),
+        expect.objectContaining({
+          code: null,
+          rotulo: 'ISPB 18236120 - NU PAGAMENTOS S.A.',
+        }),
+      ])
+    )
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})

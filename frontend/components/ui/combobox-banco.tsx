@@ -4,25 +4,41 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { classesCampo } from '@/components/ui/classes-campo'
 import { Label } from '@/components/ui/label'
 import { TextoDestaqueBusca } from '@/components/ui/texto-destaque-busca'
-import { useFecharAoSairComMouse } from '@/lib/dropdown-catalogo'
-import { textoContemTodosTermos } from '@/lib/normalizar-busca'
+import {
+  notificarAberturaDropdownCatalogo,
+  useFecharAoSairComMouse,
+  useInstanciaDropdownCatalogo,
+  useOuvirFechamentoDropdownCatalogo,
+} from '@/lib/dropdown-catalogo'
+import { textosContemTodosTermos } from '@/lib/normalizar-busca'
 import { cn } from '@/lib/utils'
-import { BANCOS_BRASILEIROS } from '@/lib/bancos-brasileiros'
+import { listarBancos, type BancoBrasilApi } from '@/lib/brasil-api'
 
 type Props = {
   valor: string
   aoMudar: (valor: string) => void
   disabled?: boolean
   mensagemDeErro?: string
+  rotulo?: string
 }
 
 const LIMITE_DROPDOWN = 80
 
-export function ComboboxBanco({ valor, aoMudar, disabled, mensagemDeErro }: Props) {
+export function ComboboxBanco({
+  valor,
+  aoMudar,
+  disabled,
+  mensagemDeErro,
+  rotulo = 'Banco',
+}: Props) {
   const [aberto, setAberto] = useState(false)
   const [busca, setBusca] = useState('')
+  const [bancos, setBancos] = useState<BancoBrasilApi[]>([])
+  const [carregando, setCarregando] = useState(true)
+  const [erro, setErro] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const instanciaId = useInstanciaDropdownCatalogo()
 
   const fechar = useCallback(() => {
     setAberto(false)
@@ -30,20 +46,41 @@ export function ComboboxBanco({ valor, aoMudar, disabled, mensagemDeErro }: Prop
   }, [])
 
   const zonaHover = useFecharAoSairComMouse(fechar, [containerRef])
+  useOuvirFechamentoDropdownCatalogo(instanciaId, fechar)
+
+  const carregarBancos = useCallback(async () => {
+    setCarregando(true)
+    try {
+      const lista = await listarBancos()
+      setBancos(lista)
+      setErro('')
+    } catch {
+      setErro('Não foi possível carregar os bancos')
+    } finally {
+      setCarregando(false)
+    }
+  }, [])
 
   const filtrados = busca.trim()
-    ? BANCOS_BRASILEIROS.filter(
-        (b) =>
-          b.codigo.startsWith(busca.trim().toLowerCase()) ||
-          textoContemTodosTermos(b.nome, busca)
-      ).slice(0, LIMITE_DROPDOWN)
-    : BANCOS_BRASILEIROS.slice(0, LIMITE_DROPDOWN)
+    ? bancos
+        .filter((b) => textosContemTodosTermos([b.code ?? '', b.ispb, b.name, b.fullName], busca))
+        .slice(0, LIMITE_DROPDOWN)
+    : bancos.slice(0, LIMITE_DROPDOWN)
 
-  function selecionar(codigo: string, nome: string) {
-    const novoValor = `${codigo} - ${nome}`
-    aoMudar(novoValor)
+  function selecionar(banco: BancoBrasilApi) {
+    aoMudar(banco.rotulo)
     setBusca('')
     setAberto(false)
+  }
+
+  function abrir() {
+    if (disabled || carregando) return
+    if (erro) {
+      void carregarBancos()
+      return
+    }
+    notificarAberturaDropdownCatalogo(instanciaId)
+    setAberto(true)
   }
 
   function aoClearInput() {
@@ -63,16 +100,20 @@ export function ComboboxBanco({ valor, aoMudar, disabled, mensagemDeErro }: Prop
     return () => document.removeEventListener('mousedown', aoClicarFora)
   }, [fechar])
 
+  useEffect(() => {
+    void carregarBancos()
+  }, [carregarBancos])
+
   const labelExibido = valor || ''
 
   return (
     <div className="space-y-1.5" ref={containerRef}>
-      <Label htmlFor="banco-combobox">Banco</Label>
+      <Label htmlFor={`banco-combobox-${instanciaId}`}>{rotulo}</Label>
       <div className="relative" {...zonaHover}>
         {aberto ? (
           <input
             ref={inputRef}
-            id="banco-combobox"
+            id={`banco-combobox-${instanciaId}`}
             autoFocus
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
@@ -86,10 +127,10 @@ export function ComboboxBanco({ valor, aoMudar, disabled, mensagemDeErro }: Prop
           />
         ) : (
           <button
-            id="banco-combobox"
+            id={`banco-combobox-${instanciaId}`}
             type="button"
-            disabled={disabled}
-            onClick={() => setAberto(true)}
+            disabled={disabled || carregando}
+            onClick={abrir}
             className={cn(
               classesCampo,
               'flex items-center justify-between text-left text-base md:text-sm',
@@ -97,7 +138,11 @@ export function ComboboxBanco({ valor, aoMudar, disabled, mensagemDeErro }: Prop
               !labelExibido && 'text-muted-foreground'
             )}
           >
-            <span className="truncate">{labelExibido || 'Selecione ou digite...'}</span>
+            <span className="truncate">
+              {carregando
+                ? 'Carregando bancos...'
+                : erro || labelExibido || 'Selecione ou digite...'}
+            </span>
             <span className="flex items-center gap-1 ml-2 shrink-0">
               {valor && (
                 <span
@@ -124,17 +169,17 @@ export function ComboboxBanco({ valor, aoMudar, disabled, mensagemDeErro }: Prop
               <li className="px-3 py-2 text-muted-foreground">Nenhum banco encontrado</li>
             ) : (
               filtrados.map((b) => (
-                <li key={b.codigo}>
+                <li key={b.ispb}>
                   <button
                     type="button"
                     className="w-full px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground flex gap-2 items-baseline"
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => selecionar(b.codigo, b.nome)}
+                    onClick={() => selecionar(b)}
                   >
                     <span className="text-xs text-muted-foreground w-8 shrink-0">
-                      <TextoDestaqueBusca texto={b.codigo} termo={busca} />
+                      <TextoDestaqueBusca texto={b.code ?? 'ISPB'} termo={busca} />
                     </span>
-                    <TextoDestaqueBusca texto={b.nome} termo={busca} className="truncate" />
+                    <TextoDestaqueBusca texto={b.name || b.fullName} termo={busca} className="truncate" />
                   </button>
                 </li>
               ))
@@ -145,6 +190,7 @@ export function ComboboxBanco({ valor, aoMudar, disabled, mensagemDeErro }: Prop
       {mensagemDeErro && (
         <p className="text-sm text-destructive">{mensagemDeErro}</p>
       )}
+      {erro && <p className="text-sm text-destructive">{erro}</p>}
     </div>
   )
 }

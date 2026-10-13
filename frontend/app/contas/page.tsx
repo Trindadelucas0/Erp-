@@ -14,15 +14,16 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { InputPadrao } from '@/components/ui/input-padrao'
 import { SelectPadrao } from '@/components/ui/select-padrao'
+import { ComboboxBanco } from '@/components/ui/combobox-banco'
 import { LinhasSkeletonTabela } from '@/components/ui/linhas-skeleton-tabela'
 import { usePermissao } from '@/hooks/use-permissao'
 import { formatarMoedaBr } from '@/lib/contas-a-pagar'
 import {
   type ContaEmpresaLista,
   type TipoContaEmpresa,
+  bancoSelecionadoBrasilApi,
   formatarAgenciaExibicao,
   formatarContaExibicao,
-  OPCOES_BANCO_CONTA,
   OPCOES_TIPO_CONTA,
   rotuloTipoConta,
 } from '@/lib/contas-empresa'
@@ -201,7 +202,10 @@ function ConteudoContas() {
   const podeSalvar =
     form.nome.trim().length >= 2 &&
     (!ehBancaria ||
-      (form.banco.length > 0 && form.agencia.trim().length > 0 && form.conta.trim().length > 0))
+      (bancoSelecionadoBrasilApi(form.banco) &&
+        form.agencia.trim().length > 0 &&
+        form.conta.trim().length > 0 &&
+        form.digitoConta.trim().length > 0))
 
   return (
     <CardPadrao
@@ -254,12 +258,10 @@ function ConteudoContas() {
             />
             {ehBancaria && (
               <>
-                <SelectPadrao
+                <ComboboxBanco
                   rotulo="Banco *"
                   valor={form.banco}
                   aoMudar={(v) => setForm((f) => ({ ...f, banco: v }))}
-                  opcoes={OPCOES_BANCO_CONTA}
-                  placeholder="Selecione o banco"
                 />
                 <div className="grid grid-cols-[1fr_auto] gap-2 sm:col-span-2">
                   <InputPadrao
@@ -295,7 +297,7 @@ function ConteudoContas() {
                     inputMode="numeric"
                   />
                   <InputPadrao
-                    rotulo="Dígito conta"
+                    rotulo="Dígito conta *"
                     value={form.digitoConta}
                     onChange={(e) =>
                       setForm((f) => ({

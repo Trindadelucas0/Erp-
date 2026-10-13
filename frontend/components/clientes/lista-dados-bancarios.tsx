@@ -11,6 +11,7 @@ export type DadosBancarioForm = {
   banco: string
   agencia: string
   conta: string
+  digitoConta: string
   tipoConta: 'corrente' | 'poupanca' | ''
   pix: string
   favorecido: string
@@ -24,6 +25,7 @@ export const DADOS_BANCARIO_VAZIO: DadosBancarioForm = {
   banco: '',
   agencia: '',
   conta: '',
+  digitoConta: '',
   tipoConta: '',
   pix: '',
   favorecido: '',
@@ -70,6 +72,7 @@ export function dadosBancarioApiParaForm(
     banco?: string | null
     agencia?: string | null
     conta?: string | null
+    digitoConta?: string | null
     tipoConta?: string | null
     pix?: string | null
     favorecido?: string | null
@@ -85,6 +88,7 @@ export function dadosBancarioApiParaForm(
     banco: db.banco || '',
     agencia: db.agencia || '',
     conta: db.conta || '',
+    digitoConta: db.digitoConta || '',
     tipoConta: (db.tipoConta as DadosBancarioForm['tipoConta']) || '',
     pix: db.pix || '',
     favorecido: db.favorecido || '',
@@ -198,7 +202,15 @@ export function ListaDadosBancarios({
             <Campo rotulo="Apelido" valor={db.apelido} aoMudar={(v) => atualizar(idx, 'apelido', v)} disabled={disabled} placeholder="Ex: Conta principal" />
             <ComboboxBanco valor={db.banco} aoMudar={(v) => atualizar(idx, 'banco', v)} disabled={disabled} />
             <Campo rotulo="Agência" valor={db.agencia} aoMudar={(v) => atualizar(idx, 'agencia', v)} disabled={disabled} />
-            <Campo rotulo="Conta" valor={db.conta} aoMudar={(v) => atualizar(idx, 'conta', v)} disabled={disabled} />
+            <div className="grid grid-cols-[1fr_auto] gap-2">
+              <Campo rotulo="Conta" valor={db.conta} aoMudar={(v) => atualizar(idx, 'conta', v)} disabled={disabled} />
+              <Campo
+                rotulo="Dígito conta *"
+                valor={db.digitoConta}
+                aoMudar={(v) => atualizar(idx, 'digitoConta', v.slice(0, 1).toUpperCase())}
+                disabled={disabled}
+              />
+            </div>
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Tipo</label>
               <Select

@@ -205,6 +205,7 @@ type DadosBancarioItem = {
   banco?: string | null
   agencia?: string | null
   conta?: string | null
+  digitoConta?: string | null
   tipoConta?: string | null
   pix?: string | null
   favorecido?: string | null
@@ -640,6 +641,7 @@ async function criarDadosBancarios(tx: TxCliente, pessoaId: string, campos: Camp
         banco: db.banco,
         agencia: db.agencia,
         conta: db.conta,
+        digitoConta: db.digitoConta,
         tipoConta: db.tipoConta,
         pix: db.pix,
         favorecido: db.favorecido,

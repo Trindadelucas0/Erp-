@@ -14,4 +14,6 @@ export async function rotasDeIntegracoes(aplicacao: FastifyInstance): Promise<vo
     { preHandler: auth },
     controladorDeIntegracoes.consultarCnpj
   )
+
+  aplicacao.get('/bancos', { preHandler: auth }, controladorDeIntegracoes.listarBancos)
 }

@@ -69,6 +69,8 @@ model Company {
   parametrizacaoCustoVenda    ParametrizacaoCustoVenda?
   configuracoesBoleto           ConfiguracaoBoleto[]
   contasEmpresa                 ContaEmpresa[]
+  extratosBancarios             ExtratoBancario[]
+  conciliacoesBancarias         ConciliacaoBancaria[]
   createdAt                   DateTime                     @default(now())
 }
 
@@ -509,6 +511,7 @@ model ContaPagarBaixa {
   observacao         String?
   contaEmpresaId     String?
   contaEmpresa       ContaEmpresa?    @relation(fields: [contaEmpresaId], references: [id], onDelete: Restrict)
+  conciliacoes       ConciliacaoBancariaBaixa[]
   createdAt          DateTime         @default(now())
 
   @@index([contaPagarParcelaId])
@@ -616,6 +619,7 @@ model ContaReceberBaixa {
   observacao           String?
   contaEmpresaId       String?
   contaEmpresa         ContaEmpresa?       @relation(fields: [contaEmpresaId], references: [id], onDelete: Restrict)
+  conciliacoes         ConciliacaoBancariaBaixa[]
   createdAt            DateTime            @default(now())
 
   @@index([contaReceberParcelaId])
@@ -902,6 +906,7 @@ model PessoaDadosBancario {
   banco               String?
   agencia             String?
   conta               String?
+  digitoConta         String?
   tipoConta           String? // corrente | poupanca
   pix                 String?
   favorecido          String?
@@ -1023,6 +1028,9 @@ model User {
   nfesRecebidasAnexos NfeRecebidaAnexo[]
   requisicoesWms      RequisicaoWms[]
   requisicoesWmsEventos RequisicaoWmsEvento[]
+  extratosBancarios     ExtratoBancario[]
+  conciliacoesBancarias ConciliacaoBancaria[]
+  conciliacoesEventos   ConciliacaoBancariaEvento[]
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 }
@@ -1288,12 +1296,108 @@ model ContaEmpresa {
   ativo                   Boolean             @default(true)
   contasPagarBaixas       ContaPagarBaixa[]
   contasReceberBaixas     ContaReceberBaixa[]
+  extratosBancarios       ExtratoBancario[]
+  conciliacoesBancarias   ConciliacaoBancaria[]
   createdAt               DateTime            @default(now())
   updatedAt               DateTime            @updatedAt
 
   @@unique([companyId, nome])
   @@index([companyId, ativo])
   @@index([companyId, tipo])
+}
+
+/// Arquivo de extrato importado para uma conta bancária.
+model ExtratoBancario {
+  id              String                  @id @default(uuid())
+  companyId       String
+  company         Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contaEmpresaId  String
+  contaEmpresa    ContaEmpresa            @relation(fields: [contaEmpresaId], references: [id], onDelete: Restrict)
+  nomeArquivo     String
+  /// ofx | csv | excel
+  origem          String
+  usuarioId       String
+  usuario         User                    @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  linhas          ExtratoBancarioLinha[]
+  createdAt       DateTime                @default(now())
+
+  @@index([companyId, contaEmpresaId, createdAt])
+}
+
+model ExtratoBancarioLinha {
+  id              String                       @id @default(uuid())
+  extratoId       String
+  extrato         ExtratoBancario              @relation(fields: [extratoId], references: [id], onDelete: Cascade)
+  data            DateTime
+  historico       String
+  documento       String?
+  valor           Decimal                      @db.Decimal(18, 2)
+  chaveUnica      String
+  conciliacoes    ConciliacaoBancariaLinha[]
+  createdAt       DateTime                     @default(now())
+
+  @@unique([extratoId, chaveUnica])
+  @@index([data])
+}
+
+model ConciliacaoBancaria {
+  id              String                       @id @default(uuid())
+  companyId       String
+  company         Company                      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contaEmpresaId  String
+  contaEmpresa    ContaEmpresa                 @relation(fields: [contaEmpresaId], references: [id], onDelete: Restrict)
+  /// ativa | desfeita
+  status          String                       @default("ativa")
+  usuarioId       String
+  usuario         User                         @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  concluidaEm     DateTime                     @default(now())
+  desfeitaEm      DateTime?
+  linhas          ConciliacaoBancariaLinha[]
+  baixas          ConciliacaoBancariaBaixa[]
+  eventos         ConciliacaoBancariaEvento[]
+
+  @@index([companyId, contaEmpresaId, status])
+}
+
+model ConciliacaoBancariaLinha {
+  id              String                 @id @default(uuid())
+  conciliacaoId   String
+  conciliacao     ConciliacaoBancaria    @relation(fields: [conciliacaoId], references: [id], onDelete: Cascade)
+  linhaId         String
+  linha           ExtratoBancarioLinha   @relation(fields: [linhaId], references: [id], onDelete: Restrict)
+  ativo           Boolean                @default(true)
+
+  @@index([linhaId, ativo])
+  @@index([conciliacaoId])
+}
+
+model ConciliacaoBancariaBaixa {
+  id                    String                  @id @default(uuid())
+  conciliacaoId         String
+  conciliacao           ConciliacaoBancaria     @relation(fields: [conciliacaoId], references: [id], onDelete: Cascade)
+  contaPagarBaixaId     String?
+  contaPagarBaixa       ContaPagarBaixa?        @relation(fields: [contaPagarBaixaId], references: [id], onDelete: Restrict)
+  contaReceberBaixaId   String?
+  contaReceberBaixa     ContaReceberBaixa?      @relation(fields: [contaReceberBaixaId], references: [id], onDelete: Restrict)
+  ativo                 Boolean                 @default(true)
+
+  @@index([contaPagarBaixaId, ativo])
+  @@index([contaReceberBaixaId, ativo])
+  @@index([conciliacaoId])
+}
+
+model ConciliacaoBancariaEvento {
+  id              String                 @id @default(uuid())
+  conciliacaoId   String
+  conciliacao     ConciliacaoBancaria    @relation(fields: [conciliacaoId], references: [id], onDelete: Cascade)
+  /// concluir | desvincular
+  acao            String
+  usuarioId       String
+  usuario         User                   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  detalhe         Json?
+  criadoEm        DateTime               @default(now())
+
+  @@index([conciliacaoId, criadoEm])
 }
 
 /// Taxas e prazos de uma bandeira+tipo sob uma adquirente. Bandeiras fixas no código.
