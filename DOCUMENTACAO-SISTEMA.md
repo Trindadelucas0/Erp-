@@ -1,7 +1,7 @@
 # ERP — Documentação do sistema
 
-**Versão do sistema:** 1.28.2 — Conciliação bancária
-**Última atualização:** 13/10/2026 (Orçamentos: A retirar sem endereço e sem frete; Contas a Pagar: filtros nas baixas, confirmação do pagamento e cancelamento rastreável)
+**Versão do sistema:** 1.28.3 — Conciliação bancária
+**Última atualização:** 13/10/2026 (Orçamentos: modal pós-finalização permite permanecer na ficha; Contas a Pagar: filtros nas baixas, confirmação do pagamento e cancelamento rastreável)
 
 ## 1. Modo correção de bug
 
@@ -14,6 +14,7 @@ Reproduzir o sintoma com a empresa, a conta e o período informados. Conferir a 
 - **1.28.0 — Conciliação bancária (13/10/2026):** importação de OFX, CSV e Excel; comparação com baixas financeiras; vínculo em grupo, desvinculação, lançamento imediato e telas de fluxo realizado, movimentações, extratos e relatório.
 - **1.28.1 — Conciliação bancária (13/10/2026):** em Orçamentos, **A retirar** esconde **Endereço de entrega** e **Frete**, e grava ambos vazios. **No ato** continua sem endereço e sem Frete.
 - **1.28.2 — Conciliação bancária (13/10/2026):** em **Contas a Pagar**, a aba **Baixas** filtra por fornecedor, vencimento e emissão; a confirmação pede data e conta; **Pagamentos** permite cancelar baixa e recalcula saldo/status, mantendo o histórico.
+- **1.28.3 — Conciliação bancária (13/10/2026):** em **Orçamentos**, o modal de **Salvar e finalizar** oferece **Ficar no orçamento**, que fecha o modal e mantém a ficha aberta; impressão continua somente por clique.
 
 ## 3. Mapa visual
 
@@ -144,8 +145,8 @@ Concluir e desvincular registram usuário e data no histórico da conciliação 
 
 | Item               | Valor                                                                                  |
 | ------------------ | -------------------------------------------------------------------------------------- |
-| Versão do sistema  | 1.28.1 — Conciliação bancária |
-| Última atualização | 13/10/2026 (Orçamentos: A retirar sem endereço e sem frete) |
+| Versão do sistema  | 1.28.3 — Conciliação bancária |
+| Última atualização | 13/10/2026 (Orçamentos: modal pós-finalização permite permanecer na ficha) |
 | Formato            | Fonte oficial de comportamento: mapa, campos, regras, paths de código e roteiro de bug |
 | Fonte oficial      | Este arquivo (`DOCUMENTACAO-SISTEMA.md`)                                               |
 
@@ -388,8 +389,9 @@ Próxima tela nova = **1.24.0** + nome. Não inventar versão sem tela/módulo. 
 | 1.27.13 | Contas | **Contas**, **Fornecedores** e **Transportadoras**: o seletor de banco consulta a lista oficial da BrasilAPI (código COMPE ou ISPB, nome e nome completo). Conta bancária preenchida exige **Dígito da conta**; dados antigos não são reescritos e passam pela nova validação somente ao editar. Parâmetros de Boleto permanecem com a lista própria de seis bancos. | `/contas`, `/fornecedores`, `/transportadoras`, `GET /integracoes/bancos` |
 | 1.28.1 | Conciliação bancária | **Orçamentos**: **A retirar** esconde **Endereço de entrega** e **Frete**, e grava ambos vazios. **No ato** continua sem endereço e sem Frete. | `/orcamentos/novo`, `/orcamentos/[id]`, `entregaSemEndereco`, `entregaSemFrete` |
 | 1.28.2 | Conciliação bancária | **Contas a Pagar** · **Baixas**: filtros cumulativos por fornecedor, vencimento da parcela e emissão do título; **Baixar selecionados** confirma data e conta antes de gravar. **Pagamentos** cancela uma baixa mantendo a linha como **Cancelada** e recalculando saldo/status; baixas antigas seguem ativas. | `/contas-a-pagar`, `GET /para-baixar`, `POST /baixas/:baixaId/cancelar` |
+| 1.28.3 | Conciliação bancária | **Orçamentos**: o modal de **Salvar e finalizar** troca **Voltar à lista** por **Ficar no orçamento**; fecha o modal sem sair da ficha. Impressão permanece manual em **Imprimir proposta**. | `/orcamentos/novo`, `/orcamentos/[id]`, `formulario-orcamento-layout.tsx` |
 
-**Versão vigente:** 1.28.2 — Conciliação bancária.
+**Versão vigente:** 1.28.3 — Conciliação bancária.
 
 ### Endereços em desenvolvimento local
 
@@ -4420,7 +4422,7 @@ Some de vez ──► quando o estado deixa de ser pendente
 
 **Como usar:** em **Vendas → Orçamentos**, escolha **A retirar** quando o cliente buscar o pedido. As opções **Endereço de entrega** e **Frete** ficam ocultas e não são gravadas ao salvar. Para entrega, escolha **Entregar** ou **Por encomenda**; endereço e Frete ficam disponíveis.
 
-**Resumo visual:** menu **Vendas** → **Orçamentos**. A lista vem de `GET /orcamentos` e, para **Em elaboração** com `vendas:edit`, mostra **Finalizar** na coluna **Ações** (confirmação antes de `POST .../finalizar`). **Novo orçamento** consulta `GET /orcamentos/proximo-numero` (número preview + dias de validade da empresa) e preenche **Nº**, **Data** (hoje), **Validade** (hoje + dias de Configurações → Vendas → **Validade padrão do orçamento**) e **Status** (Em elaboração), todos somente leitura. **Tipo de entrega** substitui o antigo prazo (No ato, A retirar, Entregar, Por encomenda); padrão **No ato** — sem aba **Endereço de entrega**, sem campo **Frete** e sem linha Frete no total. **A retirar** também não mostra a aba **Endereço de entrega** nem o campo/linha **Frete**. Itens: busca de produto (`ComboboxProduto` + **Adicionar**); código, descrição e NCM vêm do catálogo. **Buscar cliente** pode copiar endereço ao estado da tela; com **No ato** ou **A retirar**, **Salvar** grava endereço vazio, `frete` vazio e `valorFrete` 0. Em **Entregar** e **Por encomenda**, **Usar endereço do cadastro** reaplica e **Frete** (CIF/FOB) aparece; CEP 8 dígitos consulta a Brasil API. Na ficha: **Salvar** (volta à lista), **Salvar e finalizar** (modal), **Imprimir** e **E-mail**.
+**Resumo visual:** menu **Vendas** → **Orçamentos**. A lista vem de `GET /orcamentos` e, para **Em elaboração** com `vendas:edit`, mostra **Finalizar** na coluna **Ações** (confirmação antes de `POST .../finalizar`). **Novo orçamento** consulta `GET /orcamentos/proximo-numero` (número preview + dias de validade da empresa) e preenche **Nº**, **Data** (hoje), **Validade** (hoje + dias de Configurações → Vendas → **Validade padrão do orçamento**) e **Status** (Em elaboração), todos somente leitura. **Tipo de entrega** substitui o antigo prazo (No ato, A retirar, Entregar, Por encomenda); padrão **No ato** — sem aba **Endereço de entrega**, sem campo **Frete** e sem linha Frete no total. **A retirar** também não mostra a aba **Endereço de entrega** nem o campo/linha **Frete**. Itens: busca de produto (`ComboboxProduto` + **Adicionar**); código, descrição e NCM vêm do catálogo. **Buscar cliente** pode copiar endereço ao estado da tela; com **No ato** ou **A retirar**, **Salvar** grava endereço vazio, `frete` vazio e `valorFrete` 0. Em **Entregar** e **Por encomenda**, **Usar endereço do cadastro** reaplica e **Frete** (CIF/FOB) aparece; CEP 8 dígitos consulta a Brasil API. Na ficha: **Salvar** (volta à lista), **Salvar e finalizar** (modal com **Ficar no orçamento**, **Imprimir proposta** e **Ir para Receber pagamento**), **Imprimir** e **E-mail**.
 
 **Onde olhar no código:** `frontend/app/orcamentos/page.tsx`, `frontend/app/orcamentos/novo/page.tsx`, `frontend/app/orcamentos/[id]/page.tsx`, `frontend/components/orcamentos/formulario-orcamento-layout.tsx`, `frontend/lib/orcamento-layout.ts` (`OPCOES_TIPO_ENTREGA`, `entregaNoAto`, `entregaSemEndereco`, `entregaSemFrete`, `somarDiasCivil`, `enderecoEntregaDoCliente`), `frontend/lib/orcamento-api.ts` (`montarCorpoOrcamento`), `frontend/components/configuracoes/painel-parametrizacao-custos.tsx` (validade em dias), `src/modulos/orcamentos/` (`enderecoPersistido`, `fretePersistido` em `esquema-orcamentos.ts`, `GET /orcamentos/proximo-numero`, rotas, serviço, repositório), `src/modulos/configuracoes/` (`validadeOrcamentoDias` em `ParametrizacaoCustoVenda`), `src/compartilhado/paginas/registro-de-paginas.ts` (chave `orcamentos`).
 
@@ -4458,8 +4460,8 @@ Some de vez ──► quando o estado deixa de ser pendente
 | Cabeçalho / Rodapé | Salvar e finalizar | Grava e envia a proposta | — | Clique | Formulário | Gravar + `POST /orcamentos/:id/finalizar` | Status Enviado; modal pós-sucesso | Exige permissão de edição |
 | Cabeçalho | Imprimir | Impressão do navegador | — | Clique | Tela | `window.print()` | Esconde menu e botões | Não gera PDF no servidor |
 | Cabeçalho | Enviar por e-mail | Manda a proposta | Condicional | Clique | E-mail do cliente | Resend | HTML com layout corporativo | Sem e-mail: erro na tela; sem Resend: 503 |
-| Modal (após Salvar e finalizar) | Voltar à lista | Fecha o modal | — | Clique | — | `/orcamentos` | Também no fundo / Escape | — |
-| Modal (após Salvar e finalizar) | Imprimir proposta / Ir para Receber pagamento | Impressão ou caixa | — | Clique | — | `window.print()` ou `/receber-pagamento` | Modal permanece até **Voltar à lista** (exceto ao ir ao caixa) | Não cria pedido de venda |
+| Modal (após Salvar e finalizar) | Ficar no orçamento | Fecha o modal | — | Clique | — | Ficha atual | Fundo e Escape fazem o mesmo | Mantém o orçamento com status Enviado |
+| Modal (após Salvar e finalizar) | Imprimir proposta / Ir para Receber pagamento | Impressão ou caixa | — | Clique | — | `window.print()` ou `/receber-pagamento` | Após imprimir, o modal permanece até **Ficar no orçamento**; ir ao caixa fecha e navega | Não cria pedido de venda |
 
 **Efeitos em cadeia:** nenhum em pedido de compra, entrada, estoque ou financeiro. Pedido de venda continua fora do sistema.
 
@@ -4473,7 +4475,7 @@ Some de vez ──► quando o estado deixa de ser pendente
 | 4 | CEP `00000-000` | “CEP não encontrado” |
 | 5 | Salvar na ficha | Volta à lista; a linha gravada aparece; abrir de novo traz os mesmos itens |
 | 6 | Imprimir | Diálogo do navegador, sem menu nem botões |
-| 7 | Salvar e finalizar | Status Enviado; modal abre; **Voltar à lista** fecha e vai à lista; impressão só em **Imprimir proposta** |
+| 7 | Salvar e finalizar | Status Enviado; modal abre; **Ficar no orçamento** fecha e mantém a ficha; fundo e Escape fazem o mesmo; impressão só em **Imprimir proposta** |
 | 15 | Finalizar na lista (Em elaboração) | Confirma; status vira Enviado; linha atualiza sem abrir a ficha |
 | 8 | Enviar por e-mail sem e-mail | A tela mostra o erro e a Resend não é chamada |
 | 9 | Usuário sem `vendas:view` | Não vê o menu; a API responde 403 |

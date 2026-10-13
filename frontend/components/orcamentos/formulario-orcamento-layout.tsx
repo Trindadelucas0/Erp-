@@ -460,9 +460,8 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
     }
   }
 
-  function voltarListaPosFinalizar() {
+  function fecharModalFinalizado() {
     setModalFinalizadoAberto(false)
-    roteador.push('/orcamentos')
   }
 
   async function finalizar() {
@@ -1086,10 +1085,10 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 print:hidden"
           onClick={(e) => {
-            if (e.target === e.currentTarget) voltarListaPosFinalizar()
+            if (e.target === e.currentTarget) fecharModalFinalizado()
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') voltarListaPosFinalizar()
+            if (e.key === 'Escape') fecharModalFinalizado()
           }}
           role="presentation"
         >
@@ -1106,12 +1105,12 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
               id="modal-orcamento-finalizado-mensagem"
               className="mt-2 text-sm text-muted-foreground"
             >
-              A proposta foi gerada com status Enviado. Deseja imprimir ou ir para Receber
-              pagamento?
+              A proposta foi gerada com status Enviado. Deseja imprimir, ir para Receber
+              pagamento ou permanecer neste orçamento?
             </p>
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
-              <Button type="button" variant="outline" onClick={voltarListaPosFinalizar}>
-                Voltar à lista
+              <Button type="button" variant="outline" onClick={fecharModalFinalizado}>
+                Ficar no orçamento
               </Button>
               <Button type="button" variant="outline" onClick={() => window.print()}>
                 <Printer className="size-4" />
