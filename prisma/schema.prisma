@@ -1328,6 +1328,7 @@ model ExtratoBancarioLinha {
   id              String                       @id @default(uuid())
   extratoId       String
   extrato         ExtratoBancario              @relation(fields: [extratoId], references: [id], onDelete: Cascade)
+  contaEmpresaId  String
   data            DateTime
   historico       String
   documento       String?
@@ -1336,7 +1337,7 @@ model ExtratoBancarioLinha {
   conciliacoes    ConciliacaoBancariaLinha[]
   createdAt       DateTime                     @default(now())
 
-  @@unique([extratoId, chaveUnica])
+  @@unique([contaEmpresaId, chaveUnica])
   @@index([data])
 }
 

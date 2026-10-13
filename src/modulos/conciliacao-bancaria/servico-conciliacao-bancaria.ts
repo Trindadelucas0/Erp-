@@ -139,6 +139,7 @@ async function importarExtrato(
       usuarioId,
       linhas: {
         create: novas.map((linha) => ({
+          contaEmpresaId: dados.contaEmpresaId,
           data: linha.data,
           valor: linha.valor,
           historico: linha.historico,

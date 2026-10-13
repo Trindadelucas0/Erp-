@@ -12,6 +12,7 @@ CREATE TABLE "ExtratoBancario" (
 CREATE TABLE "ExtratoBancarioLinha" (
     "id" TEXT NOT NULL,
     "extratoId" TEXT NOT NULL,
+    "contaEmpresaId" TEXT NOT NULL,
     "data" TIMESTAMP(3) NOT NULL,
     "historico" TEXT NOT NULL,
     "documento" TEXT,
@@ -61,7 +62,7 @@ CREATE TABLE "ConciliacaoBancariaEvento" (
     CONSTRAINT "ConciliacaoBancariaEvento_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX "ExtratoBancarioLinha_extratoId_chaveUnica_key" ON "ExtratoBancarioLinha"("extratoId", "chaveUnica");
+CREATE UNIQUE INDEX "ExtratoBancarioLinha_contaEmpresaId_chaveUnica_key" ON "ExtratoBancarioLinha"("contaEmpresaId", "chaveUnica");
 CREATE INDEX "ExtratoBancario_companyId_contaEmpresaId_createdAt_idx" ON "ExtratoBancario"("companyId", "contaEmpresaId", "createdAt");
 CREATE INDEX "ExtratoBancarioLinha_data_idx" ON "ExtratoBancarioLinha"("data");
 CREATE INDEX "ConciliacaoBancaria_companyId_contaEmpresaId_status_idx" ON "ConciliacaoBancaria"("companyId", "contaEmpresaId", "status");
