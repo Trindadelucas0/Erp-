@@ -20,7 +20,7 @@ export const MSG_PARCELA_OBRIGATORIA =
 
 export const MSG_PARCELA_INVALIDA = 'Número de parcelas não disponível para esta empresa.'
 
-export const STATUS_ORCAMENTO_RECEBIVEL = ['enviado', 'aprovado'] as const
+export const STATUS_ORCAMENTO_RECEBIVEL = ['em_aberto', 'convertido'] as const
 
 export const FORMAS_PAGAMENTO = [
   'dinheiro',

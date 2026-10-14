@@ -101,6 +101,7 @@ export const GRUPOS_TELAS_CATALOGO: GrupoTelasCatalogo[] = [
     rotulo: 'Vendas',
     telas: [
       { pageKey: 'orcamentos', rotulo: 'Orçamentos', abas: [] },
+      { pageKey: 'pedidos-venda', rotulo: 'Pedidos de venda', abas: [] },
       { pageKey: 'receber-pagamento', rotulo: 'Receber pagamento', abas: [] },
     ],
   },

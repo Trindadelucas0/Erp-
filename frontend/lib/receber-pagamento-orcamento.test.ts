@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { termoBuscaLeitor, termoBuscaTotem } from './receber-pagamento-orcamento'
+import {
+  formaPadraoDoOrcamento,
+  termoBuscaLeitor,
+  termoBuscaTotem,
+} from './receber-pagamento-orcamento'
+
+describe('formaPadraoDoOrcamento', () => {
+  it('prazo 30 dias não escolhe a forma; o padrão é pix', () => {
+    expect(formaPadraoDoOrcamento('30_dias')).toBe('pix')
+    expect(formaPadraoDoOrcamento('cartao_credito')).toBe('pix')
+  })
+})
 
 describe('termoBuscaTotem', () => {
   it('numero: 123 vira ORC-000123', () => {

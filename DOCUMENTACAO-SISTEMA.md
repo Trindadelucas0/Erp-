@@ -1,7 +1,7 @@
 # ERP — Documentação do sistema
 
-**Versão do sistema:** 1.28.3 — Conciliação bancária
-**Última atualização:** 13/10/2026 (Orçamentos: modal pós-finalização permite permanecer na ficha; Contas a Pagar: filtros nas baixas, confirmação do pagamento e cancelamento rastreável)
+**Versão do sistema:** 1.29.1 — Pedidos de venda
+**Última atualização:** 14/10/2026 (Orçamentos: ficha alinhada ao mock, ST no total, vendedor da sessão)
 
 ## 1. Modo correção de bug
 
@@ -15,6 +15,8 @@ Reproduzir o sintoma com a empresa, a conta e o período informados. Conferir a 
 - **1.28.1 — Conciliação bancária (13/10/2026):** em Orçamentos, **A retirar** esconde **Endereço de entrega** e **Frete**, e grava ambos vazios. **No ato** continua sem endereço e sem Frete.
 - **1.28.2 — Conciliação bancária (13/10/2026):** em **Contas a Pagar**, a aba **Baixas** filtra por fornecedor, vencimento e emissão; a confirmação pede data e conta; **Pagamentos** permite cancelar baixa e recalcula saldo/status, mantendo o histórico.
 - **1.28.3 — Conciliação bancária (13/10/2026):** em **Orçamentos**, o modal de **Salvar e finalizar** oferece **Ficar no orçamento**, que fecha o modal e mantém a ficha aberta; impressão continua somente por clique.
+- **1.29.0 — Pedidos de venda (14/10/2026):** orçamento de venda com tabela sem NCM e sem coluna de desconto; desconto percentual em modal (substitui, não acumula); status **Em aberto / Expirado / Convertido**; condição **À vista / 30 dias / 60 dias**; **Finalizar** com o checkbox cria um **Pedido de venda** uma única vez. ST aparece zerado até haver regra fiscal.
+- **1.29.1 — Pedidos de venda (14/10/2026):** ficha de orçamento com título **Orçamento de venda**, faixa única (cliente, datas somente leitura, condição, vendedor, tipo de entrega e Frete), preço unitário só leitura, ponto de estoque colorido, **Mais opções** (limpar, imprimir, e-mail) e aviso de múltiplo de venda. ST entra no total sem misturar no líquido (ainda 0 até a regra fiscal). Vendedor novo: usuário da sessão se o cargo contém “vendedor”; orçamentos antigos com 199 permanecem.
 
 ## 3. Mapa visual
 
@@ -145,8 +147,8 @@ Concluir e desvincular registram usuário e data no histórico da conciliação 
 
 | Item               | Valor                                                                                  |
 | ------------------ | -------------------------------------------------------------------------------------- |
-| Versão do sistema  | 1.28.3 — Conciliação bancária |
-| Última atualização | 13/10/2026 (Orçamentos: modal pós-finalização permite permanecer na ficha) |
+| Versão do sistema  | 1.29.1 — Pedidos de venda |
+| Última atualização | 14/10/2026 (Orçamentos: ficha alinhada ao mock, ST no total, vendedor da sessão) |
 | Formato            | Fonte oficial de comportamento: mapa, campos, regras, paths de código e roteiro de bug |
 | Fonte oficial      | Este arquivo (`DOCUMENTACAO-SISTEMA.md`)                                               |
 
@@ -390,8 +392,10 @@ Próxima tela nova = **1.24.0** + nome. Não inventar versão sem tela/módulo. 
 | 1.28.1 | Conciliação bancária | **Orçamentos**: **A retirar** esconde **Endereço de entrega** e **Frete**, e grava ambos vazios. **No ato** continua sem endereço e sem Frete. | `/orcamentos/novo`, `/orcamentos/[id]`, `entregaSemEndereco`, `entregaSemFrete` |
 | 1.28.2 | Conciliação bancária | **Contas a Pagar** · **Baixas**: filtros cumulativos por fornecedor, vencimento da parcela e emissão do título; **Baixar selecionados** confirma data e conta antes de gravar. **Pagamentos** cancela uma baixa mantendo a linha como **Cancelada** e recalculando saldo/status; baixas antigas seguem ativas. | `/contas-a-pagar`, `GET /para-baixar`, `POST /baixas/:baixaId/cancelar` |
 | 1.28.3 | Conciliação bancária | **Orçamentos**: o modal de **Salvar e finalizar** troca **Voltar à lista** por **Ficar no orçamento**; fecha o modal sem sair da ficha. Impressão permanece manual em **Imprimir proposta**. | `/orcamentos/novo`, `/orcamentos/[id]`, `formulario-orcamento-layout.tsx` |
+| 1.29.0 | Pedidos de venda | **Orçamentos** no contrato do PRD: itens com estoque colorido, desconto só no modal, prazo de pagamento, anexos e histórico. **Finalizar** com **Converter em pedido após aprovação** cria `PedidoVenda` e trava o orçamento em **Convertido**. Tela **Pedidos de venda** (somente leitura). ST gravado em 0. Caixa recebe `em_aberto` e `convertido`. | `/orcamentos`, `/pedidos-venda`, `src/modulos/orcamentos/`, `src/modulos/pedidos-venda/` |
+| 1.29.1 | Pedidos de venda | Ficha **Orçamento de venda**: faixa única, preço de catálogo somente leitura, ponto de estoque, **Mais opções**, aviso de múltiplo. ST soma no total (coluna à parte; valor ainda 0). Vendedor da sessão se o cargo contém “vendedor”. | `/orcamentos/novo`, `/orcamentos/[id]`, `formulario-orcamento-layout.tsx`, `resumirOrcamento`, `totalDoOrcamento` |
 
-**Versão vigente:** 1.28.3 — Conciliação bancária.
+**Versão vigente:** 1.29.1 — Pedidos de venda.
 
 ### Endereços em desenvolvimento local
 
@@ -555,7 +559,8 @@ flowchart TD
 | Entrada de Notas > Liberar para contagem (**Quem vai contar**)                         | Requisições (tipo **Contagem de entrada**) + Contagens   | Cria/reabre uma OS atribuída; o bip cego continua em `/contagens`; POST `/requisicoes` **não** cria esse tipo                                                                                                                                                                                                                                                                   |
 | Auditoria de entradas > Precificar                                             | Precificação (`/auditoria-entradas/[id]/precificacao`)        | Abre a grade de formação de preço; clique na linha da lista continua abrindo o dossiê só leitura                                                                                                                                                                                                                                                                                  |
 | Precificação > Gravar                                                          | Produtos > Compras > Preço de venda                           | Atualiza `Produto.precoVenda` (não sobrescreve preço de custo)                                                                                                                                                                                                                                                                                                                    |
-| Orçamentos (`/orcamentos`, `/orcamentos/novo`, `/orcamentos/[id]`)             | `Orcamento` da empresa (`GET/POST/PATCH /orcamentos`)         | Grava proposta, total ao vivo e CEP pela Brasil API. Não cria pedido de venda, não mexe em estoque nem financeiro                                                                                                                                                                                                                                                                |
+| Orçamentos (`/orcamentos`, `/orcamentos/novo`, `/orcamentos/[id]`)             | `Orcamento` + `PedidoVenda` (`POST /orcamentos/:id/finalizar` com checkbox) | Grava proposta; desconto em modal; anexos e histórico. Com **Converter em pedido após aprovação**, cria um pedido de venda e trava o orçamento. Não mexe em estoque nem financeiro. ST nesta versão é 0 e soma no total sem misturar no líquido.                                                                                                                                                                       |
+| Pedidos de venda (`/pedidos-venda`)                                            | `PedidoVenda` copiado na conversão                            | Lista e ficha somente leitura. **Copiar pedido** no orçamento lê estes itens sem alterar a origem                                                                                                                                                                                                                                                                              |
 | Receber pagamento (totem / dinheiro / chamado)                                 | Separação de pedidos (`RequisicaoWms` tipo `separacao`)       | Confirmar pago grava `VendaCaixa` + uma Separação por produto. **Chame um atendente** não gera Separação até o caixa confirmar. Crédito no totem: parcelas vindas de Configurações → **Cartões de Pagamento** (união de N× ativos) gravadas em `VendaCaixa.numeroParcelas`. Forma só o nome (sem gateway)                                                                                                                                                                                                                     |
 
 
@@ -568,7 +573,7 @@ flowchart TD
 - **Contas a Receber** — não nasce de NF-e de saída nem de pedido de venda nesta fase (só cadastro manual). Tipo **Crédito** é classificação do título, **não** é o crédito/pendência do fornecedor no pedido.
 - **Endereços WMS** — o cadastro mestre (`/enderecos-wms`) alimenta **só** a busca/seleção do código em **Produtos > Logística > Endereços de estoque**. Produto já existente grava com **Salvar neste produto**; produto novo, com **Cadastrar produto**. **Não** alimenta Kardex, Contagem, Entrada nem Precificação nesta fase (sem saldo/picking por endereço). O código é montado pela árvore (LOCAL-ÁREA-RUA-BLOCO-ANDAR-AP); o tipo fica no apartamento. Novo AP continua só na tela Endereços WMS.
 - **Parametrização de custos (Configurações → Vendas)** — um registro por empresa (sem mês). Alimentam **só** a formação de preço (encargos / Total Venda). **Não** alteram o custo contábil, o custo da Auditoria nem o kardex. Mudar o determinante **não** reescreve o catálogo — o preço no produto só muda no **Gravar** da grade. CBS, IBS e juros ficam fora do divisor nesta fase.
-- **Orçamentos** (`/orcamentos`) — grava a proposta da empresa. **Não** alimenta pedido de compra, pedido de venda, estoque nem financeiro. O checkbox **Converter em pedido após aprovação** só guarda a intenção.
+- **Orçamentos** (`/orcamentos`) — grava a proposta da empresa. Com o checkbox **Converter em pedido após aprovação**, **Finalizar** cria um `PedidoVenda` (uma vez). **Não** alimenta pedido de compra, estoque nem contas a receber. O caixa continua recebendo o orçamento (`em_aberto` ou `convertido`).
 
 ### 3.5b Estoque / Kardex (Fase 1)
 
@@ -764,6 +769,10 @@ Usar esta tabela ao receber um bug no fluxo de compra / cadastros ligados. Depoi
 | Não grava título a receber sem vencimento                                                                                                     | Contas a Receber                                                                            | Esperado §7.4 / §7.22: vencimento obrigatório (1 parcela no cadastro manual)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `esquema-contas-a-receber.ts`, `servico-contas-a-receber.ts`, `frontend/lib/contas-a-receber.ts`                                                                                                                                                                                                                                                               |
 | Tipo Tributos no Contas a Receber                                                                                                             | Contas a Receber                                                                            | Esperado: só **Duplicata** e **Crédito** (Tributos é de Contas a Pagar)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | `TIPOS_CONTA_RECEBER`                                                                                                                                                                                                                                                                                                                                          |
 | Card de pendência fechou e sumiu para sempre / não reaparece                                                                                  | Qualquer tela + dock                                                                        | Esperado: **X** só esconde nesta visita; F5 ou sair e voltar reabre. Some de vez só quando o estado resolve (baixou, aprovou, desbloqueou)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | `provedor-pendencias.tsx`, `servico-pendencias.ts`                                                                                                                                                                                                                                                                                                             |
+| Finalizar no orçamento não cria pedido                                                                                                        | Vendas → Orçamentos                                                                         | Esperado sem o checkbox **Converter em pedido após aprovação**. Com o checkbox e `vendas:approve`, nasce um pedido em **Pedidos de venda** e o status vira Convertido                                                                                                                                                                                                                                                                                                                                                                                                                                                         | `POST /orcamentos/:id/finalizar`, `repositorio-orcamentos.ts` (`finalizar`), §6.21 / §7.28                                                                                                                                                                                                                                                                      |
+| Totem / caixa não acha o orçamento                                                                                                            | Receber pagamento                                                                           | Só `em_aberto` e `convertido`. Expirado não entra. Condição À vista/30/60 dias não escolhe a forma (padrão Pix)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `STATUS_ORCAMENTO_RECEBIVEL`, `formaPadraoDoOrcamento`, §6.22 / §7.28                                                                                                                                                                                                                                                                                           |
+| ST no orçamento sempre zero                                                                                                                   | Orçamentos → itens                                                                          | Esperado nesta versão: `calcularStItem()` = 0 até haver regra fiscal; coluna à parte e soma no total (hoje 0) sem misturar no líquido                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `calcularStItem`, `resumirOrcamento`, §6.21 / §7.28                                                                                                                                                                                                                                                                                                            |
+| Desconto aplicado duas vezes parece acumular                                                                                                  | Orçamentos → modal Desconto                                                                 | Esperado: o percentual **substitui** o anterior (10 depois 5 = 5)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `aplicarDesconto`, `POST /orcamentos/:id/desconto`, §7.28                                                                                                                                                                                                                                                                                                      |
 | Sino sem número / dock vazio com títulos vencidos                                                                                             | Cabeçalho / Contas a pagar                                                                  | Permissão `financeiro:view` (ou compras/estoque conforme o tipo); empresa ativa; janela = vencidos + até 7 dias                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `GET /pendencias/resumo`, `servico-pendencias.ts`                                                                                                                                                                                                                                                                                                              |
 | Clique no card da Entrada não troca o painel                                                                                                  | Entrada de Notas                                                                            | URL deve trazer `?painel=` (analise, aguardando_chegada, contagem, problemas, consolidada)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | `entrada-notas/page.tsx` (hidrata `searchParams`)                                                                                                                                                                                                                                                                                                              |
 | Menu sem Pendências                                                                                                                           | Usuários / papéis                                                                           | Página entra com `financeiro:view` **ou** `compras:view` **ou** `estoque:view` **ou** `clientes:view` (admin vê todas)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | `registro-de-paginas.ts` (`pendencias`)                                                                                                                                                                                                                                                                                                                        |
@@ -862,6 +871,7 @@ flowchart TD
 
   ERP --> A1["Acesso e Controle"]
   ERP --> OR1["Orçamentos"]
+  ERP --> PV1["Pedidos de venda"]
   ERP --> RP1["Receber pagamento"]
   ERP --> C1["Cadastros Essenciais"]
   ERP --> P1["Compras Inteligentes"]
@@ -876,8 +886,9 @@ flowchart TD
   ERP --> S1["Segurança e Rastreabilidade"]
 
   A1 --- A2["Quem entra, o que vê e em qual empresa"]
-  OR1 --- OR2["Proposta gravada; retirada não exige endereço nem frete; ainda não vira pedido"]
-  RP1 --- RP2["Totem e caixa; forma gravada; chamado do atendente"]
+  OR1 --- OR2["Proposta gravada; desconto em janela; pode virar pedido"]
+  PV1 --- PV2["Cópia dos itens do orçamento convertido; só consulta"]
+  RP1 --- RP2["Totem e caixa; forma escolhida na hora do recebimento"]
   C1 --- C2["Clientes, fornecedores, produtos e transportadoras"]
   P1 --- P2["Pedido completo: frete, prazos, itens e aprovação"]
   F1 --- F2["Portal, WhatsApp, documentos e conferência com IA"]
@@ -1193,7 +1204,7 @@ flowchart TD
 | 3. Movimentação | Menu **Logística → Guardar mercadorias** (e cadastro em **Endereços WMS**) | Depois de consolidar Revenda, o operador **guarda** cada produto no endereço do cadastro (bip produto → destino). O cadastro do depósito continua em Endereços WMS; o produto escolhe o endereço na aba Logística. Ainda sem saldo por endereço |
 
 
-Contas a pagar já nasce na consolidação (trilho financeiro). Pedido de venda e emissão de NF continuam fora.
+Contas a pagar já nasce na consolidação (trilho financeiro). Pedido de venda nasce da conversão do orçamento (§6.21b). Emissão de NF de saída continua fora.
 
 ---
 
@@ -1525,6 +1536,7 @@ mindmap
           Aprovação de clientes
         Vendas
           Orçamentos
+          Pedidos de venda
           Receber pagamento
         Compras
         Logística
@@ -1880,6 +1892,33 @@ flowchart TB
 
 ---
 
+##### 12.10 Orçamentos e Pedidos de venda
+
+```mermaid
+flowchart TB
+  subgraph OrcUI["Tela: Orcamentos"]
+    direction TB
+    L["Lista — numero cliente status total Finalizar"]
+    F["Ficha — Orçamento de venda faixa unica itens"]
+    D["Modal desconto — percentual substitui"]
+    C["Copiar pedido — itens de um pedido existente"]
+    Z["Finalizar — com converter cria pedido"]
+    L --> F
+    F --> D
+    F --> C
+    F --> Z
+  end
+  subgraph PvUI["Tela: Pedidos de venda"]
+    direction TB
+    PL["Lista somente leitura"]
+    PF["Ficha — itens copiados na conversao"]
+    PL --> PF
+  end
+  Z --> PL
+```
+
+---
+
 #### 3.8.13 Diferenciais de valor (falar com o cliente)
 
 
@@ -1900,6 +1939,7 @@ flowchart TB
 | Fila de requisições do armazém     | Operador vê o que fazer agora, sem misturar com a contagem da nota                                                                |
 | Auditoria e permissões             | Rastro de quem fez o quê                                                                                                          |
 | Preenchimento CNPJ/CEP             | Cadastro mais rápido e com menos erro                                                                                             |
+| Orçamento que vira pedido          | A proposta vira pedido de venda uma vez, com desconto controlado e ficha travada depois da conversão                              |
 
 
 ---
@@ -1946,6 +1986,8 @@ Sem as etapas 1–4, o pedido pode falhar ou ficar incompleto (código/unidade v
 | Orçamentos (lista)                      | `/orcamentos` (menu **Vendas**)                                                                      | `frontend/app/orcamentos/page.tsx`                                                                                      |
 | Novo orçamento                          | `/orcamentos/novo`                                                                                   | `frontend/app/orcamentos/novo/page.tsx` + `formulario-orcamento-layout.tsx`                                             |
 | Orçamento (ficha)                       | `/orcamentos/[id]`                                                                                   | `frontend/app/orcamentos/[id]/page.tsx` + `formulario-orcamento-layout.tsx`                                             |
+| Pedidos de venda (lista)                | `/pedidos-venda` (menu **Vendas**)                                                                   | `frontend/app/pedidos-venda/page.tsx`                                                                                   |
+| Pedido de venda (ficha)                 | `/pedidos-venda/[id]`                                                                                | `frontend/app/pedidos-venda/[id]/page.tsx`                                                                              |
 | Receber pagamento                       | `/receber-pagamento` (menu **Vendas**); totem `/receber-pagamento/totem`; dinheiro `/receber-pagamento/novo` | `frontend/lib/receber-pagamento-desenvolvimento.ts`, `frontend/components/receber-pagamento/formulario-venda-caixa.tsx`, `frontend/app/receber-pagamento/page.tsx`, `frontend/app/receber-pagamento/novo/page.tsx`, `frontend/app/receber-pagamento/totem/page.tsx`, `src/modulos/vendas-caixa/` |
 | Pedidos de compra (lista)               | `/pedidos-compra`                                                                                    | `frontend/app/pedidos-compra/page.tsx`                                                                                  |
 | Pedido novo / edição                    | `/pedidos-compra/novo`, `/pedidos-compra/[id]`                                                       | páginas + `frontend/components/pedidos-compra/formulario-pedido-compra.tsx`                                             |
@@ -1984,7 +2026,7 @@ Sem as etapas 1–4, o pedido pode falhar ou ficar incompleto (código/unidade v
 | Portal do fornecedor — pedido (público) | `/portal-fornecedor/pedido`                                                                          | `frontend/app/portal-fornecedor/pedido/page.tsx`                                                                        |
 
 
-O menu aberto pelo hambúrguer do cabeçalho lista só as páginas liberadas (`paginasPermitidas`), agrupadas em acordeão: **Cadastros** (Clientes, **Aprovação de clientes**, Fornecedores, Transportadoras, Produtos, Empresas), **Vendas** (Orçamentos), **Compras** (Pedidos de Compra, Entrada de Notas, Auditoria de entradas), **Logística** (Contagens de entrada, Kardex/Estoque, Endereços WMS, Requisições, Guardar mercadorias, Separação de pedidos) e **Financeiro**. **Pendências**, **Configurações** e **Auditoria** ficam avulsas. **Sem** itens separados de Usuários, Papéis, CFOP, Planos financeiros, Assinatura Digital, Focus NFe, Unidades de medida ou **Estrutura WMS** — esses parâmetros ficam em **Configurações**. Usuários e Papéis (só admin) abrem em **Configurações → Geral**. Em **Configurações → Geral → Papéis**, o bloco **Telas e abas** define menu e recorte de abas; a grade Ver/Criar/Editar/Excluir controla ações. Menu vem de `RolePageAccess` (não mais `modulo:view` nem vínculo de páginas no usuário). Após deploy 1.27.2, rodar `npm run db:backfill-role-telas` uma vez. Rotas antigas (`/users`, `/papeis`, `/cfops`, `/planos-financeiros`, `/estrutura-wms`, `/configuracoes/focus-nfe`, `/configuracoes/assinatura`) redirecionam para a aba correspondente. O portal do fornecedor é público (fora do menu do ERP) — ver seção 6.19.
+O menu aberto pelo hambúrguer do cabeçalho lista só as páginas liberadas (`paginasPermitidas`), agrupadas em acordeão: **Cadastros** (Clientes, **Aprovação de clientes**, Fornecedores, Transportadoras, Produtos, Empresas), **Vendas** (Orçamentos, Pedidos de venda, Receber pagamento), **Compras** (Pedidos de Compra, Entrada de Notas, Auditoria de entradas), **Logística** (Contagens de entrada, Kardex/Estoque, Endereços WMS, Requisições, Guardar mercadorias, Separação de pedidos) e **Financeiro**. **Pendências**, **Configurações** e **Auditoria** ficam avulsas. **Sem** itens separados de Usuários, Papéis, CFOP, Planos financeiros, Assinatura Digital, Focus NFe, Unidades de medida ou **Estrutura WMS** — esses parâmetros ficam em **Configurações**. Usuários e Papéis (só admin) abrem em **Configurações → Geral**. Em **Configurações → Geral → Papéis**, o bloco **Telas e abas** define menu e recorte de abas; a grade Ver/Criar/Editar/Excluir controla ações. Menu vem de `RolePageAccess` (não mais `modulo:view` nem vínculo de páginas no usuário). Após deploy 1.27.2, rodar `npm run db:backfill-role-telas` uma vez. Rotas antigas (`/users`, `/papeis`, `/cfops`, `/planos-financeiros`, `/estrutura-wms`, `/configuracoes/focus-nfe`, `/configuracoes/assinatura`) redirecionam para a aba correspondente. O portal do fornecedor é público (fora do menu do ERP) — ver seção 6.19.
 
 ---
 
@@ -4418,85 +4460,102 @@ Some de vez ──► quando o estado deixa de ser pendente
 
 ### 6.21 Orçamentos — `/orcamentos`, `/orcamentos/novo` e `/orcamentos/[id]`
 
-**Objetivo:** gravar a proposta de venda da empresa, imprimir no navegador e enviar por e-mail. Não cria pedido de venda.
+**Objetivo:** gravar a proposta de venda da empresa, imprimir no navegador, enviar por e-mail e, com o checkbox **Converter em pedido após aprovação**, criar um pedido de venda ao **Finalizar**.
 
-**Como usar:** em **Vendas → Orçamentos**, escolha **A retirar** quando o cliente buscar o pedido. As opções **Endereço de entrega** e **Frete** ficam ocultas e não são gravadas ao salvar. Para entrega, escolha **Entregar** ou **Por encomenda**; endereço e Frete ficam disponíveis.
+**Como usar:** em **Vendas → Orçamentos**, abra **Novo orçamento**. A ficha chama-se **Orçamento de venda**; o status começa **Em aberto** (não Rascunho). Informe o cliente na faixa do topo, adicione produtos um a um (**Adicionar itens**) e use **Salvar orçamento** no rodapé (permanece na ficha). Desconto percentual só no modal **Aplicar descontos**. Imprimir e e-mail ficam em **Mais opções**. Marque **Converter em pedido após aprovação** se quiser o pedido; **Finalizar** exige `vendas:approve`, cliente e ao menos um item. Com o checkbox, o status vira **Convertido** e a ficha trava. Sem o checkbox, o orçamento permanece **Em aberto**. **A retirar** e **No ato** escondem endereço e Frete.
 
-**Resumo visual:** menu **Vendas** → **Orçamentos**. A lista vem de `GET /orcamentos` e, para **Em elaboração** com `vendas:edit`, mostra **Finalizar** na coluna **Ações** (confirmação antes de `POST .../finalizar`). **Novo orçamento** consulta `GET /orcamentos/proximo-numero` (número preview + dias de validade da empresa) e preenche **Nº**, **Data** (hoje), **Validade** (hoje + dias de Configurações → Vendas → **Validade padrão do orçamento**) e **Status** (Em elaboração), todos somente leitura. **Tipo de entrega** substitui o antigo prazo (No ato, A retirar, Entregar, Por encomenda); padrão **No ato** — sem aba **Endereço de entrega**, sem campo **Frete** e sem linha Frete no total. **A retirar** também não mostra a aba **Endereço de entrega** nem o campo/linha **Frete**. Itens: busca de produto (`ComboboxProduto` + **Adicionar**); código, descrição e NCM vêm do catálogo. **Buscar cliente** pode copiar endereço ao estado da tela; com **No ato** ou **A retirar**, **Salvar** grava endereço vazio, `frete` vazio e `valorFrete` 0. Em **Entregar** e **Por encomenda**, **Usar endereço do cadastro** reaplica e **Frete** (CIF/FOB) aparece; CEP 8 dígitos consulta a Brasil API. Na ficha: **Salvar** (volta à lista), **Salvar e finalizar** (modal com **Ficar no orçamento**, **Imprimir proposta** e **Ir para Receber pagamento**), **Imprimir** e **E-mail**.
+**Resumo visual:** menu **Vendas** → **Orçamentos**. Lista `GET /orcamentos` (expira vencidos ao listar). **Finalizar** na coluna **Ações** só em **Em aberto** com `vendas:approve`. Novo consulta `GET /orcamentos/proximo-numero`. Status: **Em aberto**, **Expirado**, **Convertido**. Faixa única: Cliente, Data (leitura), Validade (leitura), Condição, Vendedor, Tipo de entrega e Frete. Itens: `ComboboxProduto` + **Adicionar itens** (uma linha por vez); ponto de estoque verde/amarelo/vermelho; preço unitário só leitura (catálogo); ST em coluna (0 nesta versão) e somado no total; desconto só no modal. **Copiar pedido** substitui os itens pelos de um `PedidoVenda`. Anexos em `AnexosContaReceber` com `apiBase=/orcamentos`. Histórico da API.
 
-**Onde olhar no código:** `frontend/app/orcamentos/page.tsx`, `frontend/app/orcamentos/novo/page.tsx`, `frontend/app/orcamentos/[id]/page.tsx`, `frontend/components/orcamentos/formulario-orcamento-layout.tsx`, `frontend/lib/orcamento-layout.ts` (`OPCOES_TIPO_ENTREGA`, `entregaNoAto`, `entregaSemEndereco`, `entregaSemFrete`, `somarDiasCivil`, `enderecoEntregaDoCliente`), `frontend/lib/orcamento-api.ts` (`montarCorpoOrcamento`), `frontend/components/configuracoes/painel-parametrizacao-custos.tsx` (validade em dias), `src/modulos/orcamentos/` (`enderecoPersistido`, `fretePersistido` em `esquema-orcamentos.ts`, `GET /orcamentos/proximo-numero`, rotas, serviço, repositório), `src/modulos/configuracoes/` (`validadeOrcamentoDias` em `ParametrizacaoCustoVenda`), `src/compartilhado/paginas/registro-de-paginas.ts` (chave `orcamentos`).
+**Onde olhar no código:** `frontend/app/orcamentos/page.tsx`, `frontend/app/orcamentos/novo/page.tsx`, `frontend/app/orcamentos/[id]/page.tsx`, `frontend/components/orcamentos/formulario-orcamento-layout.tsx`, `modal-desconto-orcamento.tsx`, `modal-copiar-pedido.tsx`, `frontend/lib/orcamento-layout.ts`, `frontend/lib/orcamento-api.ts`, `frontend/types/sessao.ts` (`cargo`), `frontend/components/contas-a-receber/anexos-conta-receber.tsx` (`apiBase`), `src/modulos/orcamentos/` (rotas, serviço, repositório, `calcularStItem`, `totalDoOrcamento`, `armazenamento-anexo-orcamento.ts`), `src/compartilhado/paginas/registro-de-paginas.ts` (chave `orcamentos`).
 
-**Regra / bloqueio:** `companyId` sai só da sessão. Orçamento de outra empresa responde 404. Sem `vendas:view` a API responde 403 e o menu não mostra a tela. Número é único por empresa; na criação o preview vem de `GET /orcamentos/proximo-numero` e o `POST` grava com número vazio no corpo (servidor gera `ORC-######`). **Nº, Data, Validade e Status** não editam na tela (status muda só ao **Finalizar** → Enviado). Validade padrão em dias: `ParametrizacaoCustoVenda.validadeOrcamentoDias` (Configurações → Vendas; default 14). **Digitar** esconde Código. **No ato** (`prazoEntrega=no_ato`): a aba **Endereço de entrega**, o campo **Frete** (CIF/FOB) e a linha **Frete** do total não aparecem; **Salvar** / **Finalizar** gravam CEP, logradouro, número, bairro, cidade e UF vazios e `frete` vazio + `valorFrete` 0 (`montarCorpoOrcamento` + `enderecoPersistido` + `fretePersistido`), mesmo se **Buscar cliente** tiver copiado endereço ao estado da tela. **A retirar** (`prazoEntrega=a_retirar`) esconde a aba **Endereço de entrega**, o campo **Frete** e sua linha no total; grava endereço vazio e zera `frete` / `valorFrete` no corpo e no servidor (`entregaSemEndereco`, `entregaSemFrete`, `montarCorpoOrcamento`, `enderecoPersistido`, `fretePersistido`). **Entregar** e **Por encomenda** mantêm aba, endereço e Frete. **Buscar cliente** usa `GET /clientes`; ao escolher, copia documento, contato, telefone, e-mail e endereço ao formulário. **Usar endereço do cadastro** só na aba visível; sem endereço no cadastro avisa. Trocar para **No ato** ou **A retirar** com a aba aberta retorna para **Itens**. Trocar de modo zera cliente e referência de endereço. Produtos entram só pela busca do catálogo (`GET /produtos` + `GET /produtos/:id`); linha manual livre não é oferecida. Valores legados em `prazoEntrega` (ex.: A combinar) continuam gravados até o operador escolher um **Tipo de entrega** novo. **Converter em pedido após aprovação** só grava booleano. E-mail vazio: 400. CEP: Brasil API v2. Importar, desconto geral e anexo continuam só com aviso.
+**Regra / bloqueio:** `companyId` da sessão. Sem `vendas:view` → 403. Criar `vendas:create`; salvar `vendas:edit`; desconto e finalizar `vendas:approve`; copiar pedido `vendas:edit`. Status `expirado`/`convertido` bloqueia edição. **Finalizar** sem cliente ou sem itens → incompleto; segundo pedido no mesmo orçamento → 409. Desconto 0–100 **substitui** o percentual (não acumula); `itemIds` nulo = todas as linhas. ST `calcularStItem()` = 0; coluna visível e **soma no total** sem entrar no líquido (`resumirOrcamento` / `totalDoOrcamento`). Condição: `a_vista` / `30_dias` / `60_dias`. Caixa não usa essa condição como forma — totem/caixa escolhem Pix/cartão na hora. Número único `ORC-######`. Validade: `ParametrizacaoCustoVenda.validadeOrcamentoDias` (default 14). **No ato** / **A retirar**: endereço e Frete zerados. Produto só pelo catálogo. Quantidade fora do múltiplo (produto sem venda fracionada) avisa na linha e recusa gravar. E-mail vazio: 400.
 
 | Aba / seção | Campo | O que é | Obrigatório | Quem preenche | De onde vem | Para onde conecta | Como funciona | Regra / bloqueio |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Lista | Busca | Nº ou cliente | Não | Digitação | `GET /orcamentos` | — | Filtra a lista da empresa | Sem match: “Nenhum orçamento” |
+| Lista | Busca | Nº ou cliente | Não | Digitação | `GET /orcamentos` | — | Tokens AND (§7.13) | Sem match: “Nenhum orçamento” |
 | Lista | Novo orçamento | Abre o formulário | — | Clique | — | `/orcamentos/novo` | Abre vazio | Não grava até Salvar |
-| Lista | Linha | Orçamento gravado | — | Clique | API | `/orcamentos/[id]` | Reabre os mesmos itens | Id de outra empresa: 404 |
-| Lista | Finalizar | Marca Enviado sem abrir a ficha | — | Clique | `POST /orcamentos/:id/finalizar` | Status na lista | Só **Em elaboração**; confirmação; exige `vendas:edit`; não regrava itens da ficha aberta em outra aba |
-| Cabeçalho | Nº do Orçamento | Identificação da proposta | Sim | Automático (preview) | `GET /orcamentos/proximo-numero` | `Orcamento.numero` | Somente leitura na tela | POST com número vazio gera sequência |
-| Cabeçalho | Data | Data de emissão | Sim | Automático (hoje) | Sistema | `Orcamento.data` | Somente leitura | — |
-| Cabeçalho | Validade | Até quando vale | Sim | Automático | Data + dias da config | `Orcamento.validade` | Somente leitura | Dias em Configurações → Vendas |
-| Cabeçalho | Status | Situação | Sim | Automático / Finalizar | Em elaboração ou Enviado | Badge + campo RO | Somente leitura | Finalizar grava Enviado |
-| Cabeçalho | Vendedor | Quem vendeu | Não | Seleção | Lista fixa da tela | Texto no orçamento | Não é o usuário logado | — |
-| Cliente | Digitar / Buscar cliente | Modo do cartão | Não | Clique | — | — | Digitar esconde Código. Buscar lista `GET /clientes` | Trocar de modo zera os seis campos |
-| Cliente | Código | Documento do cliente escolhido | Não | Busca | CNPJ ou CPF do cadastro | `Orcamento.clienteCodigo` | Só aparece em Buscar, somente leitura | Vazio abre em Digitar |
-| Cliente | Cliente / CNPJ / Telefone / E-mail / Contato | Dados em texto | Não | Digitação ou busca | Cadastro ou formulário | Campos do `Orcamento` | Buscar copia nome, documento, telefone e e-mail. Contato fica vazio | Sem vínculo obrigatório. E-mail vazio bloqueia o envio |
-| Pagamento e entrega | Condição de pagamento | Forma | Não | Seleção | Lista fixa | Texto | Grava com Salvar | — |
-| Pagamento e entrega | Tipo de entrega | Modalidade de entrega | Não | Seleção | No ato, A retirar, Entregar, Por encomenda | `prazoEntrega` | Grava com Salvar | **No ato** e **A retirar** escondem aba Endereço, campo Frete e linha Frete no total |
-| Pagamento e entrega | Frete | Quem paga o frete | Não | Seleção | CIF ou FOB | Texto | Grava com Salvar | Oculto e zerado (`frete` vazio, `valorFrete` 0) com **No ato** e **A retirar**. Não é o frete da entrada de notas |
-| Itens | Produto (busca) + Adicionar | Incluir linha do catálogo | Não | Busca + clique | `GET /produtos`, `GET /produtos/:id` | `OrcamentoItem` | Preenche código, descrição, NCM, unidade e preço de venda | Qtd., % desc. e preço editáveis na linha |
-| Itens | Mensagem para o cliente | Texto da proposta | Não | Digitação | Formulário | E-mail e registro | Contador até 1000 | HTML do e-mail é escapado |
-| Itens | Total do orçamento | Soma das linhas, menos desconto, mais frete e outras despesas | — | Cálculo | Itens da tela | Lista (`total`) | Muda ao digitar | Sem botão Recalcular |
-| Endereço de entrega | Usar endereço do cadastro | Copia endereço do cliente | Não | Clique | Último cliente em Buscar | Campos de endereço | Reaplica CEP e logradouro do cadastro | Aba oculta com **No ato** e **A retirar**; sem endereço no cadastro: aviso |
-| Endereço de entrega | CEP | Código postal | Não | Digitação / cliente | Brasil API ou cadastro | `Orcamento.cep` | 8 dígitos buscam logradouro, bairro, cidade e UF | 404 ou rede mostram o erro no campo |
-| Endereço de entrega | Número | Número do imóvel | Não | Digitação | Formulário | `numeroEndereco` | Não é preenchido pela API | A busca não apaga o que já foi digitado |
-| Informações complementares | Informações complementares | Texto livre | Não | Digitação | Formulário | `Orcamento.complementares` | Grava com Salvar | — |
-| Observações | Observações | Texto livre | Não | Digitação | Formulário | `Orcamento.observacoes` | A mensagem ao cliente fica em Itens | — |
-| Anexos | Anexar arquivo | Lista de arquivos | Não | — | Vazio | — | Mostra “Nenhum anexo” | O botão não envia arquivo |
-| Histórico | — | Eventos | — | — | Vazio | — | Mostra “Nenhum registro” | Não grava eventos |
-| Rodapé | Converter em pedido após aprovação | Intenção futura | Não | Checkbox | Formulário | `converterEmPedido` | Só grava verdadeiro ou falso | Não cria pedido de venda |
-| Cabeçalho / Rodapé | Salvar | Grava e volta à lista | — | Clique | Formulário | `POST` ou `PATCH /orcamentos` | Redireciona para `/orcamentos` | Exige `vendas:create` ou `vendas:edit` |
-| Cabeçalho / Rodapé | Salvar e finalizar | Grava e envia a proposta | — | Clique | Formulário | Gravar + `POST /orcamentos/:id/finalizar` | Status Enviado; modal pós-sucesso | Exige permissão de edição |
-| Cabeçalho | Imprimir | Impressão do navegador | — | Clique | Tela | `window.print()` | Esconde menu e botões | Não gera PDF no servidor |
-| Cabeçalho | Enviar por e-mail | Manda a proposta | Condicional | Clique | E-mail do cliente | Resend | HTML com layout corporativo | Sem e-mail: erro na tela; sem Resend: 503 |
-| Modal (após Salvar e finalizar) | Ficar no orçamento | Fecha o modal | — | Clique | — | Ficha atual | Fundo e Escape fazem o mesmo | Mantém o orçamento com status Enviado |
-| Modal (após Salvar e finalizar) | Imprimir proposta / Ir para Receber pagamento | Impressão ou caixa | — | Clique | — | `window.print()` ou `/receber-pagamento` | Após imprimir, o modal permanece até **Ficar no orçamento**; ir ao caixa fecha e navega | Não cria pedido de venda |
+| Lista | Linha | Orçamento gravado | — | Clique | API | `/orcamentos/[id]` | Reabre | Outra empresa: 404 |
+| Lista | Finalizar | Valida e, se marcado, converte | — | Clique | `POST /orcamentos/:id/finalizar` | Status / PedidoVenda | Só **Em aberto**; confirmação; `vendas:approve` | Sem checkbox permanece em aberto |
+| Cabeçalho | Título / Nº / Status | Identificação | Sim | Automático | Preview + config | `Orcamento` | Título **Orçamento de venda**; nº e badge **Em aberto** / **Expirado** / **Convertido** | Status muda em expirar / finalizar |
+| Cabeçalho | Data do orçamento / Validade | Datas da proposta | Sim | Automático | Hoje + validade em dias | `Orcamento` | Somente leitura na faixa | — |
+| Cabeçalho | Vendedor | Quem vendeu | Não | Seleção | Lista fixa (199) + usuário da sessão | Texto | Novo: pré-marca o usuário se o cargo contém “vendedor” | Orçamento antigo com 199 permanece |
+| Cliente | Digitar / Buscar cliente | Modo do cartão | Não | Clique | `GET /clientes` | Campos do `Orcamento` | Buscar copia documento e contato | Trocar de modo zera os campos |
+| Pagamento e entrega | Condição de pagamento | Prazo | Não | Seleção | À vista, 30 dias, 60 dias | `condicaoPagamento` | Grava com Salvar | Não define a forma do totem |
+| Pagamento e entrega | Tipo de entrega | Modalidade | Não | Seleção | No ato, A retirar, Entregar, Por encomenda | `prazoEntrega` | Grava com Salvar | No ato e A retirar escondem endereço e Frete |
+| Pagamento e entrega | Frete | CIF ou FOB | Não | Seleção | Lista | Texto + `valorFrete` | Linha no total | Oculto e zerado em No ato / A retirar |
+| Itens | Produto + Adicionar | Incluir linha | Sim para finalizar | Busca + clique | `GET /produtos` + saldos | `OrcamentoItem` | Uma linha por vez | Sem linha livre |
+| Itens | Preço unit. | Preço de catálogo | Sim | Sistema | Cadastro do produto | Item | Somente leitura | Sem calculadora de ST |
+| Itens | ST | Substituição tributária | — | Sistema | `calcularStItem()` | Coluna e `valorSt` | Sempre 0 nesta versão; soma no total, não no líquido | Sem regra fiscal |
+| Itens | Qtd. | Quantidade | Sim | Digitação | Linha | Item | Avisa se não for múltiplo | Recusa gravar se `!permiteVendaFracionada` |
+| Itens | Desconto | Percentual da linha | Não | Modal | `POST /orcamentos/:id/desconto` | `percentualDesconto` | Substitui o valor anterior | 0–100; `vendas:approve`; só em aberto |
+| Itens | Copiar pedido | Troca os itens | Não | Modal | `POST /orcamentos/:id/copiar-pedido` | Itens do orçamento | Lê `PedidoVenda` da empresa | Origem intacta; só em aberto |
+| Itens | Total | Subtotal − descontos + frete + outras + ST | — | Cálculo | Itens | Lista (`total`) | Ao vivo | Sem Recalcular; ST não entra no líquido |
+| Endereço de entrega | CEP e demais | Destino | Não | Digitação / cliente | Brasil API | `Orcamento` | 8 dígitos buscam logradouro | Aba oculta em No ato e A retirar |
+| Anexos | Arquivos | Lista | Não | Upload | `GET/POST/DELETE /orcamentos/:id/anexos` | `OrcamentoAnexo` | Mesmo componente de Contas a Receber | Somente leitura se bloqueado |
+| Histórico | Eventos | Auditoria da ficha | — | Sistema | `OrcamentoHistorico` | Tela | Criar, desconto, copiar, finalizar, conversão | Não edita |
+| Rodapé | Converter em pedido após aprovação | Intenção de conversão | Não | Checkbox | Formulário | `converterEmPedido` | Gravado no Salvar | Sem marca, Finalizar não cria pedido |
+| Rodapé | Salvar orçamento | Grava e permanece | — | Clique | Formulário | `POST` ou `PATCH` | Novo: `replace` na ficha | `vendas:create` / `vendas:edit` |
+| Rodapé | Finalizar | Valida e converte se marcado | — | Clique | `POST .../finalizar` | Status Convertido + pedido | Modal pós-sucesso | Cliente + itens; `vendas:approve` |
+| Itens · Mais opções | Limpar itens / Imprimir / Enviar por e-mail | Ações extras | — | Menu | Tela / Resend | `window.print()` ou e-mail | Topo da ficha só tem **Voltar** | Sem e-mail: erro; sem Resend: 503 |
+| Modal (após Finalizar) | Ficar no orçamento | Fecha o modal | — | Clique | — | Ficha | Fundo e Escape iguais | Convertido trava a ficha |
+| Modal (após Finalizar) | Imprimir proposta / Ir para Receber pagamento | Impressão ou caixa | — | Clique | — | `window.print()` ou `/receber-pagamento` | Ir ao caixa fecha e navega | — |
 
-**Efeitos em cadeia:** nenhum em pedido de compra, entrada, estoque ou financeiro. Pedido de venda continua fora do sistema.
+**Efeitos em cadeia:** com o checkbox, **Finalizar** cria um `PedidoVenda` único (`orcamentoId`) e lista em `/pedidos-venda`. Sem checkbox, nenhum pedido. Não mexe em estoque, contas a receber nem pedido de compra. Caixa continua recebendo o orçamento `em_aberto` ou `convertido`. Auditoria `registrarAuditoria` nas mutações.
 
 **Como validar**
 
 | # | Ação | Resultado esperado |
 | --- | --- | --- |
-| 1 | Novo orçamento | Nº preview, data hoje, validade automática, status Em elaboração (somente leitura) |
-| 2 | Digitar quantidade ou % | Subtotal e Total mudam sem Recalcular |
-| 3 | CEP `01310-100` | Preenche logradouro, bairro, cidade e UF; o número digitado permanece |
-| 4 | CEP `00000-000` | “CEP não encontrado” |
-| 5 | Salvar na ficha | Volta à lista; a linha gravada aparece; abrir de novo traz os mesmos itens |
-| 6 | Imprimir | Diálogo do navegador, sem menu nem botões |
-| 7 | Salvar e finalizar | Status Enviado; modal abre; **Ficar no orçamento** fecha e mantém a ficha; fundo e Escape fazem o mesmo; impressão só em **Imprimir proposta** |
-| 15 | Finalizar na lista (Em elaboração) | Confirma; status vira Enviado; linha atualiza sem abrir a ficha |
-| 8 | Enviar por e-mail sem e-mail | A tela mostra o erro e a Resend não é chamada |
-| 9 | Usuário sem `vendas:view` | Não vê o menu; a API responde 403 |
-| 10 | Digitar no cartão Cliente | Não aparece Código |
-| 11 | Buscar cliente e escolher uma pessoa | Código só leitura; nome, telefone, e-mail preenchidos; com **Entregar**, endereço na aba |
-| 12 | Adicionar produto pela busca | Linha com código, descrição, NCM e preço do catálogo |
-| 13 | Configurações → Vendas → Validade padrão (dias) | Novo orçamento usa a quantidade de dias na validade |
-| 14 | Trocar entre Digitar e Buscar cliente | Campos do cliente e referência de endereço zerados |
-| 16 | Novo orçamento (padrão **No ato**) | Sem aba **Endereço de entrega**, sem campo **Frete**, sem linha Frete no total; Salvar grava endereço vazio e `valorFrete` 0 |
-| 17 | Trocar para **Entregar**, preencher CEP e Frete, Salvar | Endereço e Frete permanecem; voltar a **No ato** e Salvar zera no banco |
-| 18 | Trocar para **A retirar** | Aba **Endereço de entrega**, campo **Frete** e linha Frete no total somem |
-| 19 | Em **A retirar**, Salvar com endereço e Frete no estado do formulário | Endereço é gravado vazio; `frete` fica vazio e `valorFrete` 0 |
-| 20 | Trocar para **Entregar** ou **Por encomenda** | Aba de endereço e Frete voltam; endereço/Frete podem ser gravados |
+| 1 | Novo orçamento | Nº preview, data hoje, validade automática, status **Em aberto** |
+| 2 | Salvar orçamento | Permanece na ficha; lista mostra a linha |
+| 3 | Desconto 10% e depois 5% | Percentual fica 5 (substitui) |
+| 4 | Finalizar sem checkbox, com cliente e item | Permanece **Em aberto**; histórico “finalizar” |
+| 5 | Marcar converter e Finalizar | Status **Convertido**; um pedido `PV-######`; ficha travada |
+| 6 | Finalizar de novo o convertido | 409 / bloqueado |
+| 7 | Lista Finalizar sem `vendas:approve` | Botão não aparece |
+| 8 | Tipo **A retirar** e Salvar | Endereço e Frete zerados |
+| 9 | Usuário sem `vendas:view` | Sem menu; API 403 |
+| 10 | Coluna ST | Sempre R$ 0,00; total inclui ST (hoje 0) sem misturar no líquido |
+
+---
+
+### 6.21b Pedidos de venda — `/pedidos-venda` e `/pedidos-venda/[id]`
+
+**Objetivo:** consultar os pedidos gerados na conversão do orçamento. Somente leitura.
+
+**Como usar:** menu **Vendas → Pedidos de venda**. Busque por número, cliente ou orçamento. Clique na linha para a ficha (itens, totais, origem). **Copiar pedido** no orçamento em aberto lê esta lista sem alterar o pedido.
+
+**Resumo visual:** `GET /pedidos-venda` e `GET /pedidos-venda/:id`. Número `PV-` + dígitos do orçamento. Um pedido por orçamento.
+
+**Onde olhar no código:** `frontend/app/pedidos-venda/page.tsx`, `frontend/app/pedidos-venda/[id]/page.tsx`, `src/modulos/pedidos-venda/` (rotas, serviço, repositório), `src/infraestrutura/http/registrar-rotas.ts` (prefixo `/pedidos-venda`), `registro-de-paginas.ts` (chave `pedidos-venda`), `frontend/lib/menu-grupos.ts`.
+
+**Regra / bloqueio:** `vendas:view`. Outra empresa: 404. Sem POST/PATCH. Não baixa estoque nem gera contas a receber.
+
+| Aba / seção | Campo | O que é | Obrigatório | Quem preenche | De onde vem | Para onde conecta | Como funciona | Regra / bloqueio |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Lista | Busca | Número, cliente ou orçamento | Não | Digitação | Lista em memória | — | Tokens AND | Vazio: tabela vazia |
+| Lista | Linha | Pedido gravado | — | Clique | API | `/pedidos-venda/[id]` | Abre ficha | — |
+| Ficha | Número | Identificação | Sim | Sistema | Conversão | `PedidoVenda.numero` | Somente leitura | `PV-` + nº do orçamento |
+| Ficha | Orçamento | Origem | Sim | Sistema | `orcamentoId` | `/orcamentos/[id]` | Exibe o número | Não reabre edição do pedido |
+| Ficha | Itens | Cópia da conversão | — | Sistema | Itens do orçamento no momento da conversão | Grade | Preço, desc., ST, total | ST 0 nesta versão |
+
+**Efeitos em cadeia:** nenhum no estoque ou no financeiro. Serve de origem para **Copiar pedido** no orçamento.
+
+**Como validar**
+
+| # | Ação | Resultado esperado |
+| --- | --- | --- |
+| 1 | Converter um orçamento | Linha nova com o cliente e o nº do orçamento |
+| 2 | Abrir a ficha | Itens iguais aos do orçamento no momento da conversão |
+| 3 | Sem `vendas:view` | Sem menu; API 403 |
 
 ---
 
 ### 6.22 Receber pagamento — `/receber-pagamento`, `/receber-pagamento/totem` e `/receber-pagamento/novo`
 
-**Objetivo:** receber um **orçamento** já gravado (`enviado` ou `aprovado`) no totem (formas eletrônicas) ou no caixa (dinheiro e backup operacional) e, ao confirmar, criar uma Separação por produto.
+**Objetivo:** receber um **orçamento** já gravado (`em_aberto` ou `convertido`) no totem (formas eletrônicas) ou no caixa (dinheiro e backup operacional) e, ao confirmar, criar uma Separação por produto.
 
-**Como usar:** menu **Vendas → Receber pagamento**. Quem tem `vendas:view` vê **A receber** (orçamentos pendentes) e **Vendas pagas**. O totem (`/receber-pagamento/totem`, sem menu ERP, layout touch em coluna larga) exige `vendas:create`. O cliente escolhe **Número do orçamento** ou **CPF/CNPJ**, digita no **teclado da tela** (até 6 dígitos do nº, enviados como `ORC-` + zeros à esquerda) ou informa CPF (11) / CNPJ (14); leitor de código com **Enter** no passo de identificação também dispara a busca. No **pagamento**, vê um **card grande** com a forma (Pix, débito ou crédito conforme o orçamento), **Trocar forma de pagamento** (cards Pix / débito / crédito — **sem boleto** no totem) e, no crédito, **grade de parcelas** (N× e valor por parcela) unificada dos cartões de crédito ativos em Configurações → Financeiro → **Cartões de Pagamento**. Pix usa **Chave Pix** (Configurações → Vendas); cartão conclui em **Aprovado na maquininha** (sem TEF). **Dinheiro** e **À vista** no totem não confirmam: **Chame um atendente** ou caixa. Comprovante pela **impressão do navegador** (mostra parcelas no crédito). `/receber-pagamento/novo` redireciona para a lista do caixa. Dois totems usam a mesma URL.
+**Como usar:** menu **Vendas → Receber pagamento**. Quem tem `vendas:view` vê **A receber** (orçamentos pendentes) e **Vendas pagas**. O totem (`/receber-pagamento/totem`, sem menu ERP, layout touch em coluna larga) exige `vendas:create`. O cliente escolhe **Número do orçamento** ou **CPF/CNPJ**, digita no **teclado da tela** (até 6 dígitos do nº, enviados como `ORC-` + zeros à esquerda) ou informa CPF (11) / CNPJ (14); leitor de código com **Enter** no passo de identificação também dispara a busca. No **pagamento**, vê um **card grande** com a forma (padrão Pix; débito ou crédito na troca), **Trocar forma de pagamento** (cards Pix / débito / crédito — **sem boleto** no totem) e, no crédito, **grade de parcelas** (N× e valor por parcela) unificada dos cartões de crédito ativos em Configurações → Financeiro → **Cartões de Pagamento**. Pix usa **Chave Pix** (Configurações → Vendas); cartão conclui em **Aprovado na maquininha** (sem TEF). **Dinheiro** e **À vista** no totem não confirmam: **Chame um atendente** ou caixa. Comprovante pela **impressão do navegador** (mostra parcelas no crédito). `/receber-pagamento/novo` redireciona para a lista do caixa. Dois totems usam a mesma URL.
 
 **Resumo visual**
 
@@ -4518,7 +4577,7 @@ Legado API
 
 **Onde olhar no código:** `frontend/lib/receber-pagamento-orcamento.ts` (`termoBuscaTotem`, `termoBuscaLeitor`, `formatarVisorTotem`), `frontend/lib/receber-pagamento-totem.ts`, `frontend/components/receber-pagamento/teclado-numerico-totem.tsx`, `frontend/components/receber-pagamento/passo-pagamento-totem.tsx`, `frontend/components/receber-pagamento/comprovante-recebimento.tsx`, `frontend/app/receber-pagamento/page.tsx`, `frontend/app/receber-pagamento/totem/page.tsx`, `frontend/app/receber-pagamento/novo/page.tsx`, `frontend/components/configuracoes/painel-parametrizacao-custos.tsx` (**Chave Pix**), `src/modulos/vendas-caixa/` (rotas, `receberOrcamento`, `obterOpcoesTotem`, `opcoes-totem-vendas.ts`, `chamarOrcamento`, `listarAReceber`), `src/modulos/orcamentos/repositorio-orcamentos.ts` (`buscarParaRecebimento`, `listarRecebiveis`), `prisma/schema.prisma` (`VendaCaixa.orcamentoId`, `VendaCaixa.numeroParcelas`, `ParametrizacaoCustoVenda.chavePix`).
 
-**Regra / bloqueio:** `companyId` da sessão. Orçamento `em_elaboracao` não entra na busca. Item do orçamento precisa de **SKU** (`OrcamentoItem.codigo`) cadastrado como produto da empresa. Um orçamento só gera **uma** `VendaCaixa` (`@@unique([companyId, orcamentoId])`); segundo recebimento → 409. Totem + `dinheiro` ou `boleto` → 400. Crédito no totem exige `numeroParcelas` permitido em cartões ativos. Caixa: dinheiro exige `valorRecebido` ≥ total recalculado no servidor. Sem gateway bancário; Pix exibe chave cadastrada (pode vazia). Cartão depende do operador clicar **Aprovado na maquininha**.
+**Regra / bloqueio:** `companyId` da sessão. Só `STATUS_ORCAMENTO_RECEBIVEL` (`em_aberto`, `convertido`) entra na busca. `expirado` não recebe. Item do orçamento precisa de **SKU** (`OrcamentoItem.codigo`) cadastrado como produto da empresa. Um orçamento só gera **uma** `VendaCaixa` (`@@unique([companyId, orcamentoId])`); segundo recebimento → 409. Totem + `dinheiro` ou `boleto` → 400. Condição do orçamento (`a_vista` / `30_dias` / `60_dias`) **não** escolhe a forma: `formaPadraoDoOrcamento` devolve Pix; o cliente/operador troca no totem/caixa. Crédito no totem exige `numeroParcelas` permitido em cartões ativos. Caixa: dinheiro exige `valorRecebido` ≥ total recalculado no servidor. Sem gateway bancário; Pix exibe chave cadastrada (pode vazia). Cartão depende do operador clicar **Aprovado na maquininha**.
 
 | Aba / seção | Campo | O que é | Obrigatório | Quem preenche | De onde vem | Para onde conecta | Como funciona | Regra / bloqueio |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -4526,7 +4585,7 @@ Legado API
 | Caixa | Receber pagamento | Confirma forma e grava | — | Clique | Detalhe | `POST /orcamentos/:id` origem caixa | Troco só em dinheiro | Valor recebido &lt; total: botão desabilitado / 400 |
 | Caixa | Imprimir | Comprovante | — | Clique | Detalhe | `window.print()` | Prévia antes; pago após receber | — |
 | Totem | Buscar | Número ou CPF/CNPJ | Sim | Cliente | Teclado na tela + `GET /orcamentos/busca` | Passo pagamento | Nº → `ORC-` + 6 dígitos; CPF 11 / CNPJ 14; leitor = Enter no passo identificação | Já recebido: mensagem |
-| Totem | Forma de pagamento | Card grande + trocar | Sim | Cliente | Condição do orçamento ou escolha | `GET /opcoes-totem` | Pix / débito / crédito; sem boleto | Crédito sem cartão cadastrado: opção desabilitada |
+| Totem | Forma de pagamento | Card grande + trocar | Sim | Cliente | Padrão Pix + escolha | `GET /opcoes-totem` | Pix / débito / crédito; sem boleto | Condição do orçamento não mapeia forma; crédito sem cartão cadastrado: opção desabilitada |
 | Totem | Parcelas | N× touch | Sim (crédito) | Cliente | Cartões de Pagamento ativos | `POST` com `numeroParcelas` | Valor por parcela = total ÷ N (exibição) | Parcela inválida → 400 |
 | Totem | Confirmar / Aprovado | Grava paga | — | Cliente | Orçamento carregado | `POST /orcamentos/:id` | Cartão só após botão Aprovado | Dinheiro/à vista: chamar atendente |
 | Totem | Chame um atendente | Fila do caixa | — | Cliente | Orçamento | `POST .../chamar` | Sem Separação | Segundo chamado: 409 |
@@ -4538,7 +4597,7 @@ Legado API
 
 | # | Ação | Resultado esperado |
 | --- | --- | --- |
-| 1 | Totem busca orçamento `enviado` e confirma Pix | Venda `paga`, Separação criada, impressão abre |
+| 1 | Totem busca orçamento `em_aberto` e confirma Pix | Venda `paga`, Separação criada, impressão abre |
 | 2 | Mesmo orçamento de novo | 409 / “já foi recebido” |
 | 3 | Totem **Chame um atendente** | Linha na lista **A receber** com badge Chamado; caixa recebe e gera Separação |
 | 4 | Caixa dinheiro com valor menor que total | Não grava (400) |
@@ -5225,6 +5284,25 @@ Produto `controlaEstoque=false`: tarefa ok, zero movimento. Chaves: `reqwms:{id}
 
 ---
 
+### 7.28 Orçamento de venda e pedido de venda
+
+| Regra | Detalhe |
+| ----- | ------- |
+| Status | `em_aberto`, `expirado`, `convertido`. Listagem chama `expirarVencidos` (validade &lt; hoje, ainda em aberto → expirado). |
+| Edição | Só `em_aberto`. Expirado e convertido recusam PATCH, desconto, copiar e finalizar. |
+| Desconto | `POST /orcamentos/:id/desconto`; percentual 0–100 **substitui** o da linha (não acumula). `itemIds` nulo = todas. Exige `vendas:approve`. |
+| ST | `calcularStItem()` retorna 0 até existir regra fiscal. Coluna visível. Soma no total; não entra no líquido (`resumirOrcamento` / `totalDoOrcamento`). |
+| Múltiplo | Sem `permiteVendaFracionada`, a quantidade precisa ser múltiplo de `multiploVenda` (mesmo critério de `validarMultiplos`). A ficha avisa na linha e recusa gravar. |
+| Vendedor | Opções = lista fixa (199) + usuário logado. Novo orçamento pré-seleciona o usuário se `cargo` casa com `/vendedor/i`. |
+| Conversão | **Finalizar** com `converterEmPedido` cria um `PedidoVenda` (`@@unique` por `orcamentoId`); número `PV-` + dígitos do orçamento; orçamento → `convertido`. Sem checkbox: valida e permanece em aberto. Duplicata → 409. Exige cliente e ≥ 1 item. Permissão `vendas:approve`. |
+| Copiar pedido | Substitui itens do orçamento em aberto pelos do pedido escolhido; origem intacta. `vendas:edit`. |
+| Caixa | `STATUS_ORCAMENTO_RECEBIVEL` = `em_aberto` + `convertido`. Forma padrão Pix (`formaPadraoDoOrcamento`); condição de prazo não escolhe forma. |
+| Financeiro / estoque | Conversão **não** gera Contas a Receber nem movimento de estoque. Separação nasce só ao receber o pagamento (§6.22 / §7.27). |
+
+**Onde olhar no código:** `servico-orcamentos.ts`, `repositorio-orcamentos.ts`, `esquema-orcamentos.ts`, `rotas-orcamentos.ts`, `rotas-pedidos-venda.ts`, `esquema-vendas-caixa.ts` (`STATUS_ORCAMENTO_RECEBIVEL`), `frontend/lib/receber-pagamento-orcamento.ts`, §6.21, §6.21b, §6.22.
+
+---
+
 ## 8. Acesso, segurança e multiempresa
 
 
@@ -5253,6 +5331,8 @@ Produto `controlaEstoque=false`: tarefa ok, zero movimento. Chaves: `reqwms:{id}
 **Como usar — Finalidade da entrada (NFe 55):** se o fornecedor tiver **só Revenda** ou **só Uso e Consumo**, a nota já vem marcada e o fluxo segue sem clique. Se tiver os dois tipos, escolha no Resumo (clique de novo na marcada desmarca). Para mudar um tipo único, habilite o outro em Fornecedores → Outros.
 
 **Como usar — Consulta de CNPJ:** em **Fornecedores**, **Clientes** ou **Transportadoras**, cadastro novo, Pessoa Jurídica, informe o CNPJ e saia do campo. Razão social, CNAE, endereço e Simples vêm preenchidos quando a consulta responder. Se aparecer **Não foi possível consultar a Receita Federal**, complete o cadastro na mão.
+
+**Como usar — Orçamentos e Pedidos de venda:** em **Vendas → Orçamentos**, abra a ficha **Orçamento de venda** (status **Em aberto**). Grave com **Salvar orçamento** no rodapé. Desconto só em **Aplicar descontos** (percentual substitui o anterior). Imprimir e e-mail em **Mais opções**. Marque **Converter em pedido após aprovação** e use **Finalizar** (quem tem aprovação) para criar o pedido. A ficha convertida trava. Consulte em **Vendas → Pedidos de venda**. Receber no caixa/totem continua pelo número do orçamento. Detalhe nas fichas §6.21 / §6.21b / §6.22 e na regra §7.28.
 
 ## 9. Checklist geral de aceite (fluxo de compra)
 
@@ -5300,7 +5380,8 @@ Produto `controlaEstoque=false`: tarefa ok, zero movimento. Chaves: `reqwms:{id}
 | Termo                       | Significado                                                                                                                                                                                                                                                                                                               |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | SKU                         | Código interno do produto                                                                                                                                                                                                                                                                                                 |
-| Orçamento                   | Proposta de venda em `/orcamentos`. Grava na empresa, imprime e pode ir por e-mail. Não vira pedido de venda                                                                                                                                                                                                              |
+| Orçamento                   | Proposta de venda em `/orcamentos`. Status Em aberto, Expirado ou Convertido. Com o checkbox, **Finalizar** gera um pedido de venda                                                                                                                                                                                       |
+| Pedido de venda             | Cópia somente leitura em `/pedidos-venda`, criada na conversão do orçamento. Não baixa estoque nem gera título a receber                                                                                                                                                                                                  |
 | Receber pagamento           | Totem e caixa em `/receber-pagamento`. Forma gravada (sem gateway). Totem confirma formas eletrônicas ou chama atendente; caixa recebe dinheiro ou o chamado. Ao confirmar pago, nasce Separação por produto |
 | CFOP                        | Código Fiscal de Operações e Prestações                                                                                                                                                                                                                                                                                   |
 | CIF                         | Frete por conta do remetente; transportadora não exigida no pedido                                                                                                                                                                                                                                                        |

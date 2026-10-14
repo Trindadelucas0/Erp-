@@ -7,26 +7,89 @@ import {
 import {
   EXEMPLO_ORCAMENTO,
   aplicarClienteNoOrcamento,
+  avisoQuantidadeForaDoMultiplo,
   enderecoEntregaDoCliente,
   entregaNoAto,
   entregaSemFrete,
   entregaSemEndereco,
   modoClienteDoOrcamento,
+  opcoesVendedorOrcamento,
   resumirOrcamento,
   somarDiasCivil,
+  vendedorIdNovoOrcamento,
 } from './orcamento-layout'
 
 describe('resumirOrcamento', () => {
   it('soma o exemplo do print em 743,10', () => {
     const resumo = resumirOrcamento(EXEMPLO_ORCAMENTO)
 
-    expect(resumo.subtotal).toBe(784.34)
-    expect(resumo.descontoTotal).toBe(41.24)
+    expect(resumo.subtotal).toBe(841.49)
+    expect(resumo.descontoTotal).toBe(57.15)
     expect(resumo.frete).toBe(0)
     expect(resumo.outrasDespesas).toBe(0)
-    expect(resumo.total).toBe(743.1)
+    expect(resumo.totalSt).toBe(0)
+    expect(resumo.total).toBe(784.34)
     expect(resumo.qtdItens).toBe(4)
     expect(resumo.qtdTotal).toBe(9)
+  })
+
+  it('soma ST no total sem misturar no líquido', () => {
+    const comSt = {
+      ...EXEMPLO_ORCAMENTO,
+      itens: EXEMPLO_ORCAMENTO.itens.map((item, indice) =>
+        indice === 0 ? { ...item, valorSt: 10.5 } : item
+      ),
+    }
+    const resumo = resumirOrcamento(comSt)
+    expect(resumo.totalSt).toBe(10.5)
+    expect(resumo.descontoTotal).toBe(57.15)
+    expect(resumo.total).toBe(794.84)
+  })
+})
+
+describe('avisoQuantidadeForaDoMultiplo', () => {
+  it('alerta quando a quantidade não é múltiplo e a venda não é fracionada', () => {
+    expect(
+      avisoQuantidadeForaDoMultiplo({
+        permiteVendaFracionada: false,
+        multiploVenda: 10,
+        quantidade: 15,
+      })
+    ).toBe('Quantidade deve ser múltipla de 10')
+  })
+
+  it('não alerta se a venda é fracionada ou a quantidade fecha o múltiplo', () => {
+    expect(
+      avisoQuantidadeForaDoMultiplo({
+        permiteVendaFracionada: true,
+        multiploVenda: 10,
+        quantidade: 15,
+      })
+    ).toBeNull()
+    expect(
+      avisoQuantidadeForaDoMultiplo({
+        permiteVendaFracionada: false,
+        multiploVenda: 10,
+        quantidade: 20,
+      })
+    ).toBeNull()
+  })
+})
+
+describe('opcoesVendedorOrcamento', () => {
+  it('mantém o vendedor 199 e acrescenta o usuário logado', () => {
+    const opcoes = opcoesVendedorOrcamento({ id: 'u-1', name: 'Gustavo Braga' }, '199')
+    expect(opcoes).toEqual([
+      { value: '199', label: '199 - Edson Feliciano' },
+      { value: 'u-1', label: 'Gustavo Braga' },
+    ])
+  })
+})
+
+describe('vendedorIdNovoOrcamento', () => {
+  it('pré-seleciona o usuário quando o cargo contém vendedor', () => {
+    expect(vendedorIdNovoOrcamento({ id: 'u-1', cargo: 'Vendedor interno' })).toBe('u-1')
+    expect(vendedorIdNovoOrcamento({ id: 'u-1', cargo: 'Caixa' })).toBe('')
   })
 })
 

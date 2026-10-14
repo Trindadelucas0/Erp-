@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
 import { enderecoPersistido, esquemaOrcamento, fretePersistido } from './esquema-orcamentos.js'
 
+vi.mock('../../compartilhado/auditoria/registrar-auditoria.js', () => ({
+  registrarAuditoria: vi.fn().mockResolvedValue(undefined),
+}))
+
 vi.mock('./repositorio-orcamentos.js', () => ({
   ehUnicidadeNumero: vi.fn(() => false),
   repositorioDeOrcamentos: {
@@ -11,6 +15,12 @@ vi.mock('./repositorio-orcamentos.js', () => ({
     atualizar: vi.fn(),
     atualizarStatus: vi.fn(),
     proximoNumero: vi.fn(),
+    expirarVencidos: vi.fn().mockResolvedValue({ count: 0 }),
+    buscarProdutosParaValidacao: vi.fn().mockResolvedValue([]),
+    registrarHistorico: vi.fn(),
+    aplicarDesconto: vi.fn(),
+    copiarItensPedido: vi.fn(),
+    finalizar: vi.fn(),
   },
 }))
 
@@ -36,7 +46,7 @@ function orcamentoBase(parcial: Record<string, unknown> = {}) {
     numero: 'ORC-000001',
     data: '2026-09-28',
     validade: '',
-    status: 'em_elaboracao',
+    status: 'em_aberto',
     vendedorId: '',
     clienteCodigo: '',
     clienteNome: 'Cliente',
@@ -79,7 +89,7 @@ describe('esquema de orçamento', () => {
     expect(resultado.success).toBe(true)
     if (!resultado.success) return
     expect(resultado.data).not.toHaveProperty('companyId')
-    expect(resultado.data.status).toBe('em_elaboracao')
+    expect(resultado.data.status).toBe('em_aberto')
   })
 
   it('rejeita status fora da lista', () => {
@@ -96,42 +106,71 @@ describe('servico de orçamentos', () => {
     vi.clearAllMocks()
   })
 
-  it('finalizar grava status enviado', async () => {
-    vi.mocked(repositorioDeOrcamentos.buscarPorId).mockResolvedValue(orcamentoBase() as never)
-    vi.mocked(repositorioDeOrcamentos.atualizarStatus).mockImplementation(
-      async (_empresa, _id, status) => orcamentoBase({ status }) as never
+  it('finalizar sem converter mantém em aberto', async () => {
+    vi.mocked(repositorioDeOrcamentos.finalizar).mockResolvedValue(
+      orcamentoBase({ status: 'em_aberto' }) as never
     )
 
-    const resultado = await servicoDeOrcamentos.finalizar(EMPRESA, ID)
+    const resultado = await servicoDeOrcamentos.finalizar(EMPRESA, ID, 'u1')
 
-    expect(resultado.status).toBe('enviado')
-    expect(repositorioDeOrcamentos.atualizarStatus).toHaveBeenCalledWith(EMPRESA, ID, 'enviado')
+    expect(resultado.status).toBe('em_aberto')
+    expect(repositorioDeOrcamentos.finalizar).toHaveBeenCalledWith(EMPRESA, ID, 'u1')
     expect(resultado).not.toHaveProperty('nomeEmpresa')
   })
 
-  it('salvar rascunho não rebaixa orçamento já enviado', async () => {
-    vi.mocked(repositorioDeOrcamentos.buscarPorId).mockResolvedValue(
-      orcamentoBase({ status: 'enviado' }) as never
+  it('segunda conversão responde 409', async () => {
+    vi.mocked(repositorioDeOrcamentos.finalizar).mockResolvedValue({ duplicado: true } as never)
+
+    await expect(servicoDeOrcamentos.finalizar(EMPRESA, ID, 'u1')).rejects.toMatchObject({
+      codigoHttp: 409,
+      message: 'Este orçamento já foi convertido',
+    })
+  })
+
+  it('desconto 10 depois 5 substitui e não acumula', async () => {
+    vi.mocked(repositorioDeOrcamentos.aplicarDesconto)
+      .mockResolvedValueOnce(orcamentoBase({ descontoTotal: 10 }) as never)
+      .mockResolvedValueOnce(orcamentoBase({ descontoTotal: 5 }) as never)
+
+    const primeiro = await servicoDeOrcamentos.aplicarDesconto(EMPRESA, ID, 10, null, 'u1')
+    const segundo = await servicoDeOrcamentos.aplicarDesconto(EMPRESA, ID, 5, null, 'u1')
+
+    expect(primeiro.descontoTotal).toBe(10)
+    expect(segundo.descontoTotal).toBe(5)
+    expect(repositorioDeOrcamentos.aplicarDesconto).toHaveBeenNthCalledWith(
+      2,
+      EMPRESA,
+      ID,
+      5,
+      null,
+      'u1'
     )
-    vi.mocked(repositorioDeOrcamentos.atualizar).mockImplementation(
-      async (_empresa, _id, _dados, _numero, status) => orcamentoBase({ status }) as never
+  })
+
+  it('copiar pedido em orçamento fechado responde 409', async () => {
+    vi.mocked(repositorioDeOrcamentos.copiarItensPedido).mockResolvedValue({
+      bloqueado: true,
+    } as never)
+
+    await expect(
+      servicoDeOrcamentos.copiarPedido(EMPRESA, ID, ID, 'u1')
+    ).rejects.toMatchObject({ codigoHttp: 409 })
+  })
+
+  it('salvar rascunho não rebaixa orçamento convertido', async () => {
+    vi.mocked(repositorioDeOrcamentos.buscarPorId).mockResolvedValue(
+      orcamentoBase({ status: 'convertido' }) as never
     )
 
     const dados = esquemaOrcamento.parse({
       data: '2026-09-28',
       numero: 'ORC-000001',
-      status: 'em_elaboracao',
+      status: 'em_aberto',
     })
-    const resultado = await servicoDeOrcamentos.atualizar(EMPRESA, ID, dados)
-
-    expect(resultado.status).toBe('enviado')
-    expect(repositorioDeOrcamentos.atualizar).toHaveBeenCalledWith(
-      EMPRESA,
-      ID,
-      dados,
-      'ORC-000001',
-      'enviado'
-    )
+    await expect(servicoDeOrcamentos.atualizar(EMPRESA, ID, dados)).rejects.toMatchObject({
+      codigoHttp: 409,
+    })
+    expect(repositorioDeOrcamentos.atualizar).not.toHaveBeenCalled()
   })
 
   it('e-mail vazio responde 400 e não chama a Resend', async () => {

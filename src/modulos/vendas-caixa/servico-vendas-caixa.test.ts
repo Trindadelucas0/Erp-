@@ -57,6 +57,7 @@ import {
   MSG_BOLETO_NAO_NO_TOTEM,
   MSG_FORMA_ORIGEM_INVALIDA,
   MSG_ORCAMENTO_JA_RECEBIDO,
+  MSG_ORCAMENTO_NAO_ENCONTRADO,
   MSG_PARCELA_INVALIDA,
   MSG_PARCELA_OBRIGATORIA,
   MSG_VALOR_RECEBIDO_INSUFICIENTE,
@@ -72,7 +73,7 @@ const ORCAMENTO_BASE = {
   numero: 'ORC-000001',
   data: '2026-09-16',
   validade: '2026-09-30',
-  status: 'enviado',
+  status: 'em_aberto',
   vendedorId: '199',
   clienteNome: 'João Silva',
   cnpj: '12345678901',
@@ -400,5 +401,19 @@ describe('servico-vendas-caixa', () => {
         }),
       })
     )
+  })
+
+  it('orçamento expirado não recebe no caixa', async () => {
+    vi.mocked(repositorioDeOrcamentos.buscarPorId).mockResolvedValue({
+      ...ORCAMENTO_BASE,
+      status: 'expirado',
+    } as never)
+
+    await expect(
+      servicoDeVendasCaixa.receberOrcamento('c1', 'u1', ORCAMENTO, {
+        formaPagamento: 'pix',
+        origem: 'caixa',
+      })
+    ).rejects.toMatchObject({ statusCode: 404, message: MSG_ORCAMENTO_NAO_ENCONTRADO })
   })
 })

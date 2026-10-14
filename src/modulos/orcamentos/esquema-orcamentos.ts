@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const STATUS_ORCAMENTO = ['em_elaboracao', 'enviado', 'aprovado'] as const
+export const STATUS_ORCAMENTO = ['em_aberto', 'expirado', 'convertido'] as const
 
 const texto = (maximo: number) => z.string().trim().max(maximo).optional().default('')
 
@@ -31,20 +31,23 @@ const enderecoVazio = {
 }
 
 export const esquemaItemOrcamento = z.object({
+  produtoId: z.string().uuid().nullable().optional().default(null),
   codigo: texto(60),
   descricao: texto(300),
+  marca: texto(120),
   ncm: texto(20),
   quantidade: numeroNaoNegativo,
   unidade: texto(10),
   precoUnitario: numeroNaoNegativo,
   percentualDesconto: numeroNaoNegativo.max(100, 'Desconto deve ser no máximo 100%'),
+  valorSt: numeroNaoNegativo.optional().default(0),
 })
 
 export const esquemaOrcamento = z.object({
   numero: texto(40),
   data: dataCivil,
   validade: dataCivilOpcional,
-  status: z.enum(STATUS_ORCAMENTO).optional().default('em_elaboracao'),
+  status: z.enum(STATUS_ORCAMENTO).optional().default('em_aberto'),
   vendedorId: texto(40),
   clienteCodigo: texto(40),
   clienteNome: texto(200),

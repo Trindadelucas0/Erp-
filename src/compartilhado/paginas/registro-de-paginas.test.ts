@@ -48,6 +48,7 @@ describe('montarPaginasPermitidasParaUsuario', () => {
     ]).map((p) => p.chave)
 
     expect(admin).toContain('orcamentos')
+    expect(admin).toContain('pedidos-venda')
     expect(comprador).toContain('pedidos-compra')
     expect(comprador).toContain('entrada-notas')
     expect(comprador).not.toContain('orcamentos')

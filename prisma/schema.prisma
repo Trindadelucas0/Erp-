@@ -41,6 +41,8 @@ model Company {
   produtos                    Produto[]
   pedidosCompra               PedidoCompra[]
   orcamentos                  Orcamento[]
+  pedidosVenda                PedidoVenda[]
+  orcamentosAnexos            OrcamentoAnexo[]
   vendasCaixa                 VendaCaixa[]
   creditosFornecedor          CreditoFornecedor[]
   pendenciasFornecedor        PendenciaFornecedor[]
@@ -67,10 +69,10 @@ model Company {
   niveisEnderecoWms           NivelEnderecoWms[]
   requisicoesWms              RequisicaoWms[]
   parametrizacaoCustoVenda    ParametrizacaoCustoVenda?
-  configuracoesBoleto           ConfiguracaoBoleto[]
-  contasEmpresa                 ContaEmpresa[]
-  extratosBancarios             ExtratoBancario[]
-  conciliacoesBancarias         ConciliacaoBancaria[]
+  configuracoesBoleto         ConfiguracaoBoleto[]
+  contasEmpresa               ContaEmpresa[]
+  extratosBancarios           ExtratoBancario[]
+  conciliacoesBancarias       ConciliacaoBancaria[]
   createdAt                   DateTime                     @default(now())
 }
 
@@ -210,63 +212,63 @@ model ConfiguracaoFocusNfe {
 
 /// Legado: histórico de syncs anteriores ao worker. Novos jobs vão para `Job`.
 model FocusNfeJob {
-  id          String    @id @default(uuid())
-  companyId   String
-  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id           String    @id @default(uuid())
+  companyId    String
+  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   /// sync | import_xml | manifestar
-  tipo        String
-  status      String    @default("pendente")
-  progresso   Int       @default(0)
-  mensagem    String?
-  logResumo   String?
-  payloadJson Json?
-  iniciadoEm  DateTime?
+  tipo         String
+  status       String    @default("pendente")
+  progresso    Int       @default(0)
+  mensagem     String?
+  logResumo    String?
+  payloadJson  Json?
+  iniciadoEm   DateTime?
   finalizadoEm DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@index([companyId, status])
   @@index([companyId, createdAt])
 }
 
 model NfeRecebida {
-  id                       String    @id @default(uuid())
+  id                       String                    @id @default(uuid())
   companyId                String
-  company                  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company                  Company                   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   chaveNfe                 String
   /// nfe55 | nfse | cte
-  tipoDocumento            String    @default("nfe55")
+  tipoDocumento            String                    @default("nfe55")
   nomeEmitente             String?
   documentoEmitente        String?
   cnpjDestinatario         String?
-  valorTotal               Decimal?  @db.Decimal(18, 2)
+  valorTotal               Decimal?                  @db.Decimal(18, 2)
   dataEmissao              DateTime?
   situacao                 String?
   manifestacaoDestinatario String?
-  nfeCompleta              Boolean   @default(false)
+  nfeCompleta              Boolean                   @default(false)
   tipoNfe                  String?
-  versaoFocus              Int       @default(0)
+  versaoFocus              Int                       @default(0)
   /// pendente | em_analise | stand_by | com_problema | problema_resolvido | aguardando_chegada | entrada_contagem | entrada_contagem_ok | entrada_contagem_divergente | pronta_para_consolidar | entrada_consolidada | cancelada
-  statusEntrada            String    @default("pendente")
+  statusEntrada            String                    @default("pendente")
   /// NFe 55: revenda | uso_consumo | null (obrigatório clique explícito em análise)
   finalidadeEntrada        String?
   /// focus | xml
-  origem                   String    @default("focus")
+  origem                   String                    @default("focus")
   /// automatica | humana | null
   origemLancamento         String?
-  xmlConteudo              String?   @db.Text
+  xmlConteudo              String?                   @db.Text
   /// Path relativo do PDF DANFE/DANFSe em disco (uploads/nfe-recebidas/…)
   danfeCaminho             String?
   /// ok | indisponivel | rate_limit | null
   danfeStatus              String?
   danfeAtualizadoEm        DateTime?
   observacaoContato        String?
-  criticasLiberadas        Boolean   @default(false)
+  criticasLiberadas        Boolean                   @default(false)
   pedidoCompraId           String?
   /// cadastro | fiscal | negociacao | lancamento
-  etapaAtual               String    @default("cadastro")
+  etapaAtual               String                    @default("cadastro")
   fornecedorPessoaId       String?
-  fornecedorPessoa         Pessoa?   @relation(fields: [fornecedorPessoaId], references: [id], onDelete: SetNull)
+  fornecedorPessoa         Pessoa?                   @relation(fields: [fornecedorPessoaId], references: [id], onDelete: SetNull)
   /// Resumo das 3 etapas (avisos, bloqueios, positivo/negativo)
   analiseJson              Json?
   /// Prazo da NF (XML) se houver
@@ -279,7 +281,7 @@ model NfeRecebida {
   chaveNfeReferenciada     String?
   /// CTe: CFOP de entrada sugerido (Cfop.cfopSugestaoEntradaId) ou escolhido manualmente na aba Frete/CT-e
   cfopEntradaId            String?
-  cfopEntrada              Cfop?     @relation("NfeRecebidaCfopEntrada", fields: [cfopEntradaId], references: [id], onDelete: SetNull)
+  cfopEntrada              Cfop?                     @relation("NfeRecebidaCfopEntrada", fields: [cfopEntradaId], references: [id], onDelete: SetNull)
   /// solucao | desconhecimento | devolucao | null
   problemaDesfecho         String?
   problemaMarcadoEm        DateTime?
@@ -289,23 +291,23 @@ model NfeRecebida {
   divergenciaResolvidaEm   DateTime?
   /// Recorrência financeira que casou (fornecedor + valor) na Entrada
   recorrenciaFinanceiraId  String?
-  recorrenciaFinanceira    RecorrenciaFinanceira? @relation(fields: [recorrenciaFinanceiraId], references: [id], onDelete: SetNull)
+  recorrenciaFinanceira    RecorrenciaFinanceira?    @relation(fields: [recorrenciaFinanceiraId], references: [id], onDelete: SetNull)
   /// Plano financeiro escolhido na análise (despesa/serviço ou mercadoria)
   planoFinanceiroId        String?
-  planoFinanceiro          PlanoFinanceiro? @relation("NfeRecebidaPlanoFinanceiro", fields: [planoFinanceiroId], references: [id], onDelete: SetNull)
+  planoFinanceiro          PlanoFinanceiro?          @relation("NfeRecebidaPlanoFinanceiro", fields: [planoFinanceiroId], references: [id], onDelete: SetNull)
   /// Prévia financeira documental: [{ numeroDocumento, vencimento, valor }]
   parcelasFinanceiras      Json?
   itens                    NfeRecebidaItem[]
   tratativas               NfeRecebidaTratativa[]
-  vinculosComoNfe          NfeCteVinculo[]          @relation("VinculoNfeMercadoria")
-  vinculosComoCte          NfeCteVinculo[]          @relation("VinculoCte")
+  vinculosComoNfe          NfeCteVinculo[]           @relation("VinculoNfeMercadoria")
+  vinculosComoCte          NfeCteVinculo[]           @relation("VinculoCte")
   despesasEntrada          DespesaEntradaDocumento[]
   contasPagar              ContaPagar[]
   contagensEntradaNotas    ContagemEntradaNota[]
   anexos                   NfeRecebidaAnexo[]
   requisicoesWms           RequisicaoWms[]
-  createdAt                DateTime  @default(now())
-  updatedAt                DateTime  @updatedAt
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
 
   @@unique([companyId, chaveNfe])
   @@index([companyId, statusEntrada])
@@ -409,39 +411,39 @@ model ContaPagarCodigoSeq {
 }
 
 model ContaPagar {
-  id                String   @id @default(uuid())
-  companyId         String
-  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id                 String                   @id @default(uuid())
+  companyId          String
+  company            Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   /// Código interno sequencial por empresa (exibição estilo 451.113)
-  codigo            String
+  codigo             String
   /// duplicata | tributos
-  tipo              String
+  tipo               String
   /// darf_simples | darf_normal | gps — só quando tipo=tributos
-  tipoTributo       String?
-  codigoReceita     String?
-  numeroReferencia  String?
-  pessoaId          String?
-  pessoa            Pessoa?  @relation(fields: [pessoaId], references: [id], onDelete: SetNull)
-  planoFinanceiroId String?
-  planoFinanceiro   PlanoFinanceiro? @relation(fields: [planoFinanceiroId], references: [id], onDelete: SetNull)
+  tipoTributo        String?
+  codigoReceita      String?
+  numeroReferencia   String?
+  pessoaId           String?
+  pessoa             Pessoa?                  @relation(fields: [pessoaId], references: [id], onDelete: SetNull)
+  planoFinanceiroId  String?
+  planoFinanceiro    PlanoFinanceiro?         @relation(fields: [planoFinanceiroId], references: [id], onDelete: SetNull)
   /// manual | nfe | cte
-  origem            String   @default("manual")
-  nfeRecebidaId     String?
-  nfeRecebida       NfeRecebida? @relation(fields: [nfeRecebidaId], references: [id], onDelete: SetNull)
-  despesaEntradaId  String?  @unique
-  despesaEntrada    DespesaEntradaDocumento? @relation(fields: [despesaEntradaId], references: [id], onDelete: SetNull)
-  numeroDocumento   String?
-  dataEmissao       DateTime?
+  origem             String                   @default("manual")
+  nfeRecebidaId      String?
+  nfeRecebida        NfeRecebida?             @relation(fields: [nfeRecebidaId], references: [id], onDelete: SetNull)
+  despesaEntradaId   String?                  @unique
+  despesaEntrada     DespesaEntradaDocumento? @relation(fields: [despesaEntradaId], references: [id], onDelete: SetNull)
+  numeroDocumento    String?
+  dataEmissao        DateTime?
   /// aberto | parcial | pago | cancelado
-  status            String   @default("aberto")
-  valorTotal        Decimal  @db.Decimal(18, 2)
-  valorDesconto     Decimal  @default(0) @db.Decimal(18, 2)
-  valorJuros        Decimal  @default(0) @db.Decimal(18, 2)
-  valorMulta        Decimal  @default(0) @db.Decimal(18, 2)
-  valorImpostoRetido Decimal @default(0) @db.Decimal(18, 2)
-  observacao        String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  status             String                   @default("aberto")
+  valorTotal         Decimal                  @db.Decimal(18, 2)
+  valorDesconto      Decimal                  @default(0) @db.Decimal(18, 2)
+  valorJuros         Decimal                  @default(0) @db.Decimal(18, 2)
+  valorMulta         Decimal                  @default(0) @db.Decimal(18, 2)
+  valorImpostoRetido Decimal                  @default(0) @db.Decimal(18, 2)
+  observacao         String?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
 
   parcelas ContaPagarParcela[]
   anexos   ContaPagarAnexo[]
@@ -474,19 +476,19 @@ model ContaPagarAnexo {
 }
 
 model ContaPagarParcela {
-  id              String     @id @default(uuid())
+  id              String            @id @default(uuid())
   contaPagarId    String
-  contaPagar      ContaPagar @relation(fields: [contaPagarId], references: [id], onDelete: Cascade)
+  contaPagar      ContaPagar        @relation(fields: [contaPagarId], references: [id], onDelete: Cascade)
   numeroParcela   Int
   numeroDocumento String?
   vencimento      DateTime
-  valor           Decimal    @db.Decimal(18, 2)
-  valorPago       Decimal    @default(0) @db.Decimal(18, 2)
+  valor           Decimal           @db.Decimal(18, 2)
+  valorPago       Decimal           @default(0) @db.Decimal(18, 2)
   /// aberta | parcial | paga | cancelada
-  status          String     @default("aberta")
+  status          String            @default("aberta")
   pagoEm          DateTime?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
   baixas          ContaPagarBaixa[]
 
   @@unique([contaPagarId, numeroParcela])
@@ -496,26 +498,26 @@ model ContaPagarParcela {
 
 /// Evento de pagamento (baixa total ou parcial) de uma parcela.
 model ContaPagarBaixa {
-  id                 String           @id @default(uuid())
+  id                  String                     @id @default(uuid())
   contaPagarParcelaId String
-  parcela            ContaPagarParcela @relation(fields: [contaPagarParcelaId], references: [id], onDelete: Cascade)
-  companyId          String
-  company            Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  pagoEm             DateTime
-  valorPrincipal     Decimal          @db.Decimal(18, 2)
-  valorJuros         Decimal          @default(0) @db.Decimal(18, 2)
-  valorMulta         Decimal          @default(0) @db.Decimal(18, 2)
-  valorDesconto      Decimal          @default(0) @db.Decimal(18, 2)
-  usuarioId          String?
-  usuario            User?            @relation("BaixaPagarUsuario", fields: [usuarioId], references: [id], onDelete: SetNull)
-  canceladaEm        DateTime?
-  canceladaPorId     String?
-  canceladaPor       User?             @relation("BaixaPagarCanceladaPor", fields: [canceladaPorId], references: [id], onDelete: SetNull)
-  observacao         String?
-  contaEmpresaId     String?
-  contaEmpresa       ContaEmpresa?    @relation(fields: [contaEmpresaId], references: [id], onDelete: Restrict)
-  conciliacoes       ConciliacaoBancariaBaixa[]
-  createdAt          DateTime         @default(now())
+  parcela             ContaPagarParcela          @relation(fields: [contaPagarParcelaId], references: [id], onDelete: Cascade)
+  companyId           String
+  company             Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  pagoEm              DateTime
+  valorPrincipal      Decimal                    @db.Decimal(18, 2)
+  valorJuros          Decimal                    @default(0) @db.Decimal(18, 2)
+  valorMulta          Decimal                    @default(0) @db.Decimal(18, 2)
+  valorDesconto       Decimal                    @default(0) @db.Decimal(18, 2)
+  usuarioId           String?
+  usuario             User?                      @relation("BaixaPagarUsuario", fields: [usuarioId], references: [id], onDelete: SetNull)
+  canceladaEm         DateTime?
+  canceladaPorId      String?
+  canceladaPor        User?                      @relation("BaixaPagarCanceladaPor", fields: [canceladaPorId], references: [id], onDelete: SetNull)
+  observacao          String?
+  contaEmpresaId      String?
+  contaEmpresa        ContaEmpresa?              @relation(fields: [contaEmpresaId], references: [id], onDelete: Restrict)
+  conciliacoes        ConciliacaoBancariaBaixa[]
+  createdAt           DateTime                   @default(now())
 
   @@index([contaPagarParcelaId])
   @@index([companyId, pagoEm])
@@ -530,31 +532,31 @@ model ContaReceberCodigoSeq {
 }
 
 model ContaReceber {
-  id                String   @id @default(uuid())
+  id                String           @id @default(uuid())
   companyId         String
-  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company           Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   /// Código interno sequencial por empresa (exibição estilo 451.113)
   codigo            String
   /// duplicata | credito
   tipo              String
   pessoaId          String?
-  pessoa            Pessoa?  @relation(fields: [pessoaId], references: [id], onDelete: SetNull)
+  pessoa            Pessoa?          @relation(fields: [pessoaId], references: [id], onDelete: SetNull)
   planoFinanceiroId String?
   planoFinanceiro   PlanoFinanceiro? @relation(fields: [planoFinanceiroId], references: [id], onDelete: SetNull)
   /// manual
-  origem            String   @default("manual")
+  origem            String           @default("manual")
   numeroDocumento   String?
   dataEmissao       DateTime?
   /// aberto | parcial | pago | cancelado
-  status            String   @default("aberto")
-  valorTotal        Decimal  @db.Decimal(18, 2)
-  valorDesconto     Decimal  @default(0) @db.Decimal(18, 2)
-  valorJuros        Decimal  @default(0) @db.Decimal(18, 2)
-  valorMulta        Decimal  @default(0) @db.Decimal(18, 2)
-  valorComissao     Decimal  @default(0) @db.Decimal(18, 2)
+  status            String           @default("aberto")
+  valorTotal        Decimal          @db.Decimal(18, 2)
+  valorDesconto     Decimal          @default(0) @db.Decimal(18, 2)
+  valorJuros        Decimal          @default(0) @db.Decimal(18, 2)
+  valorMulta        Decimal          @default(0) @db.Decimal(18, 2)
+  valorComissao     Decimal          @default(0) @db.Decimal(18, 2)
   observacao        String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
   parcelas ContaReceberParcela[]
   anexos   ContaReceberAnexo[]
@@ -568,37 +570,37 @@ model ContaReceber {
 
 /// Anexo de documento do título (PDF/imagem), máx. 2 MB.
 model ContaReceberAnexo {
-  id             String        @id @default(uuid())
+  id             String       @id @default(uuid())
   companyId      String
-  company        Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   contaReceberId String
-  contaReceber   ContaReceber  @relation(fields: [contaReceberId], references: [id], onDelete: Cascade)
+  contaReceber   ContaReceber @relation(fields: [contaReceberId], references: [id], onDelete: Cascade)
   nomeArquivo    String
   mimeType       String
   caminhoArquivo String
   tamanhoBytes   Int
   usuarioId      String?
-  usuario        User?         @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
-  createdAt      DateTime      @default(now())
+  usuario        User?        @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
 
   @@index([contaReceberId])
   @@index([companyId])
 }
 
 model ContaReceberParcela {
-  id              String        @id @default(uuid())
+  id              String              @id @default(uuid())
   contaReceberId  String
-  contaReceber    ContaReceber  @relation(fields: [contaReceberId], references: [id], onDelete: Cascade)
+  contaReceber    ContaReceber        @relation(fields: [contaReceberId], references: [id], onDelete: Cascade)
   numeroParcela   Int
   numeroDocumento String?
   vencimento      DateTime
-  valor           Decimal       @db.Decimal(18, 2)
-  valorPago       Decimal       @default(0) @db.Decimal(18, 2)
+  valor           Decimal             @db.Decimal(18, 2)
+  valorPago       Decimal             @default(0) @db.Decimal(18, 2)
   /// aberta | parcial | paga | cancelada
-  status          String        @default("aberta")
+  status          String              @default("aberta")
   pagoEm          DateTime?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
   baixas          ContaReceberBaixa[]
 
   @@unique([contaReceberId, numeroParcela])
@@ -608,23 +610,23 @@ model ContaReceberParcela {
 
 /// Evento de recebimento (baixa total ou parcial) de uma parcela.
 model ContaReceberBaixa {
-  id                   String              @id @default(uuid())
+  id                    String                     @id @default(uuid())
   contaReceberParcelaId String
-  parcela              ContaReceberParcela @relation(fields: [contaReceberParcelaId], references: [id], onDelete: Cascade)
-  companyId            String
-  company              Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  pagoEm               DateTime
-  valorPrincipal       Decimal             @db.Decimal(18, 2)
-  valorJuros           Decimal             @default(0) @db.Decimal(18, 2)
-  valorMulta           Decimal             @default(0) @db.Decimal(18, 2)
-  valorDesconto        Decimal             @default(0) @db.Decimal(18, 2)
-  usuarioId            String?
-  usuario              User?               @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
-  observacao           String?
-  contaEmpresaId       String?
-  contaEmpresa         ContaEmpresa?       @relation(fields: [contaEmpresaId], references: [id], onDelete: Restrict)
-  conciliacoes         ConciliacaoBancariaBaixa[]
-  createdAt            DateTime            @default(now())
+  parcela               ContaReceberParcela        @relation(fields: [contaReceberParcelaId], references: [id], onDelete: Cascade)
+  companyId             String
+  company               Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  pagoEm                DateTime
+  valorPrincipal        Decimal                    @db.Decimal(18, 2)
+  valorJuros            Decimal                    @default(0) @db.Decimal(18, 2)
+  valorMulta            Decimal                    @default(0) @db.Decimal(18, 2)
+  valorDesconto         Decimal                    @default(0) @db.Decimal(18, 2)
+  usuarioId             String?
+  usuario               User?                      @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  observacao            String?
+  contaEmpresaId        String?
+  contaEmpresa          ContaEmpresa?              @relation(fields: [contaEmpresaId], references: [id], onDelete: Restrict)
+  conciliacoes          ConciliacaoBancariaBaixa[]
+  createdAt             DateTime                   @default(now())
 
   @@index([contaReceberParcelaId])
   @@index([companyId, pagoEm])
@@ -632,39 +634,39 @@ model ContaReceberBaixa {
 }
 
 model NfeRecebidaItem {
-  id                 String      @id @default(uuid())
-  nfeRecebidaId      String
-  nfeRecebida        NfeRecebida @relation(fields: [nfeRecebidaId], references: [id], onDelete: Cascade)
-  nItem              Int
-  descricao          String?
-  gtin               String?
-  codigoProduto      String?
-  ncm                String?
-  cfop               String?
-  cst                String?
-  origem             String?
+  id                String      @id @default(uuid())
+  nfeRecebidaId     String
+  nfeRecebida       NfeRecebida @relation(fields: [nfeRecebidaId], references: [id], onDelete: Cascade)
+  nItem             Int
+  descricao         String?
+  gtin              String?
+  codigoProduto     String?
+  ncm               String?
+  cfop              String?
+  cst               String?
+  origem            String?
   /// Unidade comercial do item na NF (uCom do XML)
-  unidade            String?
-  quantidade         Decimal?    @db.Decimal(18, 4)
-  valorUnitario      Decimal?    @db.Decimal(18, 4)
-  valorTotal         Decimal?    @db.Decimal(18, 2)
+  unidade           String?
+  quantidade        Decimal?    @db.Decimal(18, 4)
+  valorUnitario     Decimal?    @db.Decimal(18, 4)
+  valorTotal        Decimal?    @db.Decimal(18, 2)
   /// Peso líquido do item no XML (kg), se houver
-  pesoKg             Decimal?    @db.Decimal(18, 4)
-  produtoId          String?
-  produto            Produto?    @relation(fields: [produtoId], references: [id], onDelete: SetNull)
+  pesoKg            Decimal?    @db.Decimal(18, 4)
+  produtoId         String?
+  produto           Produto?    @relation(fields: [produtoId], references: [id], onDelete: SetNull)
   /// barras | codigo_original | manual | desvinculado | null
-  vinculoModo        String?
-  criticaCadastro    Boolean     @default(false)
-  criticaFiscal      Boolean     @default(false)
-  criticaNegociacao  Boolean     @default(false)
-  custoFreteRateado  Decimal?    @db.Decimal(18, 4)
+  vinculoModo       String?
+  criticaCadastro   Boolean     @default(false)
+  criticaFiscal     Boolean     @default(false)
+  criticaNegociacao Boolean     @default(false)
+  custoFreteRateado Decimal?    @db.Decimal(18, 4)
   /// IPI do item no XML (vIPI). Legado vazio: o detalhe lê do xmlConteudo.
-  valorIpi           Decimal?    @db.Decimal(18, 4)
+  valorIpi          Decimal?    @db.Decimal(18, 4)
   /// CFOP de entrada sugerido (Cfop.cfopSugestaoEntradaId) ou escolhido manualmente pelo usuário na aba Fiscal
-  cfopEntradaId      String?
-  cfopEntrada        Cfop?       @relation(fields: [cfopEntradaId], references: [id], onDelete: SetNull)
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
+  cfopEntradaId     String?
+  cfopEntrada       Cfop?       @relation(fields: [cfopEntradaId], references: [id], onDelete: SetNull)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 
   @@unique([nfeRecebidaId, nItem])
   @@index([nfeRecebidaId])
@@ -705,23 +707,23 @@ model Pessoa {
   companyId String
   company   Company @relation(fields: [companyId], references: [id])
 
-  papeis                      PessoaPapel[]
-  contatos                    PessoaContato[]
-  enderecos                   PessoaEndereco[]
-  dadosBancarios              PessoaDadosBancario[]
-  cnaes                       PessoaCnae[]
-  documentosZapsign           ZapsignDocumento[]
-  produtosFornecedor          ProdutoFornecedor[]
-  pedidosCompraFornecedor     PedidoCompra[]        @relation("FornecedorPO")
-  pedidosCompraTransportadora PedidoCompra[]        @relation("TransportadoraPO")
-  creditosFornecedor          CreditoFornecedor[]
-  pendenciasFornecedor        PendenciaFornecedor[]
-  nfesRecebidasComoFornecedor NfeRecebida[]
-  despesasEntradaDocumento    DespesaEntradaDocumento[]
-  contasPagar                 ContaPagar[]
-  contasReceber               ContaReceber[]
+  papeis                        PessoaPapel[]
+  contatos                      PessoaContato[]
+  enderecos                     PessoaEndereco[]
+  dadosBancarios                PessoaDadosBancario[]
+  cnaes                         PessoaCnae[]
+  documentosZapsign             ZapsignDocumento[]
+  produtosFornecedor            ProdutoFornecedor[]
+  pedidosCompraFornecedor       PedidoCompra[]            @relation("FornecedorPO")
+  pedidosCompraTransportadora   PedidoCompra[]            @relation("TransportadoraPO")
+  creditosFornecedor            CreditoFornecedor[]
+  pendenciasFornecedor          PendenciaFornecedor[]
+  nfesRecebidasComoFornecedor   NfeRecebida[]
+  despesasEntradaDocumento      DespesaEntradaDocumento[]
+  contasPagar                   ContaPagar[]
+  contasReceber                 ContaReceber[]
   estoqueMovimentosComoParceiro EstoqueMovimento[]
-  recorrenciasFinanceiras     RecorrenciaFinanceira[]
+  recorrenciasFinanceiras       RecorrenciaFinanceira[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -858,16 +860,16 @@ model DadosTransportadora {
 
 /// Catálogo de tipos de veículo da empresa (Configurações → Logística).
 model TipoVeiculo {
-  id                    String                @id @default(uuid())
-  companyId             String
-  company               Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  nome                  String
-  pesoMaximoKg          Int
-  icone                 String?
-  ativo                 Boolean               @default(true)
-  transportadoras       DadosTransportadora[]
-  createdAt             DateTime              @default(now())
-  updatedAt             DateTime              @updatedAt
+  id              String                @id @default(uuid())
+  companyId       String
+  company         Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  nome            String
+  pesoMaximoKg    Int
+  icone           String?
+  ativo           Boolean               @default(true)
+  transportadoras DadosTransportadora[]
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 
   @@unique([companyId, nome])
   @@index([companyId, ativo])
@@ -953,7 +955,7 @@ model PlanoFinanceiro {
   contasPagar             ContaPagar[]
   contasReceber           ContaReceber[]
   cfopsComPlanoPadrao     Cfop[]                         @relation("CfopPlanoFinanceiroPadrao")
-  nfesRecebidasPlano     NfeRecebida[]                  @relation("NfeRecebidaPlanoFinanceiro")
+  nfesRecebidasPlano      NfeRecebida[]                  @relation("NfeRecebidaPlanoFinanceiro")
   createdAt               DateTime                       @default(now())
 
   @@unique([codigo, companyId])
@@ -962,29 +964,29 @@ model PlanoFinanceiro {
 }
 
 model Cfop {
-  id                    String                         @id @default(uuid())
-  codigo                String
-  nome                  String
-  descricao             String                         @default("")
-  tipoCfop              String                         @default("01")
-  natureza              String                         @default("entrada")
-  abrangencia           String?
-  subtipoCfop           String?
-  aproveitarCreditoIcms Boolean                        @default(false)
-  tipo                  String                         @default("entrada")
-  companyId             String
-  company               Company                        @relation(fields: [companyId], references: [id])
-  ativo                 Boolean                        @default(true)
-  cfopSugestaoEntradaId String?
-  cfopSugestaoEntrada   Cfop?                          @relation("CfopSugestaoEntrada", fields: [cfopSugestaoEntradaId], references: [id], onDelete: SetNull)
-  cfopsComSugestao      Cfop[]                         @relation("CfopSugestaoEntrada")
-  planoFinanceiroPadraoId String?
-  planoFinanceiroPadrao   PlanoFinanceiro?             @relation("CfopPlanoFinanceiroPadrao", fields: [planoFinanceiroPadraoId], references: [id], onDelete: SetNull)
-  fornecedores          FornecedorCfopEntrada[]
-  paresPlanoCfop        FornecedorParPlanoCfopPadrao[]
-  itensEntradaComCfop   NfeRecebidaItem[]
-  documentosEntradaComCfop NfeRecebida[]               @relation("NfeRecebidaCfopEntrada")
-  createdAt             DateTime                       @default(now())
+  id                       String                         @id @default(uuid())
+  codigo                   String
+  nome                     String
+  descricao                String                         @default("")
+  tipoCfop                 String                         @default("01")
+  natureza                 String                         @default("entrada")
+  abrangencia              String?
+  subtipoCfop              String?
+  aproveitarCreditoIcms    Boolean                        @default(false)
+  tipo                     String                         @default("entrada")
+  companyId                String
+  company                  Company                        @relation(fields: [companyId], references: [id])
+  ativo                    Boolean                        @default(true)
+  cfopSugestaoEntradaId    String?
+  cfopSugestaoEntrada      Cfop?                          @relation("CfopSugestaoEntrada", fields: [cfopSugestaoEntradaId], references: [id], onDelete: SetNull)
+  cfopsComSugestao         Cfop[]                         @relation("CfopSugestaoEntrada")
+  planoFinanceiroPadraoId  String?
+  planoFinanceiroPadrao    PlanoFinanceiro?               @relation("CfopPlanoFinanceiroPadrao", fields: [planoFinanceiroPadraoId], references: [id], onDelete: SetNull)
+  fornecedores             FornecedorCfopEntrada[]
+  paresPlanoCfop           FornecedorParPlanoCfopPadrao[]
+  itensEntradaComCfop      NfeRecebidaItem[]
+  documentosEntradaComCfop NfeRecebida[]                  @relation("NfeRecebidaCfopEntrada")
+  createdAt                DateTime                       @default(now())
 
   @@unique([codigo, companyId])
 }
@@ -1008,36 +1010,38 @@ model FornecedorCfopEntrada {
 }
 
 model User {
-  id                String           @id @default(uuid())
-  name              String
-  email             String           @unique
-  password          String
-  cargo             String?          @default("")
-  active            Boolean          @default(true)
-  tokenVersion      Int              @default(0)
-  tema              String           @default("escuro")
-  roles             UserRole[]
-  companies         UserCompany[]
-  permissoesExtras  UserPermission[]
-  paginasPermitidas UserPageAccess[]
-  logsDeAuditoria   LogDeAuditoria[]
-  tratativasNfe     NfeRecebidaTratativa[]
-  estoqueMovimentos EstoqueMovimento[]
-  contagensEntrada  ContagemEntrada[]
-  contagensEntradaRevisoes ContagemEntradaRevisao[]
-  contasPagarBaixas ContaPagarBaixa[] @relation("BaixaPagarUsuario")
-  contasPagarBaixasCanceladas ContaPagarBaixa[] @relation("BaixaPagarCanceladaPor")
-  contasPagarAnexos ContaPagarAnexo[]
-  contasReceberBaixas ContaReceberBaixa[]
-  contasReceberAnexos ContaReceberAnexo[]
-  nfesRecebidasAnexos NfeRecebidaAnexo[]
-  requisicoesWms      RequisicaoWms[]
-  requisicoesWmsEventos RequisicaoWmsEvento[]
-  extratosBancarios     ExtratoBancario[]
-  conciliacoesBancarias ConciliacaoBancaria[]
-  conciliacoesEventos   ConciliacaoBancariaEvento[]
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  id                          String                      @id @default(uuid())
+  name                        String
+  email                       String                      @unique
+  password                    String
+  cargo                       String?                     @default("")
+  active                      Boolean                     @default(true)
+  tokenVersion                Int                         @default(0)
+  tema                        String                      @default("escuro")
+  roles                       UserRole[]
+  companies                   UserCompany[]
+  permissoesExtras            UserPermission[]
+  paginasPermitidas           UserPageAccess[]
+  logsDeAuditoria             LogDeAuditoria[]
+  tratativasNfe               NfeRecebidaTratativa[]
+  estoqueMovimentos           EstoqueMovimento[]
+  contagensEntrada            ContagemEntrada[]
+  contagensEntradaRevisoes    ContagemEntradaRevisao[]
+  contasPagarBaixas           ContaPagarBaixa[]           @relation("BaixaPagarUsuario")
+  contasPagarBaixasCanceladas ContaPagarBaixa[]           @relation("BaixaPagarCanceladaPor")
+  contasPagarAnexos           ContaPagarAnexo[]
+  contasReceberBaixas         ContaReceberBaixa[]
+  contasReceberAnexos         ContaReceberAnexo[]
+  orcamentosAnexos            OrcamentoAnexo[]
+  orcamentosHistorico         OrcamentoHistorico[]
+  nfesRecebidasAnexos         NfeRecebidaAnexo[]
+  requisicoesWms              RequisicaoWms[]
+  requisicoesWmsEventos       RequisicaoWmsEvento[]
+  extratosBancarios           ExtratoBancario[]
+  conciliacoesBancarias       ConciliacaoBancaria[]
+  conciliacoesEventos         ConciliacaoBancariaEvento[]
+  createdAt                   DateTime                    @default(now())
+  updatedAt                   DateTime                    @updatedAt
 }
 
 model UserPageAccess {
@@ -1215,21 +1219,23 @@ model Produto {
   ncm          String?
   codigoOrigem String?
 
-  fotos             ProdutoFoto[]
-  fornecedores      ProdutoFornecedor[]
-  embalagensMaster  ProdutoEmbalagemMaster[]
-  enderecosEstoque  ProdutoEnderecoEstoque[]
-  similares         ProdutoSimilar[]         @relation("ProdutoOrigem")
-  similaresDe       ProdutoSimilar[]         @relation("ProdutoSimilar")
-  itensPedidoCompra PedidoCompraItem[]
-  pendencias        PendenciaFornecedor[]
-  itensNfeRecebida     NfeRecebidaItem[]
-  estoqueSaldo         EstoqueSaldo?
-  estoqueMovimentos    EstoqueMovimento[]
-  contagensEntradaItens ContagemEntradaItem[]
+  fotos                   ProdutoFoto[]
+  fornecedores            ProdutoFornecedor[]
+  embalagensMaster        ProdutoEmbalagemMaster[]
+  enderecosEstoque        ProdutoEnderecoEstoque[]
+  similares               ProdutoSimilar[]         @relation("ProdutoOrigem")
+  similaresDe             ProdutoSimilar[]         @relation("ProdutoSimilar")
+  itensPedidoCompra       PedidoCompraItem[]
+  pendencias              PendenciaFornecedor[]
+  itensNfeRecebida        NfeRecebidaItem[]
+  estoqueSaldo            EstoqueSaldo?
+  estoqueMovimentos       EstoqueMovimento[]
+  contagensEntradaItens   ContagemEntradaItem[]
   recorrenciasFinanceiras RecorrenciaFinanceira[]
   requisicoesWms          RequisicaoWms[]
   vendasCaixaItens        VendaCaixaItem[]
+  orcamentosItens         OrcamentoItem[]
+  pedidosVendaItens       PedidoVendaItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1242,26 +1248,26 @@ model Produto {
 /// Regra de recorrência: fornecedor + valor esperado (+ periodicidade e vigência).
 /// Quando a NFS-e/NFe documental chega com o mesmo emitente e valor (na vigência), a Entrada auto-consolida.
 model RecorrenciaFinanceira {
-  id                  String   @id @default(uuid())
-  companyId           String
-  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  fornecedorPessoaId  String
-  fornecedorPessoa    Pessoa   @relation(fields: [fornecedorPessoaId], references: [id], onDelete: Restrict)
-  produtoId           String?
-  produto             Produto? @relation(fields: [produtoId], references: [id], onDelete: Restrict)
-  valor               Decimal  @db.Decimal(18, 2)
+  id                 String        @id @default(uuid())
+  companyId          String
+  company            Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fornecedorPessoaId String
+  fornecedorPessoa   Pessoa        @relation(fields: [fornecedorPessoaId], references: [id], onDelete: Restrict)
+  produtoId          String?
+  produto            Produto?      @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  valor              Decimal       @db.Decimal(18, 2)
   /// mensal | anual
-  periodicidade       String   @default("mensal")
+  periodicidade      String        @default("mensal")
   /// Dia do mês esperado (1–28)
-  diaVencimento       Int      @default(1)
+  diaVencimento      Int           @default(1)
   /// Competência de início YYYY-MM
-  competenciaInicio   String   @default("2020-01")
+  competenciaInicio  String        @default("2020-01")
   /// Competência de fim YYYY-MM (null = sem fim)
-  competenciaFim      String?
-  ativo               Boolean  @default(true)
-  nfesRecebidas       NfeRecebida[]
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  competenciaFim     String?
+  ativo              Boolean       @default(true)
+  nfesRecebidas      NfeRecebida[]
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
   @@index([companyId, fornecedorPessoaId, ativo])
   @@index([companyId, ativo])
@@ -1285,26 +1291,26 @@ model Adquirente {
 
 /// Conta bancária ou caixa da empresa (Financeiro → Contas).
 model ContaEmpresa {
-  id                      String              @id @default(uuid())
-  companyId               String
-  company                 Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  nome                    String
+  id                    String                @id @default(uuid())
+  companyId             String
+  company               Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  nome                  String
   /// bancaria | caixa
-  tipo                    String
+  tipo                  String
   /// itau | bradesco | banco_do_brasil | santander | sicoob | c6 — só bancária
-  banco                   String?
-  agencia                 String?
-  digitoAgencia           String?
-  conta                   String?
-  digitoConta             String?
-  limiteChequeEspecial    Decimal?            @db.Decimal(18, 2)
-  ativo                   Boolean             @default(true)
-  contasPagarBaixas       ContaPagarBaixa[]
-  contasReceberBaixas     ContaReceberBaixa[]
-  extratosBancarios       ExtratoBancario[]
-  conciliacoesBancarias   ConciliacaoBancaria[]
-  createdAt               DateTime            @default(now())
-  updatedAt               DateTime            @updatedAt
+  banco                 String?
+  agencia               String?
+  digitoAgencia         String?
+  conta                 String?
+  digitoConta           String?
+  limiteChequeEspecial  Decimal?              @db.Decimal(18, 2)
+  ativo                 Boolean               @default(true)
+  contasPagarBaixas     ContaPagarBaixa[]
+  contasReceberBaixas   ContaReceberBaixa[]
+  extratosBancarios     ExtratoBancario[]
+  conciliacoesBancarias ConciliacaoBancaria[]
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
 
   @@unique([companyId, nome])
   @@index([companyId, ativo])
@@ -1313,79 +1319,79 @@ model ContaEmpresa {
 
 /// Arquivo de extrato importado para uma conta bancária.
 model ExtratoBancario {
-  id              String                  @id @default(uuid())
-  companyId       String
-  company         Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  contaEmpresaId  String
-  contaEmpresa    ContaEmpresa            @relation(fields: [contaEmpresaId], references: [id], onDelete: Restrict)
-  nomeArquivo     String
+  id             String                 @id @default(uuid())
+  companyId      String
+  company        Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contaEmpresaId String
+  contaEmpresa   ContaEmpresa           @relation(fields: [contaEmpresaId], references: [id], onDelete: Restrict)
+  nomeArquivo    String
   /// ofx | csv | excel
-  origem          String
-  usuarioId       String
-  usuario         User                    @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
-  linhas          ExtratoBancarioLinha[]
-  createdAt       DateTime                @default(now())
+  origem         String
+  usuarioId      String
+  usuario        User                   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  linhas         ExtratoBancarioLinha[]
+  createdAt      DateTime               @default(now())
 
   @@index([companyId, contaEmpresaId, createdAt])
 }
 
 model ExtratoBancarioLinha {
-  id              String                       @id @default(uuid())
-  extratoId       String
-  extrato         ExtratoBancario              @relation(fields: [extratoId], references: [id], onDelete: Cascade)
-  contaEmpresaId  String
-  data            DateTime
-  historico       String
-  documento       String?
-  valor           Decimal                      @db.Decimal(18, 2)
-  chaveUnica      String
-  conciliacoes    ConciliacaoBancariaLinha[]
-  createdAt       DateTime                     @default(now())
+  id             String                     @id @default(uuid())
+  extratoId      String
+  extrato        ExtratoBancario            @relation(fields: [extratoId], references: [id], onDelete: Cascade)
+  contaEmpresaId String
+  data           DateTime
+  historico      String
+  documento      String?
+  valor          Decimal                    @db.Decimal(18, 2)
+  chaveUnica     String
+  conciliacoes   ConciliacaoBancariaLinha[]
+  createdAt      DateTime                   @default(now())
 
   @@unique([contaEmpresaId, chaveUnica])
   @@index([data])
 }
 
 model ConciliacaoBancaria {
-  id              String                       @id @default(uuid())
-  companyId       String
-  company         Company                      @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  contaEmpresaId  String
-  contaEmpresa    ContaEmpresa                 @relation(fields: [contaEmpresaId], references: [id], onDelete: Restrict)
+  id             String                      @id @default(uuid())
+  companyId      String
+  company        Company                     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contaEmpresaId String
+  contaEmpresa   ContaEmpresa                @relation(fields: [contaEmpresaId], references: [id], onDelete: Restrict)
   /// ativa | desfeita
-  status          String                       @default("ativa")
-  usuarioId       String
-  usuario         User                         @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
-  concluidaEm     DateTime                     @default(now())
-  desfeitaEm      DateTime?
-  linhas          ConciliacaoBancariaLinha[]
-  baixas          ConciliacaoBancariaBaixa[]
-  eventos         ConciliacaoBancariaEvento[]
+  status         String                      @default("ativa")
+  usuarioId      String
+  usuario        User                        @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  concluidaEm    DateTime                    @default(now())
+  desfeitaEm     DateTime?
+  linhas         ConciliacaoBancariaLinha[]
+  baixas         ConciliacaoBancariaBaixa[]
+  eventos        ConciliacaoBancariaEvento[]
 
   @@index([companyId, contaEmpresaId, status])
 }
 
 model ConciliacaoBancariaLinha {
-  id              String                 @id @default(uuid())
-  conciliacaoId   String
-  conciliacao     ConciliacaoBancaria    @relation(fields: [conciliacaoId], references: [id], onDelete: Cascade)
-  linhaId         String
-  linha           ExtratoBancarioLinha   @relation(fields: [linhaId], references: [id], onDelete: Restrict)
-  ativo           Boolean                @default(true)
+  id            String               @id @default(uuid())
+  conciliacaoId String
+  conciliacao   ConciliacaoBancaria  @relation(fields: [conciliacaoId], references: [id], onDelete: Cascade)
+  linhaId       String
+  linha         ExtratoBancarioLinha @relation(fields: [linhaId], references: [id], onDelete: Restrict)
+  ativo         Boolean              @default(true)
 
   @@index([linhaId, ativo])
   @@index([conciliacaoId])
 }
 
 model ConciliacaoBancariaBaixa {
-  id                    String                  @id @default(uuid())
-  conciliacaoId         String
-  conciliacao           ConciliacaoBancaria     @relation(fields: [conciliacaoId], references: [id], onDelete: Cascade)
-  contaPagarBaixaId     String?
-  contaPagarBaixa       ContaPagarBaixa?        @relation(fields: [contaPagarBaixaId], references: [id], onDelete: Restrict)
-  contaReceberBaixaId   String?
-  contaReceberBaixa     ContaReceberBaixa?      @relation(fields: [contaReceberBaixaId], references: [id], onDelete: Restrict)
-  ativo                 Boolean                 @default(true)
+  id                  String              @id @default(uuid())
+  conciliacaoId       String
+  conciliacao         ConciliacaoBancaria @relation(fields: [conciliacaoId], references: [id], onDelete: Cascade)
+  contaPagarBaixaId   String?
+  contaPagarBaixa     ContaPagarBaixa?    @relation(fields: [contaPagarBaixaId], references: [id], onDelete: Restrict)
+  contaReceberBaixaId String?
+  contaReceberBaixa   ContaReceberBaixa?  @relation(fields: [contaReceberBaixaId], references: [id], onDelete: Restrict)
+  ativo               Boolean             @default(true)
 
   @@index([contaPagarBaixaId, ativo])
   @@index([contaReceberBaixaId, ativo])
@@ -1393,37 +1399,37 @@ model ConciliacaoBancariaBaixa {
 }
 
 model ConciliacaoBancariaEvento {
-  id              String                 @id @default(uuid())
-  conciliacaoId   String
-  conciliacao     ConciliacaoBancaria    @relation(fields: [conciliacaoId], references: [id], onDelete: Cascade)
+  id            String              @id @default(uuid())
+  conciliacaoId String
+  conciliacao   ConciliacaoBancaria @relation(fields: [conciliacaoId], references: [id], onDelete: Cascade)
   /// concluir | desvincular
-  acao            String
-  usuarioId       String
-  usuario         User                   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
-  detalhe         Json?
-  criadoEm        DateTime               @default(now())
+  acao          String
+  usuarioId     String
+  usuario       User                @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  detalhe       Json?
+  criadoEm      DateTime            @default(now())
 
   @@index([conciliacaoId, criadoEm])
 }
 
 /// Taxas e prazos de uma bandeira+tipo sob uma adquirente. Bandeiras fixas no código.
 model CartaoPagamento {
-  id                    String                @id @default(uuid())
-  companyId             String
-  company               Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  adquirenteId          String
-  adquirente            Adquirente            @relation(fields: [adquirenteId], references: [id], onDelete: Restrict)
+  id                   String                @id @default(uuid())
+  companyId            String
+  company              Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  adquirenteId         String
+  adquirente           Adquirente            @relation(fields: [adquirenteId], references: [id], onDelete: Restrict)
   /// visa | mastercard | elo | amex | hipercard
-  bandeira              String
+  bandeira             String
   /// credito | debito
-  tipo                  String
-  nomeExibicao          String
-  ativo                 Boolean               @default(true)
-  permitirParcelamento  Boolean               @default(true)
-  taxas                 CartaoPagamentoTaxa[]
-  vendasCaixa           VendaCaixa[]
-  createdAt             DateTime              @default(now())
-  updatedAt             DateTime              @updatedAt
+  tipo                 String
+  nomeExibicao         String
+  ativo                Boolean               @default(true)
+  permitirParcelamento Boolean               @default(true)
+  taxas                CartaoPagamentoTaxa[]
+  vendasCaixa          VendaCaixa[]
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 
   @@unique([companyId, adquirenteId, bandeira, tipo])
   @@index([companyId, ativo])
@@ -1446,22 +1452,22 @@ model CartaoPagamentoTaxa {
 // ─── Contagem de entrada cega (logística) ─────────────────────────────────────
 
 model ContagemEntrada {
-  id           String   @id @default(uuid())
+  id           String    @id @default(uuid())
   companyId    String
-  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   /// aberta | em_andamento | ok | divergente | cancelada
-  status       String   @default("aberta")
+  status       String    @default("aberta")
   usuarioId    String?
-  usuario      User?    @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  usuario      User?     @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
   iniciadoEm   DateTime?
   finalizadoEm DateTime?
   /// Admin baixou a contagem (trava logística até Voltar, se ainda não consolidou)
   baixadaEm    DateTime?
   observacao   String?
   /// Concorrência otimista — bip/patch/gravar/finalizar/cancelar incrementam
-  versao       Int      @default(1)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  versao       Int       @default(1)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   notas    ContagemEntradaNota[]
   itens    ContagemEntradaItem[]
@@ -1490,37 +1496,37 @@ model ContagemEntradaRevisao {
 }
 
 model ContagemEntradaNota {
-  id                String         @id @default(uuid())
+  id                String          @id @default(uuid())
   contagemEntradaId String
   contagemEntrada   ContagemEntrada @relation(fields: [contagemEntradaId], references: [id], onDelete: Cascade)
   nfeRecebidaId     String
-  nfeRecebida       NfeRecebida    @relation(fields: [nfeRecebidaId], references: [id], onDelete: Restrict)
-  createdAt         DateTime       @default(now())
+  nfeRecebida       NfeRecebida     @relation(fields: [nfeRecebidaId], references: [id], onDelete: Restrict)
+  createdAt         DateTime        @default(now())
 
   @@unique([contagemEntradaId, nfeRecebidaId])
   @@index([nfeRecebidaId])
 }
 
 model ContagemEntradaItem {
-  id                String         @id @default(uuid())
-  contagemEntradaId String
-  contagemEntrada   ContagemEntrada @relation(fields: [contagemEntradaId], references: [id], onDelete: Cascade)
-  produtoId         String
-  produto           Produto        @relation(fields: [produtoId], references: [id], onDelete: Restrict)
+  id                 String          @id @default(uuid())
+  contagemEntradaId  String
+  contagemEntrada    ContagemEntrada @relation(fields: [contagemEntradaId], references: [id], onDelete: Cascade)
+  produtoId          String
+  produto            Produto         @relation(fields: [produtoId], references: [id], onDelete: Restrict)
   /// Snapshot exibido ao conferente
-  nomeExibicao      String
-  codigoBarras      String?
-  codigoOriginal    String?
-  marca             String?
-  unidade           String?
-  qtdEmbalagemPadrao Decimal?      @db.Decimal(18, 4)
+  nomeExibicao       String
+  codigoBarras       String?
+  codigoOriginal     String?
+  marca              String?
+  unidade            String?
+  qtdEmbalagemPadrao Decimal?        @db.Decimal(18, 4)
   /// Quantidade esperada em unidade de compra (qtd da NF) — NUNCA enviar ao cliente na API cega
-  qtdEsperada       Decimal        @db.Decimal(18, 4)
-  qtdContada        Decimal        @default(0) @db.Decimal(18, 4)
+  qtdEsperada        Decimal         @db.Decimal(18, 4)
+  qtdContada         Decimal         @default(0) @db.Decimal(18, 4)
   /// pendente | ok | divergente
-  statusItem        String         @default("pendente")
-  updatedAt         DateTime       @updatedAt
-  createdAt         DateTime       @default(now())
+  statusItem         String          @default("pendente")
+  updatedAt          DateTime        @updatedAt
+  createdAt          DateTime        @default(now())
 
   @@unique([contagemEntradaId, produtoId])
   @@index([contagemEntradaId])
@@ -1814,22 +1820,22 @@ model PendenciaFornecedor {
 
 /// Catálogo hierárquico do depósito (local → área → rua → bloco → andar) por empresa.
 model NivelEnderecoWms {
-  id        String   @id @default(uuid())
-  companyId String
-  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id           String             @id @default(uuid())
+  companyId    String
+  company      Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
   /// local | area | rua | bloco | andar
-  nivel     String
-  codigo    String
-  nome      String
-  parentId  String?
-  parent    NivelEnderecoWms?  @relation("HierarquiaEnderecoWms", fields: [parentId], references: [id], onDelete: Restrict)
-  children  NivelEnderecoWms[] @relation("HierarquiaEnderecoWms")
-  sequencia Int      @default(0)
+  nivel        String
+  codigo       String
+  nome         String
+  parentId     String?
+  parent       NivelEnderecoWms?  @relation("HierarquiaEnderecoWms", fields: [parentId], references: [id], onDelete: Restrict)
+  children     NivelEnderecoWms[] @relation("HierarquiaEnderecoWms")
+  sequencia    Int                @default(0)
   /// ativo | bloqueado | inativo
-  status    String   @default("ativo")
-  ativo     Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  status       String             @default("ativo")
+  ativo        Boolean            @default(true)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
   apartamentos EnderecoWms[]
 
   @@index([companyId, parentId, sequencia])
@@ -1840,28 +1846,28 @@ model NivelEnderecoWms {
 /// Cadastro mestre de endereço WMS (LOCAL-ÁREA-RUA-BLOCO-ANDAR-AP).
 /// Não vincula produto nem kardex nesta fase.
 model EnderecoWms {
-  id             String   @id @default(uuid())
-  companyId      String
-  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  andarId        String
-  andarRef       NivelEnderecoWms @relation(fields: [andarId], references: [id], onDelete: Restrict)
+  id                 String           @id @default(uuid())
+  companyId          String
+  company            Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  andarId            String
+  andarRef           NivelEnderecoWms @relation(fields: [andarId], references: [id], onDelete: Restrict)
   /// Segmento do apartamento (ex. 05)
-  codigo         String
-  codigoCompleto String
-  local          String
-  area           String
-  rua            String
-  bloco          String
-  andar          String
-  posicao        String
-  tipoEndereco   String
-  sequencia      Int      @default(0)
+  codigo             String
+  codigoCompleto     String
+  local              String
+  area               String
+  rua                String
+  bloco              String
+  andar              String
+  posicao            String
+  tipoEndereco       String
+  sequencia          Int              @default(0)
   /// ativo | bloqueado | inativo
-  status         String   @default("ativo")
-  ativo          Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  requisicoesOrigem  RequisicaoWms[] @relation("RequisicaoWmsOrigem")
-  requisicoesDestino RequisicaoWms[] @relation("RequisicaoWmsDestino")
+  status             String           @default("ativo")
+  ativo              Boolean          @default(true)
+  createdAt          DateTime         @default(now())
+  requisicoesOrigem  RequisicaoWms[]  @relation("RequisicaoWmsOrigem")
+  requisicoesDestino RequisicaoWms[]  @relation("RequisicaoWmsDestino")
 
   @@unique([companyId, codigoCompleto])
   @@unique([andarId, codigo])
@@ -1872,43 +1878,43 @@ model EnderecoWms {
 /// Ordem operacional do armazém (1 requisição = 1 tarefa).
 /// Kardex só em Separação (reserva + saída física do produto). Sem saldo por endereço.
 model RequisicaoWms {
-  id                   String   @id @default(uuid())
-  companyId            String
-  company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  numero               Int
+  id                    String                @id @default(uuid())
+  companyId             String
+  company               Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  numero                Int
   /// separacao | reposicao | conferencia | movimentacao | limpeza | inventario | contagem_entrada | armazenagem
-  tipoOperacao         String
+  tipoOperacao          String
   /// 1 critica … 4 baixa
-  prioridade           Int
+  prioridade            Int
   /// pendente | disponivel | atribuida | em_execucao | pausada | concluida | cancelada | bloqueada
-  status               String   @default("pendente")
-  origemEnderecoId     String?
-  origemEndereco       EnderecoWms? @relation("RequisicaoWmsOrigem", fields: [origemEnderecoId], references: [id], onDelete: SetNull)
-  destinoEnderecoId    String?
-  destinoEndereco      EnderecoWms? @relation("RequisicaoWmsDestino", fields: [destinoEnderecoId], references: [id], onDelete: SetNull)
-  produtoId            String?
-  produto              Produto? @relation(fields: [produtoId], references: [id], onDelete: SetNull)
-  quantidade           Decimal? @db.Decimal(18, 4)
-  qtdExecutada         Decimal? @db.Decimal(18, 4)
-  conferidoOrigemEm    DateTime?
-  conferidoProdutoEm   DateTime?
-  conferidoDestinoEm   DateTime?
-  conferidoOrigemValor String?
+  status                String                @default("pendente")
+  origemEnderecoId      String?
+  origemEndereco        EnderecoWms?          @relation("RequisicaoWmsOrigem", fields: [origemEnderecoId], references: [id], onDelete: SetNull)
+  destinoEnderecoId     String?
+  destinoEndereco       EnderecoWms?          @relation("RequisicaoWmsDestino", fields: [destinoEnderecoId], references: [id], onDelete: SetNull)
+  produtoId             String?
+  produto               Produto?              @relation(fields: [produtoId], references: [id], onDelete: SetNull)
+  quantidade            Decimal?              @db.Decimal(18, 4)
+  qtdExecutada          Decimal?              @db.Decimal(18, 4)
+  conferidoOrigemEm     DateTime?
+  conferidoProdutoEm    DateTime?
+  conferidoDestinoEm    DateTime?
+  conferidoOrigemValor  String?
   conferidoProdutoValor String?
   conferidoDestinoValor String?
-  responsavelId        String?
-  responsavel          User?    @relation(fields: [responsavelId], references: [id], onDelete: SetNull)
-  observacao           String?
-  nfeRecebidaId        String?
-  nfeRecebida          NfeRecebida? @relation(fields: [nfeRecebidaId], references: [id], onDelete: SetNull)
-  vendaCaixaId         String?
-  vendaCaixa           VendaCaixa? @relation(fields: [vendaCaixaId], references: [id], onDelete: SetNull)
-  iniciadoEm           DateTime?
-  pausadoEm            DateTime?
-  concluidoEm          DateTime?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-  eventos              RequisicaoWmsEvento[]
+  responsavelId         String?
+  responsavel           User?                 @relation(fields: [responsavelId], references: [id], onDelete: SetNull)
+  observacao            String?
+  nfeRecebidaId         String?
+  nfeRecebida           NfeRecebida?          @relation(fields: [nfeRecebidaId], references: [id], onDelete: SetNull)
+  vendaCaixaId          String?
+  vendaCaixa            VendaCaixa?           @relation(fields: [vendaCaixaId], references: [id], onDelete: SetNull)
+  iniciadoEm            DateTime?
+  pausadoEm             DateTime?
+  concluidoEm           DateTime?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  eventos               RequisicaoWmsEvento[]
 
   @@unique([companyId, numero])
   @@index([companyId, status])
@@ -1959,41 +1965,44 @@ model ParametrizacaoCustoVenda {
 // ─── Orçamento (proposta de venda; não gera pedido) ─────────────────────────
 
 model Orcamento {
-  id                String          @id @default(uuid())
+  id                String               @id @default(uuid())
   companyId         String
-  company           Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company           Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
   numero            String
-  data              DateTime        @db.Date
-  validade          DateTime?       @db.Date
-  /// em_elaboracao | enviado | aprovado
-  status            String          @default("em_elaboracao")
-  vendedorId        String          @default("")
-  clienteCodigo     String          @default("")
-  clienteNome       String          @default("")
-  cnpj              String          @default("")
-  telefone          String          @default("")
-  email             String          @default("")
-  contato           String          @default("")
-  condicaoPagamento String          @default("")
-  prazoEntrega      String          @default("")
-  frete             String          @default("")
-  mensagem          String          @default("")
-  descontoTotal     Decimal         @default(0) @db.Decimal(15, 2)
-  valorFrete        Decimal         @default(0) @db.Decimal(15, 2)
-  outrasDespesas    Decimal         @default(0) @db.Decimal(15, 2)
-  converterEmPedido Boolean         @default(false)
-  cep               String          @default("")
-  logradouro        String          @default("")
-  numeroEndereco    String          @default("")
-  bairro            String          @default("")
-  cidade            String          @default("")
-  uf                String          @default("")
-  complementares    String          @default("")
-  observacoes       String          @default("")
+  data              DateTime             @db.Date
+  validade          DateTime?            @db.Date
+  /// em_aberto | expirado | convertido
+  status            String               @default("em_aberto")
+  vendedorId        String               @default("")
+  clienteCodigo     String               @default("")
+  clienteNome       String               @default("")
+  cnpj              String               @default("")
+  telefone          String               @default("")
+  email             String               @default("")
+  contato           String               @default("")
+  condicaoPagamento String               @default("")
+  prazoEntrega      String               @default("")
+  frete             String               @default("")
+  mensagem          String               @default("")
+  descontoTotal     Decimal              @default(0) @db.Decimal(15, 2)
+  valorFrete        Decimal              @default(0) @db.Decimal(15, 2)
+  outrasDespesas    Decimal              @default(0) @db.Decimal(15, 2)
+  converterEmPedido Boolean              @default(false)
+  cep               String               @default("")
+  logradouro        String               @default("")
+  numeroEndereco    String               @default("")
+  bairro            String               @default("")
+  cidade            String               @default("")
+  uf                String               @default("")
+  complementares    String               @default("")
+  observacoes       String               @default("")
   itens             OrcamentoItem[]
+  anexos            OrcamentoAnexo[]
+  historico         OrcamentoHistorico[]
+  pedidoVenda       PedidoVenda?
   vendasCaixa       VendaCaixa[]
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
   @@unique([companyId, numero])
   @@index([companyId, updatedAt])
@@ -2004,41 +2013,123 @@ model OrcamentoItem {
   orcamentoId        String
   orcamento          Orcamento @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
   ordem              Int       @default(0)
+  produtoId          String?
+  produto            Produto?  @relation(fields: [produtoId], references: [id], onDelete: SetNull)
   codigo             String    @default("")
   descricao          String    @default("")
+  marca              String    @default("")
   ncm                String    @default("")
   quantidade         Decimal   @db.Decimal(15, 4)
   unidade            String    @default("UN")
   precoUnitario      Decimal   @db.Decimal(15, 4)
   percentualDesconto Decimal   @default(0) @db.Decimal(15, 4)
+  valorSt            Decimal   @default(0) @db.Decimal(15, 2)
 
   @@index([orcamentoId])
+  @@index([produtoId])
+}
+
+model PedidoVenda {
+  id                String            @id @default(uuid())
+  companyId         String
+  company           Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  orcamentoId       String            @unique
+  orcamento         Orcamento         @relation(fields: [orcamentoId], references: [id], onDelete: Restrict)
+  numero            String
+  data              DateTime          @db.Date
+  clienteCodigo     String            @default("")
+  clienteNome       String
+  condicaoPagamento String            @default("")
+  descontoTotal     Decimal           @default(0) @db.Decimal(15, 2)
+  valorFrete        Decimal           @default(0) @db.Decimal(15, 2)
+  outrasDespesas    Decimal           @default(0) @db.Decimal(15, 2)
+  totalSt           Decimal           @default(0) @db.Decimal(15, 2)
+  total             Decimal           @default(0) @db.Decimal(15, 2)
+  itens             PedidoVendaItem[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@unique([companyId, numero])
+  @@index([companyId, createdAt])
+}
+
+model PedidoVendaItem {
+  id                 String      @id @default(uuid())
+  pedidoVendaId      String
+  pedidoVenda        PedidoVenda @relation(fields: [pedidoVendaId], references: [id], onDelete: Cascade)
+  ordem              Int         @default(0)
+  produtoId          String?
+  produto            Produto?    @relation(fields: [produtoId], references: [id], onDelete: SetNull)
+  codigo             String      @default("")
+  descricao          String
+  marca              String      @default("")
+  quantidade         Decimal     @db.Decimal(15, 4)
+  unidade            String      @default("UN")
+  precoUnitario      Decimal     @db.Decimal(15, 4)
+  percentualDesconto Decimal     @default(0) @db.Decimal(15, 4)
+  valorSt            Decimal     @default(0) @db.Decimal(15, 2)
+  total              Decimal     @db.Decimal(15, 2)
+
+  @@index([pedidoVendaId])
+  @@index([produtoId])
+}
+
+model OrcamentoAnexo {
+  id             String    @id @default(uuid())
+  companyId      String
+  company        Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  orcamentoId    String
+  orcamento      Orcamento @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
+  nomeArquivo    String
+  mimeType       String
+  caminhoArquivo String
+  tamanhoBytes   Int
+  usuarioId      String?
+  usuario        User?     @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  createdAt      DateTime  @default(now())
+
+  @@index([companyId])
+  @@index([orcamentoId])
+}
+
+model OrcamentoHistorico {
+  id          String    @id @default(uuid())
+  orcamentoId String
+  orcamento   Orcamento @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
+  usuarioId   String?
+  usuario     User?     @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  acao        String
+  descricao   String
+  dadosJson   Json?
+  createdAt   DateTime  @default(now())
+
+  @@index([orcamentoId, createdAt])
 }
 
 /// Venda já paga no caixa. Não é pedido de venda e não guarda preço.
 model VendaCaixa {
-  id             String           @id @default(uuid())
-  companyId      String
-  company        Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  orcamentoId    String?
-  orcamento      Orcamento?       @relation(fields: [orcamentoId], references: [id], onDelete: Restrict)
-  numero         Int
-  clienteNome    String
+  id                String           @id @default(uuid())
+  companyId         String
+  company           Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  orcamentoId       String?
+  orcamento         Orcamento?       @relation(fields: [orcamentoId], references: [id], onDelete: Restrict)
+  numero            Int
+  clienteNome       String
   /// paga | chamado_atendente
-  status         String           @default("paga")
+  status            String           @default("paga")
   /// dinheiro | pix | cartao_credito | cartao_debito | boleto — null em chamado ou vendas antigas
-  formaPagamento String?
+  formaPagamento    String?
   /// Parcelas na maquininha (crédito); null em Pix/débito/dinheiro ou vendas antigas.
-  numeroParcelas Int?
+  numeroParcelas    Int?
   cartaoPagamentoId String?
   cartaoPagamento   CartaoPagamento? @relation(fields: [cartaoPagamentoId], references: [id], onDelete: SetNull)
   /// Valor recebido em dinheiro (troco = valorRecebido − total do orçamento).
-  valorRecebido  Decimal?         @db.Decimal(15, 2)
-  observacao     String?
-  pagaEm         DateTime         @default(now())
-  itens          VendaCaixaItem[]
-  requisicoes    RequisicaoWms[]
-  createdAt      DateTime         @default(now())
+  valorRecebido     Decimal?         @db.Decimal(15, 2)
+  observacao        String?
+  pagaEm            DateTime         @default(now())
+  itens             VendaCaixaItem[]
+  requisicoes       RequisicaoWms[]
+  createdAt         DateTime         @default(now())
 
   @@unique([companyId, numero])
   @@unique([companyId, orcamentoId])

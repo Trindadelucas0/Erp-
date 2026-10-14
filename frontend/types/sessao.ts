@@ -22,6 +22,7 @@ export type UsuarioDaSessao = {
   name: string
   email: string
   active: boolean
+  cargo?: string
   tema?: 'claro' | 'escuro'
   roles?: PapelDaSessao[]
 }

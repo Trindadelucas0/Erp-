@@ -19,13 +19,20 @@ export type EnderecoOrcamento = {
 
 export type ItemOrcamentoApi = {
   id: string
+  produtoId: string | null
   codigo: string
   descricao: string
+  marca: string
   ncm: string
+  estoque: number | null
+  multiploVenda: number
+  permiteVendaFracionada: boolean
+  miniatura: string | null
   quantidade: number
   unidade: string
   precoUnitario: number
   percentualDesconto: number
+  valorSt: number
 }
 
 export type OrcamentoApi = {
@@ -54,6 +61,14 @@ export type OrcamentoApi = {
   observacoes: string
   itens: ItemOrcamentoApi[]
   total: number
+  pedidoVenda?: { id: string; numero: string } | null
+  historico?: Array<{
+    id: string
+    acao: string
+    descricao: string
+    createdAt: string
+    usuario: { id: string; name: string } | null
+  }>
 }
 
 export type OrcamentoListaApi = {
@@ -84,6 +99,7 @@ function dataDeHoje(): string {
 export function orcamentoEmBranco(opcoes?: {
   numeroPreview?: string
   validadeOrcamentoDias?: number
+  vendedorId?: string
 }): OrcamentoLayout {
   const data = dataDeHoje()
   const dias = opcoes?.validadeOrcamentoDias ?? 14
@@ -91,15 +107,15 @@ export function orcamentoEmBranco(opcoes?: {
     numero: opcoes?.numeroPreview ?? '',
     data,
     validade: somarDiasCivil(data, dias),
-    status: 'em_elaboracao',
-    vendedorId: '',
+    status: 'em_aberto',
+    vendedorId: opcoes?.vendedorId ?? '',
     clienteCodigo: '',
     clienteNome: '',
     cnpj: '',
     telefone: '',
     email: '',
     contato: '',
-    condicaoPagamento: '',
+    condicaoPagamento: 'a_vista',
     prazoEntrega: 'no_ato',
     frete: '',
     mensagem: '',
@@ -107,12 +123,14 @@ export function orcamentoEmBranco(opcoes?: {
     valorFrete: 0,
     outrasDespesas: 0,
     converterEmPedido: false,
+    pedidoVenda: null,
+    historico: [],
     itens: [],
   }
 }
 
 export function statusAoSalvar(status: string): string {
-  return status === 'enviado' ? 'enviado' : 'em_elaboracao'
+  return status === 'em_aberto' ? 'em_aberto' : status
 }
 
 export function montarCorpoOrcamento(
@@ -152,13 +170,16 @@ export function montarCorpoOrcamento(
     complementares,
     observacoes,
     itens: orcamento.itens.filter(linhaPreenchida).map((item) => ({
+      produtoId: item.produtoId,
       codigo: item.codigo,
       descricao: item.descricao,
+      marca: item.marca,
       ncm: item.ncm,
       quantidade: item.quantidade,
       unidade: item.unidade,
       precoUnitario: item.precoUnitario,
       percentualDesconto: item.percentualDesconto,
+      valorSt: item.valorSt,
     })),
   }
 }
@@ -169,7 +190,7 @@ export function deOrcamentoApi(api: OrcamentoApi): {
   complementares: string
   observacoes: string
 } {
-  const itens: ItemOrcamentoLayout[] = api.itens.map((item) => ({ ...item, estoque: null }))
+  const itens: ItemOrcamentoLayout[] = api.itens.map((item) => ({ ...item }))
 
   return {
     orcamento: {
@@ -192,6 +213,8 @@ export function deOrcamentoApi(api: OrcamentoApi): {
       valorFrete: api.valorFrete,
       outrasDespesas: api.outrasDespesas,
       converterEmPedido: api.converterEmPedido,
+      pedidoVenda: api.pedidoVenda ?? null,
+      historico: api.historico ?? [],
       itens,
     },
     endereco: api.endereco,

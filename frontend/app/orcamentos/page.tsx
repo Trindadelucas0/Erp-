@@ -22,6 +22,7 @@ import { clienteHttp } from '@/services/api'
 function ConteudoDaPagina() {
   const roteador = useRouter()
   const podeEditar = usePermissao('vendas:edit')
+  const podeAprovar = usePermissao('vendas:approve')
   const [busca, setBusca] = useState('')
   const [orcamentos, setOrcamentos] = useState<OrcamentoListaApi[]>([])
   const [erro, setErro] = useState('')
@@ -151,7 +152,7 @@ function ConteudoDaPagina() {
                     </td>
                     <td className="px-2 py-3 text-right tabular-nums">{formatarMoeda(orcamento.total)}</td>
                     <td className="px-2 py-3" onClick={(e) => e.stopPropagation()}>
-                      {podeEditar && orcamento.status === 'em_elaboracao' ? (
+                      {podeAprovar && orcamento.status === 'em_aberto' ? (
                         <Button
                           type="button"
                           variant="outline"

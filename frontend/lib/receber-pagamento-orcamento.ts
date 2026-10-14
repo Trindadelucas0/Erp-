@@ -45,24 +45,18 @@ export type OrcamentoListaReceber = {
   vendaChamadoId: string | null
 }
 
-const CONDICOES_SOMENTE_CAIXA = new Set(['dinheiro', 'a_vista', ''])
-
 export function rotuloCondicaoPagamento(valor: string) {
   if (!valor) return '—'
   return OPCOES_CONDICAO_PAGAMENTO.find((item) => item.value === valor)?.label ?? valor
 }
 
 export function formaPadraoDoOrcamento(condicao: string): FormaPagamentoUi {
-  const valores = FORMAS_PAGAMENTO_UI.map((f) => f.valor)
-  if (valores.includes(condicao as FormaPagamentoUi)) {
-    return condicao as FormaPagamentoUi
-  }
-  if (condicao === 'a_vista') return 'pix'
+  void condicao
   return 'pix'
 }
 
 export function formaConfirmavelNoTotem(condicao: string, formaEscolhida: FormaPagamentoUi) {
-  if (CONDICOES_SOMENTE_CAIXA.has(condicao)) return false
+  void condicao
   if (formaEscolhida === 'dinheiro' || formaEscolhida === 'boleto') return false
   return true
 }

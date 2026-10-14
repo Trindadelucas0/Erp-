@@ -35,7 +35,6 @@ function centavosLinha(item: {
 }
 
 export function totalDoOrcamento(orcamento: {
-  descontoTotal: number
   valorFrete: number
   outrasDespesas: number
   itens: Array<{
@@ -44,30 +43,64 @@ export function totalDoOrcamento(orcamento: {
     quantidade: number
     precoUnitario: number
     percentualDesconto: number
+    valorSt?: number
   }>
 }): number {
-  const subtotalCentavos = orcamento.itens.reduce((soma, item) => soma + centavosLinha(item), 0)
-  const descontoCentavos = Math.round(orcamento.descontoTotal * 100)
+  const liquidoCentavos = orcamento.itens.reduce((soma, item) => soma + centavosLinha(item), 0)
+  const stCentavos = orcamento.itens.reduce(
+    (soma, item) => soma + Math.round((item.valorSt ?? 0) * 100),
+    0
+  )
   const freteCentavos = Math.round(orcamento.valorFrete * 100)
   const outrasCentavos = Math.round(orcamento.outrasDespesas * 100)
-  return (subtotalCentavos - descontoCentavos + freteCentavos + outrasCentavos) / 100
+  return (liquidoCentavos + stCentavos + freteCentavos + outrasCentavos) / 100
 }
 
 const includeOrcamento = {
-  itens: { orderBy: { ordem: 'asc' as const } },
+  itens: {
+    orderBy: { ordem: 'asc' as const },
+    include: {
+      produto: {
+        select: {
+          multiploVenda: true,
+          permiteVendaFracionada: true,
+          estoqueSaldo: true,
+          fotos: { where: { tipo: 'miniatura' }, take: 1 },
+        },
+      },
+    },
+  },
   company: { select: { name: true } },
+  pedidoVenda: { select: { id: true, numero: true } },
+  historico: {
+    orderBy: { createdAt: 'desc' as const },
+    include: { usuario: { select: { id: true, name: true } } },
+  },
 } as const
 
 type RegistroItem = {
   id: string
   ordem: number
+  produtoId: string | null
   codigo: string
   descricao: string
+  marca: string
   ncm: string
   quantidade: unknown
   unidade: string
   precoUnitario: unknown
   percentualDesconto: unknown
+  valorSt: unknown
+  produto?: {
+    multiploVenda: unknown
+    permiteVendaFracionada: boolean
+    estoqueSaldo: {
+      qtdFisica: unknown
+      qtdReservada: unknown
+      qtdBloqueada: unknown
+    } | null
+    fotos: Array<{ arquivo: string }>
+  } | null
 }
 
 type RegistroOrcamento = {
@@ -102,20 +135,41 @@ type RegistroOrcamento = {
   observacoes: string
   itens?: RegistroItem[]
   company?: { name: string }
+  pedidoVenda?: { id: string; numero: string } | null
+  historico?: Array<{
+    id: string
+    acao: string
+    descricao: string
+    createdAt: Date
+    usuario: { id: string; name: string } | null
+  }>
 }
 
 export type OrcamentoPersistido = ReturnType<typeof mapear>
 
 function mapearItem(item: RegistroItem) {
+  const saldo = item.produto?.estoqueSaldo
+  const estoque = saldo
+    ? decimalNum(saldo.qtdFisica) -
+      decimalNum(saldo.qtdReservada) -
+      decimalNum(saldo.qtdBloqueada)
+    : null
   return {
     id: item.id,
+    produtoId: item.produtoId,
     codigo: item.codigo,
     descricao: item.descricao,
+    marca: item.marca,
     ncm: item.ncm,
     quantidade: decimalNum(item.quantidade),
     unidade: item.unidade,
     precoUnitario: decimalNum(item.precoUnitario),
     percentualDesconto: decimalNum(item.percentualDesconto),
+    valorSt: decimalNum(item.valorSt),
+    estoque,
+    multiploVenda: decimalNum(item.produto?.multiploVenda ?? 1),
+    permiteVendaFracionada: item.produto?.permiteVendaFracionada ?? true,
+    miniatura: item.produto?.fotos[0]?.arquivo ?? null,
   }
 }
 
@@ -153,6 +207,11 @@ function mapear(registro: RegistroOrcamento) {
     complementares: registro.complementares,
     observacoes: registro.observacoes,
     itens,
+    pedidoVenda: registro.pedidoVenda ?? null,
+    historico: (registro.historico ?? []).map((evento) => ({
+      ...evento,
+      createdAt: evento.createdAt.toISOString(),
+    })),
   }
   return {
     ...corpo,
@@ -166,14 +225,21 @@ function itensPreenchidos(itens: DadosItemOrcamento[]) {
     .filter((item) => item.codigo.trim() || item.descricao.trim())
     .map((item, ordem) => ({
       ordem,
+      produtoId: item.produtoId,
       codigo: item.codigo,
       descricao: item.descricao,
+      marca: item.marca,
       ncm: item.ncm,
       quantidade: item.quantidade,
       unidade: item.unidade || 'UN',
       precoUnitario: item.precoUnitario,
       percentualDesconto: item.percentualDesconto,
+      valorSt: calcularStItem(),
     }))
+}
+
+export function calcularStItem(): number {
+  return 0
 }
 
 function dadosEscalares(dados: DadosOrcamento, numero: string, status: string) {
@@ -199,7 +265,10 @@ function dadosEscalares(dados: DadosOrcamento, numero: string, status: string) {
     prazoEntrega: dados.prazoEntrega,
     frete,
     mensagem: dados.mensagem,
-    descontoTotal: dados.descontoTotal,
+    descontoTotal: dados.itens.reduce((soma, item) => {
+      const bruto = item.quantidade * item.precoUnitario
+      return soma + bruto * (item.percentualDesconto / 100)
+    }, 0),
     valorFrete,
     outrasDespesas: dados.outrasDespesas,
     converterEmPedido: dados.converterEmPedido,
@@ -271,7 +340,7 @@ async function buscarParaRecebimento(companyId: string, termo: string) {
   const registros = await clientePrisma.orcamento.findMany({
     where: {
       companyId,
-      status: { in: ['enviado', 'aprovado'] },
+      status: { in: ['em_aberto', 'convertido'] },
     },
     include: includeOrcamento,
     orderBy: { updatedAt: 'desc' },
@@ -292,7 +361,7 @@ async function listarRecebiveis(companyId: string, idsPagos: Set<string>) {
   const registros = await clientePrisma.orcamento.findMany({
     where: {
       companyId,
-      status: { in: ['enviado', 'aprovado'] },
+      status: { in: ['em_aberto', 'convertido'] },
       ...(idsExcluir.length > 0 ? { id: { notIn: idsExcluir } } : {}),
     },
     include: includeOrcamento,
@@ -354,6 +423,272 @@ async function atualizarStatus(companyId: string, id: string, status: string) {
   return mapear(registro)
 }
 
+async function expirarVencidos(companyId: string, hoje: string) {
+  return clientePrisma.orcamento.updateMany({
+    where: {
+      companyId,
+      status: 'em_aberto',
+      validade: { lt: dataParaDate(hoje) },
+    },
+    data: { status: 'expirado' },
+  })
+}
+
+async function buscarProdutosParaValidacao(companyId: string, produtoIds: string[]) {
+  return clientePrisma.produto.findMany({
+    where: { companyId, id: { in: produtoIds } },
+    select: {
+      id: true,
+      multiploVenda: true,
+      permiteVendaFracionada: true,
+      estoqueSaldo: true,
+      fotos: { where: { tipo: 'miniatura' }, take: 1 },
+    },
+  })
+}
+
+async function registrarHistorico(
+  orcamentoId: string,
+  usuarioId: string | undefined,
+  acao: string,
+  descricao: string,
+  dadosJson?: Prisma.InputJsonValue
+) {
+  return clientePrisma.orcamentoHistorico.create({
+    data: { orcamentoId, usuarioId, acao, descricao, dadosJson },
+  })
+}
+
+async function aplicarDesconto(
+  companyId: string,
+  id: string,
+  percentual: number,
+  itemIds: string[] | null,
+  usuarioId?: string
+) {
+  return clientePrisma.$transaction(async (tx) => {
+    const orcamento = await tx.orcamento.findFirst({
+      where: { id, companyId },
+      include: { itens: true },
+    })
+    if (!orcamento) return null
+    if (orcamento.status !== 'em_aberto') return { bloqueado: true as const }
+    const alvos = itemIds == null ? orcamento.itens.map((item) => item.id) : itemIds
+    await tx.orcamentoItem.updateMany({
+      where: { orcamentoId: id, id: { in: alvos } },
+      data: { percentualDesconto: percentual },
+    })
+    const itens = orcamento.itens.map((item) => ({
+      ...item,
+      percentualDesconto: alvos.includes(item.id)
+        ? new Prisma.Decimal(percentual)
+        : item.percentualDesconto,
+    }))
+    const descontoTotal = itens.reduce((soma, item) => {
+      const bruto = decimalNum(item.quantidade) * decimalNum(item.precoUnitario)
+      return soma + bruto * (decimalNum(item.percentualDesconto) / 100)
+    }, 0)
+    await tx.orcamento.update({ where: { id }, data: { descontoTotal } })
+    await tx.orcamentoHistorico.create({
+      data: {
+        orcamentoId: id,
+        usuarioId,
+        acao: 'desconto',
+        descricao: `Desconto de ${percentual}% aplicado`,
+        dadosJson: { percentual, itemIds },
+      },
+    })
+    const atualizado = await tx.orcamento.findUniqueOrThrow({
+      where: { id },
+      include: includeOrcamento,
+    })
+    return mapear(atualizado)
+  })
+}
+
+async function copiarItensPedido(companyId: string, id: string, pedidoVendaId: string, usuarioId?: string) {
+  return clientePrisma.$transaction(async (tx) => {
+    const [orcamento, pedido] = await Promise.all([
+      tx.orcamento.findFirst({ where: { id, companyId }, select: { id: true, status: true } }),
+      tx.pedidoVenda.findFirst({
+        where: { id: pedidoVendaId, companyId },
+        include: { itens: { orderBy: { ordem: 'asc' } } },
+      }),
+    ])
+    if (!orcamento || !pedido) return null
+    if (orcamento.status !== 'em_aberto') return { bloqueado: true as const }
+    await tx.orcamentoItem.deleteMany({ where: { orcamentoId: id } })
+    await tx.orcamentoItem.createMany({
+      data: pedido.itens.map((item) => ({
+        orcamentoId: id,
+        ordem: item.ordem,
+        produtoId: item.produtoId,
+        codigo: item.codigo,
+        descricao: item.descricao,
+        marca: item.marca,
+        quantidade: item.quantidade,
+        unidade: item.unidade,
+        precoUnitario: item.precoUnitario,
+        percentualDesconto: item.percentualDesconto,
+        valorSt: 0,
+      })),
+    })
+    const descontoTotal = pedido.itens.reduce((soma, item) => {
+      const bruto = decimalNum(item.quantidade) * decimalNum(item.precoUnitario)
+      return soma + bruto * (decimalNum(item.percentualDesconto) / 100)
+    }, 0)
+    await tx.orcamento.update({ where: { id }, data: { descontoTotal } })
+    await tx.orcamentoHistorico.create({
+      data: {
+        orcamentoId: id,
+        usuarioId,
+        acao: 'copiar_pedido',
+        descricao: `Itens copiados do pedido ${pedido.numero}`,
+        dadosJson: { pedidoVendaId },
+      },
+    })
+    const atualizado = await tx.orcamento.findUniqueOrThrow({
+      where: { id },
+      include: includeOrcamento,
+    })
+    return mapear(atualizado)
+  })
+}
+
+async function finalizar(
+  companyId: string,
+  id: string,
+  usuarioId?: string
+) {
+  return clientePrisma.$transaction(async (tx) => {
+    const orcamento = await tx.orcamento.findFirst({
+      where: { id, companyId },
+      include: { itens: { orderBy: { ordem: 'asc' } }, pedidoVenda: true },
+    })
+    if (!orcamento) return null
+    if (orcamento.status !== 'em_aberto') return { bloqueado: orcamento.status }
+    if (!orcamento.clienteNome.trim() || orcamento.itens.length === 0) {
+      return { incompleto: true as const }
+    }
+    if (!orcamento.converterEmPedido) {
+      await tx.orcamentoHistorico.create({
+        data: {
+          orcamentoId: id,
+          usuarioId,
+          acao: 'finalizar',
+          descricao: 'Orçamento validado e mantido em aberto',
+        },
+      })
+      return mapear(
+        await tx.orcamento.findUniqueOrThrow({ where: { id }, include: includeOrcamento })
+      )
+    }
+    if (orcamento.pedidoVenda) return { duplicado: true as const }
+    const totalSt = orcamento.itens.reduce((soma, item) => soma + decimalNum(item.valorSt), 0)
+    const itensParaTotal = orcamento.itens.map((item) => ({
+      codigo: item.codigo,
+      descricao: item.descricao,
+      quantidade: decimalNum(item.quantidade),
+      precoUnitario: decimalNum(item.precoUnitario),
+      percentualDesconto: decimalNum(item.percentualDesconto),
+      valorSt: decimalNum(item.valorSt),
+    }))
+    const total = totalDoOrcamento({
+      valorFrete: decimalNum(orcamento.valorFrete),
+      outrasDespesas: decimalNum(orcamento.outrasDespesas),
+      itens: itensParaTotal,
+    })
+    const pedido = await tx.pedidoVenda.create({
+      data: {
+        companyId,
+        orcamentoId: id,
+        numero: `PV-${orcamento.numero.replace(/\D/g, '').padStart(6, '0')}`,
+        data: new Date(),
+        clienteCodigo: orcamento.clienteCodigo,
+        clienteNome: orcamento.clienteNome,
+        condicaoPagamento: orcamento.condicaoPagamento,
+        descontoTotal: orcamento.descontoTotal,
+        valorFrete: orcamento.valorFrete,
+        outrasDespesas: orcamento.outrasDespesas,
+        totalSt,
+        total,
+        itens: {
+          create: orcamento.itens.map((item) => ({
+            ordem: item.ordem,
+            produtoId: item.produtoId,
+            codigo: item.codigo,
+            descricao: item.descricao,
+            marca: item.marca,
+            quantidade: item.quantidade,
+            unidade: item.unidade,
+            precoUnitario: item.precoUnitario,
+            percentualDesconto: item.percentualDesconto,
+            valorSt: item.valorSt,
+            total: centavosLinha({
+              codigo: item.codigo,
+              descricao: item.descricao,
+              quantidade: decimalNum(item.quantidade),
+              precoUnitario: decimalNum(item.precoUnitario),
+              percentualDesconto: decimalNum(item.percentualDesconto),
+            }) / 100,
+          })),
+        },
+      },
+    })
+    await tx.orcamento.update({ where: { id }, data: { status: 'convertido' } })
+    await tx.orcamentoHistorico.create({
+      data: {
+        orcamentoId: id,
+        usuarioId,
+        acao: 'conversao',
+        descricao: `Convertido no pedido ${pedido.numero}`,
+        dadosJson: { pedidoVendaId: pedido.id },
+      },
+    })
+    return mapear(
+      await tx.orcamento.findUniqueOrThrow({ where: { id }, include: includeOrcamento })
+    )
+  })
+}
+
+async function listarAnexos(companyId: string, orcamentoId: string) {
+  return clientePrisma.orcamentoAnexo.findMany({
+    where: { companyId, orcamentoId },
+    include: { usuario: { select: { id: true, name: true } } },
+    orderBy: { createdAt: 'desc' },
+  })
+}
+
+async function criarAnexo(
+  companyId: string,
+  orcamentoId: string,
+  usuarioId: string,
+  dados: { nomeArquivo: string; mimeType: string; caminhoArquivo: string; tamanhoBytes: number }
+) {
+  const existe = await clientePrisma.orcamento.findFirst({
+    where: { id: orcamentoId, companyId },
+    select: { id: true },
+  })
+  if (!existe) return null
+  return clientePrisma.orcamentoAnexo.create({
+    data: { companyId, orcamentoId, usuarioId, ...dados },
+    include: { usuario: { select: { id: true, name: true } } },
+  })
+}
+
+async function buscarAnexo(companyId: string, orcamentoId: string, anexoId: string) {
+  return clientePrisma.orcamentoAnexo.findFirst({
+    where: { id: anexoId, companyId, orcamentoId },
+  })
+}
+
+async function excluirAnexo(companyId: string, orcamentoId: string, anexoId: string) {
+  const anexo = await buscarAnexo(companyId, orcamentoId, anexoId)
+  if (!anexo) return null
+  await clientePrisma.orcamentoAnexo.delete({ where: { id: anexoId } })
+  return anexo
+}
+
 export const repositorioDeOrcamentos = {
   listar,
   buscarPorId,
@@ -362,5 +697,15 @@ export const repositorioDeOrcamentos = {
   criar,
   atualizar,
   atualizarStatus,
+  expirarVencidos,
+  buscarProdutosParaValidacao,
+  registrarHistorico,
+  aplicarDesconto,
+  copiarItensPedido,
+  finalizar,
+  listarAnexos,
+  criarAnexo,
+  buscarAnexo,
+  excluirAnexo,
   proximoNumero,
 }

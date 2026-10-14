@@ -55,6 +55,8 @@ function resolverMimeArquivo(file: File): string {
 type Props = {
   contaId: string | null
   somenteLeitura?: boolean
+  apiBase?: string
+  descricao?: string
 }
 
 function formatarTamanho(bytes: number): string {
@@ -86,7 +88,12 @@ function BadgeTipo({ children }: { children: string }) {
   )
 }
 
-export function AnexosContaReceber({ contaId, somenteLeitura = false }: Props) {
+export function AnexosContaReceber({
+  contaId,
+  somenteLeitura = false,
+  apiBase = '/contas-a-receber',
+  descricao = 'Envie boleto ou comprovante. O arquivo fica guardado neste título.',
+}: Props) {
   const [anexos, setAnexos] = useState<AnexoContaReceber[]>([])
   const [erro, setErro] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
@@ -103,14 +110,14 @@ export function AnexosContaReceber({ contaId, somenteLeitura = false }: Props) {
     }
     try {
       const { data } = await clienteHttp.get<{ anexos: AnexoContaReceber[] }>(
-        `/contas-a-receber/${contaId}/anexos`
+        `${apiBase}/${contaId}/anexos`
       )
       setAnexos(data.anexos ?? [])
       setErro(null)
     } catch (e) {
       setErro(extrairMensagemApi(e, 'Falha ao listar anexos.'))
     }
-  }, [contaId])
+  }, [apiBase, contaId])
 
   useEffect(() => {
     void carregar()
@@ -150,7 +157,7 @@ export function AnexosContaReceber({ contaId, somenteLeitura = false }: Props) {
       }
 
       const { data } = await clienteHttp.post<{ anexo: AnexoContaReceber }>(
-        `/contas-a-receber/${contaId}/anexos`,
+        `${apiBase}/${contaId}/anexos`,
         {
           nomeArquivo,
           mimeType,
@@ -173,7 +180,7 @@ export function AnexosContaReceber({ contaId, somenteLeitura = false }: Props) {
     setErro(null)
     try {
       const resposta = await clienteHttp.get(
-        `/contas-a-receber/${contaId}/anexos/${anexo.id}/download`,
+        `${apiBase}/${contaId}/anexos/${anexo.id}/download`,
         { responseType: 'blob' }
       )
       const blob = new Blob([resposta.data], {
@@ -197,7 +204,7 @@ export function AnexosContaReceber({ contaId, somenteLeitura = false }: Props) {
     if (!window.confirm(`Excluir o anexo "${anexo.nomeArquivo}"?`)) return
     setErro(null)
     try {
-      await clienteHttp.delete(`/contas-a-receber/${contaId}/anexos/${anexo.id}`)
+      await clienteHttp.delete(`${apiBase}/${contaId}/anexos/${anexo.id}`)
       setAnexos((prev) => prev.filter((x) => x.id !== anexo.id))
     } catch (e) {
       setErro(extrairMensagemApi(e, 'Não foi possível excluir o anexo.'))
@@ -210,7 +217,7 @@ export function AnexosContaReceber({ contaId, somenteLeitura = false }: Props) {
         <div className="min-w-0 space-y-0.5">
           <h3 className="text-sm font-medium leading-none">Anexos</h3>
           <p className="text-xs text-muted-foreground">
-            Envie boleto ou comprovante. O arquivo fica guardado neste título.
+            {descricao}
           </p>
         </div>
         <div className="flex flex-wrap gap-1">

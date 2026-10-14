@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Mail, Printer, Trash2 } from 'lucide-react'
+import { ArrowLeft, Copy, Eraser, Mail, Percent, Plus, Printer, Trash2 } from 'lucide-react'
+import { AnexosContaReceber } from '@/components/contas-a-receber/anexos-conta-receber'
+import { MenuAcoesLinha } from '@/components/compartilhado/menu-acoes-linha'
+import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
+import { ModalDescontoOrcamento } from '@/components/orcamentos/modal-desconto-orcamento'
+import { ModalCopiarPedido } from '@/components/orcamentos/modal-copiar-pedido'
 import { Abas } from '@/components/ui/abas'
 import { BadgeStatus } from '@/components/ui/badge-status'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
@@ -35,12 +40,13 @@ import {
   CLIENTE_ORCAMENTO_VAZIO,
   OPCOES_CONDICAO_PAGAMENTO,
   OPCOES_FRETE,
-  OPCOES_VENDEDOR_ORCAMENTO,
   aplicarClienteNoOrcamento,
+  avisoQuantidadeForaDoMultiplo,
   enderecoEntregaDoCliente,
   entregaSemFrete,
   entregaSemEndereco,
   opcoesTipoEntregaOrcamento,
+  opcoesVendedorOrcamento,
   formatarEstoque,
   formatarPrecoUnitario,
   formatarQuantidade,
@@ -48,18 +54,20 @@ import {
   modoClienteDoOrcamento,
   resumirOrcamento,
   rotuloStatusOrcamento,
+  situacaoEstoque,
   totalLinha,
   valorLiquidoUnitario,
+  vendedorIdNovoOrcamento,
   type ItemOrcamentoLayout,
   type ModoClienteOrcamento,
   type OrcamentoLayout,
 } from '@/lib/orcamento-layout'
 import { clienteHttp } from '@/services/api'
 import { cn } from '@/lib/utils'
+import { usePermissao } from '@/hooks/use-permissao'
 
 const LIMITE_MENSAGEM = 1000
 const LIMITE_CLIENTES = 80
-const AVISO_AINDA_NAO = 'Esta ação ainda não está disponível.'
 const CHAVE_MODAL_FINALIZADO = 'erp.orcamento.finalizado'
 
 type ClienteLista = {
@@ -97,6 +105,8 @@ type Props = {
   }
 }
 
+class ErroValidacaoOrcamento extends Error {}
+
 function numeroDoCampo(valor: string): number {
   const normalizado = valor.replace(',', '.')
   if (normalizado.trim() === '') return 0
@@ -104,8 +114,24 @@ function numeroDoCampo(valor: string): number {
   return Number.isFinite(numero) ? numero : 0
 }
 
+function varianteStatusOrcamento(status: string) {
+  if (status === 'convertido') return 'sucesso' as const
+  if (status === 'expirado') return 'inativo' as const
+  return 'pendente' as const
+}
+
+function classePontoEstoque(situacao: ReturnType<typeof situacaoEstoque>) {
+  if (situacao === 'ok') return 'bg-emerald-500'
+  if (situacao === 'baixo') return 'bg-amber-500'
+  if (situacao === 'sem') return 'bg-destructive'
+  return 'bg-muted-foreground'
+}
+
 export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
   const roteador = useRouter()
+  const { perfil } = useSessaoDoUsuario()
+  const podeEditar = usePermissao('vendas:edit')
+  const podeAprovar = usePermissao('vendas:approve')
   const [idGravado, setIdGravado] = useState(orcamentoId ?? '')
   const [orcamento, setOrcamento] = useState<OrcamentoLayout>(
     () => iniciais?.orcamento ?? orcamentoEmBranco()
@@ -138,6 +164,10 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
   const [produtosBusca, setProdutosBusca] = useState<ProdutoOpcao[]>([])
   const [carregandoProdutos, setCarregandoProdutos] = useState(false)
   const [modalFinalizadoAberto, setModalFinalizadoAberto] = useState(false)
+  const [modalDescontoAberto, setModalDescontoAberto] = useState(false)
+  const [modalCopiarAberto, setModalCopiarAberto] = useState(false)
+  const [itensSelecionados, setItensSelecionados] = useState<string[]>([])
+  const bloqueado = orcamento.status === 'expirado' || orcamento.status === 'convertido'
   const semFrete = entregaSemFrete(orcamento.prazoEntrega)
   const semEndereco = entregaSemEndereco(orcamento.prazoEntrega)
   const resumo = useMemo(
@@ -148,6 +178,15 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
     () => opcoesTipoEntregaOrcamento(orcamento.prazoEntrega),
     [orcamento.prazoEntrega]
   )
+  const opcoesVendedor = useMemo(
+    () => opcoesVendedorOrcamento(perfil?.usuario, orcamento.vendedorId),
+    [perfil?.usuario, orcamento.vendedorId]
+  )
+  const idsItens = useMemo(() => orcamento.itens.map((item) => item.id), [orcamento.itens])
+  const todosItensSelecionados =
+    idsItens.length > 0 && idsItens.every((id) => itensSelecionados.includes(id))
+  const algunsItensSelecionados =
+    !todosItensSelecionados && idsItens.some((id) => itensSelecionados.includes(id))
   const abasOrcamento = useMemo(() => {
     const base: Array<{ id: AbaOrcamento; rotulo: string; contador?: number }> = [
       { id: 'itens', rotulo: 'Itens', contador: resumo.qtdItens },
@@ -185,17 +224,25 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
           orcamentoEmBranco({
             numeroPreview: data.numero,
             validadeOrcamentoDias: data.validadeOrcamentoDias,
+            vendedorId: vendedorIdNovoOrcamento(perfil?.usuario),
           })
         )
       })
       .catch(() => {
         if (cancelado) return
-        setOrcamento(orcamentoEmBranco())
+        setOrcamento(orcamentoEmBranco({ vendedorId: vendedorIdNovoOrcamento(perfil?.usuario) }))
       })
     return () => {
       cancelado = true
     }
   }, [orcamentoId, iniciais])
+
+  useEffect(() => {
+    if (orcamentoId || iniciais) return
+    const vendedorId = vendedorIdNovoOrcamento(perfil?.usuario)
+    if (!vendedorId) return
+    setOrcamento((atual) => (atual.vendedorId ? atual : { ...atual, vendedorId }))
+  }, [orcamentoId, iniciais, perfil?.usuario])
 
   useEffect(() => {
     if (!orcamentoId || typeof window === 'undefined') return
@@ -289,6 +336,11 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
     setAvisoErro(erro)
   }
 
+  function avisoSeNaoValidacao(erro: unknown, fallback: string) {
+    if (erro instanceof ErroValidacaoOrcamento) return
+    mostrarAviso(extrairMensagemApi(erro, fallback), true)
+  }
+
   function aplicarGravado(api: OrcamentoApi) {
     const dados = deOrcamentoApi(api)
     setIdGravado(api.id)
@@ -379,21 +431,30 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
     }
     setOcupado(true)
     try {
-      const { data } = await clienteHttp.get<{ produto: Record<string, unknown> }>(
-        `/produtos/${produtoId}`
-      )
+      const [{ data }, estoqueResposta] = await Promise.all([
+        clienteHttp.get<{ produto: Record<string, unknown> }>(`/produtos/${produtoId}`),
+        clienteHttp
+          .get<{ qtdDisponivel?: number }>(`/estoque/${produtoId}/saldos`)
+          .catch(() => ({ data: {} as { qtdDisponivel?: number } })),
+      ])
       const produto = data.produto
+      const estoque = estoqueResposta.data
       const novaLinha: ItemOrcamentoLayout = {
         ...itemOrcamentoVazio(`linha-${Date.now()}`),
+        produtoId,
         codigo: String(produto.sku ?? ''),
         descricao: String(produto.nomeVenda ?? ''),
+        marca: String(produto.marca ?? ''),
         ncm: String(produto.ncm ?? ''),
         unidade: String(produto.unidade ?? 'UN'),
+        multiploVenda: Number(produto.multiploVenda ?? 1),
+        permiteVendaFracionada: Boolean(produto.permiteVendaFracionada),
+        miniatura: typeof produto.urlFotoMiniatura === 'string' ? produto.urlFotoMiniatura : null,
         precoUnitario:
           produto.precoVenda != null && Number.isFinite(Number(produto.precoVenda))
             ? Number(produto.precoVenda)
             : 0,
-        estoque: null,
+        estoque: Number(estoque.qtdDisponivel ?? 0),
       }
       setOrcamento((atual) => ({ ...atual, itens: [...atual.itens, novaLinha] }))
       setProdutoId('')
@@ -421,13 +482,60 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
       ...atual,
       itens: atual.itens.filter((item) => item.id !== id),
     }))
+    setItensSelecionados((atual) => atual.filter((itemId) => itemId !== id))
   }
 
   function limparItens() {
+    if (!window.confirm('Remover todos os itens do orçamento?')) return
     setOrcamento((atual) => ({ ...atual, itens: [] }))
+    setItensSelecionados([])
+  }
+
+  async function aplicarDesconto(percentual: number, itemIds: string[] | null) {
+    if (!podeAprovar) return
+    setOcupado(true)
+    try {
+      const gravado = await gravar()
+      const { data } = await clienteHttp.post<{ orcamento: OrcamentoApi }>(
+        `/orcamentos/${gravado.id}/desconto`,
+        { percentual, itemIds }
+      )
+      aplicarGravado(data.orcamento)
+    } catch (erro) {
+      avisoSeNaoValidacao(erro, 'Não foi possível aplicar o desconto.')
+      throw erro
+    } finally {
+      setOcupado(false)
+    }
+  }
+
+  async function copiarPedido(pedidoVendaId: string) {
+    setOcupado(true)
+    try {
+      const gravado = await gravar()
+      const { data } = await clienteHttp.post<{ orcamento: OrcamentoApi }>(
+        `/orcamentos/${gravado.id}/copiar-pedido`,
+        { pedidoVendaId }
+      )
+      aplicarGravado(data.orcamento)
+    } catch (erro) {
+      avisoSeNaoValidacao(erro, 'Não foi possível copiar o pedido.')
+      throw erro
+    } finally {
+      setOcupado(false)
+    }
   }
 
   async function gravar(): Promise<OrcamentoApi> {
+    const itemForaDoMultiplo = orcamento.itens.find((item) => avisoQuantidadeForaDoMultiplo(item))
+    if (itemForaDoMultiplo) {
+      const avisoQtd = avisoQuantidadeForaDoMultiplo(itemForaDoMultiplo) ?? 'Quantidade inválida'
+      mostrarAviso(
+        `${itemForaDoMultiplo.descricao || itemForaDoMultiplo.codigo}: ${avisoQtd}`,
+        true
+      )
+      throw new ErroValidacaoOrcamento(avisoQtd)
+    }
     const corpo = montarCorpoOrcamento(
       orcamento,
       endereco,
@@ -449,12 +557,12 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
   async function salvar() {
     setOcupado(true)
     try {
-      await gravar()
-      setAviso('')
-      setAvisoErro(false)
-      roteador.push('/orcamentos')
+      const gravado = await gravar()
+      aplicarGravado(gravado)
+      mostrarAviso('Orçamento salvo.')
+      if (!orcamentoId) roteador.replace(`/orcamentos/${gravado.id}`)
     } catch (erro) {
-      mostrarAviso(extrairMensagemApi(erro, 'Não foi possível salvar o orçamento.'), true)
+      avisoSeNaoValidacao(erro, 'Não foi possível salvar o orçamento.')
     } finally {
       setOcupado(false)
     }
@@ -485,7 +593,7 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
       }
       setModalFinalizadoAberto(true)
     } catch (erro) {
-      mostrarAviso(extrairMensagemApi(erro, 'Não foi possível finalizar o orçamento.'), true)
+      avisoSeNaoValidacao(erro, 'Não foi possível finalizar o orçamento.')
     } finally {
       setOcupado(false)
     }
@@ -507,7 +615,7 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
       await clienteHttp.post(`/orcamentos/${gravado.id}/enviar-email`)
       mostrarAviso('E-mail enviado.')
     } catch (erro) {
-      mostrarAviso(extrairMensagemApi(erro, 'Não foi possível enviar o e-mail.'), true)
+      avisoSeNaoValidacao(erro, 'Não foi possível enviar o e-mail.')
     } finally {
       setOcupado(false)
     }
@@ -515,43 +623,42 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
 
   return (
     <div className="min-w-0 space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="mb-2 -ml-2 print:hidden"
-            onClick={() => roteador.push('/orcamentos')}
-          >
-            <ArrowLeft className="mr-1 size-4" />
-            Voltar para lista
-          </Button>
-          <TituloPagina
-            caminho="Vendas > Orçamentos"
-            subtitulo="Preencha os dados do orçamento para gerar a proposta de venda."
-            aoLadoDoTitulo={
-              <BadgeStatus variante="info">{rotuloStatusOrcamento(orcamento.status)}</BadgeStatus>
-            }
-          >
-            {idGravado ? orcamento.numero || 'Orçamento' : 'Novo Orçamento'}
-          </TituloPagina>
-        </div>
-        <div className="flex flex-wrap gap-2 print:hidden">
-          <Button type="button" variant="outline" onClick={() => window.print()} disabled={ocupado}>
-            <Printer className="size-4" />
-            Imprimir
-          </Button>
-          <Button type="button" variant="outline" onClick={() => void enviarPorEmail()} disabled={ocupado}>
-            <Mail className="size-4" />
-            Enviar por e-mail
-          </Button>
-          <Button type="button" variant="outline" onClick={() => void salvar()} disabled={ocupado}>
-            Salvar
-          </Button>
-          <BotaoPrimario type="button" onClick={() => void finalizar()} disabled={ocupado}>
-            Salvar e finalizar
-          </BotaoPrimario>
+      <div className="min-w-0">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="mb-2 -ml-2 print:hidden"
+          onClick={() => roteador.push('/orcamentos')}
+        >
+          <ArrowLeft className="mr-1 size-4" />
+          Voltar
+        </Button>
+        <TituloPagina
+          caminho={
+            idGravado
+              ? `Vendas > Orçamentos > ${orcamento.numero || 'Orçamento'}`
+              : 'Vendas > Orçamentos > Novo orçamento'
+          }
+        >
+          Orçamento de venda
+        </TituloPagina>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <p className="text-lg font-semibold">
+            Orçamento nº {orcamento.numero || '—'}
+          </p>
+          <BadgeStatus variante={varianteStatusOrcamento(orcamento.status)}>
+            {rotuloStatusOrcamento(orcamento.status)}
+          </BadgeStatus>
+          {orcamento.pedidoVenda ? (
+            <button
+              type="button"
+              className="text-sm font-normal text-primary underline"
+              onClick={() => roteador.push(`/pedidos-venda/${orcamento.pedidoVenda!.id}`)}
+            >
+              Pedido {orcamento.pedidoVenda.numero}
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -567,84 +674,16 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
         </p>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
-        <CardPadrao compacto titulo="Dados do orçamento">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <InputPadrao
-              rotulo="Nº do Orçamento"
-              name="numero-orcamento"
-              value={orcamento.numero}
-              readOnly
-              className="bg-muted"
-            />
-            <InputPadrao
-              rotulo="Data"
-              name="data-orcamento"
-              type="date"
-              value={orcamento.data}
-              readOnly
-              className="bg-muted"
-            />
-            <InputPadrao
-              rotulo="Validade"
-              name="validade-orcamento"
-              type="date"
-              value={orcamento.validade}
-              readOnly
-              className="bg-muted"
-            />
-            <InputPadrao
-              rotulo="Status"
-              name="status-orcamento"
-              value={rotuloStatusOrcamento(orcamento.status)}
-              readOnly
-              className="bg-muted"
-            />
-            <SelectPadrao
-              rotulo="Vendedor"
-              valor={orcamento.vendedorId}
-              aoMudar={(valor) => atualizar('vendedorId', valor)}
-              opcoes={OPCOES_VENDEDOR_ORCAMENTO}
-            />
-          </div>
-        </CardPadrao>
-
-        <CardPadrao compacto titulo="Pagamento e entrega">
-          <div className="grid gap-3">
-            <SelectPadrao
-              rotulo="Condição de pagamento"
-              valor={orcamento.condicaoPagamento}
-              aoMudar={(valor) => atualizar('condicaoPagamento', valor)}
-              opcoes={OPCOES_CONDICAO_PAGAMENTO}
-            />
-            <SelectPadrao
-              rotulo="Tipo de entrega"
-              valor={orcamento.prazoEntrega}
-              aoMudar={(valor) => atualizar('prazoEntrega', valor)}
-              opcoes={opcoesTipoEntrega}
-            />
-            {semFrete ? null : (
-              <SelectPadrao
-                rotulo="Frete"
-                valor={orcamento.frete}
-                aoMudar={(valor) => atualizar('frete', valor)}
-                opcoes={OPCOES_FRETE}
-              />
-            )}
-          </div>
-        </CardPadrao>
-      </div>
-
       <CardPadrao
         compacto
-        titulo="Cliente"
+        permitirOverflow
         acoes={
           <Button
             type="button"
             variant="outline"
             size="sm"
             className="print:hidden"
-            onClick={() => mostrarAviso(AVISO_AINDA_NAO)}
+            onClick={() => setAbaAtiva('complementares')}
           >
             Mais dados
           </Button>
@@ -668,95 +707,114 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
             Buscar cliente
           </Button>
         </div>
-        {modoCliente === 'buscar' && (
-          <div className="mb-3 space-y-1.5 print:hidden">
-            <Label htmlFor="busca-cliente-orcamento">Buscar cliente</Label>
-            <input
-              id="busca-cliente-orcamento"
-              name="busca-cliente"
-              className={classesCampoCompacto}
-              placeholder="Nome, nome fantasia ou documento"
-              value={buscaCliente}
-              autoComplete="off"
-              onFocus={() => setBuscaClienteAberta(true)}
-              onBlur={() => setBuscaClienteAberta(false)}
-              onChange={(evento) => {
-                setBuscaCliente(evento.target.value)
-                setBuscaClienteAberta(true)
-              }}
-            />
-            {erroClientes && <p className="text-sm text-destructive">{erroClientes}</p>}
-            {buscaClienteAberta && !erroClientes && (
-              <ul className="max-h-60 overflow-auto rounded-md border bg-popover text-sm">
-                {!clientesConsultados ? (
-                  <li className="px-3 py-2 text-muted-foreground">Buscando clientes…</li>
-                ) : clientesFiltrados.length === 0 ? (
-                  <li className="px-3 py-2 text-muted-foreground">Nenhum cliente</li>
-                ) : (
-                  clientesFiltrados.map((cliente) => (
-                    <li key={cliente.id}>
-                      <button
-                        type="button"
-                        className="flex w-full px-3 py-2 text-left hover:bg-accent"
-                        onMouseDown={(evento) => evento.preventDefault()}
-                        onClick={() => escolherCliente(cliente)}
-                      >
-                        {cliente.nome}
-                      </button>
-                    </li>
-                  ))
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <div className="relative xl:col-span-2">
+            {modoCliente === 'buscar' ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="busca-cliente-orcamento">Cliente</Label>
+                <input
+                  id="busca-cliente-orcamento"
+                  name="busca-cliente"
+                  className={classesCampoCompacto}
+                  placeholder="Nome, nome fantasia ou documento"
+                  value={buscaClienteAberta ? buscaCliente : orcamento.clienteNome}
+                  autoComplete="off"
+                  disabled={bloqueado}
+                  onFocus={() => {
+                    setBuscaCliente('')
+                    setBuscaClienteAberta(true)
+                  }}
+                  onBlur={() => setBuscaClienteAberta(false)}
+                  onChange={(evento) => {
+                    setBuscaCliente(evento.target.value)
+                    setBuscaClienteAberta(true)
+                  }}
+                />
+                {erroClientes && <p className="text-sm text-destructive">{erroClientes}</p>}
+                {buscaClienteAberta && !erroClientes && (
+                  <ul className="absolute z-20 max-h-60 w-full overflow-auto rounded-md border bg-popover text-sm shadow-md">
+                    {!clientesConsultados ? (
+                      <li className="px-3 py-2 text-muted-foreground">Buscando clientes…</li>
+                    ) : clientesFiltrados.length === 0 ? (
+                      <li className="px-3 py-2 text-muted-foreground">Nenhum cliente</li>
+                    ) : (
+                      clientesFiltrados.map((cliente) => (
+                        <li key={cliente.id}>
+                          <button
+                            type="button"
+                            className="flex w-full px-3 py-2 text-left hover:bg-accent"
+                            onMouseDown={(evento) => evento.preventDefault()}
+                            onClick={() => escolherCliente(cliente)}
+                          >
+                            {cliente.nome}
+                          </button>
+                        </li>
+                      ))
+                    )}
+                  </ul>
                 )}
-              </ul>
+              </div>
+            ) : (
+              <InputPadrao
+                rotulo="Cliente"
+                name="cliente-nome"
+                value={orcamento.clienteNome}
+                disabled={bloqueado}
+                onChange={(evento) => atualizar('clienteNome', evento.target.value)}
+              />
             )}
           </div>
-        )}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {modoCliente === 'buscar' && (
-            <InputPadrao
-              rotulo="Código"
-              name="cliente-codigo"
-              value={orcamento.clienteCodigo}
-              readOnly
-              className="bg-muted"
+          <InputPadrao
+            rotulo="Data do orçamento"
+            name="data-orcamento"
+            type="date"
+            value={orcamento.data}
+            readOnly
+            className="bg-muted"
+          />
+          <InputPadrao
+            rotulo="Validade"
+            name="validade-orcamento"
+            type="date"
+            value={orcamento.validade}
+            readOnly
+            className="bg-muted"
+          />
+          <SelectPadrao
+            rotulo="Condição de pagamento"
+            valor={orcamento.condicaoPagamento}
+            aoMudar={(valor) => atualizar('condicaoPagamento', valor)}
+            opcoes={OPCOES_CONDICAO_PAGAMENTO}
+            disabled={bloqueado}
+          />
+          <SelectPadrao
+            rotulo="Vendedor"
+            valor={orcamento.vendedorId}
+            aoMudar={(valor) => atualizar('vendedorId', valor)}
+            opcoes={opcoesVendedor}
+            disabled={bloqueado}
+            placeholder="Selecione"
+          />
+          <SelectPadrao
+            rotulo="Tipo de entrega"
+            valor={orcamento.prazoEntrega}
+            aoMudar={(valor) => atualizar('prazoEntrega', valor)}
+            opcoes={opcoesTipoEntrega}
+            disabled={bloqueado}
+          />
+          {semFrete ? null : (
+            <SelectPadrao
+              rotulo="Frete"
+              valor={orcamento.frete}
+              aoMudar={(valor) => atualizar('frete', valor)}
+              opcoes={OPCOES_FRETE}
+              disabled={bloqueado}
             />
           )}
-          <div className={modoCliente === 'buscar' ? 'sm:col-span-2' : 'sm:col-span-2 lg:col-span-3'}>
-            <InputPadrao
-              rotulo="Cliente"
-              name="cliente-nome"
-              value={orcamento.clienteNome}
-              onChange={(evento) => atualizar('clienteNome', evento.target.value)}
-            />
-          </div>
-          <InputPadrao
-            rotulo="CNPJ"
-            name="cliente-cnpj"
-            value={orcamento.cnpj}
-            onChange={(evento) => atualizar('cnpj', evento.target.value)}
-          />
-          <InputPadrao
-            rotulo="Telefone"
-            name="cliente-telefone"
-            value={orcamento.telefone}
-            onChange={(evento) => atualizar('telefone', evento.target.value)}
-          />
-          <InputPadrao
-            rotulo="E-mail"
-            name="cliente-email"
-            type="email"
-            value={orcamento.email}
-            onChange={(evento) => atualizar('email', evento.target.value)}
-          />
-          <InputPadrao
-            rotulo="Contato"
-            name="cliente-contato"
-            value={orcamento.contato}
-            onChange={(evento) => atualizar('contato', evento.target.value)}
-          />
         </div>
       </CardPadrao>
 
-      <CardPadrao compacto>
+      <CardPadrao compacto permitirOverflow>
         <Abas
           className="mb-4 print:hidden"
           abaAtiva={abaAtiva}
@@ -765,31 +823,53 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
         />
 
         <div className={abaAtiva === 'itens' ? 'space-y-4' : 'hidden space-y-4 print:block'}>
-          <div className="grid gap-3 print:hidden sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-            <ComboboxProduto
-              rotulo="Produto"
-              produtos={produtosBusca}
-              valor={produtoId}
-              aoMudar={setProdutoId}
-              aoBuscar={buscarProdutos}
-              carregandoBusca={carregandoProdutos}
-              disabled={ocupado}
-              aoEnterComProdutoSelecionado={() => void adicionarProdutoSelecionado()}
+          <div className="flex flex-wrap items-end gap-2 print:hidden">
+            <div className="min-w-[16rem] flex-1">
+              <ComboboxProduto
+                rotulo="Buscar produto por código, nome ou marca..."
+                produtos={produtosBusca}
+                valor={produtoId}
+                aoMudar={setProdutoId}
+                aoBuscar={buscarProdutos}
+                carregandoBusca={carregandoProdutos}
+                disabled={ocupado || bloqueado}
+                aoEnterComProdutoSelecionado={() => void adicionarProdutoSelecionado()}
+              />
+            </div>
+            <Button type="button" onClick={() => void adicionarProdutoSelecionado()} disabled={ocupado || bloqueado}>
+              <Plus className="size-4" />
+              Adicionar itens
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setModalCopiarAberto(true)} disabled={bloqueado}>
+              <Copy className="size-4" />
+              Copiar pedido
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setModalDescontoAberto(true)} disabled={bloqueado || !podeAprovar}>
+              <Percent className="size-4" />
+              Aplicar descontos
+            </Button>
+            <MenuAcoesLinha
+              ariaLabel="Mais opções"
+              itens={[
+                {
+                  rotulo: 'Limpar itens',
+                  icone: Eraser,
+                  desabilitado: bloqueado || orcamento.itens.length === 0,
+                  onClick: limparItens,
+                },
+                {
+                  rotulo: 'Imprimir',
+                  icone: Printer,
+                  onClick: () => window.print(),
+                },
+                {
+                  rotulo: 'Enviar por e-mail',
+                  icone: Mail,
+                  desabilitado: ocupado,
+                  onClick: () => void enviarPorEmail(),
+                },
+              ]}
             />
-            <Button type="button" onClick={() => void adicionarProdutoSelecionado()} disabled={ocupado}>
-              Adicionar
-            </Button>
-          </div>
-          <div className="flex flex-wrap gap-2 print:hidden">
-            <Button type="button" variant="outline" onClick={() => mostrarAviso(AVISO_AINDA_NAO)}>
-              Importar do pedido
-            </Button>
-            <Button type="button" variant="outline" onClick={() => mostrarAviso(AVISO_AINDA_NAO)}>
-              % Aplicar desconto
-            </Button>
-            <Button type="button" variant="outline" onClick={() => mostrarAviso(AVISO_AINDA_NAO)}>
-              Mais opções
-            </Button>
           </div>
 
           <div className="min-w-0 overflow-x-auto">
@@ -797,111 +877,142 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
               <caption className="sr-only">Itens do orçamento</caption>
               <thead>
                 <tr className="border-b text-left text-muted-foreground">
-                  <th className="px-2 py-2 font-medium">#</th>
-                  <th className="px-2 py-2 font-medium">Código</th>
-                  <th className="px-2 py-2 font-medium">Descrição do produto</th>
-                  <th className="px-2 py-2 font-medium">NCM</th>
+                  <th className="px-2 py-2 font-medium">
+                    <Checkbox
+                      checked={todosItensSelecionados ? true : algunsItensSelecionados ? 'indeterminate' : false}
+                      disabled={orcamento.itens.length === 0}
+                      onCheckedChange={(marcado) =>
+                        setItensSelecionados(marcado === true ? idsItens : [])
+                      }
+                      aria-label="Selecionar todos os itens"
+                    />
+                  </th>
+                  <th className="min-w-72 px-2 py-2 font-medium">Produto</th>
                   <th className="px-2 py-2 font-medium">Estoque</th>
                   <th className="px-2 py-2 font-medium">Qtd.</th>
                   <th className="px-2 py-2 font-medium">Un.</th>
                   <th className="px-2 py-2 font-medium">Preço unit. (R$)</th>
-                  <th className="px-2 py-2 font-medium">% Desc.</th>
                   <th className="px-2 py-2 font-medium">Valor líquido (R$)</th>
+                  <th className="px-2 py-2 font-medium">Valor ST (R$)</th>
                   <th className="px-2 py-2 font-medium">Total (R$)</th>
-                  <th className="px-2 py-2 font-medium print:hidden">
-                    <span className="sr-only">Remover</span>
-                  </th>
+                  <th className="px-2 py-2 font-medium print:hidden">Ações</th>
                 </tr>
               </thead>
               <tbody>
                 {orcamento.itens.map((item, indice) => (
                   <tr key={item.id} className="border-b border-border/70">
-                    <td className="px-2 py-2 tabular-nums">{indice + 1}</td>
                     <td className="px-2 py-2">
-                      <input
-                        aria-label={`Código da linha ${indice + 1}`}
-                        className={cn(classesCampoCompacto, 'bg-muted')}
-                        value={item.codigo}
-                        readOnly
+                      <Checkbox
+                        checked={itensSelecionados.includes(item.id)}
+                        onCheckedChange={(marcado) =>
+                          setItensSelecionados((atual) =>
+                            marcado === true
+                              ? [...new Set([...atual, item.id])]
+                              : atual.filter((id) => id !== item.id)
+                          )
+                        }
+                        aria-label={`Selecionar ${item.descricao}`}
                       />
                     </td>
                     <td className="px-2 py-2">
-                      <input
-                        aria-label={`Descrição da linha ${indice + 1}`}
-                        className={cn(classesCampoCompacto, 'bg-muted')}
-                        value={item.descricao}
-                        readOnly
-                      />
+                      <div className="flex items-center gap-2">
+                        {item.miniatura ? <img src={item.miniatura} alt="" className="size-10 rounded object-cover" /> : null}
+                        <div className="min-w-0">
+                          <p className="text-xs text-muted-foreground">{item.codigo || 'Sem SKU'}</p>
+                          <p className="font-medium">{item.descricao}</p>
+                          {item.marca ? (
+                            <p className="text-xs text-muted-foreground">Marca: {item.marca}</p>
+                          ) : null}
+                        </div>
+                      </div>
                     </td>
                     <td className="px-2 py-2">
-                      <input
-                        aria-label={`NCM da linha ${indice + 1}`}
-                        className={cn(classesCampoCompacto, 'bg-muted')}
-                        value={item.ncm}
-                        readOnly
-                      />
-                    </td>
-                    <td className="px-2 py-2 tabular-nums text-muted-foreground">
-                      {formatarEstoque(item.estoque)}
+                      {(() => {
+                        const situacao = situacaoEstoque(item.estoque, item.quantidade)
+                        const rotulo =
+                          situacao === 'ok'
+                            ? 'Em estoque'
+                            : situacao === 'baixo'
+                              ? 'Estoque baixo'
+                              : situacao === 'sem'
+                                ? 'Sem estoque'
+                                : '—'
+                        return (
+                          <div className="flex items-start gap-2">
+                            <span
+                              className={cn('mt-1 size-2 shrink-0 rounded-full', classePontoEstoque(situacao))}
+                              aria-hidden
+                            />
+                            <div>
+                              <p
+                                className={cn(
+                                  situacao === 'sem' && 'text-destructive',
+                                  situacao === 'baixo' && 'text-amber-700',
+                                  situacao === 'ok' && 'text-emerald-700'
+                                )}
+                              >
+                                {rotulo}
+                              </p>
+                              {item.estoque != null ? (
+                                <p className="text-xs text-muted-foreground tabular-nums">
+                                  {formatarEstoque(item.estoque)} {item.unidade.toLowerCase()}.
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                        )
+                      })()}
                     </td>
                     <td className="px-2 py-2">
                       <input
                         aria-label={`Quantidade da linha ${indice + 1}`}
-                        className={classesCampoCompacto}
+                        className={cn(
+                          classesCampoCompacto,
+                          avisoQuantidadeForaDoMultiplo(item) && 'border-destructive'
+                        )}
                         inputMode="decimal"
                         value={String(item.quantidade)}
+                        disabled={bloqueado}
                         onChange={(evento) =>
                           atualizarItem(item.id, { quantidade: numeroDoCampo(evento.target.value) })
                         }
                       />
+                      {avisoQuantidadeForaDoMultiplo(item) ? (
+                        <p className="mt-1 text-xs text-destructive">
+                          {avisoQuantidadeForaDoMultiplo(item)}
+                        </p>
+                      ) : null}
                     </td>
                     <td className="px-2 py-2">
-                      <input
-                        aria-label={`Unidade da linha ${indice + 1}`}
-                        className={classesCampoCompacto}
-                        value={item.unidade}
-                        onChange={(evento) => atualizarItem(item.id, { unidade: evento.target.value })}
-                      />
+                      <span>{item.unidade}</span>
                     </td>
-                    <td className="px-2 py-2">
-                      <input
-                        aria-label={`Preço da linha ${indice + 1}`}
-                        className={classesCampoCompacto}
-                        inputMode="decimal"
-                        value={String(item.precoUnitario)}
-                        onChange={(evento) =>
-                          atualizarItem(item.id, {
-                            precoUnitario: numeroDoCampo(evento.target.value),
-                          })
-                        }
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <input
-                        aria-label={`Desconto da linha ${indice + 1}`}
-                        className={classesCampoCompacto}
-                        inputMode="decimal"
-                        value={String(item.percentualDesconto)}
-                        onChange={(evento) =>
-                          atualizarItem(item.id, {
-                            percentualDesconto: numeroDoCampo(evento.target.value),
-                          })
-                        }
-                      />
+                    <td className="px-2 py-2 tabular-nums text-muted-foreground">
+                      {formatarMoeda(item.precoUnitario)}
                     </td>
                     <td className="px-2 py-2 tabular-nums">
                       {formatarPrecoUnitario(valorLiquidoUnitario(item))}
                     </td>
-                    <td className="px-2 py-2 tabular-nums">{formatarMoeda(totalLinha(item))}</td>
+                    <td className="px-2 py-2 tabular-nums">{formatarMoeda(item.valorSt)}</td>
+                    <td className="px-2 py-2 tabular-nums font-semibold">{formatarMoeda(totalLinha(item))}</td>
                     <td className="px-2 py-2 print:hidden">
-                      <button
-                        type="button"
-                        className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        aria-label={`Remover linha ${indice + 1}`}
-                        onClick={() => removerLinha(item.id)}
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <MenuAcoesLinha
+                          ariaLabel={`Ações de ${item.descricao}`}
+                          itens={[
+                            { rotulo: 'Aplicar desconto', icone: Percent, desabilitado: bloqueado || !podeAprovar, onClick: () => { setItensSelecionados([item.id]); setModalDescontoAberto(true) } },
+                          ]}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          disabled={bloqueado}
+                          aria-label={`Excluir ${item.descricao}`}
+                          onClick={() => removerLinha(item.id)}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -909,10 +1020,7 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
             </table>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Button type="button" variant="outline" className="print:hidden" onClick={limparItens}>
-              Limpar itens
-            </Button>
+          <div className="flex flex-wrap items-center justify-end gap-3">
             <div className="flex flex-wrap items-center gap-4 text-sm">
               <span>
                 Qtd. itens: <strong className="tabular-nums">{resumo.qtdItens}</strong>
@@ -944,17 +1052,21 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
               </div>
               <div className="flex justify-between gap-3 text-destructive">
                 <dt>Desconto total</dt>
-                <dd className="tabular-nums">{formatarMoeda(resumo.descontoTotal)}</dd>
+                <dd className="tabular-nums">- {formatarMoeda(resumo.descontoTotal)}</dd>
               </div>
               {semFrete ? null : (
                 <div className="flex justify-between gap-3">
                   <dt>Frete</dt>
-                  <dd className="tabular-nums">{formatarMoeda(resumo.frete)}</dd>
+                  <dd><input aria-label="Valor do frete" className={cn(classesCampoCompacto, 'w-28 text-right')} inputMode="decimal" disabled={bloqueado} value={String(orcamento.valorFrete)} onChange={(e) => atualizar('valorFrete', numeroDoCampo(e.target.value))} /></dd>
                 </div>
               )}
               <div className="flex justify-between gap-3">
                 <dt>Outras despesas</dt>
-                <dd className="tabular-nums">{formatarMoeda(resumo.outrasDespesas)}</dd>
+                <dd><input aria-label="Outras despesas" className={cn(classesCampoCompacto, 'w-28 text-right')} inputMode="decimal" disabled={bloqueado} value={String(orcamento.outrasDespesas)} onChange={(e) => atualizar('outrasDespesas', numeroDoCampo(e.target.value))} /></dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt>Total de ST</dt>
+                <dd className="tabular-nums">{formatarMoeda(resumo.totalSt)}</dd>
               </div>
               <div className="flex justify-between gap-3 border-t border-border pt-2 text-base font-semibold">
                 <dt>Total do orçamento</dt>
@@ -1024,13 +1136,19 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
         ) : null}
 
         {abaAtiva === 'complementares' ? (
-          <div className="print:hidden">
+          <div className="grid gap-3 print:hidden sm:grid-cols-2">
+            <InputPadrao rotulo="CNPJ/CPF" name="cliente-documento-complementar" value={orcamento.cnpj} onChange={(e) => atualizar('cnpj', e.target.value)} />
+            <InputPadrao rotulo="Telefone" name="cliente-telefone-complementar" value={orcamento.telefone} onChange={(e) => atualizar('telefone', e.target.value)} />
+            <InputPadrao rotulo="E-mail" name="cliente-email-complementar" value={orcamento.email} onChange={(e) => atualizar('email', e.target.value)} />
+            <InputPadrao rotulo="Contato" name="cliente-contato-complementar" value={orcamento.contato} onChange={(e) => atualizar('contato', e.target.value)} />
+            <div className="sm:col-span-2">
             <TextareaPadrao
               rotulo="Informações complementares"
               name="informacoes-complementares"
               value={complementares}
               onChange={(evento) => setComplementares(evento.target.value)}
             />
+            </div>
           </div>
         ) : null}
 
@@ -1046,16 +1164,24 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
         ) : null}
 
         {abaAtiva === 'anexos' ? (
-          <div className="space-y-3 print:hidden">
-            <p className="text-sm text-muted-foreground">Nenhum anexo</p>
-            <Button type="button" variant="outline" onClick={() => mostrarAviso(AVISO_AINDA_NAO)}>
-              Anexar arquivo
-            </Button>
+          <div className="print:hidden">
+            <AnexosContaReceber contaId={idGravado || null} apiBase="/orcamentos" descricao="Arquivos relacionados a este orçamento." somenteLeitura={bloqueado} />
           </div>
         ) : null}
 
         {abaAtiva === 'historico' ? (
-          <p className="text-sm text-muted-foreground print:hidden">Nenhum registro</p>
+          <ul className="space-y-2 print:hidden">
+            {orcamento.historico.map((evento) => (
+              <li key={evento.id} className="rounded-md border px-3 py-2 text-sm">
+                <p>{evento.descricao}</p>
+                <p className="text-xs text-muted-foreground">
+                  {new Date(evento.createdAt).toLocaleString('pt-BR')}
+                  {evento.usuario?.name ? ` · ${evento.usuario.name}` : ''}
+                </p>
+              </li>
+            ))}
+            {orcamento.historico.length === 0 ? <li className="text-sm text-muted-foreground">Nenhum registro</li> : null}
+          </ul>
         ) : null}
       </CardPadrao>
 
@@ -1064,19 +1190,20 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
           <Checkbox
             id="converter-pedido"
             checked={orcamento.converterEmPedido}
+            disabled={bloqueado}
             onCheckedChange={(marcado) => atualizar('converterEmPedido', marcado === true)}
           />
           <Label htmlFor="converter-pedido">Converter em pedido após aprovação</Label>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" onClick={() => roteador.push('/orcamentos')}>
+          <Button type="button" variant="outline" onClick={() => { if (window.confirm('Sair do orçamento? Alterações não salvas serão perdidas.')) roteador.push('/orcamentos') }}>
             Cancelar
           </Button>
-          <Button type="button" variant="outline" onClick={() => void salvar()} disabled={ocupado}>
-            Salvar
+          <Button type="button" variant="outline" onClick={() => void salvar()} disabled={ocupado || bloqueado || !podeEditar}>
+            Salvar orçamento
           </Button>
-          <BotaoPrimario type="button" onClick={() => void finalizar()} disabled={ocupado}>
-            Salvar e finalizar
+          <BotaoPrimario type="button" onClick={() => void finalizar()} disabled={ocupado || bloqueado || !podeAprovar || !orcamento.clienteNome.trim() || orcamento.itens.length === 0}>
+            Finalizar
           </BotaoPrimario>
         </div>
       </div>
@@ -1105,7 +1232,7 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
               id="modal-orcamento-finalizado-mensagem"
               className="mt-2 text-sm text-muted-foreground"
             >
-              A proposta foi gerada com status Enviado. Deseja imprimir, ir para Receber
+              O orçamento foi validado. Se a conversão estava marcada, o pedido de venda foi criado. Deseja imprimir, ir para Receber
               pagamento ou permanecer neste orçamento?
             </p>
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
@@ -1129,6 +1256,18 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
           </div>
         </div>
       ) : null}
+      <ModalDescontoOrcamento
+        aberto={modalDescontoAberto}
+        itens={orcamento.itens}
+        selecionados={itensSelecionados}
+        aoFechar={() => setModalDescontoAberto(false)}
+        aoAplicar={aplicarDesconto}
+      />
+      <ModalCopiarPedido
+        aberto={modalCopiarAberto}
+        aoFechar={() => setModalCopiarAberto(false)}
+        aoCopiar={copiarPedido}
+      />
     </div>
   )
 }
