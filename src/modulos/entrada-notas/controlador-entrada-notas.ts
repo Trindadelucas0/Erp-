@@ -36,7 +36,6 @@ import {
   esquemaGravarPrecificacao,
 } from './esquema-entrada-notas.js'
 import { servicoPrecificacaoEntrada } from './servico-precificacao-entrada.js'
-import { esquemaSalvarAjustes, esquemaConfirmarCusto } from './esquema-custo-aquisicao.js'
 
 function companyIdDe(requisicao: FastifyRequest): string {
   const companyId = requisicao.empresaAtivaId || ''
@@ -483,36 +482,12 @@ async function gravarPrecificacao(requisicao: FastifyRequest, resposta: FastifyR
     notaIdDe(requisicao),
     usuarioIdDe(requisicao),
     parsed.data.itens,
-    parsed.data.regrasFiscais,
-    parsed.data.revisaoCusto
+    parsed.data.regrasFiscais
   )
   return resposta.send(dados)
 }
 
-async function salvarAjustesCusto(requisicao: FastifyRequest, resposta: FastifyReply) {
-  const parsed = esquemaSalvarAjustes.safeParse(requisicao.body)
-  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
-  return resposta.send(await servicoPrecificacaoEntrada.salvarAjustes(companyIdDe(requisicao), notaIdDe(requisicao), usuarioIdDe(requisicao), parsed.data.revisao, parsed.data.ajustes))
-}
-async function confirmarCusto(requisicao: FastifyRequest, resposta: FastifyReply) {
-  const parsed = esquemaConfirmarCusto.safeParse(requisicao.body)
-  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
-  return resposta.send(await servicoPrecificacaoEntrada.confirmarCusto(companyIdDe(requisicao), notaIdDe(requisicao), usuarioIdDe(requisicao), parsed.data.revisao, parsed.data.itemIds))
-}
-async function listarMemoriasCusto(requisicao: FastifyRequest, resposta: FastifyReply) {
-  return resposta.send(await servicoPrecificacaoEntrada.listarMemorias(companyIdDe(requisicao), notaIdDe(requisicao)))
-}
-async function simularAjustesCusto(requisicao: FastifyRequest, resposta: FastifyReply) {
-  const parsed = esquemaSalvarAjustes.safeParse(requisicao.body)
-  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
-  return resposta.send(await servicoPrecificacaoEntrada.simularAjustes(companyIdDe(requisicao), notaIdDe(requisicao), parsed.data.revisao, parsed.data.ajustes))
-}
-
 export const controladorEntradaNotas = {
-  simularAjustesCusto,
-  salvarAjustesCusto,
-  confirmarCusto,
-  listarMemoriasCusto,
   auditar,
   detalhe,
   analisar,

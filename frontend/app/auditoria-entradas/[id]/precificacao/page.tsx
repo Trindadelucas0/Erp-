@@ -21,9 +21,6 @@ import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
-import type { DadosFormacaoCusto, ItemFormacaoCusto } from '@/lib/custo-aquisicao'
-import { PainelCustoAquisicao } from '@/components/entrada-notas/painel-custo-aquisicao'
-import { MemoriaCustoAquisicao } from '@/components/entrada-notas/memoria-custo-aquisicao'
 
 const LIMIAR_VARIACAO = 0.3
 const CLASSE_INPUT_GRADE =
@@ -53,13 +50,7 @@ function CelulaLinha({
   )
 }
 
-type ItemPrecificacaoApi = ItemFormacaoCusto & {
-  quantidadeVenda: number | null
-  valorBruto: number | null
-  valorDesconto: number
-  freteAquisicao: number
-  custoTotal: number | null
-  tributosNaoRecuperaveis: number
+type ItemPrecificacaoApi = {
   itemId: string
   nItem: number
   descricao: string | null
@@ -95,7 +86,7 @@ type ItemPrecificacaoApi = ItemFormacaoCusto & {
   recusa: string | null
 }
 
-type GradePrecificacao = Omit<DadosFormacaoCusto, 'itens'> & {
+type GradePrecificacao = {
   regrasFiscais: Record<'mercadoria' | 'transporte', { modo: 'nota' | 'pre_definida'; aliquota: number | null }>
   nota: {
     id: string
@@ -184,8 +175,6 @@ function ConteudoPrecificacao() {
   const [erro, setErro] = useState('')
   const [mensagem, setMensagem] = useState('')
   const [selecaoProduto, setSelecaoProduto] = useState<Record<string, string>>({})
-  const [memoriaAberta, setMemoriaAberta] = useState<string | null>(null)
-  const [custoEmEdicao, setCustoEmEdicao] = useState(false)
 
   function receberGrade(data: GradePrecificacao) {
     setGrade(data)
@@ -349,12 +338,10 @@ function ConteudoPrecificacao() {
           l.produtoId &&
           l.precoSugerido != null &&
           l.precoSugerido > 0 &&
-          l.estadoCusto === 'confirmado' &&
-          !custoEmEdicao &&
           (linhas.filter(x => x.produtoId === l.produtoId).length === 1 || selecaoProduto[l.produtoId] === l.itemId) &&
           !l.recusaLocal
       ),
-    [linhas, selecaoProduto, custoEmEdicao]
+    [linhas, selecaoProduto]
   )
 
   async function gravar() {
@@ -378,7 +365,6 @@ function ConteudoPrecificacao() {
             margemPercentual: l.margemPercentual,
           })),
           regrasFiscais: grade?.regrasFiscais,
-          revisaoCusto: grade?.revisaoCusto,
         }
       )
       receberGrade(data)
@@ -488,11 +474,6 @@ function ConteudoPrecificacao() {
         </dl>
       </CardPadrao>
 
-      <PainelCustoAquisicao notaId={id} grade={grade} podeEditar={podeGravar} ocupado={salvando} aoAtualizar={receberGrade} aoEditar={setCustoEmEdicao} />
-      {memoriaAberta && grade.itens.find(i => i.itemId === memoriaAberta) && <CardPadrao titulo={`Memória de cálculo · item ${grade.itens.find(i => i.itemId === memoriaAberta)!.nItem}`}>
-        <Button type="button" variant="outline" onClick={() => setMemoriaAberta(null)}>Fechar memória</Button>
-        <MemoriaCustoAquisicao memoria={grade.itens.find(i => i.itemId === memoriaAberta)!.memoria} />
-      </CardPadrao>}
       <CardPadrao titulo="Grade da nota">
         <p className="mb-3 text-sm text-muted-foreground">
           Arraste a barra embaixo para ver as colunas — todos os produtos deslizam juntos. Nome e SKU
@@ -507,7 +488,7 @@ function ConteudoPrecificacao() {
                 const destaque =
                   linha.variacaoPercentual != null &&
                   Math.abs(linha.variacaoPercentual) >= LIMIAR_VARIACAO
-                const editavel = linha.vinculado && podeGravar && !salvando && !linha.memoria.pendencias.length
+                const editavel = linha.vinculado && podeGravar && !salvando
                 const vrAdic = parseDecimal(linha.vrAdicTexto) ?? linha.vrAdicPercentual ?? 0
                 return (
                   <div key={linha.itemId} className="flex w-max min-w-full items-stretch">
@@ -518,24 +499,13 @@ function ConteudoPrecificacao() {
                       <div className="text-xs text-muted-foreground">
                         {linha.sku || (linha.vinculado ? '—' : 'Sem produto vinculado')}
                       </div>
-                      <div className="mt-2 text-xs">Custo: {linha.estadoCusto}</div>
-                      {linha.confirmacao && <div className="text-xs text-muted-foreground">Confirmado em {formatarData(linha.confirmacao.createdAt)} · {linha.confirmacao.usuarioNome ?? 'Usuário'}</div>}
-                      <Button type="button" variant="outline" className="mt-2 h-7 text-xs" onClick={() => setMemoriaAberta(linha.itemId)}>Memória</Button>
                       {linha.produtoId && linhas.filter(l => l.produtoId === linha.produtoId).length > 1 && <label className="mt-2 flex items-center gap-2 text-xs"><input type="radio" name={`produto-${linha.produtoId}`} checked={selecaoProduto[linha.produtoId] === linha.itemId} disabled={!editavel} onChange={() => setSelecaoProduto(s => ({ ...s, [linha.produtoId!]: linha.itemId }))} />Usar esta linha para o preço</label>}
                       {linha.recusaLocal && (
                         <p className="mt-1 text-xs text-destructive">{linha.recusaLocal}</p>
                       )}
                     </div>
                     <div className="flex w-max items-start py-1">
-                      <CelulaLinha rotulo="Qtd NF">{formatarQtd(linha.quantidade)}</CelulaLinha>
-                      <CelulaLinha rotulo="Qtd venda">{formatarQtd(linha.quantidadeVenda)}</CelulaLinha>
-                      <CelulaLinha rotulo="Valor bruto">{formatarMoeda(linha.valorBruto)}</CelulaLinha>
-                      <CelulaLinha rotulo="Desconto">{formatarMoeda(linha.valorDesconto)}</CelulaLinha>
-                      <CelulaLinha rotulo="Frete de aquisição">{formatarMoeda(linha.freteAquisicao)}</CelulaLinha>
-                      <CelulaLinha rotulo="Tributos não recuperáveis">{formatarMoeda(linha.tributosNaoRecuperaveis)}</CelulaLinha>
-                      <CelulaLinha rotulo="Despesas adicionais">{formatarMoeda(linha.memoria.despesasAdicionais)}</CelulaLinha>
-                      <CelulaLinha rotulo="Créditos considerados">{formatarMoeda(Object.values(linha.memoria.creditos).reduce((s, c) => s + c, 0))}</CelulaLinha>
-                      <CelulaLinha rotulo="Custo total item">{formatarMoeda(linha.custoTotal)}</CelulaLinha>
+                      <CelulaLinha rotulo="Qtd">{formatarQtd(linha.quantidade)}</CelulaLinha>
                       <CelulaLinha rotulo="Tipo frete" alinhamento="left">
                         {linha.tipoFreteRotulo || '—'}
                       </CelulaLinha>

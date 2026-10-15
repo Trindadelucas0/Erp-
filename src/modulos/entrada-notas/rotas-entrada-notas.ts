@@ -14,11 +14,6 @@ export async function rotasEntradaNotas(aplicacao: FastifyInstance): Promise<voi
   const autenticadoNota = [...autenticado, middlewareAcessoNotaEntradaPorId]
 
   // Rotas estáticas antes de /:id
-  const editarCusto = [...autenticadoNota, middlewareDeAutorizacao('produtos:edit')]
-  aplicacao.put('/:id/precificacao/ajustes', { preHandler: editarCusto }, controladorEntradaNotas.salvarAjustesCusto)
-  aplicacao.post('/:id/precificacao/ajustes/previa', { preHandler: editarCusto }, controladorEntradaNotas.simularAjustesCusto)
-  aplicacao.post('/:id/precificacao/confirmar-custo', { preHandler: editarCusto }, controladorEntradaNotas.confirmarCusto)
-  aplicacao.get('/:id/precificacao/memorias', { preHandler: autenticadoNota }, controladorEntradaNotas.listarMemoriasCusto)
   aplicacao.post(
     '/vincular-fornecedores-pendentes',
     { preHandler: autenticado },

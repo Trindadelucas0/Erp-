@@ -178,7 +178,6 @@ export const esquemaFinanceiroDocumental = z
   )
 
 export const esquemaGravarPrecificacao = z.object({
-  revisaoCusto: z.string().min(1).optional(),
   regrasFiscais: esquemaRegrasFiscais.optional(),
   itens: z
     .array(

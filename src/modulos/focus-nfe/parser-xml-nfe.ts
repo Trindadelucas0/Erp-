@@ -3,7 +3,6 @@
  * Itens de produto (`extrairItensDoXml`) só se aplicam à NFe 55.
  */
 import { decodificarEntidadesXml } from '../../compartilhado/normalizacao/entidades-xml.js'
-import { extrairCustosXml, type OriginalCustoXml } from './parser-custo-nfe.js'
 
 export function normalizarXmlNfe(xml: string): string {
   return xml.replace(/^\uFEFF/, '').trim()
@@ -218,7 +217,6 @@ export type CamposResumoXmlNfe = {
 }
 
 export type ItemXmlNfe = {
-  dadosCustoXml?: OriginalCustoXml
   nItem: number
   descricao: string | null
   gtin: string | null
@@ -764,7 +762,6 @@ export function extrairItensDoXml(xmlBruto: string): ItemXmlNfe[] {
   const xml = normalizarXmlNfe(xmlBruto)
   const dets = todosBlocosTag(xml, 'det')
   const itens: ItemXmlNfe[] = []
-  const custos = new Map(extrairCustosXml(xml).itens.map(i => [i.nItem, i]))
 
   for (let i = 0; i < dets.length; i++) {
     const det = dets[i]
@@ -779,7 +776,6 @@ export function extrairItensDoXml(xmlBruto: string): ItemXmlNfe[] {
       limparGtin(prod ? extrairCampoXml(prod, 'cEANTrib') : null)
 
     itens.push({
-      dadosCustoXml: custos.get(Number.isFinite(nItem) ? nItem : i + 1),
       nItem: Number.isFinite(nItem) ? nItem : i + 1,
       descricao: prod ? extrairCampoXml(prod, 'xProd') : null,
       gtin,

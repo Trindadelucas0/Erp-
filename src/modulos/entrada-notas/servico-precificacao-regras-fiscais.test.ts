@@ -44,15 +44,24 @@ describe('integração das regras fiscais na grade e na gravação', () => {
     expect(grade.itens.map((i) => [i.creditoIcms, i.creditoIcmsFrete, i.custoContabil])).toEqual([[12, 7.2, 140.8], [12, 4.8, 123.2]])
     expect(clientePrisma.nfeCteVinculo.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { companyId: 'a', nfeRecebidaId: 'n', cteRecebida: { companyId: 'a' } } }))
     expect(clientePrisma.produto.update).not.toHaveBeenCalled()
-    expect(grade.itens[0].memoria.componentes.find(c => c.origem === 'icms_frete')).toMatchObject({ base: 60, percentual: 12, credito: 7.2 })
   })
   it('grade retornada após gravar usa os mesmos créditos e consulta a regra vigente', async () => {
     const antes = await servicoPrecificacaoEntrada.obterGrade('a', 'n')
-    vi.mocked(clientePrisma.custoEntradaMemoria.findMany).mockResolvedValue(antes.itens.map(i => ({ nItem: i.nItem, revisao: antes.revisaoCusto })) as never)
     const depois = await servicoPrecificacaoEntrada.gravarPrecos('a', 'n', 'u', antes.itens.map((i) => ({ produtoId: i.produtoId!, precoVenda: i.precoSugerido!, margemPercentual: 0 })))
     expect(depois.itens.map((i) => i.custoContabil)).toEqual(antes.itens.map((i) => i.custoContabil))
     expect(servicoRegrasFiscais.obter).toHaveBeenCalledTimes(3)
     expect(clientePrisma.produto.updateMany).toHaveBeenCalledTimes(2)
+  })
+  it('restaura o custo por embalagem com frete, IPI, seguro, outras despesas e créditos, sem desconto ou vFrete adicional', async () => {
+    const atual = nota() as unknown as { xmlConteudo: string; itens: { quantidade: number; produto: { fornecedores: unknown[] } }[]; fornecedorPessoaId: string }
+    atual.fornecedorPessoaId = 'f'
+    atual.xmlConteudo = xmlCusto({ itens: 2, quantidade: '2', bruto: '200', desconto: '10', frete: '30' })
+    for (const item of atual.itens) { item.quantidade = 2; item.produto.fornecedores = [{ fornecedorPessoaId: 'f', multiplicadorEntrada: 4 }] }
+    vi.mocked(repositorioEntradaNotas.buscarNotaCompleta).mockResolvedValue(atual as never)
+    const grade = await servicoPrecificacaoEntrada.obterGrade('a', 'n')
+    expect(grade.itens[0].custoContabil).toBeCloseTo((200 + 60 + 5 + 3 + 2 - 24 - 7.2 - 1.65 - 7.6) / 8)
+    expect(grade.itens[0]).not.toHaveProperty('memoria')
+    expect(grade).not.toHaveProperty('revisaoCusto')
   })
   it('frete remetente não consulta CT-es nem aplica seu crédito', async () => {
     vi.mocked(repositorioEntradaNotas.buscarNotaCompleta).mockResolvedValue(nota('0'))
@@ -66,55 +75,36 @@ describe('integração das regras fiscais na grade e na gravação', () => {
     await expect(servicoPrecificacaoEntrada.gravarPrecos('a', 'n', 'u', [{ produtoId: 'p0', precoVenda: 140.8 }], grade.regrasFiscais)).rejects.toMatchObject({ codigoHttp: 409 })
     expect(clientePrisma.produto.update).not.toHaveBeenCalled()
   })
-  it('não grava preço sem confirmar custo, mesmo quando não envia margem', async () => {
-    await expect(servicoPrecificacaoEntrada.gravarPrecos('a', 'n', 'u', [{ produtoId: 'p0', precoVenda: 100 }])).rejects.toMatchObject({ codigoHttp: 409 })
-    expect(clientePrisma.produto.updateMany).not.toHaveBeenCalled()
-  })
-  it('XML insuficiente bloqueia gravação sem margem e não grava memória', async () => {
-    const atual = nota() as unknown as { xmlConteudo: string | null }
-    atual.xmlConteudo = null
+  it('grava sem confirmação ou consulta de memórias, inclusive com composição adicional no XML', async () => {
+    const atual = nota() as unknown as { xmlConteudo: string }
+    atual.xmlConteudo = atual.xmlConteudo.replace('</ICMSTot>', '<vIPIDevol>10</vIPIDevol></ICMSTot>')
     vi.mocked(repositorioEntradaNotas.buscarNotaCompleta).mockResolvedValue(atual as never)
-    const grade = await servicoPrecificacaoEntrada.obterGrade('a', 'n')
-    expect(grade.itens.every(i => i.estadoCusto === 'pendente')).toBe(true)
-    await expect(servicoPrecificacaoEntrada.gravarPrecos('a', 'n', 'u', [{ produtoId: 'p0', precoVenda: 100 }])).rejects.toMatchObject({ codigoHttp: 400 })
-    await expect(servicoPrecificacaoEntrada.confirmarCusto('a', 'n', 'u', grade.revisaoCusto, ['i0'])).rejects.toMatchObject({ codigoHttp: 400 })
+    await servicoPrecificacaoEntrada.gravarPrecos('a', 'n', 'u', [{ produtoId: 'p0', precoVenda: 100 }])
+    expect(clientePrisma.produto.updateMany).toHaveBeenCalledTimes(1)
+    expect(clientePrisma.custoEntradaMemoria.findMany).not.toHaveBeenCalled()
+    expect(clientePrisma.custoEntradaAjuste.findFirst).not.toHaveBeenCalled()
     expect(clientePrisma.custoEntradaMemoria.createMany).not.toHaveBeenCalled()
   })
-  it('confirma memória pelo XML/nItem sem alterar preços e só aceita revisão atual', async () => {
-    const grade = await servicoPrecificacaoEntrada.obterGrade('a', 'n')
-    await servicoPrecificacaoEntrada.confirmarCusto('a', 'n', 'u', grade.revisaoCusto, ['i0'])
-    expect(clientePrisma.custoEntradaMemoria.createMany).toHaveBeenCalledWith(expect.objectContaining({ data: [expect.objectContaining({ companyId: 'a', nItem: 1, revisao: grade.revisaoCusto, usuarioId: 'u' })], skipDuplicates: true }))
+  it.each([0, -1, NaN, Infinity])('recusa preço inválido %s', async precoVenda => {
+    await expect(servicoPrecificacaoEntrada.gravarPrecos('a', 'n', 'u', [{ produtoId: 'p0', precoVenda }])).rejects.toMatchObject({ codigoHttp: 400 })
     expect(clientePrisma.produto.updateMany).not.toHaveBeenCalled()
-    await expect(servicoPrecificacaoEntrada.confirmarCusto('a', 'n', 'u', 'antiga', ['i0'])).rejects.toMatchObject({ codigoHttp: 409 })
   })
-  it('memória anterior permanece mas XML alterado exige nova confirmação', async () => {
-    const grade = await servicoPrecificacaoEntrada.obterGrade('a', 'n')
-    vi.mocked(clientePrisma.custoEntradaMemoria.findMany).mockResolvedValue([{ nItem: 1, revisao: grade.revisaoCusto }] as never)
-    const outra = nota() as unknown as { xmlConteudo: string }; outra.xmlConteudo += ' '
-    vi.mocked(repositorioEntradaNotas.buscarNotaCompleta).mockResolvedValue(outra as never)
-    expect((await servicoPrecificacaoEntrada.obterGrade('a', 'n')).itens[0].estadoCusto).toBe('desatualizado')
-    await expect(servicoPrecificacaoEntrada.gravarPrecos('a', 'n', 'u', [{ produtoId: 'p0', precoVenda: 100 }])).rejects.toMatchObject({ codigoHttp: 409 })
-  })
-  it('não aceita item externo nos ajustes, confirmação ou seleção de preço', async () => {
-    const grade = await servicoPrecificacaoEntrada.obterGrade('a', 'n')
-    await expect(servicoPrecificacaoEntrada.confirmarCusto('a', 'n', 'u', grade.revisaoCusto, ['externo'])).rejects.toMatchObject({ codigoHttp: 400 })
-    await expect(servicoPrecificacaoEntrada.salvarAjustes('a', 'n', 'u', grade.revisaoCusto, { decisaoFrete: null, despesas: [], bases: [{ nItem: 99, peso: 1, volume: 1 }] })).rejects.toMatchObject({ codigoHttp: 400 })
+  it('não aceita item externo na seleção de preço', async () => {
     await expect(servicoPrecificacaoEntrada.gravarPrecos('a', 'n', 'u', [{ produtoId: 'p0', itemId: 'externo', precoVenda: 100 }])).rejects.toMatchObject({ codigoHttp: 400 })
-    expect(clientePrisma.custoEntradaAjuste.upsert).not.toHaveBeenCalled()
+    expect(clientePrisma.produto.updateMany).not.toHaveBeenCalled()
   })
   it('produto repetido exige seleção explícita; grava uma linha escolhida', async () => {
     const atual = nota() as unknown as { itens: { produtoId: string; produto: { id: string } }[] }
     atual.itens[1].produtoId = 'p0'; atual.itens[1].produto.id = 'p0'
     vi.mocked(repositorioEntradaNotas.buscarNotaCompleta).mockResolvedValue(atual as never)
     const grade = await servicoPrecificacaoEntrada.obterGrade('a', 'n')
-    vi.mocked(clientePrisma.custoEntradaMemoria.findMany).mockResolvedValue([{ nItem: 2, revisao: grade.revisaoCusto }] as never)
     await expect(servicoPrecificacaoEntrada.gravarPrecos('a', 'n', 'u', [{ produtoId: 'p0', precoVenda: 100 }])).rejects.toMatchObject({ codigoHttp: 400 })
     await servicoPrecificacaoEntrada.gravarPrecos('a', 'n', 'u', [{ produtoId: 'p0', itemId: 'i1', precoVenda: 100 }])
     expect(clientePrisma.produto.updateMany).toHaveBeenCalledWith({ where: { id: 'p0', companyId: 'a' }, data: { precoVenda: 100 } })
   })
   it('conflito transacional vira 409 sem substituir histórico', async () => {
     vi.mocked(clientePrisma.$transaction).mockRejectedValue({ code: 'P2034' })
-    await expect(servicoPrecificacaoEntrada.confirmarCusto('a', 'n', 'u', 'r', ['i0'])).rejects.toMatchObject({ codigoHttp: 409 })
+    await expect(servicoPrecificacaoEntrada.gravarPrecos('a', 'n', 'u', [{ produtoId: 'p0', precoVenda: 100 }])).rejects.toMatchObject({ codigoHttp: 409 })
     expect(clientePrisma.custoEntradaMemoria.createMany).not.toHaveBeenCalled()
   })
   it('vínculo corrompido com produto de outra empresa não expõe a grade', async () => {

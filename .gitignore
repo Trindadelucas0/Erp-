@@ -16,6 +16,10 @@ package-lock.json
 
 # Testes
 tests/
+__tests__/
+*.test.*
+*.spec.*
+*-fixture.*
 frontend/__tests__/
 vitest.config.ts
 frontend/vitest.config.ts

@@ -10,8 +10,6 @@ import { normalizarDocumento } from '../../compartilhado/validacoes/documentos.j
 import { mapaValorIpiPorNItemDoXml, type ItemXmlNfe } from '../focus-nfe/parser-xml-nfe.js'
 import { randomUUID } from 'crypto'
 import type { Prisma } from '@prisma/client'
-import { calcularCustoAquisicaoItem } from './formacao-custo-aquisicao.js'
-import { regrasFiscaisPadrao } from '../configuracoes/esquema-regras-fiscais.js'
 import {
   calcularCustoUnitarioEntrada,
   resolverValorIpi,
@@ -177,10 +175,6 @@ async function substituirItensDoXml(nfeRecebidaId: string, itens: ItemXmlNfe[]) 
       quantidade: item.quantidade,
       valorUnitario: item.valorUnitario,
       valorTotal: item.valorTotal,
-      ...(item.dadosCustoXml ? {
-        dadosCustoXml: item.dadosCustoXml as unknown as Prisma.InputJsonValue,
-        previaCustoXml: calcularCustoAquisicaoItem(item.dadosCustoXml, { itemId: '', nItem: item.nItem, cfopEntradaId: null, multiplicador: 1, freteCte: 0, creditoFrete: 0, peso: item.pesoKg ?? null }, regrasFiscaisPadrao()) as unknown as Prisma.InputJsonValue,
-      } : {}),
       pesoKg: item.pesoKg ?? null,
       valorIpi: item.valorIpi ?? null,
       updatedAt: new Date(),

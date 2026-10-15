@@ -1,7 +1,6 @@
 /**
  * Custo contábil por unidade de venda (grade Precificação).
- * Compatibilidade com a fórmula anterior. A grade atual usa
- * formacao-custo-aquisicao.ts (DOCUMENTACAO-SISTEMA.md §7.26).
+ * Fórmula da Precificação (DOCUMENTACAO-SISTEMA.md §7.26).
  *
  * qtdEstoque = qtd NF × itensPorEmbalagem
  * custoLinha = mercadoria + frete rateado + IPI + seguro + outras despesas
@@ -75,7 +74,7 @@ export function creditoIcmsComercial(
   return creditoOuZero(valorIcmsXml)
 }
 
-/** @deprecated Precificação usa calcularCustoAquisicaoItem com regras por operação. */
+/** Custo contábil com créditos e despesas originais da nota. */
 export function calcularCustoContabilEntrada(params: EntradaCustoContabil): number | null {
   const qtdNf = params.quantidadeNf
   const unitario = params.valorUnitario
