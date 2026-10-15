@@ -7,8 +7,8 @@ function decimalOuNull(valor: number | null | undefined): number | null {
   return valor
 }
 
-async function buscarDaEmpresa(companyId: string) {
-  return clientePrisma.parametrizacaoCustoVenda.findUnique({
+async function buscarDaEmpresa(companyId: string, db: import('@prisma/client').Prisma.TransactionClient = clientePrisma) {
+  return db.parametrizacaoCustoVenda.findUnique({
     where: { companyId },
   })
 }

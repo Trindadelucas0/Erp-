@@ -21,6 +21,9 @@ import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import type { DadosFormacaoCusto, ItemFormacaoCusto } from '@/lib/custo-aquisicao'
+import { PainelCustoAquisicao } from '@/components/entrada-notas/painel-custo-aquisicao'
+import { MemoriaCustoAquisicao } from '@/components/entrada-notas/memoria-custo-aquisicao'
 
 const LIMIAR_VARIACAO = 0.3
 const CLASSE_INPUT_GRADE =
@@ -50,7 +53,13 @@ function CelulaLinha({
   )
 }
 
-type ItemPrecificacaoApi = {
+type ItemPrecificacaoApi = ItemFormacaoCusto & {
+  quantidadeVenda: number | null
+  valorBruto: number | null
+  valorDesconto: number
+  freteAquisicao: number
+  custoTotal: number | null
+  tributosNaoRecuperaveis: number
   itemId: string
   nItem: number
   descricao: string | null
@@ -65,6 +74,7 @@ type ItemPrecificacaoApi = {
   despesasSeguro: number
   outrasDespesas: number
   creditoIcms: number
+  creditoIcmsFrete: number
   creditoPis: number
   creditoCofins: number
   aliquotaIcms: number | null
@@ -85,7 +95,8 @@ type ItemPrecificacaoApi = {
   recusa: string | null
 }
 
-type GradePrecificacao = {
+type GradePrecificacao = Omit<DadosFormacaoCusto, 'itens'> & {
+  regrasFiscais: Record<'mercadoria' | 'transporte', { modo: 'nota' | 'pre_definida'; aliquota: number | null }>
   nota: {
     id: string
     chaveNfe: string
@@ -172,6 +183,23 @@ function ConteudoPrecificacao() {
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
   const [mensagem, setMensagem] = useState('')
+  const [selecaoProduto, setSelecaoProduto] = useState<Record<string, string>>({})
+  const [memoriaAberta, setMemoriaAberta] = useState<string | null>(null)
+  const [custoEmEdicao, setCustoEmEdicao] = useState(false)
+
+  function receberGrade(data: GradePrecificacao) {
+    setGrade(data)
+    setLinhas(atuais => data.itens.map(item => {
+      const anterior = atuais.find(l => l.itemId === item.itemId)
+      if (!anterior) return linhaDeApi(item)
+      const margem = parseDecimal(anterior.margemTexto) ?? 0
+      const vrAdic = parseDecimal(anterior.vrAdicTexto) ?? 0
+      const calculo = calcularPrecoSugerido(item.custoContabil, item.encargosPercentual, margem, vrAdic)
+      return { ...linhaDeApi(item), margemTexto: anterior.margemTexto, vrAdicTexto: anterior.vrAdicTexto, margemPercentual: margem, vrAdicPercentual: vrAdic,
+        precoTexto: calculo.ok ? textoDecimal(calculo.precoSugerido) : '', precoSugerido: calculo.ok ? calculo.precoSugerido : null,
+        recusaLocal: item.recusa ?? (calculo.ok ? null : calculo.motivo) }
+    }))
+  }
 
   const carregar = useCallback(async () => {
     if (!id) return
@@ -181,8 +209,7 @@ function ConteudoPrecificacao() {
       const { data } = await clienteHttp.get<GradePrecificacao>(
         `/entrada-notas/${id}/precificacao`
       )
-      setGrade(data)
-      setLinhas((data.itens ?? []).map(linhaDeApi))
+      receberGrade(data)
     } catch (e) {
       setGrade(null)
       setLinhas([])
@@ -322,9 +349,12 @@ function ConteudoPrecificacao() {
           l.produtoId &&
           l.precoSugerido != null &&
           l.precoSugerido > 0 &&
+          l.estadoCusto === 'confirmado' &&
+          !custoEmEdicao &&
+          (linhas.filter(x => x.produtoId === l.produtoId).length === 1 || selecaoProduto[l.produtoId] === l.itemId) &&
           !l.recusaLocal
       ),
-    [linhas]
+    [linhas, selecaoProduto, custoEmEdicao]
   )
 
   async function gravar() {
@@ -342,13 +372,16 @@ function ConteudoPrecificacao() {
         {
           itens: paraGravar.map((l) => ({
             produtoId: l.produtoId,
+            itemId: l.itemId,
+            vrAdicPercentual: l.vrAdicPercentual,
             precoVenda: l.precoSugerido,
             margemPercentual: l.margemPercentual,
           })),
+          regrasFiscais: grade?.regrasFiscais,
+          revisaoCusto: grade?.revisaoCusto,
         }
       )
-      setGrade(data)
-      setLinhas((data.itens ?? []).map(linhaDeApi))
+      receberGrade(data)
       setMensagem('Preço de venda gravado no cadastro do produto.')
     } catch (e) {
       setErro(extrairMensagemApi(e, 'Não foi possível gravar os preços.'))
@@ -455,6 +488,11 @@ function ConteudoPrecificacao() {
         </dl>
       </CardPadrao>
 
+      <PainelCustoAquisicao notaId={id} grade={grade} podeEditar={podeGravar} ocupado={salvando} aoAtualizar={receberGrade} aoEditar={setCustoEmEdicao} />
+      {memoriaAberta && grade.itens.find(i => i.itemId === memoriaAberta) && <CardPadrao titulo={`Memória de cálculo · item ${grade.itens.find(i => i.itemId === memoriaAberta)!.nItem}`}>
+        <Button type="button" variant="outline" onClick={() => setMemoriaAberta(null)}>Fechar memória</Button>
+        <MemoriaCustoAquisicao memoria={grade.itens.find(i => i.itemId === memoriaAberta)!.memoria} />
+      </CardPadrao>}
       <CardPadrao titulo="Grade da nota">
         <p className="mb-3 text-sm text-muted-foreground">
           Arraste a barra embaixo para ver as colunas — todos os produtos deslizam juntos. Nome e SKU
@@ -464,12 +502,12 @@ function ConteudoPrecificacao() {
           <p className="px-2 py-6 text-sm text-muted-foreground">Nenhum item nesta nota.</p>
         ) : (
           <GradeRolavel>
-            <div className="min-w-0 divide-y rounded-md border">
+            <div className="w-max min-w-full divide-y rounded-md border">
               {linhas.map((linha) => {
                 const destaque =
                   linha.variacaoPercentual != null &&
                   Math.abs(linha.variacaoPercentual) >= LIMIAR_VARIACAO
-                const editavel = linha.vinculado && podeGravar && !salvando
+                const editavel = linha.vinculado && podeGravar && !salvando && !linha.memoria.pendencias.length
                 const vrAdic = parseDecimal(linha.vrAdicTexto) ?? linha.vrAdicPercentual ?? 0
                 return (
                   <div key={linha.itemId} className="flex w-max min-w-full items-stretch">
@@ -480,12 +518,24 @@ function ConteudoPrecificacao() {
                       <div className="text-xs text-muted-foreground">
                         {linha.sku || (linha.vinculado ? '—' : 'Sem produto vinculado')}
                       </div>
+                      <div className="mt-2 text-xs">Custo: {linha.estadoCusto}</div>
+                      {linha.confirmacao && <div className="text-xs text-muted-foreground">Confirmado em {formatarData(linha.confirmacao.createdAt)} · {linha.confirmacao.usuarioNome ?? 'Usuário'}</div>}
+                      <Button type="button" variant="outline" className="mt-2 h-7 text-xs" onClick={() => setMemoriaAberta(linha.itemId)}>Memória</Button>
+                      {linha.produtoId && linhas.filter(l => l.produtoId === linha.produtoId).length > 1 && <label className="mt-2 flex items-center gap-2 text-xs"><input type="radio" name={`produto-${linha.produtoId}`} checked={selecaoProduto[linha.produtoId] === linha.itemId} disabled={!editavel} onChange={() => setSelecaoProduto(s => ({ ...s, [linha.produtoId!]: linha.itemId }))} />Usar esta linha para o preço</label>}
                       {linha.recusaLocal && (
                         <p className="mt-1 text-xs text-destructive">{linha.recusaLocal}</p>
                       )}
                     </div>
                     <div className="flex w-max items-start py-1">
-                      <CelulaLinha rotulo="Qtd">{formatarQtd(linha.quantidade)}</CelulaLinha>
+                      <CelulaLinha rotulo="Qtd NF">{formatarQtd(linha.quantidade)}</CelulaLinha>
+                      <CelulaLinha rotulo="Qtd venda">{formatarQtd(linha.quantidadeVenda)}</CelulaLinha>
+                      <CelulaLinha rotulo="Valor bruto">{formatarMoeda(linha.valorBruto)}</CelulaLinha>
+                      <CelulaLinha rotulo="Desconto">{formatarMoeda(linha.valorDesconto)}</CelulaLinha>
+                      <CelulaLinha rotulo="Frete de aquisição">{formatarMoeda(linha.freteAquisicao)}</CelulaLinha>
+                      <CelulaLinha rotulo="Tributos não recuperáveis">{formatarMoeda(linha.tributosNaoRecuperaveis)}</CelulaLinha>
+                      <CelulaLinha rotulo="Despesas adicionais">{formatarMoeda(linha.memoria.despesasAdicionais)}</CelulaLinha>
+                      <CelulaLinha rotulo="Créditos considerados">{formatarMoeda(Object.values(linha.memoria.creditos).reduce((s, c) => s + c, 0))}</CelulaLinha>
+                      <CelulaLinha rotulo="Custo total item">{formatarMoeda(linha.custoTotal)}</CelulaLinha>
                       <CelulaLinha rotulo="Tipo frete" alinhamento="left">
                         {linha.tipoFreteRotulo || '—'}
                       </CelulaLinha>
@@ -499,6 +549,7 @@ function ConteudoPrecificacao() {
                         {formatarMoeda(linha.outrasDespesas)}
                       </CelulaLinha>
                       <CelulaLinha rotulo="Créd. ICMS">{formatarMoeda(linha.creditoIcms)}</CelulaLinha>
+                      <CelulaLinha rotulo="Créd. ICMS frete">{formatarMoeda(linha.creditoIcmsFrete)}</CelulaLinha>
                       <CelulaLinha rotulo="Créd. PIS">{formatarMoeda(linha.creditoPis)}</CelulaLinha>
                       <CelulaLinha rotulo="Créd. COFINS">
                         {formatarMoeda(linha.creditoCofins)}
@@ -583,7 +634,7 @@ function ConteudoPrecificacao() {
             onClick={() => void gravar()}
             disabled={!podeGravar || salvando || paraGravar.length === 0}
           >
-            {salvando ? 'Gravando…' : 'Gravar'}
+            {salvando ? 'Gravando…' : 'Gravar preços válidos'}
           </BotaoPrimario>
           {!podeGravar && (
             <p className="text-sm text-muted-foreground">

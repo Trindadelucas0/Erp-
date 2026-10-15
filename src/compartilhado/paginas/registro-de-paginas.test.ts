@@ -5,6 +5,20 @@ import {
 } from './registro-de-paginas.js'
 
 describe('montarPaginasPermitidasParaUsuario', () => {
+  it('preserva Contas na sessão sem liberar Configurações ao perfil restrito', () => {
+    const paginas = montarPaginasPermitidasParaUsuario(false, ['contas'])
+    expect(paginas).toEqual([expect.objectContaining({
+      chave: 'contas',
+      caminho: '/configuracoes?aba=financeiro&secao=contas',
+      exibirNoMenu: false,
+    })])
+    expect(listarPaginasVinculaveis().some((p) => p.chave === 'contas')).toBe(true)
+  })
+
+  it('preserva Contas para admin e não a concede a quem tem apenas Configurações', () => {
+    expect(montarPaginasPermitidasParaUsuario(true, []).some((p) => p.chave === 'contas')).toBe(true)
+    expect(montarPaginasPermitidasParaUsuario(false, ['configuracoes']).some((p) => p.chave === 'contas')).toBe(false)
+  })
   it('não-admin usa apenas telas dos papéis', () => {
     const paginas = montarPaginasPermitidasParaUsuario(false, ['entrada-notas'])
     const chaves = paginas.map((p) => p.chave)

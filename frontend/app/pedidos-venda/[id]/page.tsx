@@ -41,5 +41,5 @@ function Conteudo({ id }: { id: string }) {
 
 export default function PaginaPedidoVenda({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  return <ProtegerRota permissao="vendas:view"><Conteudo id={id}/></ProtegerRota>
+  return <ProtegerRota chaveDaPagina="pedidos-venda"><Conteudo id={id}/></ProtegerRota>
 }

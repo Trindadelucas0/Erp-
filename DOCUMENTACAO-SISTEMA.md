@@ -1,7 +1,7 @@
 # ERP — Documentação do sistema
 
-**Versão do sistema:** 1.29.1 — Pedidos de venda
-**Última atualização:** 14/10/2026 (Orçamentos: ficha alinhada ao mock, ST no total, vendedor da sessão)
+**Versão do sistema:** 1.30.2 — Regras Fiscais
+**Última atualização:** 15/10/2026 (correção de tipagem da proteção de Pedidos de venda e do teste de opções WMS)
 
 ## 1. Modo correção de bug
 
@@ -10,6 +10,15 @@ Reproduzir o sintoma com a empresa, a conta e o período informados. Conferir a 
 ## 2. Versões
 
 ### 2.1 Histórico
+
+- **1.30.2 — Regras Fiscais (14/10/2026):** Precificação demonstra desconto, despesas e tributos por item da NF-e, com regras de recuperabilidade por operação, ICMS padrão em base configurável, rateio e memória confirmada antes de gravar preço.
+- **1.30.1 — Regras Fiscais (14/10/2026):** Contas foi movido para Configurações → Financeiro → Contas. O endereço antigo redireciona; permissões e dados existentes são preservados. Perfil autorizado somente a Contas não recebe acesso às outras configurações.
+
+- **1.30.0 — Regras Fiscais (14/10/2026):** Configurações → Fiscal → Regras Fiscais, somente administrador e por empresa. Crédito de ICMS da mercadoria e do CT-e pela nota ou alíquota pré-definida. ICMS ausente no modo nota dá zero; crédito do frete distribuído pelo rateio lançado. Apenas precificação; preços existentes, Auditoria e kardex não são recalculados automaticamente.
+
+- **1.29.3 — Pedidos de venda (14/10/2026):** Precificação: borda externa e separadores acompanham a largura completa das linhas, sem atravessar colunas durante a rolagem horizontal. Produto/SKU permanecem fixos.
+
+- **1.29.2 — Pedidos de venda (14/10/2026):** Auditoria de entradas inclui NF-e e NFS-e consolidadas, separa Pendentes/Concluídas e registra Auditada com usuário e data. Precificação somente para NF-e de revenda.
 
 - **1.28.0 — Conciliação bancária (13/10/2026):** importação de OFX, CSV e Excel; comparação com baixas financeiras; vínculo em grupo, desvinculação, lançamento imediato e telas de fluxo realizado, movimentações, extratos e relatório.
 - **1.28.1 — Conciliação bancária (13/10/2026):** em Orçamentos, **A retirar** esconde **Endereço de entrega** e **Frete**, e grava ambos vazios. **No ato** continua sem endereço e sem Frete.
@@ -36,6 +45,17 @@ flowchart LR
 
 ### 3.6 Roteiro por sintoma
 
+- Build falha em Pedidos de venda com `Property 'permissao' does not exist`: lista e ficha devem usar `ProtegerRota chaveDaPagina="pedidos-venda"`, conforme o acesso por tela do papel. A API mantém a autorização `vendas:view` e o recorte por empresa.
+
+  Validação em 15/10/2026: TypeScript do frontend aprovado (`tsc --noEmit --incremental false`) e 4 testes de `requisicoes-wms.test.ts` aprovados. As verificações de opções ausentes usam `not.toContain`, evitando comparações entre literais incompatíveis. Build completo local bloqueado pela configuração de desenvolvimento de `NEXT_PUBLIC_API_URL` (localhost); publicação não realizada. Versão mantida: correção de compilação sem nova funcionalidade ou mudança de uso.
+
+- Crédito ou custo pendente na Precificação: conferir empresa, CFOP de entrada, CST/CSOSN por tributo, recuperabilidade, base do ICMS padrão e conferência de frete. Abrir Memória para ver componentes; salvar ajustes, confirmar o custo e só então gravar preços. Código: formacao-custo-aquisicao.ts e servico-precificacao-entrada.ts.
+
+- Linha vertical atravessando colunas na Precificação: conferir o contêiner da grade em frontend/app/auditoria-entradas/[id]/precificacao/page.tsx (ConteudoPrecificacao); borda e separadores devem envolver w-max min-w-full, acompanhando a largura das linhas.
+
+- Nota sumiu de Pendentes na Auditoria: conferir Concluídas e a data/responsável da auditoria; o status operacional permanece consolidado.
+- Precificar ausente: somente NF-e consolidada com finalidade Revenda possui essa ação.
+
 - Extrato não aparece: conferir conta, período, tipo do arquivo e linhas inválidas retornadas pela importação.
 - Baixa não aparece: conferir `contaEmpresaId` e `pagoEm` da baixa. Baixa antiga sem conta não participa da conciliação.
 - Sugestão não aparece: valor assinado e dia devem ser iguais; empate entre mais de uma baixa sem documento que desambigue não gera sugestão.
@@ -44,6 +64,38 @@ flowchart LR
 - Em Orçamentos, Frete aparece após selecionar **A retirar**: conferir a renderização por `entregaSemFrete` em `frontend/components/orcamentos/formulario-orcamento-layout.tsx` e a regra documentada em §6.21.
 
 ### 3.8 Mapa comercial
+
+**Formação de custo:** a NF-e fornece os valores originais de cada produto. O administrador configura quais créditos se aplicam à empresa e à operação. Na Precificação, o operador confere descontos, despesas, frete e créditos, consulta a memória e confirma custos sem pendências antes de gravar o preço. Notas antigas recebem uma prévia atualizada, sem alterar preços ou estoque automaticamente.
+
+```mermaid
+flowchart LR
+  CXML[Importar NF-e] --> CItens[Valores originais por produto]
+  CRegras[Configurar créditos por operação] --> CPrevia[Consultar prévia do custo]
+  CItens --> CPrevia
+  CPrevia --> CDespesas[Conferir frete e despesas]
+  CDespesas --> CRateio[Simular e salvar rateio]
+  CRateio --> CMemoria[Consultar memória de cálculo]
+  CMemoria --> CPend{Há pendências?}
+  CPend -->|Sim| CRevisar[Corrigir regra ou informação]
+  CRevisar --> CPrevia
+  CPend -->|Não| CConfirmar[Confirmar custos válidos]
+  CConfirmar --> CPreco[Gravar preços válidos]
+  CPreco --> CCadastro[Preço de venda no produto]
+```
+
+
+Precificação: na Grade da nota, os separadores acompanham cada produto até a última coluna. Ao deslizar as barras, nome e SKU permanecem à esquerda e a borda externa fica no fim da grade.
+
+Auditoria de entradas: confira os documentos consolidados, conclua a conferência e consulte o histórico.
+
+```mermaid
+flowchart LR
+  Consolidada[Entrada consolidada] --> Pendente[Auditoria pendente]
+  Pendente --> Conferir[Conferir detalhes da nota]
+  Conferir --> Auditada[Clicar em Auditada]
+  Auditada --> Concluida[Concluídas com responsável e data]
+```
+
 
 ```mermaid
 flowchart TD
@@ -134,7 +186,10 @@ Concluir e desvincular registram usuário e data no histórico da conciliação 
 
 ## 8. Como usar
 
-1. Cadastre ou confirme a conta em **Financeiro → Contas**.
+**Como usar — Integrações:** abra **Configurações → Integrações** e escolha **Assinatura digital**, **Buscador de NF** ou **Boleto**. Assinatura mantém Configuração/Documentos e senha de administrador para Documentos; Buscador mantém token e ambiente Focus; Boleto mantém a lista, **Novo**, **Editar**, ativo/inativo e **Padrão** por empresa. Só aparecem seções permitidas para o perfil. Links antigos continuam funcionando.
+
+
+1. Cadastre ou confirme a conta em **Configurações → Financeiro → Contas**.
 2. Abra **Financeiro → Conciliação bancária**.
 3. Escolha conta e período.
 4. Importe o OFX ou a planilha do modelo.
@@ -147,13 +202,13 @@ Concluir e desvincular registram usuário e data no histórico da conciliação 
 
 | Item               | Valor                                                                                  |
 | ------------------ | -------------------------------------------------------------------------------------- |
-| Versão do sistema  | 1.29.1 — Pedidos de venda |
-| Última atualização | 14/10/2026 (Orçamentos: ficha alinhada ao mock, ST no total, vendedor da sessão) |
+| Versão do sistema  | 1.30.2 — Regras Fiscais |
+| Última atualização | 14/10/2026 (Formação de custo da NF-e e memória confirmada na Precificação) |
 | Formato            | Fonte oficial de comportamento: mapa, campos, regras, paths de código e roteiro de bug |
 | Fonte oficial      | Este arquivo (`DOCUMENTACAO-SISTEMA.md`)                                               |
 
 
-**Roadmap do ciclo de entrada (parcialmente entregue):** Fase 1 Kardex/estoque documentada abaixo (§6.17d). **Contagem cega web** (`/contagens`) entregue (§6.17e / §7.14). **Contas a Pagar** (`/contas-a-pagar`) — cadastro, lista, **baixas** e **geração automática na consolidação** da Entrada (§6.17f / §7.16). **Contas a Receber** (`/contas-a-receber`) — cadastro manual (Duplicata/Crédito), lista, **baixas** e anexos (§6.17h / §7.22); sem geração automática nesta fase. **Contas** (`/contas`) — cadastro de conta **bancária** ou **caixa** da empresa (§6.23); na baixa de **Contas a Pagar** e **Contas a Receber** o operador escolhe a conta ativa (histórico antigo fica sem conta). **Recorrência** (Configurações → Financeiro) — serviços/consumo com valor esperado; NFS-e/documental auto-consolida (§6.11b / §7.23). **Cartões de Pagamento** e **Adquirentes** (Configurações → Financeiro) — bandeiras fixas e taxas por parcela; cadastro apenas nesta versão (§6.11d / §6.11e). **Parâmetros de Boleto** (Configurações → Financeiro → Boleto) — **vários** conjuntos nomeados por empresa (lista, Novo/Editar, ativo/inativo, **Padrão**); limites, encargos e credenciais da API; teste de conexão por registro só valida preenchimento; **não** emite boleto nem altera Contas a Receber nesta versão (§6.11f). **Plano financeiro automático via CFOP prevalente** na geração do título NFe entregue (§6.12 / §7.20). **Baixar contagem / Voltar para contagem** e **bloqueio temporário com desbloqueio** após divergência entregues (§6.17e / §7.14 / §7.17). **Conferência de preço/nome** em Aguardando chegada e tela **Auditoria de entradas** (`/auditoria-entradas`) entregues (§6.17c / §6.17g / §7.19). **Precificação** (`/auditoria-entradas/[id]/precificacao`) — grade da NFe consolidada forma o preço sobre o **custo contábil** (NF + frete lançado + seguro + outras despesas − créditos) e grava no produto; Configurações → Vendas é o determinante permanente da empresa (§6.16 / §6.17k / §7.26). **Status automático do Pedido de Compra pós-entrada** (Concluído / Entregue parcialmente) entregue (§6.10 / §7.18). **Status "Aguardando chegada"** (toda NFe 55 com produto retida até liberar para contagem) entregue (§6.17c / §7.19). **DDA** (Configurações → Financeiro → DDA + card na Aguardando chegada) entregue nesta versão — consulta C6 em segundo plano, casa boleto com a NF; **não** paga boleto e **não** gera Contas a pagar nesta fase (§6.11c / §7.24). **Pendências** (`/pendencias`) — sino no cabeçalho + dock de até 3 cards por tela + lista agregada do estado vivo (vencimentos, anexos, estoque bloqueado, filas da Entrada) entregue (§6.20). **Endereços WMS** (`/enderecos-wms`) — árvore Local → Área → Rua → Bloco → Andar → Apartamento; código `A-RC-20-01-2-05`; tipo (PP/CX/CH/BC) no apartamento (§6.17i / §6.17j / §7.25). Configurações → Logística → Estrutura WMS aponta para essa tela. **Não** é picking nem saldo por endereço. **Requisições** (`/requisicoes`) — fila operacional do armazém. **Separação de pedidos** (`/separacao`) bipa o produto e soma 1 unidade até a quantidade da ordem; reserva ao iniciar e baixa o físico ao concluir. Os outros tipos continuam em **Executar** (`/requisicoes/[id]/executar`). Reposição **não** altera o total (§6.17l / §7.27). **Guardar mercadorias** (`/guardar-mercadorias`) — após consolidar NFe 55 Revenda, uma ordem por produto para bipar EAN/DUN e o endereço; **não** relança estoque (§6.17m / §7.27). **Orçamentos** (`/orcamentos`) — lista e formulário gravam na empresa; cliente digitado ou buscado no cadastro; total ao vivo; CEP pela Brasil API; imprimir no navegador e e-mail; não vira pedido de venda (§6.21). **Receber pagamento** (`/receber-pagamento`) — um clique confirma a venda paga e cria uma Separação por produto, já Disponível em Separação de pedidos (§6.22). App Android, Hermes/IA, NF de devolução e crédito a receber na divergência — ainda futuros. **Não** inventar essas como prontas.
+**Roadmap do ciclo de entrada (parcialmente entregue):** Fase 1 Kardex/estoque documentada abaixo (§6.17d). **Contagem cega web** (`/contagens`) entregue (§6.17e / §7.14). **Contas a Pagar** (`/contas-a-pagar`) — cadastro, lista, **baixas** e **geração automática na consolidação** da Entrada (§6.17f / §7.16). **Contas a Receber** (`/contas-a-receber`) — cadastro manual (Duplicata/Crédito), lista, **baixas** e anexos (§6.17h / §7.22); sem geração automática nesta fase. **Contas** (Configurações → Financeiro → Contas; `/contas` redireciona) — cadastro de conta **bancária** ou **caixa** da empresa (§6.23); na baixa de **Contas a Pagar** e **Contas a Receber** o operador escolhe a conta ativa (histórico antigo fica sem conta). **Recorrência** (Configurações → Financeiro) — serviços/consumo com valor esperado; NFS-e/documental auto-consolida (§6.11b / §7.23). **Cartões de Pagamento** e **Adquirentes** (Configurações → Financeiro) — bandeiras fixas e taxas por parcela; cadastro apenas nesta versão (§6.11d / §6.11e). **Parâmetros de Boleto** (Configurações → Financeiro → Boleto) — **vários** conjuntos nomeados por empresa (lista, Novo/Editar, ativo/inativo, **Padrão**); limites, encargos e credenciais da API; teste de conexão por registro só valida preenchimento; **não** emite boleto nem altera Contas a Receber nesta versão (§6.11f). **Plano financeiro automático via CFOP prevalente** na geração do título NFe entregue (§6.12 / §7.20). **Baixar contagem / Voltar para contagem** e **bloqueio temporário com desbloqueio** após divergência entregues (§6.17e / §7.14 / §7.17). **Conferência de preço/nome** em Aguardando chegada e tela **Auditoria de entradas** (`/auditoria-entradas`) entregues (§6.17c / §6.17g / §7.19). **Precificação** (`/auditoria-entradas/[id]/precificacao`) — grade da NFe consolidada forma o preço sobre o **custo contábil** (NF + frete lançado + seguro + outras despesas − créditos) e grava no produto; Configurações → Vendas é o determinante permanente da empresa (§6.16 / §6.17k / §7.26). **Status automático do Pedido de Compra pós-entrada** (Concluído / Entregue parcialmente) entregue (§6.10 / §7.18). **Status "Aguardando chegada"** (toda NFe 55 com produto retida até liberar para contagem) entregue (§6.17c / §7.19). **DDA** (Configurações → Financeiro → DDA + card na Aguardando chegada) entregue nesta versão — consulta C6 em segundo plano, casa boleto com a NF; **não** paga boleto e **não** gera Contas a pagar nesta fase (§6.11c / §7.24). **Pendências** (`/pendencias`) — sino no cabeçalho + dock de até 3 cards por tela + lista agregada do estado vivo (vencimentos, anexos, estoque bloqueado, filas da Entrada) entregue (§6.20). **Endereços WMS** (`/enderecos-wms`) — árvore Local → Área → Rua → Bloco → Andar → Apartamento; código `A-RC-20-01-2-05`; tipo (PP/CX/CH/BC) no apartamento (§6.17i / §6.17j / §7.25). Configurações → Logística → Estrutura WMS aponta para essa tela. **Não** é picking nem saldo por endereço. **Requisições** (`/requisicoes`) — fila operacional do armazém. **Separação de pedidos** (`/separacao`) bipa o produto e soma 1 unidade até a quantidade da ordem; reserva ao iniciar e baixa o físico ao concluir. Os outros tipos continuam em **Executar** (`/requisicoes/[id]/executar`). Reposição **não** altera o total (§6.17l / §7.27). **Guardar mercadorias** (`/guardar-mercadorias`) — após consolidar NFe 55 Revenda, uma ordem por produto para bipar EAN/DUN e o endereço; **não** relança estoque (§6.17m / §7.27). **Orçamentos** (`/orcamentos`) — lista e formulário gravam na empresa; cliente digitado ou buscado no cadastro; total ao vivo; CEP pela Brasil API; imprimir no navegador e e-mail; não vira pedido de venda (§6.21). **Receber pagamento** (`/receber-pagamento`) — um clique confirma a venda paga e cria uma Separação por produto, já Disponível em Separação de pedidos (§6.22). App Android, Hermes/IA, NF de devolução e crédito a receber na divergência — ainda futuros. **Não** inventar essas como prontas.
 
 ---
 
@@ -231,6 +286,10 @@ Como ler cada ficha de campo:
 
 ### 2.1 Histórico de versões
 
+**1.30.1 — Regras Fiscais (14/10/2026):** Contas em Configurações → Financeiro → Contas; `/contas` redireciona. A chave `contas` permanece disponível nos papéis e na sessão, com `financeiro:view` / `create` / `edit`. Sem migração de dados.
+
+- **1.29.3 — Pedidos de venda (14/10/2026):** Precificação: borda externa e separadores acompanham a largura completa das linhas, sem atravessar colunas durante a rolagem horizontal. Produto/SKU permanecem fixos.
+
 Toda versão tem **número SemVer** e **nome** (rótulo da capacidade/tela entregue). Fontes alinhadas na mesma entrega: capa deste documento, esta tabela, `versao-sistema.json`, `package.json` (raiz e frontend) e exibição no login/cabeçalho.
 
 **Quando subir versão**
@@ -243,7 +302,7 @@ Toda versão tem **número SemVer** e **nome** (rótulo da capacidade/tela entre
 | Ciclo novo / quebra de contrato          | Major (`2.0.0`) | **Novo**                         |
 
 
-Próxima tela nova = **1.24.0** + nome. Não inventar versão sem tela/módulo. Skill do agente: `.cursor/skills/versao-sistema/SKILL.md`.
+Próxima tela nova = **1.31.0** + nome. Não inventar versão sem tela/módulo. Skill do agente: `.agents/skills/versao-sistema/SKILL.md`.
 
 
 | Versão  | Nome                     | O que entrou                                                                                                                                                                                                                                                                                                                         | Telas / rotas                                                                                                        |
@@ -395,7 +454,13 @@ Próxima tela nova = **1.24.0** + nome. Não inventar versão sem tela/módulo. 
 | 1.29.0 | Pedidos de venda | **Orçamentos** no contrato do PRD: itens com estoque colorido, desconto só no modal, prazo de pagamento, anexos e histórico. **Finalizar** com **Converter em pedido após aprovação** cria `PedidoVenda` e trava o orçamento em **Convertido**. Tela **Pedidos de venda** (somente leitura). ST gravado em 0. Caixa recebe `em_aberto` e `convertido`. | `/orcamentos`, `/pedidos-venda`, `src/modulos/orcamentos/`, `src/modulos/pedidos-venda/` |
 | 1.29.1 | Pedidos de venda | Ficha **Orçamento de venda**: faixa única, preço de catálogo somente leitura, ponto de estoque, **Mais opções**, aviso de múltiplo. ST soma no total (coluna à parte; valor ainda 0). Vendedor da sessão se o cargo contém “vendedor”. | `/orcamentos/novo`, `/orcamentos/[id]`, `formulario-orcamento-layout.tsx`, `resumirOrcamento`, `totalDoOrcamento` |
 
-**Versão vigente:** 1.29.1 — Pedidos de venda.
+| 1.29.4 | Pedidos de venda | Configurações: nova aba **Integrações** reúne **Assinatura digital**, **Buscador de NF** e **Boleto** completo; links antigos e permissões existentes preservados. | `/configuracoes?aba=integracoes` |
+
+| 1.30.0 | Regras Fiscais | Créditos ICMS de mercadoria e transporte por empresa: XML ou alíquota pré-definida. Ausência no XML gera zero; CT-e segue rateio lançado. Configuração alterada com grade aberta exige recarga antes de gravar preços. | `/configuracoes?aba=fiscal&secao=regras`, `/auditoria-entradas/[id]/precificacao` |
+| 1.30.1 | Regras Fiscais | Contas em Configurações → Financeiro → Contas; `/contas` redireciona. Permissões preservadas, sem liberar outras configurações ao perfil autorizado somente a Contas. | `/configuracoes?aba=financeiro&secao=contas` |
+| 1.30.2 | Regras Fiscais | Formação de custo por item da NF-e: desconto, despesas, tributos e créditos por operação; ICMS padrão com base configurável; despesas externas e rateio; confirmação e memória histórica antes de gravar preços. Estoque/Auditoria preservados. | `/configuracoes?aba=fiscal&secao=regras`, `/auditoria-entradas/[id]/precificacao` |
+
+**Versão vigente:** 1.30.2 — Regras Fiscais.
 
 ### Endereços em desenvolvimento local
 
@@ -692,8 +757,8 @@ Usar esta tabela ao receber um bug no fluxo de compra / cadastros ligados. Depoi
 | Import XML NFS-e retorna 400 / tipo errado                                                                                                    | Entrada de Notas > Importar XML                                                             | Parser deve aceitar `<NFSe>` / Id `NFS…`; pipeline `tipoDocumento=nfse` sem estoque                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `parser-xml-nfe.ts`, `servico-focus-nfe.ts` (`importarXml`), `servico-pipeline-entrada.ts` (`analisarNotaNfse`)                                                                                                                                                                                                                                                |
 | Consolidar estoque bloqueado / pede contagem logística                                                                                        | Entrada de Notas > Lançamento / Contagens                                                   | NFe 55 com produtos: baixar/consolidar só com `entrada_contagem_ok` **e** sessão baixada. Divergente: baixar e **Bloquear estoque**. Conferência pendente em Aguardando chegada → 409 até confirmar                                                                                                                                                                                                                                                                                                                                                                                                                            | `status-entrada-contagem.ts`, `servico-pipeline-entrada.ts` (`lancar`, `baixarContagem`), `servico-contagens.ts`, `[id]/page.tsx`, `/contagens`                                                                                                                                                                                                                |
 | Desbloqueou e Auditoria / lista ainda mostram Bloqueio; produto no Estoque continua retido                                                    | Entrada consolidadas / Auditoria / Kardex                                                   | Badge antigo só lia `divergenciaDesfecho`; desbloqueio precisa espelhar movimentos reais (não recalcular NF) e expor `divergenciaDesbloqueioEm`. Residual parcial: reabrir formulário se `aindaBloqueados > 0`                                                                                                                                                                                                                                                                                                                                                                                                                 | `servico-estoque.ts` (`desbloquearMovimentosDivergenciaNota`), `servico-focus-nfe.ts` (`divergenciaDesbloqueioEm`), `auditoria-entradas/page.tsx`, `entrada-notas/page.tsx`, `[id]/page.tsx`, §7.17                                                                                                                                                            |
-| Precificar não abre / variação “—” / custo diferente da conferência de 30%                                                                    | Auditoria de entradas                                                                       | **Precificar** abre `/auditoria-entradas/[id]/precificacao`. Custo da entrada (Auditoria) = (unitário × qtd NF + frete + IPI) / (qtd NF × embalagem). Custo contábil = mercadoria + frete + IPI + seguro (`vSeg`) + outras (`vOutro`) − créditos; ICMS = `vICMS` ou 12% da mercadoria se ausente. Conferência de Aguardando chegada **não** usa IPI/frete. Sem produto/histórico → “—”. Percentuais de Vendas **não** entram no custo (só na formação de preço)                                                                                                                                                                                                                                                                      | `custo-unitario-entrada.ts`, `custo-comercial-entrada.ts`, `formacao-preco-venda.ts`, `servico-precificacao-entrada.ts`, `repositorio-entrada-notas.ts` (`buscarUltimoPrecoConsolidadoPorProduto`), `parser-xml-nfe.ts` (`vIPI` / `vSeg` / `vOutro` / `vICMS` / `vPIS` / `vCOFINS`), `auditoria-entradas/page.tsx`, `[id]/page.tsx`, `[id]/precificacao/page.tsx`, §6.17g / §6.17k |
-| Precificação recusa / Gravar some / preço não muda no produto                                                                                 | Precificação                                                                                | Custo contábil ≤ 0 recusa. Carga (encargos + vr.adic + margem) ≥ 100% recusa. Item sem produto: visível, sem gravar. PUT exige `produtos:edit` + NFe 55 `entrada_consolidada` da empresa. Só grava `precoVenda`                                                                                                                                                                                                                                                                                                                                                                                                               | `custo-comercial-entrada.ts`, `formacao-preco-venda.ts`, `servico-precificacao-entrada.ts`, `[id]/precificacao/page.tsx`, §7.26                                                                                                                                                                                                                                |
+| Precificar não abre / custo pendente | Auditoria de entradas / Precificação | Somente NF-e Revenda consolidada. Conferir regras por operação, desconto, frete e memória; confirmar custo antes de gravar preço. Estoque/Auditoria mantêm custo anterior. | `formacao-custo-aquisicao.ts`, `servico-precificacao-entrada.ts`, §6.17k / §7.26 |
+| Precificação recusa / preço não muda | Precificação | Resolver pendências e confirmar custo vigente. Permissão produtos:edit; custo positivo; carga menor que 100%. Revisão alterada retorna 409 sem gravar; produto repetido exige linha explícita. | `servico-precificacao-entrada.ts`, `formacao-preco-venda.ts`, §7.26 |
 | Aba Vendas vazia / parametrização some ao trocar empresa                                                                                      | Configurações → Vendas                                                                      | Só admin; empresa = sessão (sem seletor Santri); um registro por empresa, sem competência; GET/PUT `/configuracoes/parametrizacao-custos`. Percentuais alimentam a Precificação de qualquer NF                                                                                                                                                                                                                                                                                                                                                                                                                                 | `painel-parametrizacao-custos.tsx`, `servico-parametrizacao-custos.ts`, §6.16 / §7.26                                                                                                                                                                                                                                                                          |
 | Nota lançada não aparece em `/contagens` / cliente diz "sumiu" após lançar                                                                    | Entrada de Notas > Lançamento                                                               | Comportamento esperado (§7.19): **NFe 55 com finalidade Revenda** e item de produto vai para **Aguardando chegada** (`aguardando_chegada`), não para contagem — só aparece em `/contagens` depois de **Liberar para contagem** com **Quem vai contar** (o operador só vê a NF se a OS for dele). NFS-e e NFe 55 com finalidade **Uso e Consumo** vão para **Prontas para consolidar** (`pronta_para_consolidar`) — **nunca** para contagem                                                                                                                                                                                                                                               | `status-entrada-contagem.ts` (`STATUS_AGUARDANDO_CHEGADA`, `STATUS_PRONTA_PARA_CONSOLIDAR`), `servico-pipeline-entrada.ts` (`statusPosLancamento`, `lancarProntaParaConsolidar`), §7.19                                                                                                                                                                        |
 | Bip na contagem não acha o produto                                                                                                            | Contagens de entrada                                                                        | Código deve estar no produto (unidade) ou embalagem master **e** o produto precisa estar na sessão                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | `servico-contagens.ts` (`resolverBipNaSessao`), cadastro Produto                                                                                                                                                                                                                                                                                               |
@@ -762,8 +827,8 @@ Usar esta tabela ao receber um bug no fluxo de compra / cadastros ligados. Depoi
 | “Este endereço está indisponível porque seu … está bloqueado.”                                                                                | Endereços WMS                                                                               | Ancestral bloqueado/inativo impede criar filho ou AP                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `status-efetivo-wms.ts`, §7.25                                                                                                                                                                                                                                                                                                                                 |
 | “Há produtos vinculados a este endereço” / “…abaixo deste nível” ao excluir                                                                   | Endereços WMS                                                                               | Esperado: realoque o código em Produtos > Logística e tente de novo                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `vinculo-produto-endereco-wms.ts`, `excluirEndereco`, `excluirNivel`, §7.25                                                                           |
 | Menu sem Contas a Receber                                                                                                                     | Usuários > páginas / papéis                                                                 | Página `contas-a-receber` (admin vê todas) **ou** `financeiro:view`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `registro-de-paginas.ts`                                                                                                                                                                                                                                                                                                                                       |
-| Menu sem Contas                                                                                                                               | Financeiro                                                                                  | Página `contas` (admin vê todas) **ou** `financeiro:view`; rota `/contas`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | `registro-de-paginas.ts`, `frontend/lib/menu-grupos.ts`, `frontend/app/contas/page.tsx`                                                                                                                                                                                                                                                                         |
-| Baixa recusada / botão Baixar desabilitado                                                                                                    | Contas a Pagar ou Receber · aba Baixas                                                      | Sem **Conta** ativa selecionada → não envia POST; API sem `contaId` ou conta inativa → 400. Cadastre em **Financeiro → Contas**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `esquemaBaixaLote`, `servico-contas.ts` (`obterContaAtivaParaBaixa`), `tela-baixas-contas-a-pagar.tsx`, `tela-baixas-contas-a-receber.tsx`                                                                                                                                                                                                                      |
+| Não encontra Contas | Configurações → Financeiro → Contas | Item saiu do menu Financeiro. Exige página `contas` e `financeiro:view`; perfil só de Contas mantém acesso somente a essa seção. | `registro-de-paginas.ts`, `frontend/lib/menu-grupos.ts`, `frontend/app/configuracoes/page.tsx` |
+| Baixa recusada / botão Baixar desabilitado                                                                                                    | Contas a Pagar ou Receber · aba Baixas                                                      | Sem **Conta** ativa selecionada → não envia POST; API sem `contaId` ou conta inativa → 400. Cadastre em **Configurações → Financeiro → Contas**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `esquemaBaixaLote`, `servico-contas.ts` (`obterContaAtivaParaBaixa`), `tela-baixas-contas-a-pagar.tsx`, `tela-baixas-contas-a-receber.tsx`                                                                                                                                                                                                                      |
 | Parcela não aparece em Baixas                                                                                                                | Contas a Pagar · aba Baixas                                                                 | Conferir fornecedor, vencimento individual da parcela e emissão do título; filtros preenchidos são cumulativos. Sem emissão, o título não aparece quando Emissão está filtrada                                                                                                                                                                                                                                                                                                                                                                                                                                                | `GET /para-baixar`, `montarWhere`, `listarParaBaixar`, `tela-baixas-contas-a-pagar.tsx`                                                                                                                                                                                                                                                                                            |
 | Cancelar pagamento em Contas a Pagar                                                                                                         | Contas a Pagar · aba Pagamentos                                                            | Baixa ativa pode ser cancelada com `financeiro:edit`; linha permanece como Cancelada, principal volta ao saldo e juros/multa deixam de compor os totais                                                                                                                                                                                                                                                                                                                                                                                                             | `POST /baixas/:baixaId/cancelar`, `cancelarBaixa`, `ContaPagarBaixa.canceladaEm`                                                                                                                                                                                                                                                                                                     |
 | Não grava título a receber sem vencimento                                                                                                     | Contas a Receber                                                                            | Esperado §7.4 / §7.22: vencimento obrigatório (1 parcela no cadastro manual)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `esquema-contas-a-receber.ts`, `servico-contas-a-receber.ts`, `frontend/lib/contas-a-receber.ts`                                                                                                                                                                                                                                                               |
@@ -836,6 +901,27 @@ Pontos fixos:
 **Backlog (fora do escopo atual):** ao aprovar o pedido, gerar previsão financeira e painel de previsão de entrega/reposição para vendedores.
 
 ### 3.8 Mapa comercial (apresentação a cliente)
+
+**Formação de custo:** a NF-e fornece os valores originais de cada produto. O administrador configura quais créditos se aplicam à empresa e à operação. Na Precificação, o operador confere descontos, despesas, frete e créditos, consulta a memória e confirma custos sem pendências antes de gravar o preço. Notas antigas recebem uma prévia atualizada, sem alterar preços ou estoque automaticamente.
+
+```mermaid
+flowchart LR
+  CXML[Importar NF-e] --> CItens[Valores originais por produto]
+  CRegras[Configurar créditos por operação] --> CPrevia[Consultar prévia do custo]
+  CItens --> CPrevia
+  CPrevia --> CDespesas[Conferir frete e despesas]
+  CDespesas --> CRateio[Simular e salvar rateio]
+  CRateio --> CMemoria[Consultar memória de cálculo]
+  CMemoria --> CPend{Há pendências?}
+  CPend -->|Sim| CRevisar[Corrigir regra ou informação]
+  CRevisar --> CPrevia
+  CPend -->|Não| CConfirmar[Confirmar custos válidos]
+  CConfirmar --> CPreco[Gravar preços válidos]
+  CPreco --> CCadastro[Preço de venda no produto]
+```
+
+
+Precificação: na Grade da nota, os separadores acompanham cada produto até a última coluna. Ao deslizar as barras, nome e SKU permanecem à esquerda e a borda externa fica no fim da grade.
 
 Visão **comercial** do que o sistema já faz hoje, em linguagem para cliente leigo (sem jargão técnico). Atualizar **nesta seção** sempre que a documentação registrar tela, fluxo, módulo, automação ou diferencial novo/alterado/removido.
 
@@ -1374,7 +1460,7 @@ flowchart TD
 flowchart TD
   subgraph ContasEmpresa["Contas"]
     direction TB
-    C1["Abrir Contas no menu Financeiro"]
+    C1["Configurações → Financeiro → Contas"]
     C2["Nova conta ou Editar"]
     C3["Tipo Caixa ou Bancaria"]
     C4["Escolher banco oficial e informar digito da conta"]
@@ -1416,12 +1502,12 @@ flowchart TD
 flowchart TD
   subgraph Params["Configurações"]
     direction TB
-    PA1["Geral — empresa e assinatura digital"]
+    PA1["Geral — usuários, papéis e atalhos"]
     PA2["Vendas — parametrização de custos"]
     PA3["Logística — unidades de medida e tipos de veículos"]
-    PA4["Financeiro — planos, recorrencia, adquirentes, cartoes e DDA"]
+    PA4["Financeiro — planos, recorrência, adquirentes e cartões"]
     PA5["Fiscal — codigos de operacao"]
-    PA6["Fiscal — buscador de notas"]
+    PA6["Integrações — assinatura digital, buscador de notas e boleto"]
     PA7["Parametros alimentam cadastros e compras"]
     PA1 --> PA2 --> PA3 --> PA4 --> PA5 --> PA6 --> PA7
   end
@@ -1471,7 +1557,7 @@ flowchart TD
 
 
 
-**Para o cliente:** em **Vendas** o administrador informa os **percentuais permanentes** da empresa (PIS, COFINS, IR, CS, custo fixo, comissão…). Não escolhe mês: mudou custo fixo de 10% para 11%, a **próxima** formação usa 11% em todo produto. Esses números alimentam **só** a tela **Precificação** (encargos). **Não** mudam o custo da Auditoria nem o estoque. O preço no cadastro só muda quando alguém clica **Gravar** na grade da nota. Juros, CBS e IBS aparecem na Precificação e ainda não entram na conta do preço. Em **Financeiro** há seções — **Planos Financeiros** (árvore de contas), **Recorrência**, **Adquirentes**, **Cartões de Pagamento**, **Boleto** (lista de parâmetros nomeados — limites, multa/juros e credenciais do banco; um marcado como **Padrão** da empresa) e **DDA**. Na Recorrência o financeiro cadastra **fornecedor** e **valor esperado**, escolhe se é **mensal** ou **anual**, o **dia** (1 a 28) e a **vigência**. A **agenda do mês** mostra o que deve chegar e o que já chegou. Dá para **cadastrar fornecedor** com retorno para esta tela. Quando a nota de serviço/consumo chega com o **mesmo valor** e a emissão está **dentro da vigência**, o sistema consolida a entrada e gera o título a pagar sozinho. Valor diferente **na vigência** para em análise. Fora da vigência, a nota segue o fluxo normal. A agenda **não** gera título sem a nota ter chegado. Em **Adquirentes** cadastra a operadora do cartão. Em **Cartões de Pagamento** escolhe a **bandeira** (Visa, Mastercard, Elo, Amex ou Hipercard), se é **crédito** ou **débito**, e monta a tabela de **taxas**, **prazo em dias** (número digitado, 0 a 365) e **valor fixo** por parcela. Nesta versão o cadastro **não** calcula ainda a taxa no Contas a Receber. Em **Parâmetros de Boleto** cadastra **vários** conjuntos com **nome**, escolhe qual é o **Padrão** da empresa, ativa ou desativa cada um e testa a conexão **por registro** — ainda **sem** emitir boleto. DDA consulta os boletos no banco C6 para casar com a nota em Aguardando chegada. Em **Logística → Tipos de Veículos** a empresa cadastra os veículos das entregas (Caminhão 3/4, Pick up, Carro de Passeio…) com o **peso máximo** em quilos e, se quiser, um ícone da galeria (Caminhão, Carro, Pick up ou Moto). O tipo ativo aparece para escolha no cadastro da **Transportadora**. Desativar tira o tipo da escolha nova sem apagar quem já usa. Nesta versão não há foto do veículo e o tipo não calcula frete nem rota.
+**Para o cliente:** em **Vendas** o administrador informa os **percentuais permanentes** da empresa (PIS, COFINS, IR, CS, custo fixo, comissão…). Não escolhe mês: mudou custo fixo de 10% para 11%, a **próxima** formação usa 11% em todo produto. Esses números alimentam **só** a tela **Precificação** (encargos). **Não** mudam o custo da Auditoria nem o estoque. O preço no cadastro só muda quando alguém clica **Gravar** na grade da nota. Juros, CBS e IBS aparecem na Precificação e ainda não entram na conta do preço. Em **Financeiro** há seções — **Planos Financeiros** (árvore de contas), **Recorrência**, **Adquirentes**, **Cartões de Pagamento**. A aba **Integrações** reúne **Assinatura digital**, **Buscador de NF** e **Boleto** (lista de parâmetros nomeados — limites, multa/juros e credenciais do banco; um marcado como **Padrão** da empresa). Na Recorrência o financeiro cadastra **fornecedor** e **valor esperado**, escolhe se é **mensal** ou **anual**, o **dia** (1 a 28) e a **vigência**. A **agenda do mês** mostra o que deve chegar e o que já chegou. Dá para **cadastrar fornecedor** com retorno para esta tela. Quando a nota de serviço/consumo chega com o **mesmo valor** e a emissão está **dentro da vigência**, o sistema consolida a entrada e gera o título a pagar sozinho. Valor diferente **na vigência** para em análise. Fora da vigência, a nota segue o fluxo normal. A agenda **não** gera título sem a nota ter chegado. Em **Adquirentes** cadastra a operadora do cartão. Em **Cartões de Pagamento** escolhe a **bandeira** (Visa, Mastercard, Elo, Amex ou Hipercard), se é **crédito** ou **débito**, e monta a tabela de **taxas**, **prazo em dias** (número digitado, 0 a 365) e **valor fixo** por parcela. Nesta versão o cadastro **não** calcula ainda a taxa no Contas a Receber. Em **Parâmetros de Boleto** cadastra **vários** conjuntos com **nome**, escolhe qual é o **Padrão** da empresa, ativa ou desativa cada um e testa a conexão **por registro** — ainda **sem** emitir boleto. DDA consulta os boletos no banco C6 para casar com a nota em Aguardando chegada. Em **Logística → Tipos de Veículos** a empresa cadastra os veículos das entregas (Caminhão 3/4, Pick up, Carro de Passeio…) com o **peso máximo** em quilos e, se quiser, um ícone da galeria (Caminhão, Carro, Pick up ou Moto). O tipo ativo aparece para escolha no cadastro da **Transportadora**. Desativar tira o tipo da escolha nova sem apagar quem já usa. Nesta versão não há foto do veículo e o tipo não calcula frete nem rota.
 
 ---
 
@@ -1998,7 +2084,7 @@ Sem as etapas 1–4, o pedido pode falhar ou ficar incompleto (código/unidade v
 | Parametrização de custos                | Configurações → Vendas (`?aba=vendas`) — só admin                                                    | `PainelParametrizacaoCustos` em `frontend/components/configuracoes/painel-parametrizacao-custos.tsx`                    |
 | Contas a Pagar                          | `/contas-a-pagar`                                                                                    | `frontend/app/contas-a-pagar/page.tsx`                                                                                  |
 | Contas a Receber                        | `/contas-a-receber`                                                                                  | `frontend/app/contas-a-receber/page.tsx`                                                                                |
-| Contas                                  | `/contas` (menu **Financeiro**)                                                                      | `frontend/app/contas/page.tsx` + `frontend/lib/contas-empresa.ts`; API `src/modulos/contas/`                           |
+| Contas | Configurações → Financeiro → Contas (`?aba=financeiro&secao=contas`); redirect `/contas` | `frontend/app/contas/conteudo-contas.tsx` + `frontend/app/configuracoes/page.tsx`; API `src/modulos/contas/` |
 | Pendências                              | `/pendencias`                                                                                        | `frontend/app/pendencias/page.tsx` + `frontend/components/pendencias/`                                                  |
 | Kardex de Estoque                       | `/estoque` (menu **Logística**)                                                                      | `frontend/app/estoque/page.tsx` + `frontend/components/estoque/`                                                        |
 | Endereços WMS                           | `/enderecos-wms` (menu **Logística**)                                                                | `frontend/app/enderecos-wms/page.tsx`                                                                                   |
@@ -2019,8 +2105,8 @@ Sem as etapas 1–4, o pedido pode falhar ou ficar incompleto (código/unidade v
 | Cartões de Pagamento (parâmetro)        | Configurações → Financeiro → Cartões de Pagamento (`?aba=financeiro&secao=cartoes`)                  | `PainelCartoesPagamento` + `formulario-cartao-pagamento.tsx` em `frontend/components/cartoes-pagamento/`                |
 | DDA (parâmetro)                         | Configurações → Financeiro → DDA (`?aba=financeiro&secao=dda`) — só admin                            | `PainelConfiguracaoDda` em `frontend/components/dda/`                                                                   |
 | CFOP (parâmetro)                        | Configurações → Fiscal → CFOP (`?aba=fiscal&secao=cfop`); redirect `/cfops`                          | `ConteudoDaPaginaCfops` em `frontend/app/cfops/page.tsx`                                                                |
-| Buscador de NF (ex-Focus NFe)           | Configurações → Fiscal → Buscador de NF (`?aba=fiscal&secao=buscador`)                               | `painel-configuracao-focus-nfe.tsx`                                                                                     |
-| Assinatura digital (parâmetro)          | Configurações → Geral (`?secao=assinatura`)                                                          | painéis ZapSign em `frontend/components/assinatura-zapsign/`                                                            |
+| Buscador de NF (ex-Focus NFe)           | Configurações → Integrações → Buscador de NF (`?aba=integracoes&secao=buscador`)                               | `painel-configuracao-focus-nfe.tsx`                                                                                     |
+| Assinatura digital (parâmetro)          | Configurações → Integrações (`?aba=integracoes&secao=assinatura`)                                                          | painéis ZapSign em `frontend/components/assinatura-zapsign/`                                                            |
 | Assinatura pública                      | `/assinatura/[token]`                                                                                | `frontend/app/assinatura/[token]/page.tsx`                                                                              |
 | Portal do fornecedor — login (público)  | `/portal-fornecedor/login`                                                                           | `frontend/app/portal-fornecedor/login/page.tsx`                                                                         |
 | Portal do fornecedor — pedido (público) | `/portal-fornecedor/pedido`                                                                          | `frontend/app/portal-fornecedor/pedido/page.tsx`                                                                        |
@@ -3072,9 +3158,9 @@ Adquirente ativo ──► Cartão (bandeira + tipo + nome + taxas)
 
 ---
 
-### 6.11f Parâmetros de Boleto — Configurações → Financeiro → Boleto
+### 6.11f Parâmetros de Boleto — Configurações → Integrações → Boleto
 
-**Objetivo:** cadastrar **vários** conjuntos de limites de emissão, encargos por atraso e credenciais da API do banco por empresa, com **nome**, **ativo/inativo** e **Padrão** (um por empresa), para **emissão futura** de boletos. **Parâmetro do sistema** — UI em Configurações aba Financeiro, seção Boleto (`/configuracoes?aba=financeiro&secao=boleto`).
+**Objetivo:** cadastrar **vários** conjuntos de limites de emissão, encargos por atraso e credenciais da API do banco por empresa, com **nome**, **ativo/inativo** e **Padrão** (um por empresa), para **emissão futura** de boletos. **Parâmetro do sistema** — UI em Configurações aba Integrações, seção Boleto (`/configuracoes?aba=integracoes&secao=boleto`).
 
 **Modos da UI:** **lista** (busca por nome, colunas Nome · Banco · Ambiente · Padrão · Situação · Ações) ↔ **formulário** (Novo ou Editar), no mesmo padrão de Cartões de Pagamento.
 
@@ -3298,16 +3384,19 @@ Permissões
 
 **Objetivo:** parâmetros do sistema em abas (não confundir com cadastros operacionais).
 
-**Abas:** Geral · Vendas · Logística · Financeiro · Fiscal. Query `?aba=` e, em Geral, `?secao=usuarios|papeis|assinatura|atalhos`; em Fiscal, `?secao=cfop|buscador`; em Financeiro, `?secao=planos|recorrencia|adquirentes|cartoes|boleto|dda`; em Logística, `?secao=unidades|estrutura|veiculos`.
+**Abas:** Geral · Vendas · Logística · Financeiro · Fiscal · Integrações. Query `?aba=` e, em Geral, `?secao=usuarios|papeis|atalhos`; em Fiscal, `?secao=cfop|regras`; em Financeiro, `?secao=planos|recorrencia|adquirentes|cartoes`; em Logística, `?secao=unidades|estrutura|veiculos`; em Integrações, `?secao=assinatura|buscador|boleto`.
+
+**Compatibilidade:** links antigos de Geral/Assinatura, Fiscal/Buscador e Financeiro/Boleto são normalizados para Integrações, preservando outros parâmetros. Chaves de permissão continuam `geral:assinatura:configuracao|documentos`, `fiscal:buscador` e `financeiro:boleto`; sem migração de papéis ou cadastros. A aba aparece somente com alguma seção permitida, selecionando a primeira disponível. DDA é descrito historicamente neste documento, mas seu painel não foi localizado nesta cópia; não foi criado nem movido nesta entrega.
 
 
 | Aba        | Conteúdo                                                                                                   | Quem vê                                                                                                |
 | ---------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Geral      | **Usuários** + **Papéis** + Assinatura digital (admin) + Atalhos de teclado (admin / `configuracoes:view`) | Usuários/Papéis/Assinatura: admin; Atalhos: admin/`configuracoes:view`; uma só seção omite as sub-abas |
+| Geral | **Usuários** + **Papéis** + **Atalhos** | Usuários/Papéis: admin; Atalhos: admin/`configuracoes:view`, com permissão da seção |
 | Vendas     | **Parametrização de custos** (determinante permanente da empresa ativa)                                    | admin                                                                                                  |
 | Logística  | Unidades de medida + **Estrutura WMS** + **Tipos de Veículos**                                             | Unidades: admin / `configuracoes:view` / `produtos:view`; Estrutura: admin / `estoque:view`; Tipos de Veículos: admin / `configuracoes:view` |
-| Financeiro | **Planos Financeiros** + **Recorrência** + **Adquirentes** + **Cartões de Pagamento** + **Boleto** + **DDA** (admin) | admin / `financeiro:view` (DDA só admin); criar Boleto/Cartões/Adquirentes: `financeiro:create`; editar/ativo/padrão: `financeiro:edit` |
-| Fiscal     | CFOP + **Buscador de NF** (ex-Focus NFe)                                                                   | CFOP: admin/`financeiro:view`; Buscador: admin                                                         |
+| Financeiro | **Planos Financeiros**, **Recorrência**, **Adquirentes**, **Cartões de Pagamento** | admin / `financeiro:view`, com as permissões de seção existentes |
+| Fiscal | **CFOP** e **Regras Fiscais** | CFOP: admin / `financeiro:view`; Regras Fiscais: admin; permissões de seção existentes |
+| Integrações | **Assinatura digital**, **Buscador de NF**, **Boleto** completo | Assinatura/Buscador: admin; Boleto: admin/`financeiro:view` e `financeiro:boleto`; criar/editar mantém permissões financeiras |
 
 
 **Onde olhar no código**
@@ -3331,7 +3420,7 @@ Permissões
 
 | Campo / área                                                                                    | O que é                                                 | Obrigatório | Quem preenche | De onde vem                  | Para onde conecta                                          | Como funciona                                                                  | Regra / bloqueio                                                   |
 | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ----------- | ------------- | ---------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
-| Lista · Aba Geral                                                                               | Sub-abas Usuários, Papéis, Assinatura digital e Atalhos | —           | —             | —                            | Cadastro de acesso / ZapSign / atalhos                     | `?aba=geral&secao=usuarios                                                     | papeis                                                             |
+| Lista · Aba Geral | Usuários, Papéis e Atalhos | — | — | Sessão | Acesso e atalhos | `?aba=geral` com `secao` usuários, papéis ou atalhos | Permissões existentes; uma seção omite sub-abas |
 | Geral · Usuários                                                                                | Cadastro de quem acessa o sistema                       | —           | Admin         | —                            | Login / papéis / empresas                                  | Embute `ConteudoDaPaginaDeUsuarios`                                            | Só admin; `/users` redireciona                                     |
 | Geral · Papéis                                                                                  | Conjuntos de permissões                                 | —           | Admin         | —                            | Usuários > Acesso                                          | Embute `ConteudoDaPaginaDePapeis`                                              | Só admin; `/papeis` redireciona                                    |
 | Lista · Aba Vendas                                                                              | Parametrização de custos                                | —           | Admin         | Empresa da sessão            | Precificação de qualquer NF consolidada                    | `?aba=vendas`; alimenta encargos da grade (§7.26)                              | Só admin; companyId só da sessão                                   |
@@ -3350,13 +3439,31 @@ Permissões
 | Lista · Aba Financeiro · Recorrência                                                            | Regras + agenda do mês                                  | —           | —             | —                            | Entrada / Contas a pagar                                   | Embute `PainelRecorrenciasFinanceiras` (`?secao=recorrencia`)                  | Exige `financeiro:view` ou admin; CRUD com create/edit             |
 | Lista · Aba Financeiro · DDA                                                                    | Credenciais C6 (Client ID, Secret, certificado mTLS)    | —           | Admin         | Portal Developers C6         | Card Conferência DDA na Aguardando chegada                 | Embute `PainelConfiguracaoDda` (`?secao=dda`); secret/cert nunca voltam na API | Só admin; sem cert o ERP **não** chama o C6                        |
 | Lista · Aba Fiscal · CFOP                                                                       | Cadastro CFOP                                           | —           | —             | —                            | Fornecedor > Outros                                        | Embute UI de CFOP                                                              | Exige `financeiro:view` ou admin                                   |
-| Lista · Aba Fiscal · Buscador de NF                                                             | Token Focus / regras fiscais                            | —           | Admin         | —                            | Entrada de Notas                                           | Embute `PainelConfiguracaoFocusNfe`                                            | Só admin                                                           |
+| Lista · Aba Integrações · Assinatura digital | Configuração e Documentos ZapSign | — | Admin | Configuração existente | Clientes e assinaturas | Embute `SecaoAssinaturaDigital` | Só admin; Documentos mantém confirmação por senha |
+| Lista · Aba Integrações · Boleto | Lista de parâmetros nomeados | — | Financeiro autorizado | Cadastro da empresa ativa | Emissão futura | Embute `PainelParametrosBoleto`; Novo/Editar e Padrão por registro | `financeiro:view` e aba `financeiro:boleto`; ações com create/edit |
+| Lista · Aba Integrações · Buscador de NF                                                             | Token Focus / regras fiscais                            | —           | Admin         | —                            | Entrada de Notas                                           | Embute `PainelConfiguracaoFocusNfe`                                            | Só admin                                                           |
 | Atalhos de teclado                                                                              | Ação · Tecla · Ativo                                    | Não         | Usuário       | API `/configuracoes/atalhos` | Telas globais                                              | Captura tecla + salvar                                                         | `configuracoes:edit` na API                                        |
 
 
 Tema claro/escuro também no cabeçalho → `PATCH /auth/me/tema`.
 
 ---
+
+### 6.16a Regras Fiscais — Configurações → Fiscal → Regras Fiscais
+
+**Acesso:** somente administrador, empresa ativa validada pela sessão; um `RegraFiscal` por empresa. A lista de operações pertence a esse registro e não aceita duas regras com o mesmo CFOP, tributo e CST/CSOSN. CFOP deve ser ativo, de entrada e da empresa.
+
+| Aba · Campo | O que é | Obrigatório | Quem preenche | De onde vem | Para onde conecta | Como funciona | Regra / bloqueio |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Fiscal · Crédito de ICMS da mercadoria / conhecimento de transporte | Origem do crédito | Sim | Administrador | Configuração da empresa | Precificação | Puxar da nota de entrada ou Alíquota pré-definida | Só é aplicado com regra de operação elegível |
+| Fiscal · Alíquota (%) | Percentual padrão | No modo pré-definido | Administrador | Digitação | Crédito ICMS | Entre 0 e 100, zero válido | Percentual padrão prevalece; não concede crédito a operação não aplicável |
+| Fiscal · Base do ICMS pré-definido | Base do percentual padrão da mercadoria | Sim | Administrador | Seleção | Memória e custo | Valor bruto (vProd), Valor líquido (vProd − vDesc), Base ICMS do XML (vBC) | Base necessária ausente gera pendência; configuração antiga mantém bruto |
+| Fiscal · Nova regra / Editar | Seleção explícita da regra | — | Administrador | Lista | Formulário da operação | CFOP de entrada, Tributo, CST / CSOSN, Recuperabilidade, Composição do tributo | Adicionar à lista antes de Salvar |
+| Fiscal · Recuperabilidade | Elegibilidade do crédito | Sim | Administrador | Regra fiscal definida pelo responsável | Precificação | Crédito aplicável, Crédito não aplicável ou Exige revisão fiscal | Regra ausente ou revisão deixa custo pendente |
+| Fiscal · Composição do tributo | Parcela adicional ou embutida | Sim | Administrador | Regra da operação | Memória do custo | ICMS/PIS/COFINS/ICMS frete embutidos; demais configuráveis | Impede somar novamente impostos embutidos; II usa CST sem_cst |
+| Fiscal · Excluir / Salvar | Remove da lista e persiste configuração | — | Administrador | Formulário | GET/PUT /configuracoes/regras-fiscais | Salvar grava grupos, baseIcms e operacoes; excluir exige Salvar | Falha preserva campos; não reescreve preços nem memórias anteriores |
+
+**Onde olhar:** `painel-regras-fiscais.tsx`, `esquema-regras-fiscais.ts`, `servico-regras-fiscais.ts`, `repositorio-regras-fiscais.ts`, `prisma/schema.prisma` (`RegraFiscal`). A lista é JSON validado por Zod; o contrato antigo de dois grupos continua aceito e preserva base/lista existentes quando omitidas. Sem regra de operação, não presume recuperabilidade.
 
 ### 6.16b Tipos de Veículos — Configurações → Logística → Tipos de Veículos
 
@@ -3399,11 +3506,11 @@ Tipo de veículo (nome + peso máximo + ícone + ativo)
 
 ---
 
-### 6.17 Assinatura digital — Configurações → Geral
+### 6.17 Assinatura digital — Configurações → Integrações
 
 **Abas internas:** Configuração · Documentos.
 
-Acesso sensível: reautenticação por senha (token curto ~15 min). UI embutida em Configurações aba Geral (`?secao=assinatura`); `/configuracoes/assinatura` redireciona.
+Acesso sensível: reautenticação por senha (token curto ~15 min). UI embutida em Configurações aba Integrações (`?aba=integracoes&secao=assinatura`); `/configuracoes/assinatura` redireciona.
 
 **Onde olhar no código**
 
@@ -3424,9 +3531,9 @@ Acesso sensível: reautenticação por senha (token curto ~15 min). UI embutida 
 
 ---
 
-### 6.17b Buscador de NF (Focus NFe) — Configurações → Fiscal
+### 6.17b Buscador de NF (Focus NFe) — Configurações → Integrações
 
-**Objetivo:** configurar token Focus para **documentos recebidos** (NFe 55 + NFS-e nacional + CTe). Só admin. Manual: `MANUAL-FOCUS-NFE.md`. Guia de cadastro da empresa no painel Focus: `GUIA-FOCUS-CADASTRO-EMPRESA.md`. Rótulo na UI: **Buscador de NF**. Redirect de `/configuracoes/focus-nfe` → `?aba=fiscal&secao=buscador`.
+**Objetivo:** configurar token Focus para **documentos recebidos** (NFe 55 + NFS-e nacional + CTe). Só admin. Manual: `MANUAL-FOCUS-NFE.md`. Guia de cadastro da empresa no painel Focus: `GUIA-FOCUS-CADASTRO-EMPRESA.md`. Rótulo na UI: **Buscador de NF**. Redirect de `/configuracoes/focus-nfe` → `?aba=integracoes&secao=buscador`.
 
 **CTe — DistDFe do CNPJ (regra permanente §7.7):** a API Focus (`GET /ctes_recebidas`) lista CT-e pelo `cnpj` + `versao`. No sync (mesmo **BUSCAR**/agendador que NFe e NFS-e): DistDFe → chave → `importarCtePorChave` → `GET /ctes_recebidas/{chave}.xml` → **grava só se tomador = CNPJ da empresa** (fail-closed) → pipeline tenta auto-vínculo à NF nas mesmas condições. Tomador ≠ empresa (ou ilegível): **não grava** e **avança o cursor**. **Falha XML**: cursor **não** avança — retry no próximo ciclo. Cursor CT-e > 0 com zero CT-es salvos: DistDFe travado — `scripts/reparar-cursor-nfe-focus.ts` reseta para 0. Import XML manual = emergência (**sem** filtro de tomador no import).
 
@@ -3435,7 +3542,7 @@ Acesso sensível: reautenticação por senha (token curto ~15 min). UI embutida 
 
 | Camada                     | Caminho                                                                                                |
 | -------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Página UI                  | `frontend/app/configuracoes/page.tsx` (aba Fiscal · Buscador)                                          |
+| Página UI                  | `frontend/app/configuracoes/page.tsx` (aba Integrações · Buscador)                                          |
 | Redirect legado            | `frontend/app/configuracoes/focus-nfe/page.tsx`                                                        |
 | Painel                     | `frontend/components/focus-nfe/painel-configuracao-focus-nfe.tsx`                                      |
 | API                        | `src/modulos/focus-nfe/` (prefixo `/focus-nfe`)                                                        |
@@ -3718,9 +3825,11 @@ Acesso sensível: reautenticação por senha (token curto ~15 min). UI embutida 
 
 ### 6.17g Auditoria de entradas — `/auditoria-entradas` e `/auditoria-entradas/[id]`
 
-**Objetivo:** consulta **só leitura** das NFe 55 em `entrada_consolidada` — dossiê da entrada (itens, conferência preço/nome, **resultado da contagem** com esperada × contada, **itens bloqueados no estoque** após divergência, anexos de bloqueio/desbloqueio e **NF original** via a mesma visualização XML/DANFE da Entrada). Não edita pipeline. A revelação de `qtdEsperada` ocorre neste dossiê **e** no card **Contagem divergente** da Análise da nota (`obterDetalhe`); a API `/contagens` permanece cega (§7.14).
+**Objetivo:** conferência das NF-e e NFS-e em `entrada_consolidada`, com conclusão da auditoria separada do status operacional — dossiê da entrada (itens, conferência preço/nome, **resultado da contagem** com esperada × contada, **itens bloqueados no estoque** após divergência, anexos de bloqueio/desbloqueio e **NF original** via a mesma visualização XML/DANFE da Entrada). Não edita pipeline. A revelação de `qtdEsperada` ocorre neste dossiê **e** no card **Contagem divergente** da Análise da nota (`obterDetalhe`); a API `/contagens` permanece cega (§7.14).
 
-**Layout da lista:** tabela Emissão · Tipo · Fornecedor · Chave · Valor · **Sinal** (OK / Bloqueio / Desbloqueado — `divergenciaDesfecho` + `divergenciaDesbloqueioEm`) · **Ações**. **Barra horizontal visível** abaixo da tabela (`GradeRolavel`) para deslizar as colunas. Clique na linha abre o dossiê. Botão **Precificar** (`stopPropagation`) abre `/auditoria-entradas/[id]/precificacao`.
+**Conclusão da auditoria:** abas **Pendentes** (auditadaEm vazio) e **Concluídas** (preenchido), incluindo NF-e e NFS-e; CT-e fica fora. **Auditada** no detalhe chama `POST /entrada-notas/:id/auditar`, exige acesso à página Auditoria e à nota na empresa ativa. Registra data do servidor, ID e nome do usuário da sessão; chamadas repetidas preservam a primeira confirmação. Não exige precificação, não desbloqueia estoque e não altera status, financeiro ou contagem. Sem reabertura. Legados começam pendentes. Concluídas exibe Auditada em/Auditada por. Falha mantém a nota aberta; sucesso volta a Pendentes. Persistência: `NfeRecebida.auditadaEm/auditadaPorId/auditadaPorNome`; código: `servico-auditoria-entrada.ts` · `auditarEntrada`.
+
+**Layout da lista:** tabela Emissão · Tipo · Fornecedor · Chave · Valor · **Sinal** (OK / Bloqueio / Desbloqueado — `divergenciaDesfecho` + `divergenciaDesbloqueioEm`) · **Ações**. **Barra horizontal visível** abaixo da tabela (`GradeRolavel`) para deslizar as colunas. Clique na linha abre o dossiê. Botão **Precificar** somente para NF-e de Revenda (`stopPropagation`) abre `/auditoria-entradas/[id]/precificacao`.
 
 **Layout do detalhe** (tabelas com **barra horizontal visível**):
 
@@ -3736,7 +3845,7 @@ Acesso sensível: reautenticação por senha (token curto ~15 min). UI embutida 
 
 | Aba / seção | Campo                  | O que é                                        | Obrigatório | Quem preenche | De onde vem                                                                              | Para onde conecta                       | Como funciona                                                              | Regra / bloqueio                                                      |
 | ----------- | ---------------------- | ---------------------------------------------- | ----------- | ------------- | ---------------------------------------------------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| Lista       | Notas consolidadas     | NFe 55 `entrada_consolidada`                   | —           | Sistema       | `GET /focus-nfe/nfe-recebidas?painel=consolidada`                                        | `/auditoria-entradas/[id]`              | Filtro `tipoDocumento=nfe55` na UI; coluna Sinal                           | Página `auditoria-entradas` no menu                                   |
+| Lista       | Notas consolidadas     | NF-e/NFS-e `entrada_consolidada`             | —           | Sistema       | `GET /focus-nfe/nfe-recebidas?painel=consolidada`                                        | `/auditoria-entradas/[id]`              | NF-e/NFS-e na UI; abas Pendentes/Concluídas por `auditadaEm`; coluna Sinal                           | Página `auditoria-entradas` no menu                                   |
 | Lista       | Sinal                  | Indicador de bloqueio/OK/desbloqueado          | —           | Sistema       | `divergenciaDesfecho` + `divergenciaDesbloqueioEm`                                       | Detalhe                                 | Badge **Bloqueio** (ainda retido), **Desbloqueado** (já liberou) ou **OK** | Só leitura                                                            |
 | Detalhe     | Veredito               | Resumo para conferência rápida                 | —           | Sistema       | `obterDetalhe` + sessão                                                                  | —                                       | Badges + contadores                                                        | Só leitura                                                            |
 | Detalhe     | Resultado da contagem  | Esperada × contada por produto                 | —           | Sistema       | `nota.resultadoContagem` (`buscarSessaoFinalizadaDaNota` + itens)                        | —                                       | Diferença em linguagem clara; multi-NF avisado                             | **Não** vaza em `/contagens`                                          |
@@ -3754,23 +3863,28 @@ Acesso sensível: reautenticação por senha (token curto ~15 min). UI embutida 
 
 ### 6.17k Precificação — `/auditoria-entradas/[id]/precificacao`
 
+**Crédito do transporte:** a coluna **Créd. ICMS frete** mostra o crédito do CT-e distribuído proporcionalmente ao frete lançado nos itens; só para frete destinatário e vínculos da mesma empresa. O retorno da grade inclui `regrasFiscais` (grupos, base e operações vigentes). A tela envia esse campo no PUT; se a configuração mudar enquanto a grade estiver aberta, o servidor retorna 409 e pede recarregar antes de gravar, sem alterar preços. O campo é opcional no contrato para preservar clientes anteriores.
+
 **Objetivo:** depois da NFe 55 consolidada, formar o **preço de venda** do produto a partir do **custo contábil** da linha e do determinante de Configurações → Vendas. Não altera o kardex nem o custo da Auditoria.
 
-**Acesso:** pela Auditoria (`exibirNoMenu: false`). Ver a nota exige página `auditoria-entradas`. **Gravar** exige `produtos:edit`. Só NFe 55 `entrada_consolidada` da empresa da sessão; NFS-e / CT-e / outro tenant → 404.
+**Acesso:** pela Auditoria (`exibirNoMenu: false`). Ver a nota exige página `auditoria-entradas`. **Gravar** exige `produtos:edit`. Só NFe 55 de **Revenda** (`finalidadeEntrada=revenda`) em `entrada_consolidada` da empresa da sessão; NFS-e / CT-e / outro tenant → 404.
 
-**Duas telas:** Configurações → Vendas (só admin) é o determinante permanente da empresa. Esta grade puxa NF + frete já lançado + despesas + créditos + cadastro, forma o preço e **Gravar** grava `Produto.precoVenda`.
+**Duas telas:** Configurações → Vendas (só admin) é o determinante permanente da empresa. Esta grade puxa NF + despesas + créditos aplicáveis + cadastro, confirma a memória e **Gravar preços válidos** grava `Produto.precoVenda`.
 
 **Cabeçalho:** fornecedor, nº/série, emissão. Percentuais lidos do único `ParametrizacaoCustoVenda` da empresa (sem cadastro → 0 e aviso para Configurações → Vendas). Encargos = Total Venda (PIS + COFINS + Imp. renda + Contribuição social + Custo fixo + Comissão). CBS, IBS e juros no cabeçalho, **fora do divisor**.
 
-**Custo contábil** (por unidade de venda, `qtdEstoque = qtd NF × itens por embalagem`): mercadoria (`valorUnitário × qtd NF`) + frete rateado já lançado (`custoFreteRateado`, 0 se remetente/sem rateio) + IPI + seguro (`prod/vSeg`, 0 se ausente) + outras despesas (`prod/vOutro`, 0 se ausente) − crédito ICMS − crédito PIS (`vPIS`) − crédito COFINS (`vCOFINS`). Crédito ICMS: `vICMS` do XML do item quando presente (inclusive 0); sem tag / null → **12% da mercadoria** (benefício fiscal). A flag `aproveitarCreditoIcms` do CFOP **não** zera o crédito nesta grade. Sem tag PIS/COFINS no XML → 0; **não** inventa `p% × base`. `custoContabil <= 0` recusa a formação.
+**Custo contábil:** formação de aquisição por unidade de venda; usa vProd − vDesc + despesas integrantes + tributos adicionais − créditos aplicáveis. ICMS/PIS/COFINS embutidos não são somados novamente. Regras por empresa, CFOP de entrada e CST/CSOSN decidem elegibilidade. ICMS padrão prevalece sobre XML na base configurada. A memória mostra custo por unidade NF e por unidade de venda (qCom × multiplicador). Sem informações suficientes, mostrar prévia pendente e impedir confirmação/preço do item.
 
-**Grade:** uma faixa por item; **uma barra horizontal** para a grade inteira (`GradeRolavel`) — todos os itens deslizam juntos. Nome/SKU ficam fixos à esquerda; cada coluna traz o rótulo na própria faixa. Só leitura: Produto/SKU, Qtd, Tipo frete (`modFrete`), Frete lançado, Despesas (`vSeg`), Outras desp. (`vOutro`), Créditos ICMS/PIS/COFINS, % ICMS/PIS/COFINS do XML, Custo contábil, Custo da entrada (Auditoria, para conferir), Custo anterior + data da última consolidada + variação (destaque se |%| ≥ 30%), Encargos %, Preço atual (`Produto.precoVenda`), Estoque disponível. Editável: % Vr.adic (default 0; atualiza Vr.adic em R$ e o preço), % Marg (default 0), Preço formado. Item sem `produtoId`: créditos e custos visíveis se der para calcular; preço desabilitado; não grava. Editar margem atualiza preço; editar preço atualiza margem.
+**Formação de custo:** Despesas e rateio abre lista com Nova despesa, Editar e Excluir; valores em centavos, descrição, composição, destino e critério. Conferência de frete distingue despesas distintas, usar NF-e ou CT-e. Simular rateio não salva; Salvar ajustes invalida confirmação anterior. Peso e volume totais podem ser informados por item. Em Despesas do XML que compõem o custo, seguro e outras despesas podem ser excluídos explicitamente; originais e exclusões permanecem na memória. Falha de gravação conserva edição.
+**Memória / Histórico de memórias:** consulta componentes, créditos, bases, percentuais, originais e versões confirmadas com autor/data. Confirmar custos válidos usa produtos:edit e inclui somente linhas sem pendências. Estados: pendente, previa, confirmado, desatualizado. Prévia não é custo definitivo. Importação grava originais e prévia inicial por item sem afetar gates.
+**Novas colunas:** Qtd NF, Qtd venda, Valor bruto, Desconto, Frete de aquisição, Tributos não recuperáveis, Despesas adicionais, Créditos considerados, Custo total item. Memória identifica tributos não recuperáveis embutidos: essa coluna é informativa, não uma soma adicional.
+**Grade:** uma faixa por item; **uma barra horizontal** para a grade inteira (`GradeRolavel`) — todos os itens deslizam juntos. Nome/SKU ficam fixos à esquerda; cada coluna traz o rótulo na própria faixa. O contêiner com borda e separadores ocupa a largura completa das linhas (w-max min-w-full); a borda direita fica após a última coluna, sem atravessar os campos durante a rolagem. Só leitura: Produto/SKU, Qtd, Tipo frete (`modFrete`), Frete lançado, Despesas (`vSeg`), Outras desp. (`vOutro`), Créditos ICMS da mercadoria / ICMS frete / PIS / COFINS, % ICMS/PIS/COFINS do XML, Custo contábil, Custo da entrada (Auditoria, para conferir), Custo anterior + data da última consolidada + variação (destaque se |%| ≥ 30%), Encargos %, Preço atual (`Produto.precoVenda`), Estoque disponível. Editável: % Vr.adic (default 0; atualiza Vr.adic em R$ e o preço), % Marg (default 0), Preço formado. Item sem `produtoId`: créditos e custos visíveis se der para calcular; preço desabilitado; não grava. Editar margem atualiza preço; editar preço atualiza margem. Item pendente mantém campos de preço desabilitados; item válido em prévia permite simulação, mas somente confirmado entra em Gravar preços válidos. Produto repetido exige selecionar uma linha.
 
 **Fórmula:** `carga% = TotalVenda% + vrAdic% + margem%`; se `carga% >= 100` recusa a linha; `precoFormado = custoContabil / (1 − carga%/100)`. Se o operador edita o preço: `margem% = (1 − (encargos% + vrAdic%)/100 − custoContabil/precoDigitado) × 100`.
 
-**Gravar:** `PUT /entrada-notas/:id/precificacao` com `{ produtoId, precoVenda, margemPercentual }[]`. Só produtos daquela NF e da empresa. Grava `Produto.precoVenda` (não sobrescreve `precoCusto`). Auditoria `editar` entidade `produto`. Recarrega a grade. Kardex e a tabela **Itens da NF** da Auditoria continuam com o custo antigo (mercadoria + frete + IPI, sem abater crédito).
+**Gravar preços válidos:** PUT `/entrada-notas/:id/precificacao` recebe linhas com produtoId, itemId, precoVenda, margemPercentual e vrAdicPercentual opcionais, além da revisaoCusto. Exige memória confirmada vigente; também valida quando margem é omitida. Produto repetido exige selecionar uma linha por produto. Só altera `Produto.precoVenda`, sem mudar precoCusto/kardex/Auditoria.
 
-**Fora desta fase:** % de crédito no cadastro do produto, recalcular todos os SKUs ao gravar Vendas, ST, desconto, atacado, igualar formação, CBS/IBS no divisor, pedido de venda / emissão de NF, rateio de `ICMSTot/vSeg` ou `ICMSTot/vOutro`.
+**Fora desta fase:** recalcular automaticamente catálogo, unificar custo do estoque/Auditoria, CBS/IBS no divisor, geração de financeiro por despesa adicional ou concessão automática de créditos por regime tributário.
 
 **Norte (premissas e pendências):** ver §7.26 — bloco **Norte / decisões travadas**. Não reabrir a fórmula sem ler aquele bloco.
 
@@ -3779,11 +3893,11 @@ Acesso sensível: reautenticação por senha (token curto ~15 min). UI embutida 
 | ----------- | ------------------------- | --------------------------- | ----------------------- | ------------------- | ----------------------- | -------------------------- | -------------------------------------------------------- | ---------------------------------- |
 | Cabeçalho   | Fornecedor / Nº / Emissão | Identificação da NF         | —                       | Sistema             | NFe consolidada         | —                          | Só leitura                                               | Tenant da sessão                   |
 | Cabeçalho   | Encargos %                | Total Venda do determinante | —                       | Sistema             | Configurações → Vendas  | Divisor da fórmula         | Soma do bloco Venda                                      | CBS/IBS/juros fora                 |
-| Grade       | Tipo frete                | `modFrete` da NF            | —                       | Sistema             | XML / nota              | —                          | Só leitura                                               | Remetente → frete 0                |
+| Grade       | Tipo frete                | `modFrete` da NF            | —                       | Sistema             | XML / nota              | —                          | Só leitura                                               | Remetente → CT-e lançado 0; vFrete XML é separado                |
 | Grade       | Frete lançado             | Rateio do CT-e na linha     | —                       | Sistema             | `custoFreteRateado`     | Custo contábil             | Só leitura                                               | 0 se não houver                    |
 | Grade       | Despesas                  | Seguro do item (`vSeg`)     | —                       | Sistema             | XML `prod/vSeg`         | Custo contábil             | Só leitura                                               | Sem tag → 0                        |
 | Grade       | Outras desp.              | Outras despesas (`vOutro`)  | —                       | Sistema             | XML `prod/vOutro`       | Custo contábil             | Só leitura                                               | Sem tag → 0                        |
-| Grade       | Créd. ICMS / PIS / COFINS | Imposto recuperável         | —                       | Sistema             | XML (+ benefício ICMS)  | Custo contábil             | ICMS = `vICMS` ou 12% mercadoria; PIS/COFINS do XML      | Sem tag PIS/COFINS → 0             |
+| Grade       | Créd. ICMS / ICMS frete / PIS / COFINS | Imposto recuperável         | —                       | Sistema             | XML + Regras Fiscais  | Custo contábil             | Só créditos aplicáveis à empresa/CFOP/CST             | Grupo tributável sem valor → pendência             |
 | Grade       | Custo contábil            | Custo da formação           | —                       | Cálculo             | NF + frete + desp. − créditos | Preço formado         | Fórmula §7.26                                            | ≤ 0 recusa                         |
 | Grade       | Custo da entrada          | Custo da Auditoria          | —                       | Sistema             | Mesma fórmula do dossiê | Conferência                | Só leitura                                               | Sem créditos                       |
 | Grade       | Custo anterior / data     | Última consolidada do SKU   | —                       | Sistema             | Outra NF consolidada    | Variação                   | Destaque se                                              | %                                  |
@@ -3792,7 +3906,7 @@ Acesso sensível: reautenticação por senha (token curto ~15 min). UI embutida 
 | Grade       | Preço formado             | Preço de venda              | Condicional para gravar | Cálculo / digitação | Fórmula §7.26           | `Produto.precoVenda`       | Editar recalcula a margem                                | Item sem produto desabilitado      |
 | Grade       | Preço atual               | Preço já no cadastro        | —                       | Sistema             | `Produto.precoVenda`    | —                          | Só leitura                                               | Após Gravar, igual ao formado      |
 | Grade       | Estoque disponível        | Saldo livre                 | —                       | Sistema             | Kardex                  | —                          | `qtdFisica − reservada − bloqueada`                      | Sem saldo → 0                      |
-| Rodapé      | Gravar                    | Persiste o preço de venda   | —                       | Clique              | Grade                   | Cadastro do produto        | PUT da nota                                              | `produtos:edit`; só produtos da NF |
+| Rodapé      | Gravar preços válidos     | Persiste o preço de venda   | —                       | Clique              | Grade                   | Cadastro do produto        | PUT da nota                                              | `produtos:edit`; só produtos da NF |
 
 
 **Onde olhar no código:** `frontend/app/auditoria-entradas/[id]/precificacao/page.tsx`, `frontend/app/auditoria-entradas/page.tsx` (botão Precificar), `frontend/components/ui/grade-rolavel.tsx` (`GradeRolavel`), `frontend/app/globals.css` (`.grade-rolavel-viewport`, `.grade-fixo-esquerda`), `servico-precificacao-entrada.ts`, `custo-comercial-entrada.ts` (`calcularCustoContabilEntrada`, `creditoIcmsContabil`), `formacao-preco-venda.ts`, `parser-xml-nfe.ts` (`mapaImpostosPorNItemDoXml`, `mapaDespesasPorNItemDoXml`), `GET/PUT /entrada-notas/:id/precificacao`, `Produto.precoVenda` em `prisma/schema.prisma`.
@@ -4607,16 +4721,16 @@ Legado API
 
 ---
 
-### 6.23 Contas — `/contas`
+### 6.23 Contas — Configurações → Financeiro → Contas
 
 **Objetivo:** cadastrar **contas bancárias** e **caixas** da empresa (`ContaEmpresa`) e registrá-las nas **baixas** de Contas a Pagar e Contas a Receber.
 
-**Como usar:** menu **Financeiro → Contas**. Quem tem `financeiro:view` abre a lista; `financeiro:create` vê **Nova conta**; `financeiro:edit` edita e ativa/desativa. Busca por nome, banco, agência ou conta (tokens AND, §7.13 no backend). Inativos aparecem na lista com filtro `incluirInativos=true`.
+**Como usar:** **Configurações → Financeiro → Contas** (`/configuracoes?aba=financeiro&secao=contas`). O endereço antigo `/contas` redireciona para esta seção. Quem tem a página `contas` e `financeiro:view` abre a lista; administrador vê todas. O perfil autorizado somente a Contas vê Configurações no menu, mas acessa somente Financeiro → Contas; as outras seções continuam protegidas. Não é preciso conceder a página Configurações nem alterar vínculos existentes para manter esse acesso. `financeiro:create` vê **Nova conta**; `financeiro:edit` edita e ativa/desativa. Busca por nome, banco, agência ou conta (tokens AND, §7.13 no backend). Inativos aparecem na lista com filtro `incluirInativos=true`.
 
 **Resumo visual**
 
 ```text
-/contas
+/contas → /configuracoes?aba=financeiro&secao=contas
   ──► GET /contas
   ──► GET /integracoes/bancos (BrasilAPI com cache)
   ──► POST /contas (Caixa: nome + tipo; Bancária: + banco, agência, CC e dígito)
@@ -4624,7 +4738,7 @@ Legado API
   ──► PATCH /contas/:id/ativo
 ```
 
-**Onde olhar no código:** `frontend/app/contas/page.tsx`, `frontend/components/ui/combobox-banco.tsx`, `frontend/lib/brasil-api.ts`, `frontend/lib/contas-empresa.ts`, `src/modulos/integracoes/` (`servico-brasil-api.ts`, `rotas-integracoes.ts`), `src/modulos/contas/` (`rotas-contas.ts`, `esquema-contas.ts`, `servico-contas.ts`, `repositorio-contas.ts`), `prisma/schema.prisma` (`ContaEmpresa`, `PessoaDadosBancario`), `src/compartilhado/paginas/registro-de-paginas.ts` (chave `contas`), `frontend/lib/menu-grupos.ts`.
+**Onde olhar no código:** `frontend/app/configuracoes/page.tsx`, `frontend/app/contas/conteudo-contas.tsx`, `frontend/app/contas/page.tsx` (redirect), `frontend/components/ui/combobox-banco.tsx`, `frontend/lib/brasil-api.ts`, `frontend/lib/contas-empresa.ts`, `src/modulos/integracoes/` (`servico-brasil-api.ts`, `rotas-integracoes.ts`), `src/modulos/contas/` (`rotas-contas.ts`, `esquema-contas.ts`, `servico-contas.ts`, `repositorio-contas.ts`), `prisma/schema.prisma` (`ContaEmpresa`, `PessoaDadosBancario`), `src/compartilhado/paginas/registro-de-paginas.ts` (chave `contas`), `frontend/lib/menu-grupos.ts`.
 
 **Regra / bloqueio:** `companyId` da sessão. **Nome** obrigatório (2–80 caracteres), único por empresa (case-insensitive). **Caixa:** ao gravar, banco, agência, conta, dígitos e limite são **zerados** no servidor. **Bancária:** banco escolhido no catálogo da BrasilAPI, agência (1–5 dígitos), CC (1–12 dígitos) e **Dígito da conta** obrigatórios; dígito da agência opcional; dígitos aceitam 0–9 ou X; limite ≥ 0 ou vazio. Duplicata banco+agência+conta → 400. Conta antiga com slug de banco ou sem dígito continua listada, mas precisa selecionar o banco oficial e informar o dígito na próxima edição. Se a BrasilAPI falhar, o backend reutiliza o último cache disponível; sem cache, responde 502. **Parâmetros de Boleto não mudam** e continuam com a lista própria de seis bancos. **Baixa:** `POST /contas-a-pagar/baixas` e `POST /contas-a-receber/baixas` exigem `contaId` de conta **ativa** da empresa; grava em `ContaPagarBaixa.contaEmpresaId` / `ContaReceberBaixa.contaEmpresaId`. Baixas já gravadas permanecem com conta vazia (— no histórico).
 
@@ -4641,19 +4755,21 @@ Legado API
 | Limite de cheque especial | Limite | Não | Usuário | Digitação | `ContaEmpresa.limiteChequeEspecial` | Moeda BR | ≥ 0; Caixa ignora |
 | Ativo | Situação | Sim | Usuário | Checkbox / Desativar | `ContaEmpresa.ativo` | Inativo permanece na lista | PATCH `/ativo` |
 
-**Efeitos em cadeia:** Contas a Pagar/Receber · aba Baixas lista só contas **ativas**; inativar tira do seletor. Histórico de baixas exibe o **Nome** da conta. Auditoria grava criar/editar em `ContaEmpresa`.
+**Efeitos em cadeia:** a sessão mantém a chave `contas` para autorização e vínculo nos papéis, embora o item não apareça isolado no menu. API e dados cadastrados permanecem iguais, sem migração. Contas a Pagar/Receber · aba Baixas lista só contas **ativas**; inativar tira do seletor. Histórico de baixas exibe o **Nome** da conta. Auditoria grava criar/editar em `ContaEmpresa`.
 
 **Como validar**
 
 | # | Ação | Resultado esperado |
 | --- | --- | --- |
-| 1 | Financeiro → Contas com `financeiro:view` | Lista carrega |
+| 1 | Configurações → Financeiro → Contas com página `contas` e `financeiro:view` | Lista carrega; `/contas` redireciona |
 | 2 | Nova conta Caixa só com nome | Grava; grade sem banco/agência/CC |
 | 3 | Bancária sem agência ou sem dígito da conta | 400; mensagem no formulário |
 | 4 | Mesmo nome duas vezes | 400 nome duplicado |
 | 5 | Desativar e Ativar | Situação alterna |
-| 6 | Usuário só `estoque:view` | Menu sem Contas; `/contas` → `/inicio` |
+| 6 | Usuário sem página Contas | Não vê a seção Contas; `/contas` → `/inicio` |
 | 7 | BrasilAPI fora depois de uma consulta bem-sucedida | Lista usa o cache; sem cache, mostra falha e permite tentar novamente |
+| 8 | Perfil autorizado só para Contas, sem Configurações | Menu Configurações aparece; somente Financeiro → Contas, inclusive com outra aba forçada na URL |
+| 9 | Configurações sem a página Contas | Não exibe nem consulta o cadastro de Contas |
 
 ---
 
@@ -5227,41 +5343,29 @@ Regra de ouro: o código do endereço tem **sempre** 6 segmentos com hífen: `LO
 
 ### 7.26 Precificação pós-entrada (permanente)
 
-Regra de ouro: depois da NFe 55 consolidada, a **Precificação** forma o preço de venda **por dentro** (`preço = custo contábil / (1 − carga%)`). Não reescreve o kardex nem o custo da Auditoria.
+**Custo contábil:** formação de aquisição por unidade de venda; usa vProd − vDesc + despesas integrantes + tributos adicionais − créditos aplicáveis. ICMS/PIS/COFINS embutidos não são somados novamente. Regras por empresa, CFOP de entrada e CST/CSOSN decidem elegibilidade. ICMS padrão prevalece sobre XML na base configurada. A memória mostra custo por unidade NF e por unidade de venda (qCom × multiplicador). Sem informações suficientes, mostrar prévia pendente e impedir confirmação/preço do item.
 
+**Escopo e fórmula de venda:** somente NFe 55 Revenda consolidada da empresa ativa. Preço = custo por unidade de venda / (1 − (Total Venda + % Vr.adic + % Marg)/100). Carga ≥ 100%, custo ≤ 0 ou produto não vinculado impedem preço. CBS, IBS e juros continuam fora do divisor. Custo da Auditoria e kardex mantêm a fórmula anterior.
 
-| Regra                | Detalhe                                                                                                                                     |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Escopo               | Só NFe 55 `entrada_consolidada` da empresa da sessão. NFS-e / CT-e / outro tenant → 404                                                     |
-| Determinante         | Um `ParametrizacaoCustoVenda` por empresa (Configurações → Vendas, só admin). Sem competência. Mudar 10→11 **não** reescreve o catálogo     |
-| Custo da entrada     | Mesma fórmula da Auditoria (mercadoria + frete + IPI ÷ unidade de venda). Continua no dossiê / kardex                                       |
-| Custo contábil       | Mercadoria + frete lançado + IPI + seguro (`vSeg`) + outras (`vOutro`) − crédito ICMS − crédito PIS − crédito COFINS, ÷ unidade de venda. Frete remetente / sem rateio → frete 0 |
-| Crédito ICMS         | `vICMS` do XML do item quando presente (inclusive 0); sem tag / null → **12% da mercadoria** (benefício fiscal). Flag do CFOP **não** zera nesta grade |
-| Crédito PIS / COFINS | `vPIS` / `vCOFINS` do XML; sem tag → 0; **não** inventa `p% × base`                                                                         |
-| Encargos             | Total Venda do determinante da empresa (PIS + COFINS + Imp. renda + CS + custo fixo + comissão). Sem cadastro → 0                           |
-| Fora do divisor      | CBS, IBS e juros — aparecem no cabeçalho e **não** entram na carga nesta fase                                                               |
-| Fórmula              | `carga% = TotalVenda% + vrAdic% + margem%`; se `carga% >= 100` recusa; `precoFormado = custoContabil / (1 − carga%/100)`                    |
-| Custo contábil ≤ 0   | Recusa a formação (crédito maior que o custo)                                                                                               |
-| Preço digitado       | `margem% = (1 − (encargos% + vrAdic%)/100 − custoContabil/preco) × 100`                                                                     |
-| Item sem produto     | Linha visível; créditos/custos se der para calcular; preço desabilitado; não grava                                                          |
-| Gravar               | Só `Produto.precoVenda`; **não** sobrescreve `precoCusto`. Auditoria `editar` / `produto`                                                   |
-| Permissão            | Ver: página `auditoria-entradas`. Gravar: `produtos:edit`. Vendas: só admin                                                                 |
-| Fora desta fase      | % de crédito no cadastro do produto, recalcular todos os SKUs ao gravar Vendas, ST, desconto, atacado, CBS/IBS no divisor, igualar formação, rateio de totais `ICMSTot/vSeg`/`vOutro` |
+**Tributos:** identificar grupos e CST/CSOSN por tributo. ICMS próprio, PIS e COFINS embutidos não aumentam o bruto; imposto adicional entra uma vez e, quando recuperável, tem crédito separado. II usa sem_cst. vICMSST/vFCPST não se confundem com tributos retidos anteriormente. No modo nota, ICMS usa vICMS ou vCredICMSSN do grupo Simples; não inventar percentual de crédito. Crédito do CT-e mantém cálculo/rateio vigente e só é usado com regra aplicável aos itens e frete destinatário. No modo nota, ICMS faltante no CT-e aplicável deixa pendência. A memória guarda fontes CT-e, base de rateio ou base proporcional do frete vinculado e origem/percentual do crédito.
 
+**Conferência:** vProd é a referência, qCom × vUnCom é conferência. Somatórios contra ICMSTot têm tolerância R$ 0,01. Totais não são somados novamente. Diferenças positivas de frete/seguro/outras exigem um ajuste residual explícito, para ratear ou excluir. Diferenças negativas, XML incompleto, valores inválidos, grupos tributáveis sem valores e composição do total não suportada deixam pendência. Devolução de IPI, desoneração e tributos da reforma não suportados exigem revisão.
 
-**Norte / decisões travadas** (ler antes de mexer de novo na Precificação — chamado Avadesk `70653cc2`, custo contábil):
+**Rateio:** despesas externas ou residuais por valor líquido, qCom, peso total da linha ou volume total. Peso informado na nota prevalece; depois peso do XML ou peso do produto × quantidade NF. Volume exige preenchimento na nota. Base ausente/não positiva bloqueia critério sem fallback. Distribuição decimal por maiores restos preserva centavos; despesa excluída não compõe custo. Não cria contas a pagar.
 
-| Tema | Situação atual | O que **não** fazer sem pedido explícito + atualizar esta seção |
-| ---- | -------------- | --------------------------------------------------------------- |
-| Seguro / outras despesas | Só `prod/vSeg` e `prod/vOutro` **do item**. Sem tag → 0. | **Não** inventar rateio de `ICMSTot/vSeg` ou `ICMSTot/vOutro` até o Paulo pedir. Se pedir: implementar rateio + testes + atualizar esta linha e a ficha §6.17k. |
-| Crédito ICMS (benefício 12%) | `vICMS` presente (finito) → usa o valor da nota, **inclusive 0**. Só `null` / sem tag → **12% da mercadoria**. Flag do CFOP **não** zera nesta grade. | **Não** “sempre 12% ignorando a nota” nem tratar `vICMS = 0` como ausente (isso cairia no 12%). Constante: `ALIQUOTA_CREDITO_ICMS_BENEFICIO = 12` em `custo-comercial-entrada.ts`. |
-| Preço no cadastro | A grade **recalcula** custo/preço sugerido ao abrir. `Produto.precoVenda` **só** muda no **Gravar**. | **Não** reescrever o catálogo ao abrir a grade, ao mudar Vendas ou ao recalcular custo. Operador precisa gravar de novo se quiser o preço novo no produto. |
-| Frete na fórmula | Só `custoFreteRateado` (CT-e já lançado). | **Não** somar `vFrete` da NF (duplicaria com o frete lançado). |
-| Kardex / Custo da entrada | Fórmula antiga (mercadoria + frete + IPI, sem abater crédito). | **Não** unificar com o custo contábil sem decisão explícita. |
+**Frete:** vFrete da NF-e passa a integrar custo. Com CT-e lançado e vFrete, decisão explícita entre distintos, somente NF-e ou somente CT-e. Usar NF-e exclui o custo e crédito CT-e; usar CT-e exclui vFrete/residual de frete. Sem decisão, nenhum custo é confirmado.
 
-**Onde olhar no código:** `custo-comercial-entrada.ts` (`calcularCustoContabilEntrada`, `creditoIcmsContabil`), `formacao-preco-venda.ts`, `servico-precificacao-entrada.ts`, `parser-xml-nfe.ts` (`mapaImpostosPorNItemDoXml`, `mapaDespesasPorNItemDoXml`), `GET/PUT /entrada-notas/:id/precificacao`, `GET/PUT /configuracoes/parametrizacao-custos`, `frontend/app/auditoria-entradas/[id]/precificacao/page.tsx`, testes `custo-comercial-entrada.test.ts` / `formacao-preco-venda.test.ts` / `parser-impostos-item.test.ts` / `parametrizacao-custos.test.ts`, §6.16 / §6.17k.
+**Histórico e concorrência:** GET gera prévia sem gravar. Confirmação grava memória imutável por nota/nItem, ligada ao hash XML, ID atual, versão de cálculo, autor e data. XML/regras/ajustes/frete/CFOP/multiplicador/produto alterados invalidam a revisão. Memórias anteriores permanecem após reprocessar itens. Gravações transacionais serializáveis; conflito/revisão antiga retorna 409 e preserva preços. Nota antiga usa regras atuais como prévia, sem backfill de preços.
 
----
+**Contratos:** GET/PUT `/entrada-notas/:id/precificacao`; PUT `/precificacao/ajustes` ({ revisao, ajustes }); POST `/precificacao/ajustes/previa` (simulação sem escrita); POST `/precificacao/confirmar-custo` ({ revisao, itemIds }); GET `/precificacao/memorias`. Consulta exige acesso à Auditoria; alterações exigem produtos:edit. Todos os IDs pertencem à nota/empresa. Clientes antigos só podem omitir itemId quando produto tem uma linha e custo vigente confirmado.
+
+**Dados:** `NfeRecebidaItem.dadosCustoXml` e `previaCustoXml`; `RegraFiscal.baseIcms`/`operacoes`; `CustoEntradaAjuste`; `CustoEntradaMemoria`. Migração aditiva `20261014160000_formacao_custo_nfe` conserva regras e preços; base existente bruto, sem regras presumidas.
+
+**Onde olhar:** `parser-custo-nfe.ts`, `parser-xml-nfe.ts` (`extrairItensDoXml`), `formacao-custo-aquisicao.ts` (`formarCustosNota`, `calcularCustoAquisicaoItem`), `servico-precificacao-entrada.ts` (`obterFormacao`, `confirmarCusto`, `gravarPrecos`), `esquema-custo-aquisicao.ts`, `painel-custo-aquisicao.tsx`, `memoria-custo-aquisicao.tsx`, tela Precificação. Testes: `formacao-custo-aquisicao.test.ts`, `servico-precificacao-regras-fiscais.test.ts`, `custo-aquisicao.test.tsx`.
+
+**Norte / decisões travadas:** preservar estoque/Auditoria e preços anteriores; não aplicar crédito sem regra; não somar total sobre itens; não contornar pendência com senha; confirmar memória antes de gravar preço. As antigas restrições a desconto/ST/rateio de totais e vFrete na Precificação foram substituídas explicitamente pelo PRD de formação de custo.
+
+**Validação desta entrega (14/10/2026):** 334 testes selecionados aprovados (320 backend, 10 interface e 4 PostgreSQL descartável). Migração aplicada sobre schema anterior, configuração existente preservada e comparação Prisma sem diferenças. O bundle frontend compilou; o build completo permanece bloqueado pelo erro de tipos existente em `app/pedidos-venda/[id]/page.tsx` (`ProtegerRota` recebe `permissao`). O deploy de todas as migrações encontrou a pasta antiga `20260827140000_dda_c6_bank` sem `migration.sql`; essa pasta foi preservada. Banco de uso não migrado, sem publicação e sem confirmação visual no navegador.
 
 ### 7.27 Requisições WMS — execução e kardex (permanente)
 
@@ -5324,9 +5428,13 @@ Produto `controlaEstoque=false`: tarefa ok, zero movimento. Chaves: `reqwms:{id}
 
 **Como usar — Guardar mercadorias:** em **Logística → Guardar mercadorias**, veja o que consolidou e ainda não foi para o endereço. **Guardar** abre o bip: produto (barras, não o código interno) e depois o endereço. Sem endereço ou sem barras no cadastro, a linha fica visível e o botão não inicia. Detalhe na ficha §6.17m. Manual para o operador (atribuir em Requisições + guardar): `manuais/guardar-mercadorias-passo-a-passo.pdf`.
 
+**Como usar — Regras Fiscais:** administrador confere empresa ativa e abre Configurações → Fiscal → Regras Fiscais. Escolhe origem dos créditos e base do ICMS padrão. Em Nova regra, seleciona CFOP de entrada, tributo, CST/CSOSN, recuperabilidade e composição; Adicionar à lista → Salvar. Para II use sem_cst. As decisões fiscais devem ser preenchidas pelo responsável da empresa.
+
 **Como usar — Parametrização de custos:** administrador abre **Configurações → Vendas** e grava os percentuais da **empresa ativa** (não há seletor de mês nem de outra empresa). O **Total** soma só o bloco Venda. Juros, CBS e IBS ficam fora. Esses percentuais alimentam **só** a grade de Precificação; **não** alteram o custo da Auditoria nem o kardex. Mudar o determinante **não** reescreve os preços já gravados no cadastro.
 
-**Como usar — Precificação:** na lista **Auditoria de entradas**, **Precificar** abre a grade da nota. Arraste a **barra horizontal** (uma só para todos os itens) para ver as colunas — nome e SKU ficam fixos à esquerda. Confira frete, despesas, créditos e **custo contábil**; ajuste **% Vr.adic**, **% Marg** ou o **preço formado** e clique **Gravar** — o cadastro do produto recebe o **Preço de venda**. Clicar na linha da lista continua abrindo o dossiê só leitura. Endereço WMS, quando a operação precisar guardar a peça, continua em Estrutura/Endereços — ainda sem amarrar nesta tela.
+**Como usar — Auditoria:** abra **Auditoria de entradas → Pendentes**, clique na nota e confira os detalhes. Clique **Auditada** para concluir; consulte **Concluídas** para ver responsável e data. Uso e consumo e serviço não exibem Precificar.
+
+**Como usar — Precificação:** Auditoria de entradas → Precificar. Confira pendências e Memória. Abra Despesas e rateio, confira frete NF-e/CT-e, registre despesas e bases, Simular rateio → Salvar ajustes. Resolva pendências fiscais → Confirmar custos válidos. Ajuste % Vr.adic, % Marg ou Preço formado → Gravar preços válidos. Produto repetido exige marcar a linha que forma seu preço. Histórico de memórias mostra versões anteriores; mudar insumos exige reconfirmar. A barra horizontal única mantém nome/SKU fixos.
 
 **Como usar — Finalidade da entrada (NFe 55):** se o fornecedor tiver **só Revenda** ou **só Uso e Consumo**, a nota já vem marcada e o fluxo segue sem clique. Se tiver os dois tipos, escolha no Resumo (clique de novo na marcada desmarca). Para mudar um tipo único, habilite o outro em Fornecedores → Outros.
 

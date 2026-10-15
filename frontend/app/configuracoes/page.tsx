@@ -14,10 +14,12 @@ import { ListaDocumentosZapsign } from '@/components/assinatura-zapsign/lista-do
 import { PainelConfiguracaoFocusNfe } from '@/components/focus-nfe/painel-configuracao-focus-nfe'
 import { PainelUnidadesMedida } from '@/components/configuracoes/painel-unidades-medida'
 import { PainelParametrizacaoCustos } from '@/components/configuracoes/painel-parametrizacao-custos'
+import { PainelRegrasFiscais } from '@/components/configuracoes/painel-regras-fiscais'
 import { PainelTiposVeiculo } from '@/components/configuracoes/painel-tipos-veiculo'
 import { ConteudoDaPaginaEstruturaWms } from '@/app/estrutura-wms/conteudo-pagina-estrutura-wms'
 import { ConteudoDaPaginaCfops } from '@/app/cfops/conteudo-pagina-cfops'
 import { ConteudoDaPaginaPlanosFinanceiros } from '@/app/planos-financeiros/conteudo-pagina-planos-financeiros'
+import { ConteudoContas } from '@/app/contas/conteudo-contas'
 import { PainelRecorrenciasFinanceiras } from '@/components/recorrencias-financeiras/painel-recorrencias-financeiras'
 import { PainelAdquirentes } from '@/components/adquirentes/painel-adquirentes'
 import { PainelCartoesPagamento } from '@/components/cartoes-pagamento/painel-cartoes-pagamento'
@@ -33,6 +35,7 @@ import { ordenarLista } from '@/lib/ordenacao-lista'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { REGISTRO_DE_ACOES } from '@/lib/atalhos/registro-de-acoes'
+import { usuarioPossuiAcessoAPagina } from '@/services/autenticacao'
 import {
   montarAtalhosPadrao,
   teclaTemConflitoNavegador,
@@ -44,16 +47,16 @@ import {
 } from '@/lib/atalhos/interpretar-tecla'
 import type { AtalhoConfigurado, ChaveDaAcao } from '@/lib/atalhos/tipos'
 
-type AbaConfig = 'geral' | 'vendas' | 'logistica' | 'financeiro' | 'fiscal'
-type SecaoGeral = 'usuarios' | 'papeis' | 'assinatura' | 'atalhos'
-type SecaoFiscal = 'cfop' | 'buscador'
-type SecaoFinanceiro = 'planos' | 'recorrencia' | 'adquirentes' | 'cartoes' | 'boleto'
+type AbaConfig = 'geral' | 'vendas' | 'logistica' | 'financeiro' | 'fiscal' | 'integracoes'
+type SecaoGeral = 'usuarios' | 'papeis' | 'atalhos'
+type SecaoFiscal = 'cfop' | 'regras'
+type SecaoIntegracoes = 'assinatura' | 'buscador' | 'boleto'
+type SecaoFinanceiro = 'planos' | 'recorrencia' | 'adquirentes' | 'cartoes' | 'contas'
 type SecaoLogistica = 'unidades' | 'estrutura' | 'veiculos'
 
 const ABAS_GERAL = [
   { id: 'usuarios', rotulo: 'Usuários' },
   { id: 'papeis', rotulo: 'Papéis' },
-  { id: 'assinatura', rotulo: 'Assinatura digital' },
   { id: 'atalhos', rotulo: 'Atalhos' },
 ]
 
@@ -64,7 +67,7 @@ const ABAS_ASSINATURA = [
 
 const ABAS_FISCAL = [
   { id: 'cfop', rotulo: 'CFOP' },
-  { id: 'buscador', rotulo: 'Buscador de NF' },
+  { id: 'regras', rotulo: 'Regras Fiscais' },
 ]
 
 const ABAS_FINANCEIRO = [
@@ -72,6 +75,12 @@ const ABAS_FINANCEIRO = [
   { id: 'recorrencia', rotulo: 'Recorrência' },
   { id: 'adquirentes', rotulo: 'Adquirentes' },
   { id: 'cartoes', rotulo: 'Cartões de Pagamento' },
+  { id: 'contas', rotulo: 'Contas' },
+]
+
+const ABAS_INTEGRACOES = [
+  { id: 'assinatura', rotulo: 'Assinatura digital' },
+  { id: 'buscador', rotulo: 'Buscador de NF' },
   { id: 'boleto', rotulo: 'Boleto' },
 ]
 
@@ -372,51 +381,65 @@ function ConteudoDaPaginaDeConfiguracoes() {
   const searchParams = useSearchParams()
   const { perfil } = useSessaoDoUsuario()
   const ehAdmin = perfil?.ehAdmin === true
+  const temAcessoConfiguracoes = ehAdmin || usuarioPossuiAcessoAPagina(perfil, 'configuracoes')
   const podeFinanceiro = usePermissao('financeiro:view')
+  const podeContas =
+    (ehAdmin || usuarioPossuiAcessoAPagina(perfil, 'contas')) && podeFinanceiro
   const podeConfig = usePermissao('configuracoes:view')
 
   const podeProdutos = usePermissao('produtos:view')
   const podeEstoque = usePermissao('estoque:view')
   const podeGeral =
+    temAcessoConfiguracoes &&
     (ehAdmin || podeConfig) &&
     (usuarioTemAbaConfig(perfil, 'geral:usuarios') ||
       usuarioTemAbaConfig(perfil, 'geral:papeis') ||
-      usuarioTemAbaConfig(perfil, 'geral:assinatura:configuracao') ||
-      usuarioTemAbaConfig(perfil, 'geral:assinatura:documentos') ||
       usuarioTemAbaConfig(perfil, 'geral:atalhos'))
   const podeAssinatura =
+    temAcessoConfiguracoes &&
     ehAdmin &&
     (usuarioTemAbaConfig(perfil, 'geral:assinatura:configuracao') ||
       usuarioTemAbaConfig(perfil, 'geral:assinatura:documentos'))
   const podeAtalhos =
+    temAcessoConfiguracoes &&
     (ehAdmin || podeConfig) && usuarioTemAbaConfig(perfil, 'geral:atalhos')
   const podeUnidades =
+    temAcessoConfiguracoes &&
     (ehAdmin || podeConfig || podeProdutos) &&
     usuarioTemAbaConfig(perfil, 'logistica:unidades')
   const podeEstruturaWms =
+    temAcessoConfiguracoes &&
     (ehAdmin || podeEstoque) && usuarioTemAbaConfig(perfil, 'logistica:estrutura')
   const podeTiposVeiculo =
+    temAcessoConfiguracoes &&
     (ehAdmin || podeConfig) && usuarioTemAbaConfig(perfil, 'logistica:veiculos')
   const podeLogistica = podeUnidades || podeEstruturaWms || podeTiposVeiculo
-  const podeFinanceiroAba =
-    (ehAdmin || podeFinanceiro) &&
+  const podeFinanceiroConfiguracoes =
+    temAcessoConfiguracoes && (ehAdmin || podeFinanceiro) &&
     (usuarioTemAbaConfig(perfil, 'financeiro:planos:receitas') ||
       usuarioTemAbaConfig(perfil, 'financeiro:planos:despesas') ||
       usuarioTemAbaConfig(perfil, 'financeiro:planos:resultado') ||
       usuarioTemAbaConfig(perfil, 'financeiro:recorrencia') ||
       usuarioTemAbaConfig(perfil, 'financeiro:adquirentes') ||
-      usuarioTemAbaConfig(perfil, 'financeiro:cartoes') ||
-      usuarioTemAbaConfig(perfil, 'financeiro:boleto'))
+      usuarioTemAbaConfig(perfil, 'financeiro:cartoes'))
+  const podeFinanceiroAba = podeFinanceiroConfiguracoes || podeContas
   const podeFiscalCfop =
+    temAcessoConfiguracoes &&
     (ehAdmin || podeFinanceiro) && usuarioTemAbaConfig(perfil, 'fiscal:cfop')
-  const podeBuscadorNf = ehAdmin && usuarioTemAbaConfig(perfil, 'fiscal:buscador')
-  const podeFiscal = podeFiscalCfop || podeBuscadorNf
+  const podeBuscadorNf = temAcessoConfiguracoes && ehAdmin && usuarioTemAbaConfig(perfil, 'fiscal:buscador')
+  const podeRegrasFiscais = temAcessoConfiguracoes && ehAdmin && usuarioTemAbaConfig(perfil, 'fiscal:regras')
+  const podeFiscal = podeFiscalCfop || podeRegrasFiscais
+  const podeBoleto =
+    temAcessoConfiguracoes &&
+    (ehAdmin || podeFinanceiro) && usuarioTemAbaConfig(perfil, 'financeiro:boleto')
+  const podeIntegracoes = podeAssinatura || podeBuscadorNf || podeBoleto
   const podeVendasParam =
+    temAcessoConfiguracoes &&
     ehAdmin && usuarioTemAbaConfig(perfil, 'vendas:parametrizacao')
 
   const abasDisponiveis = useMemo(() => {
     const lista: Array<{ id: AbaConfig; rotulo: string }> = []
-    if (podeGeral || podeAssinatura || podeAtalhos) {
+    if (podeGeral || podeAtalhos) {
       lista.push({ id: 'geral', rotulo: 'Geral' })
     }
     if (podeVendasParam) {
@@ -425,10 +448,11 @@ function ConteudoDaPaginaDeConfiguracoes() {
     if (podeLogistica) lista.push({ id: 'logistica', rotulo: 'Logística' })
     if (podeFinanceiroAba) lista.push({ id: 'financeiro', rotulo: 'Financeiro' })
     if (podeFiscal) lista.push({ id: 'fiscal', rotulo: 'Fiscal' })
+    if (podeIntegracoes) lista.push({ id: 'integracoes', rotulo: 'Integrações' })
     return lista
   }, [
     podeGeral,
-    podeAssinatura,
+    podeIntegracoes,
     podeAtalhos,
     podeVendasParam,
     podeLogistica,
@@ -436,8 +460,34 @@ function ConteudoDaPaginaDeConfiguracoes() {
     podeFiscal,
   ])
 
-  const abaParam = searchParams.get('aba') as AbaConfig | null
+  const abaOriginal = searchParams.get('aba') as AbaConfig | null
   const secaoParam = searchParams.get('secao')
+  const integracaoLegada =
+    (abaOriginal === 'geral' && secaoParam === 'assinatura') ||
+    (abaOriginal === 'fiscal' && secaoParam === 'buscador') ||
+    (abaOriginal === 'financeiro' && secaoParam === 'boleto')
+  const abaParam = integracaoLegada ? 'integracoes' : abaOriginal
+
+  useEffect(() => {
+    if (!integracaoLegada) return
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('aba', 'integracoes')
+    router.replace(`/configuracoes?${params.toString()}`)
+  }, [integracaoLegada, router, searchParams])
+
+  const secoesIntegracoes = useMemo(
+    () => ABAS_INTEGRACOES.filter((s) => {
+      if (s.id === 'assinatura') return podeAssinatura
+      if (s.id === 'buscador') return podeBuscadorNf
+      return podeBoleto
+    }),
+    [podeAssinatura, podeBuscadorNf, podeBoleto]
+  )
+
+  const secaoIntegracoes: SecaoIntegracoes =
+    secoesIntegracoes.some((s) => s.id === secaoParam)
+      ? (secaoParam as SecaoIntegracoes)
+      : ((secoesIntegracoes[0]?.id as SecaoIntegracoes) ?? 'assinatura')
 
   const abaAtiva: AbaConfig = useMemo(() => {
     if (abaParam && abasDisponiveis.some((a) => a.id === abaParam)) return abaParam
@@ -447,10 +497,10 @@ function ConteudoDaPaginaDeConfiguracoes() {
   const secoesFiscal = useMemo(() => {
     return ABAS_FISCAL.filter((s) => {
       if (s.id === 'cfop') return podeFiscalCfop
-      if (s.id === 'buscador') return podeBuscadorNf
+      if (s.id === 'regras') return podeRegrasFiscais
       return false
     })
-  }, [podeFiscalCfop, podeBuscadorNf])
+  }, [podeFiscalCfop, podeRegrasFiscais])
 
   const secaoFiscal: SecaoFiscal = useMemo(() => {
     if (
@@ -463,19 +513,24 @@ function ConteudoDaPaginaDeConfiguracoes() {
     return (secoesFiscal[0]?.id as SecaoFiscal) ?? 'cfop'
   }, [abaAtiva, secaoParam, secoesFiscal])
 
-  const secaoFinanceiro: SecaoFinanceiro = useMemo(() => {
-    if (
-      abaAtiva === 'financeiro' &&
-      (secaoParam === 'planos' ||
-        secaoParam === 'recorrencia' ||
-        secaoParam === 'adquirentes' ||
-        secaoParam === 'cartoes' ||
-        secaoParam === 'boleto')
-    ) {
-      return secaoParam
-    }
-    return 'planos'
-  }, [abaAtiva, secaoParam])
+  const secoesFinanceiro = useMemo(
+    () => ABAS_FINANCEIRO.filter((s) => {
+      if (s.id === 'contas') return podeContas
+      if (!podeFinanceiroConfiguracoes) return false
+      if (s.id === 'planos') {
+        return ['receitas', 'despesas', 'resultado'].some((tipo) =>
+          usuarioTemAbaConfig(perfil, `financeiro:planos:${tipo}`)
+        )
+      }
+      return usuarioTemAbaConfig(perfil, `financeiro:${s.id}`)
+    }),
+    [podeContas, podeFinanceiroConfiguracoes, perfil]
+  )
+
+  const secaoFinanceiro: SecaoFinanceiro =
+    secoesFinanceiro.some((s) => s.id === secaoParam)
+      ? (secaoParam as SecaoFinanceiro)
+      : ((secoesFinanceiro[0]?.id as SecaoFinanceiro) ?? 'contas')
 
   const secoesLogistica = useMemo(() => {
     return ABAS_LOGISTICA.filter((s) => {
@@ -505,11 +560,10 @@ function ConteudoDaPaginaDeConfiguracoes() {
       if (s.id === 'papeis') {
         return ehAdmin && usuarioTemAbaConfig(perfil, 'geral:papeis')
       }
-      if (s.id === 'assinatura') return podeAssinatura
       if (s.id === 'atalhos') return podeAtalhos
       return false
     })
-  }, [ehAdmin, podeAssinatura, podeAtalhos, perfil])
+  }, [ehAdmin, podeAtalhos, perfil])
 
   const secaoGeral: SecaoGeral = useMemo(() => {
     if (
@@ -527,6 +581,7 @@ function ConteudoDaPaginaDeConfiguracoes() {
     params.set('aba', id)
     if (id === 'geral' && secaoGeral) params.set('secao', secaoGeral)
     if (id === 'fiscal' && secaoFiscal) params.set('secao', secaoFiscal)
+    if (id === 'integracoes') params.set('secao', secaoIntegracoes)
     if (id === 'financeiro') params.set('secao', secaoFinanceiro)
     if (id === 'logistica' && secaoLogistica) params.set('secao', secaoLogistica)
     router.replace(`/configuracoes?${params.toString()}`)
@@ -567,7 +622,6 @@ function ConteudoDaPaginaDeConfiguracoes() {
           )}
           {secaoGeral === 'usuarios' && ehAdmin && <ConteudoDaPaginaDeUsuarios />}
           {secaoGeral === 'papeis' && ehAdmin && <ConteudoDaPaginaDePapeis />}
-          {secaoGeral === 'assinatura' && podeAssinatura && <SecaoAssinaturaDigital />}
           {secaoGeral === 'atalhos' && podeAtalhos && <SecaoAtalhosTeclado />}
           {secoesGeral.length === 0 && (
             <p className="text-sm text-muted-foreground">
@@ -601,7 +655,7 @@ function ConteudoDaPaginaDeConfiguracoes() {
       {abaAtiva === 'financeiro' && podeFinanceiroAba && (
         <div className="space-y-4">
           <Abas
-            abas={ABAS_FINANCEIRO}
+            abas={secoesFinanceiro}
             abaAtiva={secaoFinanceiro}
             aoMudar={mudarSecaoFinanceiro}
           />
@@ -609,7 +663,7 @@ function ConteudoDaPaginaDeConfiguracoes() {
           {secaoFinanceiro === 'recorrencia' && <PainelRecorrenciasFinanceiras />}
           {secaoFinanceiro === 'adquirentes' && <PainelAdquirentes />}
           {secaoFinanceiro === 'cartoes' && <PainelCartoesPagamento />}
-          {secaoFinanceiro === 'boleto' && <PainelParametrosBoleto />}
+          {secaoFinanceiro === 'contas' && podeContas && <ConteudoContas />}
         </div>
       )}
 
@@ -617,7 +671,19 @@ function ConteudoDaPaginaDeConfiguracoes() {
         <div className="space-y-4">
           <Abas abas={secoesFiscal} abaAtiva={secaoFiscal} aoMudar={mudarSecaoFiscal} />
           {secaoFiscal === 'cfop' && podeFiscalCfop && <ConteudoDaPaginaCfops />}
-          {secaoFiscal === 'buscador' && podeBuscadorNf && (
+          {secaoFiscal === 'regras' && podeRegrasFiscais && <PainelRegrasFiscais />}
+        </div>
+      )}
+      {abaAtiva === 'integracoes' && podeIntegracoes && (
+        <div className="space-y-4">
+          <Abas
+            abas={secoesIntegracoes}
+            abaAtiva={secaoIntegracoes}
+            aoMudar={(id) => router.replace(`/configuracoes?aba=integracoes&secao=${id}`)}
+          />
+          {secaoIntegracoes === 'assinatura' && podeAssinatura && <SecaoAssinaturaDigital />}
+          {secaoIntegracoes === 'boleto' && podeBoleto && <PainelParametrosBoleto />}
+          {secaoIntegracoes === 'buscador' && podeBuscadorNf && (
             <div className="space-y-4">
               <div>
                 <h2 className="text-lg font-semibold tracking-tight">Buscador de NF</h2>
@@ -636,7 +702,7 @@ function ConteudoDaPaginaDeConfiguracoes() {
 
 export default function PaginaDeConfiguracoes() {
   return (
-    <ProtegerRota chaveDaPagina="configuracoes">
+    <ProtegerRota chavesDaPagina={['configuracoes', 'contas']}>
       <Suspense fallback={<p className="text-sm text-muted-foreground">Carregando…</p>}>
         <ConteudoDaPaginaDeConfiguracoes />
       </Suspense>

@@ -11,6 +11,8 @@ datasource db {
 }
 
 model Company {
+  ajustesCustoEntrada          CustoEntradaAjuste[]
+  memoriasCustoEntrada         CustoEntradaMemoria[]
   id                          String                       @id @default(uuid())
   name                        String
   cnpj                        String                       @unique
@@ -69,6 +71,7 @@ model Company {
   niveisEnderecoWms           NivelEnderecoWms[]
   requisicoesWms              RequisicaoWms[]
   parametrizacaoCustoVenda    ParametrizacaoCustoVenda?
+  regraFiscal                 RegraFiscal?
   configuracoesBoleto         ConfiguracaoBoleto[]
   contasEmpresa               ContaEmpresa[]
   extratosBancarios           ExtratoBancario[]
@@ -76,8 +79,23 @@ model Company {
   createdAt                   DateTime                     @default(now())
 }
 
-// ─── Parâmetros de boleto (Configurações → Financeiro → Boleto) ───────────────
+// Regras Fiscais por empresa (Configurações → Fiscal).
 
+model RegraFiscal {
+  id                  String   @id @default(uuid())
+  companyId           String   @unique
+  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  mercadoriaModo      String   @default("nota")
+  mercadoriaAliquota  Decimal? @db.Decimal(7, 4)
+  transporteModo      String   @default("nota")
+  transporteAliquota  Decimal? @db.Decimal(7, 4)
+  baseIcms            String   @default("bruto")
+  operacoes           Json     @default("[]")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+// ─── Parâmetros de boleto (Configurações → Integrações → Boleto) ───────────────
 model ConfiguracaoBoleto {
   id                              String    @id @default(uuid())
   companyId                       String
@@ -232,6 +250,8 @@ model FocusNfeJob {
 }
 
 model NfeRecebida {
+  ajusteCusto                 CustoEntradaAjuste?
+  memoriasCusto               CustoEntradaMemoria[]
   id                       String                    @id @default(uuid())
   companyId                String
   company                  Company                   @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -250,6 +270,9 @@ model NfeRecebida {
   versaoFocus              Int                       @default(0)
   /// pendente | em_analise | stand_by | com_problema | problema_resolvido | aguardando_chegada | entrada_contagem | entrada_contagem_ok | entrada_contagem_divergente | pronta_para_consolidar | entrada_consolidada | cancelada
   statusEntrada            String                    @default("pendente")
+  auditadaEm               DateTime?
+  auditadaPorId            String?
+  auditadaPorNome          String?
   /// NFe 55: revenda | uso_consumo | null (obrigatório clique explícito em análise)
   finalidadeEntrada        String?
   /// focus | xml
@@ -321,6 +344,38 @@ model NfeRecebida {
 }
 
 /// Anexo da NfeRecebida (hoje só a ressalva assinada da divergência de contagem).
+model CustoEntradaAjuste {
+  id             String      @id @default(uuid())
+  companyId      String
+  company        Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  nfeRecebidaId  String      @unique
+  nota           NfeRecebida @relation(fields: [nfeRecebidaId], references: [id], onDelete: Cascade)
+  dados          Json
+  revisao        Int         @default(1)
+  usuarioId      String
+  updatedAt      DateTime    @updatedAt
+  @@index([companyId])
+}
+
+// Append-only: no FK to the replaceable item row. nItem + XML hash preserve provenance.
+model CustoEntradaMemoria {
+  id             String      @id @default(uuid())
+  companyId      String
+  company        Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  nfeRecebidaId  String
+  nota           NfeRecebida @relation(fields: [nfeRecebidaId], references: [id], onDelete: Cascade)
+  itemId         String
+  nItem          Int
+  revisao        String
+  xmlHash        String
+  versaoCalculo  Int         @default(1)
+  dados          Json
+  usuarioId      String
+  createdAt      DateTime    @default(now())
+  @@unique([companyId, nfeRecebidaId, nItem, revisao])
+  @@index([companyId, nfeRecebidaId, createdAt])
+}
+
 model NfeRecebidaAnexo {
   id             String      @id @default(uuid())
   companyId      String
@@ -650,6 +705,8 @@ model NfeRecebidaItem {
   quantidade        Decimal?    @db.Decimal(18, 4)
   valorUnitario     Decimal?    @db.Decimal(18, 4)
   valorTotal        Decimal?    @db.Decimal(18, 2)
+  dadosCustoXml     Json?
+  previaCustoXml    Json?
   /// Peso líquido do item no XML (kg), se houver
   pesoKg            Decimal?    @db.Decimal(18, 4)
   produtoId         String?

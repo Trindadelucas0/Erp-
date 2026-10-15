@@ -2,6 +2,7 @@
  * Esquemas Zod — Entrada de Notas / pipeline.
  */
 import { z } from 'zod'
+import { esquemaRegrasFiscais } from '../configuracoes/esquema-regras-fiscais.js'
 
 export const esquemaVincularItem = z.object({
   itemId: z.string().uuid(),
@@ -177,10 +178,14 @@ export const esquemaFinanceiroDocumental = z
   )
 
 export const esquemaGravarPrecificacao = z.object({
+  revisaoCusto: z.string().min(1).optional(),
+  regrasFiscais: esquemaRegrasFiscais.optional(),
   itens: z
     .array(
       z.object({
         produtoId: z.string().uuid('Produto inválido'),
+        itemId: z.string().uuid('Item inválido').optional(),
+        vrAdicPercentual: z.number().finite().min(0).optional(),
         precoVenda: z.coerce
           .number({ invalid_type_error: 'Preço de venda inválido' })
           .finite('Preço de venda inválido')

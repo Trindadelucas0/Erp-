@@ -1,6 +1,7 @@
 /**
  * Controlador HTTP — Entrada de Notas (pipeline).
  */
+import { auditarEntrada } from './servico-auditoria-entrada.js'
 import { readFile } from 'node:fs/promises'
 import { FastifyReply, FastifyRequest } from 'fastify'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
@@ -35,6 +36,7 @@ import {
   esquemaGravarPrecificacao,
 } from './esquema-entrada-notas.js'
 import { servicoPrecificacaoEntrada } from './servico-precificacao-entrada.js'
+import { esquemaSalvarAjustes, esquemaConfirmarCusto } from './esquema-custo-aquisicao.js'
 
 function companyIdDe(requisicao: FastifyRequest): string {
   const companyId = requisicao.empresaAtivaId || ''
@@ -51,6 +53,10 @@ function usuarioIdDe(requisicao: FastifyRequest): string {
 function notaIdDe(requisicao: FastifyRequest): string {
   const { id } = requisicao.params as { id: string }
   return id
+}
+
+async function auditar(requisicao: FastifyRequest, resposta: FastifyReply) {
+  return resposta.send(await auditarEntrada(companyIdDe(requisicao), notaIdDe(requisicao), usuarioIdDe(requisicao)))
 }
 
 async function detalhe(requisicao: FastifyRequest, resposta: FastifyReply) {
@@ -476,12 +482,38 @@ async function gravarPrecificacao(requisicao: FastifyRequest, resposta: FastifyR
     companyIdDe(requisicao),
     notaIdDe(requisicao),
     usuarioIdDe(requisicao),
-    parsed.data.itens
+    parsed.data.itens,
+    parsed.data.regrasFiscais,
+    parsed.data.revisaoCusto
   )
   return resposta.send(dados)
 }
 
+async function salvarAjustesCusto(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parsed = esquemaSalvarAjustes.safeParse(requisicao.body)
+  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
+  return resposta.send(await servicoPrecificacaoEntrada.salvarAjustes(companyIdDe(requisicao), notaIdDe(requisicao), usuarioIdDe(requisicao), parsed.data.revisao, parsed.data.ajustes))
+}
+async function confirmarCusto(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parsed = esquemaConfirmarCusto.safeParse(requisicao.body)
+  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
+  return resposta.send(await servicoPrecificacaoEntrada.confirmarCusto(companyIdDe(requisicao), notaIdDe(requisicao), usuarioIdDe(requisicao), parsed.data.revisao, parsed.data.itemIds))
+}
+async function listarMemoriasCusto(requisicao: FastifyRequest, resposta: FastifyReply) {
+  return resposta.send(await servicoPrecificacaoEntrada.listarMemorias(companyIdDe(requisicao), notaIdDe(requisicao)))
+}
+async function simularAjustesCusto(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parsed = esquemaSalvarAjustes.safeParse(requisicao.body)
+  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
+  return resposta.send(await servicoPrecificacaoEntrada.simularAjustes(companyIdDe(requisicao), notaIdDe(requisicao), parsed.data.revisao, parsed.data.ajustes))
+}
+
 export const controladorEntradaNotas = {
+  simularAjustesCusto,
+  salvarAjustesCusto,
+  confirmarCusto,
+  listarMemoriasCusto,
+  auditar,
   detalhe,
   analisar,
   vincularItem,

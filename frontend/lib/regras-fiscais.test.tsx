@@ -1,0 +1,47 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { PainelRegrasFiscais } from '@/components/configuracoes/painel-regras-fiscais'
+const mocks = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }))
+vi.mock('@/services/api', () => ({ clienteHttp: mocks }))
+const padrao = { mercadoria: { modo: 'nota', aliquota: null }, transporte: { modo: 'nota', aliquota: null } }
+describe('Regras Fiscais', () => {
+  beforeEach(() => { vi.resetAllMocks(); mocks.get.mockResolvedValue({ data: { regras: padrao } }); mocks.put.mockResolvedValue({ data: { regras: padrao } }) })
+  it('carrega, escolhe os modos independentes, salva vírgula e reabre', async () => {
+    const { unmount } = render(<PainelRegrasFiscais />)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Salvar' })).not.toBeDisabled())
+    const grupo = within(screen.getByRole('group', { name: 'Crédito de ICMS da mercadoria' }))
+    expect(grupo.getByLabelText('Alíquota (%)')).toBeDisabled()
+    fireEvent.click(grupo.getByLabelText('Alíquota pré-definida'))
+    fireEvent.change(grupo.getByLabelText(/Alíquota \(%\)/), { target: { value: '12,5' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+    expect(await screen.findByText('Regras fiscais salvas')).toBeTruthy()
+    expect(mocks.put).toHaveBeenCalledWith('/configuracoes/regras-fiscais', { ...padrao, baseIcms: 'bruto', operacoes: [], mercadoria: { modo: 'pre_definida', aliquota: 12.5 } })
+    unmount()
+    mocks.get.mockResolvedValue({ data: { regras: { ...padrao, mercadoria: { modo: 'pre_definida', aliquota: 12.5 } } } })
+    render(<PainelRegrasFiscais />)
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Crédito de ICMS da mercadoria' })).toBeTruthy())
+    await waitFor(() => expect(within(screen.getByRole('group', { name: 'Crédito de ICMS da mercadoria' })).getByLabelText(/Alíquota \(%\)/)).toHaveValue('12.5'))
+  })
+  it('falha no salvamento preserva o formulário e alíquota zero é válida', async () => {
+    mocks.put.mockRejectedValue(new Error('Falha'))
+    render(<PainelRegrasFiscais />)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Salvar' })).not.toBeDisabled())
+    const grupo = within(screen.getByRole('group', { name: 'Crédito de ICMS do conhecimento de transporte' }))
+    fireEvent.click(grupo.getByLabelText('Alíquota pré-definida'))
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('informe uma alíquota')
+    expect(mocks.put).not.toHaveBeenCalled()
+    fireEvent.change(grupo.getByLabelText(/Alíquota \(%\)/), { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Falha'))
+    expect(grupo.getByLabelText(/Alíquota \(%\)/)).toHaveValue('0')
+    expect(grupo.getByLabelText('Alíquota pré-definida')).toBeChecked()
+  })
+  it('falha ao carregar impede salvar valores padrão sobre configuração existente', async () => {
+    mocks.get.mockRejectedValue(new Error('Falha'))
+    render(<PainelRegrasFiscais />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Falha')
+    expect(screen.getByRole('button', { name: 'Salvar' })).toBeDisabled()
+    expect(mocks.put).not.toHaveBeenCalled()
+  })
+})

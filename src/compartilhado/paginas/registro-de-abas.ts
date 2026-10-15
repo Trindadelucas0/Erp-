@@ -57,8 +57,8 @@ const ABAS_ESTOQUE: AbaCatalogo[] = [
 const ABAS_CONFIGURACOES: AbaCatalogo[] = [
   { id: 'geral:usuarios', rotulo: 'Geral — Usuários' },
   { id: 'geral:papeis', rotulo: 'Geral — Papéis' },
-  { id: 'geral:assinatura:configuracao', rotulo: 'Geral — Assinatura — Configuração' },
-  { id: 'geral:assinatura:documentos', rotulo: 'Geral — Assinatura — Documentos' },
+  { id: 'geral:assinatura:configuracao', rotulo: 'Integrações — Assinatura — Configuração' },
+  { id: 'geral:assinatura:documentos', rotulo: 'Integrações — Assinatura — Documentos' },
   { id: 'geral:atalhos', rotulo: 'Geral — Atalhos' },
   { id: 'vendas:parametrizacao', rotulo: 'Vendas — Parametrização de custos' },
   { id: 'logistica:unidades', rotulo: 'Logística — Unidades de medida' },
@@ -70,9 +70,10 @@ const ABAS_CONFIGURACOES: AbaCatalogo[] = [
   { id: 'financeiro:recorrencia', rotulo: 'Financeiro — Recorrência' },
   { id: 'financeiro:adquirentes', rotulo: 'Financeiro — Adquirentes' },
   { id: 'financeiro:cartoes', rotulo: 'Financeiro — Cartões de Pagamento' },
-  { id: 'financeiro:boleto', rotulo: 'Financeiro — Boleto' },
+  { id: 'financeiro:boleto', rotulo: 'Integrações — Boleto' },
   { id: 'fiscal:cfop', rotulo: 'Fiscal — CFOP' },
-  { id: 'fiscal:buscador', rotulo: 'Fiscal — Buscador de NF' },
+  { id: 'fiscal:regras', rotulo: 'Fiscal — Regras Fiscais' },
+  { id: 'fiscal:buscador', rotulo: 'Integrações — Buscador de NF' },
 ]
 
 const ABAS_POR_PAGINA: Record<string, AbaCatalogo[]> = {
@@ -198,7 +199,7 @@ export function tabKeyConfiguracoes(
 ): string | null {
   if (aba === 'geral' && secao === 'usuarios') return 'geral:usuarios'
   if (aba === 'geral' && secao === 'papeis') return 'geral:papeis'
-  if (aba === 'geral' && secao === 'assinatura') {
+  if ((aba === 'geral' || aba === 'integracoes') && secao === 'assinatura') {
     if (subAbaAssinatura === 'documentos') return 'geral:assinatura:documentos'
     return 'geral:assinatura:configuracao'
   }
@@ -215,8 +216,9 @@ export function tabKeyConfiguracoes(
   if (aba === 'financeiro' && secao === 'recorrencia') return 'financeiro:recorrencia'
   if (aba === 'financeiro' && secao === 'adquirentes') return 'financeiro:adquirentes'
   if (aba === 'financeiro' && secao === 'cartoes') return 'financeiro:cartoes'
-  if (aba === 'financeiro' && secao === 'boleto') return 'financeiro:boleto'
+  if ((aba === 'financeiro' || aba === 'integracoes') && secao === 'boleto') return 'financeiro:boleto'
   if (aba === 'fiscal' && secao === 'cfop') return 'fiscal:cfop'
-  if (aba === 'fiscal' && secao === 'buscador') return 'fiscal:buscador'
+  if (aba === 'fiscal' && secao === 'regras') return 'fiscal:regras'
+  if ((aba === 'fiscal' || aba === 'integracoes') && secao === 'buscador') return 'fiscal:buscador'
   return null
 }

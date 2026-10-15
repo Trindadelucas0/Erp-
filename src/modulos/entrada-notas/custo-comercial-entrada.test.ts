@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ALIQUOTA_CREDITO_ICMS_BENEFICIO,
   calcularCustoContabilEntrada,
   creditoIcmsContabil,
 } from './custo-comercial-entrada.js'
@@ -11,11 +10,14 @@ describe('creditoIcmsContabil', () => {
     expect(creditoIcmsContabil(0, 1, 100)).toBe(0)
   })
 
-  it('sem vICMS aplica 12% da mercadoria', () => {
-    expect(creditoIcmsContabil(null, 2, 50)).toBe(12)
-    expect(creditoIcmsContabil(undefined, 1, 100)).toBe(
-      (100 * ALIQUOTA_CREDITO_ICMS_BENEFICIO) / 100
-    )
+  it('sem vICMS retorna zero no modo nota', () => {
+    expect(creditoIcmsContabil(null, 2, 50)).toBe(0)
+    expect(creditoIcmsContabil(undefined, 1, 100)).toBe(0)
+  })
+
+  it('modo pré-definido ignora o XML e usa a mercadoria', () => {
+    expect(creditoIcmsContabil(18, 2, 50, { modo: 'pre_definida', aliquota: 12 })).toBe(12)
+    expect(creditoIcmsContabil(18, 1, 100, { modo: 'pre_definida', aliquota: 0 })).toBe(0)
   })
 
   it('sem mercadoria válida e sem vICMS retorna 0', () => {
@@ -92,9 +94,9 @@ describe('calcularCustoContabilEntrada', () => {
     ).toBe(82)
   })
 
-  it('crédito ICMS 12% quando vICMS ausente (benefício)', () => {
+  it('ICMS ausente não gera benefício automático', () => {
     const icms = creditoIcmsContabil(null, 1, 100)
-    expect(icms).toBe(12)
+    expect(icms).toBe(0)
     expect(
       calcularCustoContabilEntrada({
         quantidadeNf: 1,
@@ -104,7 +106,7 @@ describe('calcularCustoContabilEntrada', () => {
         creditoPis: 1.65,
         creditoCofins: 7.6,
       })
-    ).toBeCloseTo(78.75)
+    ).toBeCloseTo(90.75)
   })
 
   it('vICMS zero não cai no benefício de 12%', () => {

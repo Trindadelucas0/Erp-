@@ -37,11 +37,41 @@ describe('GRUPOS_DO_MENU', () => {
   it('Vendas agrupa orçamentos e receber pagamento', () => {
     const vendas = GRUPOS_DO_MENU.find((grupo) => grupo.id === 'vendas')
     expect(vendas?.rotulo).toBe('Vendas')
-    expect(vendas?.chaves).toEqual(['orcamentos', 'receber-pagamento'])
+    expect(vendas?.chaves).toEqual(['orcamentos', 'pedidos-venda', 'receber-pagamento'])
   })
 })
 
 describe('montarEntradasDoMenu', () => {
+  it('apresenta Configurações para quem só tem Contas sem criar item Contas', () => {
+    const entradas = montarEntradasDoMenu([
+      { chave: 'contas', caminho: '/contas', rotulo: 'Contas' },
+    ])
+    expect(entradas).toEqual([{
+      tipo: 'item',
+      pagina: {
+        chave: 'configuracoes',
+        caminho: '/configuracoes?aba=financeiro&secao=contas',
+        rotulo: 'Configurações',
+      },
+    }])
+  })
+
+  it('mantém Configurações uma única vez e retira Contas do grupo Financeiro', () => {
+    const config = { chave: 'configuracoes', caminho: '/configuracoes', rotulo: 'Configurações' }
+    const entradas = montarEntradasDoMenu([
+      { chave: 'contas', caminho: '/configuracoes?aba=financeiro&secao=contas', rotulo: 'Contas' },
+      { chave: 'contas-a-pagar', caminho: '/contas-a-pagar', rotulo: 'Contas a Pagar' },
+      config,
+    ])
+    expect(entradas).toEqual([
+      { tipo: 'grupo', id: 'financeiro', rotulo: 'Financeiro', filhos: [expect.objectContaining({ chave: 'contas-a-pagar' })] },
+      { tipo: 'item', pagina: config },
+    ])
+  })
+
+  it('não cria Configurações sem autorização para Contas', () => {
+    expect(montarEntradasDoMenu([])).toEqual([])
+  })
   it('monta Logística com os itens e Compras sem contagens', () => {
     const entradas = montarEntradasDoMenu(paginas)
     const compras = entradas.find((entrada) => entrada.tipo === 'grupo' && entrada.id === 'compras')

@@ -10,6 +10,7 @@ import { CardPadrao } from '@/components/ui/card-padrao'
 import { GradeRolavel } from '@/components/ui/grade-rolavel'
 import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { LinhasSkeletonTabela } from '@/components/ui/linhas-skeleton-tabela'
+import { Abas } from '@/components/ui/abas'
 import { BadgeStatus } from '@/components/ui/badge-status'
 import { rotuloTipoDocumentoCurto } from '@/lib/tipo-documento-entrada'
 
@@ -21,6 +22,9 @@ type NotaAuditoria = {
   documentoEmitente: string | null
   valorTotal: number | null
   dataEmissao: string | null
+  finalidadeEntrada?: string | null
+  auditadaEm?: string | null
+  auditadaPorNome?: string | null
   statusEntrada: string
   divergenciaDesfecho?: string | null
   divergenciaDesbloqueioEm?: string | null
@@ -48,6 +52,7 @@ function sinalAuditoria(nota: NotaAuditoria): {
 
 function ConteudoAuditoriaEntradas() {
   const router = useRouter()
+  const [aba, setAba] = useState<'pendentes' | 'concluidas'>('pendentes')
   const [notas, setNotas] = useState<NotaAuditoria[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
@@ -60,7 +65,7 @@ function ConteudoAuditoriaEntradas() {
         '/focus-nfe/nfe-recebidas',
         { params: { painel: 'consolidada' } }
       )
-      setNotas((data.notas ?? []).filter((n) => (n.tipoDocumento ?? 'nfe55') === 'nfe55'))
+      setNotas((data.notas ?? []).filter((n) => ['nfe55', 'nfse'].includes(n.tipoDocumento ?? 'nfe55')))
     } catch (e) {
       setErro(extrairMensagemApi(e, 'Não foi possível listar as entradas consolidadas.'))
     } finally {
@@ -72,18 +77,22 @@ function ConteudoAuditoriaEntradas() {
     void carregar()
   }, [carregar])
 
+  const visiveis = notas.filter((n) => Boolean(n.auditadaEm) === (aba === 'concluidas'))
+  const colunas = aba === 'concluidas' ? 9 : 7
+
   return (
     <div className="space-y-4">
       <TituloPagina>Auditoria de entradas</TituloPagina>
       <p className="text-sm text-muted-foreground">
-        Consulta só leitura das notas já consolidadas (NF original, contagem, conferência e
-        bloqueio). Não altera o pipeline.
+        Confira as entradas consolidadas e conclua a auditoria.
       </p>
       {erro && (
         <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {erro}
         </p>
       )}
+      <Abas abas={[{ id: 'pendentes', rotulo: 'Pendentes' }, { id: 'concluidas', rotulo: 'Concluídas' }]}
+        abaAtiva={aba} aoMudar={(id) => setAba(id as 'pendentes' | 'concluidas')} />
       <CardPadrao titulo="Entradas consolidadas">
         <GradeRolavel>
           <table className="w-full min-w-[720px] text-left text-sm">
@@ -96,19 +105,20 @@ function ConteudoAuditoriaEntradas() {
                 <th className="px-3 py-2 font-medium">Valor</th>
                 <th className="px-3 py-2 font-medium">Sinal</th>
                 <th className="px-3 py-2 font-medium">Ações</th>
+                {aba === 'concluidas' && <><th className="px-3 py-2 font-medium">Auditada em</th><th className="px-3 py-2 font-medium">Auditada por</th></>}
               </tr>
             </thead>
             <tbody>
               {carregando ? (
-                <LinhasSkeletonTabela colunas={7} linhas={6} />
-              ) : notas.length === 0 ? (
+                <LinhasSkeletonTabela colunas={colunas} linhas={6} />
+              ) : visiveis.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-6 text-muted-foreground">
-                    Nenhuma NFe consolidada neste filtro.
+                  <td colSpan={colunas} className="px-3 py-6 text-muted-foreground">
+                    {aba === 'pendentes' ? 'Nenhuma entrada pendente de auditoria.' : 'Nenhuma auditoria concluída.'}
                   </td>
                 </tr>
               ) : (
-                notas.map((n) => {
+                visiveis.map((n) => {
                   const sinal = sinalAuditoria(n)
                   return (
                     <tr
@@ -132,7 +142,7 @@ function ConteudoAuditoriaEntradas() {
                         <BadgeStatus variante={sinal.variante}>{sinal.rotulo}</BadgeStatus>
                       </td>
                       <td className="px-3 py-2">
-                        <button
+                        {n.tipoDocumento === 'nfe55' && n.finalidadeEntrada === 'revenda' ? <button
                           type="button"
                           className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted"
                           onClick={(e) => {
@@ -141,8 +151,9 @@ function ConteudoAuditoriaEntradas() {
                           }}
                         >
                           Precificar
-                        </button>
+                        </button> : '—'}
                       </td>
+                      {aba === 'concluidas' && <><td className="px-3 py-2">{n.auditadaEm ? new Date(n.auditadaEm).toLocaleString('pt-BR') : '—'}</td><td className="px-3 py-2">{n.auditadaPorNome || '—'}</td></>}
                     </tr>
                   )
                 })

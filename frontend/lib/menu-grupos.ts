@@ -73,7 +73,6 @@ export const GRUPOS_DO_MENU: readonly GrupoDoMenu[] = [
     id: 'financeiro',
     rotulo: 'Financeiro',
     chaves: [
-      'contas',
       'contas-a-pagar',
       'contas-a-receber',
       'fluxo-de-caixa',
@@ -155,7 +154,14 @@ export function paginaEstaAtiva(caminhoAtual: string, pagina: PaginaDoSistema): 
 
 export function montarEntradasDoMenu(paginas: PaginaDoSistema[]): EntradaDoMenu[] {
   const porChave = new Map(paginas.map((pagina) => [pagina.chave, pagina]))
-  const usadas = new Set<string>()
+  if (porChave.has('contas') && !porChave.has('configuracoes')) {
+    porChave.set('configuracoes', {
+      chave: 'configuracoes',
+      caminho: '/configuracoes?aba=financeiro&secao=contas',
+      rotulo: 'Configurações',
+    })
+  }
+  const usadas = new Set<string>(['contas'])
   const entradas: EntradaDoMenu[] = []
 
   for (const grupo of GRUPOS_DO_MENU) {

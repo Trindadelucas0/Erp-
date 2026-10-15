@@ -48,5 +48,5 @@ function Conteudo() {
 }
 
 export default function PaginaPedidosVenda() {
-  return <ProtegerRota permissao="vendas:view"><Conteudo /></ProtegerRota>
+  return <ProtegerRota chaveDaPagina="pedidos-venda"><Conteudo /></ProtegerRota>
 }

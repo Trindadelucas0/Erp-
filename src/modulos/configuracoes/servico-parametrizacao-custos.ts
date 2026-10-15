@@ -53,9 +53,9 @@ function paraResposta(
   }
 }
 
-async function obter(companyId: string) {
+async function obter(companyId: string, db?: import('@prisma/client').Prisma.TransactionClient) {
   exigirEmpresa(companyId)
-  const registro = await repositorioParametrizacaoCustos.buscarDaEmpresa(companyId)
+  const registro = db ? await repositorioParametrizacaoCustos.buscarDaEmpresa(companyId, db) : await repositorioParametrizacaoCustos.buscarDaEmpresa(companyId)
   return paraResposta(registro)
 }
 

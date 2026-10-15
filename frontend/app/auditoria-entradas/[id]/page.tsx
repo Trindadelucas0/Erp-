@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
@@ -69,6 +69,10 @@ type DetalheAuditoria = {
   documentoEmitente: string | null
   valorTotal: number | null
   dataEmissao: string | null
+  tipoDocumento: string
+  finalidadeEntrada: string | null
+  auditadaEm: string | null
+  auditadaPorNome: string | null
   statusEntrada: string
   divergenciaDesfecho?: string | null
   divergenciaResolvidaEm?: string | null
@@ -144,6 +148,8 @@ function rotuloTipoAnexo(tipo: string): string {
 
 function ConteudoDetalheAuditoria() {
   const params = useParams()
+  const router = useRouter()
+  const [auditando, setAuditando] = useState(false)
   const id = typeof params.id === 'string' ? params.id : ''
   const [nota, setNota] = useState<DetalheAuditoria | null>(null)
   const [xml, setXml] = useState<VisualizacaoNota | null>(null)
@@ -182,6 +188,19 @@ function ConteudoDetalheAuditoria() {
     if (window.location.hash !== '#itens-nf') return
     document.getElementById('itens-nf')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [nota])
+
+  async function auditar() {
+    if (auditando) return
+    setAuditando(true)
+    setErro('')
+    try {
+      await clienteHttp.post(`/entrada-notas/${id}/auditar`)
+      router.push('/auditoria-entradas')
+    } catch (e) {
+      setErro(extrairMensagemApi(e, 'Não foi possível concluir a auditoria.'))
+      setAuditando(false)
+    }
+  }
 
   async function baixarAnexo(anexoId: string, nomeArquivo: string) {
     const resp = await clienteHttp.get(
@@ -224,9 +243,10 @@ function ConteudoDetalheAuditoria() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <TituloPagina>Auditoria de entradas</TituloPagina>
         <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline" size="sm">
+          {nota.tipoDocumento === 'nfe55' && nota.finalidadeEntrada === 'revenda' && nota.statusEntrada === 'entrada_consolidada' && <Button asChild variant="outline" size="sm">
             <Link href={`/auditoria-entradas/${id}/precificacao`}>Precificar</Link>
-          </Button>
+          </Button>}
+          {!nota.auditadaEm && ['nfe55', 'nfse'].includes(nota.tipoDocumento) && nota.statusEntrada === 'entrada_consolidada' && <Button size="sm" disabled={auditando} onClick={() => void auditar()}>{auditando ? 'Concluindo…' : 'Auditada'}</Button>}
           <Button asChild variant="outline" size="sm">
             <Link href="/auditoria-entradas">Voltar à lista</Link>
           </Button>
@@ -238,6 +258,7 @@ function ConteudoDetalheAuditoria() {
         </p>
       )}
 
+      {nota.auditadaEm && <p className="text-sm">Auditada em {formatarData(nota.auditadaEm)} por {nota.auditadaPorNome || '—'}.</p>}
       <CardPadrao titulo="Veredito da entrada">
         <div className="flex flex-wrap gap-2">
           <BadgeStatus variante="sucesso">{rotuloStatusEntrada(nota.statusEntrada)}</BadgeStatus>

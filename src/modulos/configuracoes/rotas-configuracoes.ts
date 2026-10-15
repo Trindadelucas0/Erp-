@@ -5,6 +5,7 @@ import { middlewareEmpresaAtiva } from '../../infraestrutura/autenticacao/middle
 import { middlewareSomenteAdmin } from '../../infraestrutura/autenticacao/middleware-somente-admin.js'
 import { controladorDeAtalhos } from './controlador-atalhos.js'
 import { controladorParametrizacaoCustos } from './controlador-parametrizacao-custos.js'
+import { controladorRegrasFiscais } from './controlador-regras-fiscais.js'
 
 export async function rotasDeConfiguracoes(
   aplicacao: FastifyInstance
@@ -42,6 +43,9 @@ export async function rotasDeConfiguracoes(
     middlewareEmpresaAtiva,
     middlewareSomenteAdmin,
   ]
+
+  aplicacao.get('/regras-fiscais', { preHandler: adminEmpresa }, controladorRegrasFiscais.obter)
+  aplicacao.put('/regras-fiscais', { preHandler: adminEmpresa }, controladorRegrasFiscais.gravar)
 
   aplicacao.get(
     '/parametrizacao-custos',

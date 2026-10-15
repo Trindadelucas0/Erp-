@@ -1,20 +1,20 @@
 /**
  * Custo contábil por unidade de venda (grade Precificação).
- * Fonte: DOCUMENTACAO-SISTEMA.md §7.26.
+ * Compatibilidade com a fórmula anterior. A grade atual usa
+ * formacao-custo-aquisicao.ts (DOCUMENTACAO-SISTEMA.md §7.26).
  *
  * qtdEstoque = qtd NF × itensPorEmbalagem
  * custoLinha = mercadoria + frete rateado + IPI + seguro + outras despesas
  *              − crédito ICMS − crédito PIS − crédito COFINS
  * custoContabil = custoLinha / qtdEstoque
  *
- * Crédito ICMS: vICMS do XML se existir (inclusive 0); senão 12% da mercadoria
- * (benefício fiscal). Flag do CFOP não zera o crédito nesta grade.
+ * Crédito ICMS: regra fiscal vigente da empresa; XML ausente resulta em zero.
+ * Crédito do transporte é informado já rateado. Flag do CFOP não zera o crédito.
  * PIS/COFINS vêm do XML (vPIS/vCOFINS); sem tag → 0; não inventa p% × base.
  * Não altera calcularCustoUnitarioEntrada (Auditoria / kardex).
  */
 
-/** Alíquota de crédito ICMS quando a nota não traz vICMS (benefício fiscal). */
-export const ALIQUOTA_CREDITO_ICMS_BENEFICIO = 12
+import type { RegraCredito } from '../configuracoes/esquema-regras-fiscais.js'
 
 export type EntradaCustoContabil = {
   quantidadeNf: number | null | undefined
@@ -25,6 +25,7 @@ export type EntradaCustoContabil = {
   valorOutrasDespesas?: number | null | undefined
   itensPorEmbalagem: number
   creditoIcms?: number | null | undefined
+  creditoIcmsFrete?: number | null | undefined
   creditoPis?: number | null | undefined
   creditoCofins?: number | null | undefined
 }
@@ -45,16 +46,15 @@ function mercadoriaLinha(
 
 /**
  * Crédito ICMS da precificação: usa vICMS quando presente (inclusive 0);
- * sem tag / null → 12% da mercadoria.
+ * sem tag / null → zero. No modo pré-definido, usa a base da mercadoria.
  */
 export function creditoIcmsContabil(
   valorIcmsXml: number | null | undefined,
   quantidadeNf: number | null | undefined,
-  valorUnitario: number | null | undefined
+  valorUnitario: number | null | undefined,
+  regra: RegraCredito = { modo: 'nota', aliquota: null }
 ): number {
-  if (valorIcmsXml != null && Number.isFinite(valorIcmsXml)) {
-    return valorIcmsXml
-  }
+  if (regra.modo === 'nota') return creditoOuZero(valorIcmsXml)
   if (
     quantidadeNf == null ||
     !Number.isFinite(quantidadeNf) ||
@@ -64,7 +64,7 @@ export function creditoIcmsContabil(
   ) {
     return 0
   }
-  return (mercadoriaLinha(quantidadeNf, valorUnitario) * ALIQUOTA_CREDITO_ICMS_BENEFICIO) / 100
+  return (mercadoriaLinha(quantidadeNf, valorUnitario) * creditoOuZero(regra.aliquota)) / 100
 }
 
 /** @deprecated Use creditoIcmsContabil. Mantido para imports legados. */
@@ -75,6 +75,7 @@ export function creditoIcmsComercial(
   return creditoOuZero(valorIcmsXml)
 }
 
+/** @deprecated Precificação usa calcularCustoAquisicaoItem com regras por operação. */
 export function calcularCustoContabilEntrada(params: EntradaCustoContabil): number | null {
   const qtdNf = params.quantidadeNf
   const unitario = params.valorUnitario
@@ -103,6 +104,7 @@ export function calcularCustoContabilEntrada(params: EntradaCustoContabil): numb
     seguro +
     outras -
     creditoOuZero(params.creditoIcms) -
+    creditoOuZero(params.creditoIcmsFrete) -
     creditoOuZero(params.creditoPis) -
     creditoOuZero(params.creditoCofins)
   return custoLinha / qtdEstoque

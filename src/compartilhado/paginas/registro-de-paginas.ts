@@ -129,9 +129,10 @@ export const PAGINAS_VINCULAVEIS: readonly PaginaDoSistema[] = [
   },
   {
     chave: 'contas',
-    caminho: '/contas',
+    caminho: '/configuracoes?aba=financeiro&secao=contas',
     rotulo: 'Contas',
     modulo: 'financeiro',
+    exibirNoMenu: false,
   },
   {
     chave: 'contas-a-pagar',
@@ -247,7 +248,9 @@ export type PapelDoUsuarioParaMenu = {
 }
 
 export function listarPaginasVinculaveis(): PaginaDoSistema[] {
-  return PAGINAS_VINCULAVEIS.filter((pagina) => pagina.exibirNoMenu !== false)
+  return PAGINAS_VINCULAVEIS.filter(
+    (pagina) => pagina.exibirNoMenu !== false || pagina.chave === 'contas'
+  )
 }
 
 export function paginaVinculavelExiste(chave: string): boolean {
@@ -268,10 +271,11 @@ export function usuarioEhAdmin(
   return papeis.some((item) => item.role.name === 'admin')
 }
 
-function filtrarParaMenu(paginas: PaginaDoSistema[]): PaginaDoSistema[] {
+function filtrarParaSessao(paginas: PaginaDoSistema[]): PaginaDoSistema[] {
   const vistas = new Map<string, PaginaDoSistema>()
   for (const pagina of paginas) {
-    if (pagina.exibirNoMenu === false) continue
+    // Contas mantém a autorização legada; o menu a apresenta dentro de Configurações.
+    if (pagina.exibirNoMenu === false && pagina.chave !== 'contas') continue
     if (!vistas.has(pagina.chave)) {
       vistas.set(pagina.chave, pagina)
     }
@@ -284,7 +288,7 @@ export function montarPaginasPermitidasParaUsuario(
   chavesPaginasDosPapeis: string[]
 ): PaginaDoSistema[] {
   if (ehAdmin) {
-    return filtrarParaMenu([...PAGINAS_SOMENTE_ADMIN, ...PAGINAS_VINCULAVEIS])
+    return filtrarParaSessao([...PAGINAS_SOMENTE_ADMIN, ...PAGINAS_VINCULAVEIS])
   }
 
   const paginasPorChave = new Map<string, PaginaDoSistema>()
@@ -299,5 +303,5 @@ export function montarPaginasPermitidasParaUsuario(
     if (separacao) paginasPorChave.set('separacao', separacao)
   }
 
-  return filtrarParaMenu([...paginasPorChave.values()])
+  return filtrarParaSessao([...paginasPorChave.values()])
 }
