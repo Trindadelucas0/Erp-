@@ -1,7 +1,9 @@
 'use client'
 
 import type { LucideIcon } from 'lucide-react'
+import { useCallback, useState } from 'react'
 import { Loader2, MoreHorizontal } from 'lucide-react'
+import { notificarAberturaDropdownCatalogo, useFecharAoSairComMouse, useInstanciaDropdownCatalogo, useOuvirFechamentoDropdownCatalogo } from '@/lib/dropdown-catalogo'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -24,19 +26,30 @@ type Props = {
   itens: ItemMenuAcao[]
   carregando?: boolean
   ariaLabel?: string
+  fecharAoSairComMouse?: boolean
 }
 
 export function MenuAcoesLinha({
   itens,
   carregando = false,
   ariaLabel = 'Ações',
+  fecharAoSairComMouse = false,
 }: Props) {
+  const [aberto, setAberto] = useState(false)
+  const instancia = useInstanciaDropdownCatalogo()
+  const fechar = useCallback(() => setAberto(false), [])
+  const zonaHover = useFecharAoSairComMouse(fechar)
+  useOuvirFechamentoDropdownCatalogo(instancia, fechar)
   const itensVisiveis = itens.filter((item) => !item.oculto)
 
   if (itensVisiveis.length === 0) return null
 
   return (
-    <DropdownMenu>
+    <span {...(fecharAoSairComMouse ? zonaHover : {})}>
+    <DropdownMenu open={aberto} onOpenChange={(valor) => {
+      if (valor && fecharAoSairComMouse) notificarAberturaDropdownCatalogo(instancia)
+      setAberto(valor)
+    }}>
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
@@ -52,7 +65,7 @@ export function MenuAcoesLinha({
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" {...(fecharAoSairComMouse ? zonaHover : {})}>
         {itensVisiveis.map((item) => {
           const Icone = item.icone
           return (
@@ -69,5 +82,6 @@ export function MenuAcoesLinha({
         })}
       </DropdownMenuContent>
     </DropdownMenu>
+    </span>
   )
 }

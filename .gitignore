@@ -79,3 +79,6 @@ gitpull.txt
 
 # Verificação local do chamado de orçamentos
 /scripts/verificar-orcamento-local.ts
+/scripts/verificar-orcamento-ui-local.cjs
+/tmp/pdfs/orcamento-qa*
+/tmp/pdfs/orcamento-pdfium*

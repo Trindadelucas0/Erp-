@@ -204,7 +204,7 @@ Concluir e desvincular registram usuário e data no histórico da conciliação 
 
 | Item               | Valor                                                                                  |
 | ------------------ | -------------------------------------------------------------------------------------- |
-| Versão do sistema  | 1.30.4 — Regras Fiscais |
+| Versão do sistema  | 1.30.5 — Regras Fiscais |
 | Última atualização | 16/10/2026 (Precificação simplificada e atacado) |
 | Formato            | Fonte oficial de comportamento: mapa, campos, regras, paths de código e roteiro de bug |
 | Fonte oficial      | Este arquivo (`DOCUMENTACAO-SISTEMA.md`)                                               |
@@ -463,8 +463,9 @@ Próxima tela nova = **1.31.0** + nome. Não inventar versão sem tela/módulo. 
 | 1.30.3 | Regras Fiscais | Retirada da Formação de custo, ajustes, rateio, memórias e confirmação obrigatória; Precificação volta ao cálculo anterior e à gravação direta. Dados históricos e preços existentes preservados. | `/auditoria-entradas/[id]/precificacao` |
 
 | 1.30.4 | Regras Fiscais | Precificação simplificada: campos principais, adicionais expansíveis, simulação comercial, venda/atacado e ajustes por item com revisão. | `/auditoria-entradas/[id]/precificacao` |
+| 1.30.5 | Regras Fiscais | Orçamentos: Fechar pedido sem checkbox, condições com boleto e crédito validados, cópia no menu e PDF para WhatsApp no rodapé. | `/orcamentos`, `/pedidos-venda` |
 
-**Versão vigente:** 1.30.4 — Regras Fiscais.
+**Versão vigente:** 1.30.5 — Regras Fiscais.
 
 ### Endereços em desenvolvimento local
 

@@ -894,6 +894,7 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
             </Button>
             <MenuAcoesLinha
               ariaLabel="Mais opções"
+              fecharAoSairComMouse
               itens={[
                 {
                   rotulo: 'Limpar itens',
