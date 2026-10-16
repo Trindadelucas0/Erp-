@@ -76,3 +76,6 @@ gitpull.txt
 .tmp.driveupload/
 .tmp.drivedownload/
 .
+
+# Verificação local do chamado de orçamentos
+/scripts/verificar-orcamento-local.ts
