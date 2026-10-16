@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client'
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
-import { opcoesPagamentoOrcamento, validarPagamentoOrcamento, parcelasBoletoNoFechamento } from './pagamento-orcamento.js'
+import { opcoesPagamentoOrcamento, validarPagamentoOrcamento, parcelasBoletoNoFechamento, dataCivilFechamento } from './pagamento-orcamento.js'
 import {
   enderecoPersistido,
   fretePersistido,
@@ -601,7 +601,7 @@ async function finalizar(
     })
     const opcoes = await opcoesPagamentoOrcamento(companyId, tx)
     validarPagamentoOrcamento(orcamento, total, opcoes)
-    const dataFechamento = new Date()
+    const dataFechamento = dataCivilFechamento(new Date())
     const pedido = await tx.pedidoVenda.create({
       data: {
         companyId,

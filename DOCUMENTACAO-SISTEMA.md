@@ -4623,6 +4623,8 @@ Some de vez ──► quando o estado deixa de ser pendente
 | 9 | Usuário sem `vendas:view` | Sem menu; API 403 |
 | 10 | Coluna ST | Sempre R$ 0,00; total inclui ST (hoje 0) sem misturar no líquido |
 
+**Validação local — 16/10/2026:** 69 testes direcionados aprovados (38 backend, 31 frontend); integração no PostgreSQL com empresas temporárias confirmou isolamento, persistência, rejeição de parâmetro desativado, uma única conversão concorrente, bloqueio de edição e PDF de seis páginas. PDF renderizado e inspecionado. Tela conferida no Edge com APIs simuladas em 320/375/768/1280 px, sem overflow da página ou erros de JavaScript. TypeScript frontend aprovado. Checagem global backend contém erros em outras áreas. Build de produção bloqueado pela URL local de API no ambiente; nenhuma publicação.
+
 ---
 
 ### 6.21b Pedidos de venda — `/pedidos-venda` e `/pedidos-venda/[id]`

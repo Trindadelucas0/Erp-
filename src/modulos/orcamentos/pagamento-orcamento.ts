@@ -66,8 +66,12 @@ export function validarPagamentoOrcamento(dados: PagamentoOrcamento, total: numb
   }
 }
 
+export function dataCivilFechamento(data: Date) {
+  return new Date(data.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }) + 'T12:00:00Z')
+}
+
 export function parcelasBoletoNoFechamento(total: number, prazos: number[], data: Date) {
-  const base = new Date(data.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }) + 'T12:00:00Z')
+  const base = dataCivilFechamento(data)
   const valores = dividirTotalPagamento(total, prazos.length)
   return prazos.map((dias, i) => {
     const vencimento = new Date(base)

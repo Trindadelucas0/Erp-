@@ -133,8 +133,10 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
   const roteador = useRouter()
   const { perfil } = useSessaoDoUsuario()
   const podeEditar = usePermissao('vendas:edit')
+  const podeCriar = usePermissao('vendas:create')
   const podeAprovar = usePermissao('vendas:approve')
   const [idGravado, setIdGravado] = useState(orcamentoId ?? '')
+  const podeGravar = idGravado ? podeEditar : podeCriar
   const [orcamento, setOrcamento] = useState<OrcamentoLayout>(
     () => iniciais?.orcamento ?? orcamentoEmBranco()
   )
@@ -577,6 +579,7 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
       return data.orcamento
     }
     const { data } = await clienteHttp.post<{ orcamento: OrcamentoApi }>('/orcamentos', corpo)
+    setIdGravado(data.orcamento.id)
     return data.orcamento
   }
 
@@ -804,6 +807,7 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
           />
           <SelectPadrao
             rotulo="Condição de pagamento"
+            obrigatorio
             valor={orcamento.condicaoPagamento}
             aoMudar={(valor) => {
               setOrcamento((atual) => ({ ...atual, condicaoPagamento: valor, parametroBoletoId: null, prazosBoleto: [], parcelasCredito: null }))
@@ -815,9 +819,11 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
             disabled={bloqueado}
           />
           {orcamento.condicaoPagamento === 'boleto' ? <>
-            <SelectPadrao rotulo="Parâmetro de boleto" valor={orcamento.parametroBoletoId ?? ''}
+            <SelectPadrao rotulo="Parâmetro de boleto" obrigatorio valor={orcamento.parametroBoletoId ?? ''}
               aoMudar={(id) => atualizar('parametroBoletoId', id)}
-              opcoes={opcoesPagamento.boletos.map((b) => ({ value: b.id, label: b.nome }))}
+              opcoes={orcamento.parametroBoletoId && !opcoesPagamento.boletos.some((b) => b.id === orcamento.parametroBoletoId)
+                ? [...opcoesPagamento.boletos.map((b) => ({ value: b.id, label: b.nome })), { value: orcamento.parametroBoletoId, label: 'Parâmetro salvo (indisponível)' }]
+                : opcoesPagamento.boletos.map((b) => ({ value: b.id, label: b.nome }))}
               placeholder={carregandoPagamento ? 'Carregando…' : 'Escolha um parâmetro ativo'} disabled={bloqueado || carregandoPagamento} />
             <InputPadrao rotulo="Prazos em dias" name="prazos-boleto" placeholder="28/56/84" value={prazosTexto}
               disabled={bloqueado} onChange={(e) => {
@@ -826,10 +832,12 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
                 atualizar('prazosBoleto', /^\s*\d+(\s*\/\s*\d+)*\s*$/.test(texto) ? texto.split('/').map(Number) : [])
               }} />
           </> : null}
-          {orcamento.condicaoPagamento === 'cartao_credito' ? <SelectPadrao rotulo="Quantidade de parcelas"
+          {orcamento.condicaoPagamento === 'cartao_credito' ? <SelectPadrao rotulo="Quantidade de parcelas" obrigatorio
             valor={orcamento.parcelasCredito ? String(orcamento.parcelasCredito) : ''}
             aoMudar={(valor) => atualizar('parcelasCredito', Number(valor))}
-            opcoes={opcoesPagamento.parcelasCredito.map((n) => ({ value: String(n), label: n + 'x' }))}
+            opcoes={orcamento.parcelasCredito && !opcoesPagamento.parcelasCredito.includes(orcamento.parcelasCredito)
+              ? [...opcoesPagamento.parcelasCredito.map((n) => ({ value: String(n), label: n + 'x' })), { value: String(orcamento.parcelasCredito), label: orcamento.parcelasCredito + 'x (indisponível)' }]
+              : opcoesPagamento.parcelasCredito.map((n) => ({ value: String(n), label: n + 'x' }))}
             placeholder={carregandoPagamento ? 'Carregando…' : 'Selecione'} disabled={bloqueado || carregandoPagamento} /> : null}
           <SelectPadrao
             rotulo="Vendedor"
@@ -1224,19 +1232,19 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
         ) : null}
       </CardPadrao>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden [&_button]:min-h-11">
         <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap">
           <Button type="button" variant="outline" onClick={() => window.print()}><Printer className="size-4" />Imprimir orçamento</Button>
-          <Button type="button" variant="outline" onClick={() => void enviarAoCliente()} disabled={ocupado || (!bloqueado && !podeEditar)}><MessageCircle className="size-4" />Enviar ao cliente</Button>
+          <Button type="button" variant="outline" onClick={() => void enviarAoCliente()} disabled={ocupado || (!bloqueado && !podeGravar)}><MessageCircle className="size-4" />Enviar ao cliente</Button>
         </div>
         <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap">
           <Button type="button" variant="outline" onClick={() => { if (window.confirm('Sair do orçamento? Alterações não salvas serão perdidas.')) roteador.push('/orcamentos') }}>
             Cancelar
           </Button>
-          <Button type="button" variant="outline" onClick={() => void salvar()} disabled={ocupado || bloqueado || !podeEditar}>
+          <Button type="button" variant="outline" onClick={() => void salvar()} disabled={ocupado || bloqueado || !podeGravar}>
             Salvar orçamento
           </Button>
-          <BotaoPrimario type="button" onClick={() => void finalizar()} disabled={ocupado || bloqueado || !podeAprovar || !orcamento.clienteNome.trim() || orcamento.itens.length === 0}>
+          <BotaoPrimario type="button" onClick={() => void finalizar()} disabled={ocupado || bloqueado || !podeGravar || !podeAprovar || !orcamento.clienteNome.trim() || orcamento.itens.length === 0}>
             Fechar pedido
           </BotaoPrimario>
         </div>

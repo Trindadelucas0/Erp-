@@ -2022,7 +2022,7 @@ model ParametrizacaoCustoVenda {
   updatedAt                    DateTime @updatedAt
 }
 
-// ─── Orçamento (proposta de venda; não gera pedido) ─────────────────────────
+// ─── Orçamento (proposta de venda; Fechar pedido converte em PedidoVenda) ───
 
 model Orcamento {
   id                String               @id @default(uuid())
