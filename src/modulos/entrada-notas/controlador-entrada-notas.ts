@@ -36,6 +36,7 @@ import {
   esquemaGravarPrecificacao,
 } from './esquema-entrada-notas.js'
 import { servicoPrecificacaoEntrada } from './servico-precificacao-entrada.js'
+import { esquemaSimularPrecificacao } from './esquema-ajustes-precificacao.js'
 
 function companyIdDe(requisicao: FastifyRequest): string {
   const companyId = requisicao.empresaAtivaId || ''
@@ -474,6 +475,12 @@ async function obterPrecificacao(requisicao: FastifyRequest, resposta: FastifyRe
   return resposta.send(dados)
 }
 
+async function simularPrecificacao(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const parsed = esquemaSimularPrecificacao.safeParse(requisicao.body)
+  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
+  return resposta.send(await servicoPrecificacaoEntrada.simular(companyIdDe(requisicao), notaIdDe(requisicao), parsed.data))
+}
+
 async function gravarPrecificacao(requisicao: FastifyRequest, resposta: FastifyReply) {
   const parsed = esquemaGravarPrecificacao.safeParse(requisicao.body)
   if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
@@ -527,5 +534,6 @@ export const controladorEntradaNotas = {
   vincularCtesPendentes,
   ctesAguardandoNf,
   obterPrecificacao,
+  simularPrecificacao,
   gravarPrecificacao,
 }

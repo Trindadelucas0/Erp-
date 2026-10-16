@@ -8,6 +8,9 @@ import {
   montarParagrafo,
 } from '../notificacoes-email/template-email-corporativo.js'
 import type { DadosOrcamento } from './esquema-orcamentos.js'
+import { fretePersistido } from './esquema-orcamentos.js'
+import { opcoesPagamentoOrcamento, validarPagamentoOrcamento } from './pagamento-orcamento.js'
+import { totalDoOrcamento } from './repositorio-orcamentos.js'
 import { repositorioParametrizacaoCustos } from '../configuracoes/repositorio-parametrizacao-custos.js'
 import {
   ehUnicidadeNumero,
@@ -93,6 +96,7 @@ async function validarMultiplos(companyId: string, dados: DadosOrcamento) {
 }
 
 async function criar(companyId: string, dados: DadosOrcamento, usuarioId?: string) {
+  await validarPagamento(companyId, dados)
   await validarMultiplos(companyId, dados)
   const gerado = !dados.numero.trim()
   let numero = dados.numero.trim()
@@ -129,6 +133,7 @@ async function atualizar(companyId: string, id: string, dados: DadosOrcamento, u
   if (existente.status !== 'em_aberto') {
     throw new ErroDaAplicacao('Orçamento expirado ou convertido não pode ser editado', 409)
   }
+  await validarPagamento(companyId, dados)
   await validarMultiplos(companyId, dados)
 
   const status = statusAoGravar(existente.status, dados.status)
@@ -149,6 +154,12 @@ async function atualizar(companyId: string, id: string, dados: DadosOrcamento, u
     }
     throw erro
   }
+}
+
+async function validarPagamento(companyId: string, dados: DadosOrcamento) {
+  const frete = fretePersistido(dados.prazoEntrega, dados.frete, dados.valorFrete)
+  validarPagamentoOrcamento(dados, totalDoOrcamento({ ...dados, valorFrete: frete.valorFrete }),
+    await opcoesPagamentoOrcamento(companyId))
 }
 
 async function finalizar(companyId: string, id: string, usuarioId?: string) {

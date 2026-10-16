@@ -6,7 +6,7 @@ vi.mock('../permissoes/repositorio-permissoes.js', () => ({ repositorioDePermiss
 vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({ clientePrisma: { user: { findUnique: vi.fn() }, company: { findUnique: vi.fn() }, userCompany: { findUnique: vi.fn() } } }))
 vi.mock('../focus-nfe/repositorio-focus-nfe.js', () => ({ repositorioFocusNfe: { buscarPorId: vi.fn() } }))
 vi.mock('./servico-acesso-painel-entrada.js', () => ({ exigirAcessoPainelEntradaNotas: vi.fn() }))
-vi.mock('./servico-precificacao-entrada.js', () => ({ servicoPrecificacaoEntrada: { obterGrade: vi.fn(), gravarPrecos: vi.fn() } }))
+vi.mock('./servico-precificacao-entrada.js', () => ({ servicoPrecificacaoEntrada: { obterGrade: vi.fn(), gravarPrecos: vi.fn(), simular: vi.fn() } }))
 import { verificarTokenDeAutenticacao } from '../../compartilhado/utilitarios/token-jwt.js'
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
 import { repositorioDeUsuarios } from '../usuarios/repositorio-usuarios.js'
@@ -29,6 +29,7 @@ describe('rotas de custo — sessão, empresa e produtos:edit', () => {
   })
   async function requisitar(method: 'GET' | 'PUT' | 'POST', rota: string, payload?: object, empresa = 'a') {
     const app = Fastify()
+    app.setErrorHandler((erro, _request, reply) => reply.code('codigoHttp' in erro ? Number(erro.codigoHttp) : 500).send({ message: erro.message }))
     await app.register(rotasEntradaNotas, { prefix: '/entrada-notas' })
     try { return await app.inject({ method, url: `/entrada-notas/n/precificacao${rota ? `/${rota}` : ''}`, headers: { 'x-company-id': empresa }, ...(payload ? { payload } : {}) }) }
     finally { await app.close() }
@@ -49,6 +50,22 @@ describe('rotas de custo — sessão, empresa e produtos:edit', () => {
     vi.mocked(clientePrisma.user.findUnique).mockResolvedValue(null)
     expect((await requisitar('GET', '')).statusCode).toBe(401)
     expect(servico.gravarPrecos).not.toHaveBeenCalled()
+  })
+  it('simulação exige sessão, empresa e permissão de editar produtos', async () => {
+    const payload = { itemId, ajustes: {}, margemPercentual: 10, margemAtacado: null }
+    vi.mocked(servico.simular).mockResolvedValue({ erro: null } as never)
+    expect((await requisitar('POST', 'simular', payload)).statusCode).toBe(200)
+    expect(servico.simular).toHaveBeenCalledWith('a', 'n', payload)
+    expect((await requisitar('POST', 'simular', payload, 'b')).statusCode).toBe(404)
+    vi.mocked(repositorioDeUsuarios.buscarPorId).mockResolvedValue({ roles: [{ role: { name: 'operador' } }] } as never)
+    vi.mocked(repositorioDePermissoes.usuarioPossuiPermissao).mockResolvedValue(false)
+    expect((await requisitar('POST', 'simular', payload)).statusCode).toBe(403)
+    vi.mocked(clientePrisma.user.findUnique).mockResolvedValue(null)
+    expect((await requisitar('POST', 'simular', payload)).statusCode).toBe(401)
+  })
+  it.each([{ freteValor: 2, fretePercentual: 2 }, { adicionalValor: 2, adicionalPercentual: 2 }, { descontoPercentual: 101 }, { tipoSt: 'outro' }, { precoTabela: -1 }])('recusa ajustes inválidos na fronteira HTTP: %j', async ajustes => {
+    expect((await requisitar('POST', 'simular', { itemId, ajustes, margemPercentual: 0, margemAtacado: null })).statusCode).toBe(400)
+    expect(servico.simular).not.toHaveBeenCalled()
   })
 
 })

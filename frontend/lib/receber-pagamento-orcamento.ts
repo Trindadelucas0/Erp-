@@ -47,6 +47,8 @@ export type OrcamentoListaReceber = {
 
 export function rotuloCondicaoPagamento(valor: string) {
   if (!valor) return '—'
+  const legados: Record<string, string> = { a_vista: 'À vista', '30_dias': '30 dias', '60_dias': '60 dias' }
+  if (legados[valor]) return legados[valor]
   return OPCOES_CONDICAO_PAGAMENTO.find((item) => item.value === valor)?.label ?? valor
 }
 

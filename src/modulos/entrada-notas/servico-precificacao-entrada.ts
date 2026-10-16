@@ -10,6 +10,8 @@ import {
   mapaValorIpiPorNItemDoXml,
   mapaDespesasPorNItemDoXml,
   mapaImpostosPorNItemDoXml,
+  normalizarXmlNfe,
+  extrairCampoXml,
 } from '../focus-nfe/parser-xml-nfe.js'
 import { servicoParametrizacaoCustos } from '../configuracoes/servico-parametrizacao-custos.js'
 import { servicoRegrasFiscais } from '../configuracoes/servico-regras-fiscais.js'
@@ -26,6 +28,38 @@ import {
 } from './formacao-preco-venda.js'
 
 import { calcularCustoContabilEntrada, creditoIcmsContabil } from './custo-comercial-entrada.js'
+import { calcularAquisicao, margemPorPreco, precoPorMargem, type BasePrecificacao, type AjustesPrecificacao } from '../../compartilhado/precificacao/calculo-precificacao.js'
+import { esquemaAjustesPrecificacao } from './esquema-ajustes-precificacao.js'
+
+type NotaPrecificavel = Awaited<ReturnType<typeof exigirNotaPrecificavel>>
+type ItemNota = NotaPrecificavel['itens'][number]
+type LinhaGravacao = { produtoId: string; itemId?: string; precoVenda: number; margemPercentual?: number; vrAdicPercentual?: number;
+  ajustes?: AjustesPrecificacao; precoAtacado?: number | null; margemAtacado?: number | null; revisao?: number; origem?: string }
+
+function parametrosSalvos(item: ItemNota) {
+  const salvo = item.precificacaoParametros as { ajustes?: unknown; margemPercentual?: number; margemAtacado?: number | null } | null
+  const parsed = esquemaAjustesPrecificacao.safeParse(salvo?.ajustes ?? {})
+  return { ajustes: parsed.success ? parsed.data : {}, margemPercentual: salvo?.margemPercentual ?? 0, margemAtacado: salvo?.margemAtacado ?? null }
+}
+
+function baseDaLinha(nota: NotaPrecificavel, item: ItemNota, calculo: ReturnType<typeof calcularLinha>, xml: ReturnType<typeof lerValoresXml>, transporteSimples: boolean | null): BasePrecificacao {
+  const qtd = decimalNum(item.quantidade) ?? 0
+  const mult = resolverItensPorEmbalagem(item.produto?.fornecedores, nota.fornecedorPessoaId)
+  const unidades = qtd * mult
+  const unitario = (valor: number | null | undefined) => unidades > 0 ? (valor ?? 0) / unidades : 0
+  const adicionais = xml.adicionais.get(item.nItem)
+  return { precoTabela: decimalNum(item.valorUnitario) == null || unidades <= 0 ? null : Number(item.valorUnitario) / mult,
+    desconto: unitario(adicionais?.desconto), st: unitario(adicionais?.st),
+    ipi: unitario(resolverValorIpi(decimalNum(item.valorIpi), xml.ipi.get(item.nItem))),
+    outras: unitario(calculo.despesasSeguro + calculo.outrasDespesas), frete: unitario(decimalNum(item.custoFreteRateado)),
+    creditoIcms: unitario(calculo.creditoIcms), creditoIcmsFrete: unitario(calculo.creditoIcmsFrete),
+    creditoPisCofins: unitario(calculo.creditoPis + calculo.creditoCofins), tipoFrete: nota.modFrete ?? '9', transporteSimples }
+}
+
+function origemDaLinha(item: ItemNota, base: BasePrecificacao, regras: RegrasFiscais, encargos: number) {
+  return hash({ base, regras, encargos, produto: item.produtoId, preco: decimalNum(item.produto?.precoVenda),
+    atacado: decimalNum(item.produto?.precoAtacado), atualizado: item.produto?.updatedAt, revisao: item.precificacaoRevisao ?? 0 })
+}
 
 const ROTULO_MOD_FRETE: Record<string, string> = {
   '0': 'Remetente',
@@ -99,13 +133,22 @@ async function obterCreditosFiscais(companyId: string, nota: Awaited<ReturnType<
     valorFrete: decimalNum(vinculo.valorFrete) ?? 0,
     valorIcms: vinculo.cteRecebida.xmlConteudo ? extrairIcmsDoXmlCte(vinculo.cteRecebida.xmlConteudo)?.valorIcms ?? null : null,
   })), regras.transporte)
-  return { regras, fretePorItem, vinculos }
+  const regimes = vinculos.map(v => v.cteRecebida.xmlConteudo ? extrairCampoXml(extrairCampoXml(v.cteRecebida.xmlConteudo, 'emit') ?? '', 'CRT') : null)
+  const transporteSimples = regimes.length && regimes.every(r => r === '1' || r === '2') ? true
+    : regimes.length && regimes.every(r => r === '3') ? false : null
+  return { regras, fretePorItem, vinculos, transporteSimples }
 }
 
 function hash(valor: unknown) { return createHash('sha256').update(typeof valor === 'string' ? valor : JSON.stringify(valor)).digest('hex') }
 
 function lerValoresXml(xml: string | null) {
-  return { impostos: mapaImpostosPorNItemDoXml(xml), despesas: mapaDespesasPorNItemDoXml(xml), ipi: mapaValorIpiPorNItemDoXml(xml) }
+  const adicionais = new Map<number, { desconto: number; st: number }>()
+  for (const det of normalizarXmlNfe(xml ?? '').matchAll(/<(?:[\w.]+:)?det\b[^>]*nItem=["'](\d+)["'][^>]*>([\s\S]*?)<\/(?:[\w.]+:)?det\s*>/gi)) {
+    const prod = extrairCampoXml(det[2], 'prod') ?? ''
+    const imposto = extrairCampoXml(det[2], 'imposto') ?? ''
+    adicionais.set(Number(det[1]), { desconto: Number(extrairCampoXml(prod, 'vDesc') ?? 0), st: Number(extrairCampoXml(imposto, 'vICMSST') ?? 0) })
+  }
+  return { impostos: mapaImpostosPorNItemDoXml(xml), despesas: mapaDespesasPorNItemDoXml(xml), ipi: mapaValorIpiPorNItemDoXml(xml), adicionais }
 }
 
 function calcularLinha(nota: Awaited<ReturnType<typeof exigirNotaPrecificavel>>, item: Awaited<ReturnType<typeof exigirNotaPrecificavel>>['itens'][number], regras: RegrasFiscais, fretePorItem: Map<string, number>, xml: ReturnType<typeof lerValoresXml>) {
@@ -131,7 +174,7 @@ function calcularLinha(nota: Awaited<ReturnType<typeof exigirNotaPrecificavel>>,
 
 async function obterGrade(companyId: string, notaId: string) {
   const nota = await exigirNotaPrecificavel(companyId, notaId)
-  const { regras, fretePorItem } = await obterCreditosFiscais(companyId, nota)
+  const { regras, fretePorItem, transporteSimples } = await obterCreditosFiscais(companyId, nota)
   const parametrizacao = await servicoParametrizacaoCustos.obter(companyId)
   const encargosPercentual = parametrizacao.totalVenda ?? 0
   const parametrizacaoCadastrada = Boolean(parametrizacao.id)
@@ -175,6 +218,9 @@ async function obterGrade(companyId: string, notaId: string) {
       : { ok: false as const, motivo: 'Item sem produto vinculado.' }
     const precoAtual = i.produto?.precoVenda != null ? decimalNum(i.produto.precoVenda) : null
     const precoSugerido = formacaoLinha.ok ? formacaoLinha.precoSugerido : null
+    const base = baseDaLinha(nota, i, calculo, xml, transporteSimples)
+    const parametros = parametrosSalvos(i)
+    const aquisicao = calcularAquisicao(base, parametros.ajustes)
     const ultima = i.produtoId ? ultimaCustoPorProduto.get(i.produtoId) : undefined
     return {
       itemId: i.id,
@@ -189,6 +235,14 @@ async function obterGrade(companyId: string, notaId: string) {
       tipoFreteRotulo,
       custoFreteRateado,
       ...calculo,
+      base,
+      parametros,
+      aquisicao,
+      revisao: i.precificacaoRevisao ?? 0,
+      origem: origemDaLinha(i, base, regras, encargosPercentual),
+      precoAtacadoAtual: decimalNum(i.produto?.precoAtacado),
+      precoVendaProposto: precoPorMargem(aquisicao.custo, encargosPercentual, parametros.margemPercentual),
+      precoAtacadoProposto: parametros.margemAtacado == null ? null : precoPorMargem(aquisicao.custo, encargosPercentual, parametros.margemAtacado),
       custoEntrada: custos.custoEntrada,
       custoAnterior: custos.custoAnterior,
       custoAnteriorData: ultima?.dataEmissao ?? null,
@@ -249,18 +303,18 @@ async function transacaoCusto<T>(companyId: string, notaId: string, executar: (d
 
 async function gravarPrecos(
   companyId: string, notaId: string, usuarioId: string,
-  linhas: Array<{ produtoId: string; itemId?: string; precoVenda: number; margemPercentual?: number; vrAdicPercentual?: number }>,
+  linhas: LinhaGravacao[],
   regrasEsperadas?: RegrasFiscais
 ) {
   await exigirNotaPrecificavel(companyId, notaId)
   await transacaoCusto(companyId, notaId, async db => {
     const nota = await exigirNotaPrecificavel(companyId, notaId, db)
-    const { regras, fretePorItem } = await obterCreditosFiscais(companyId, nota, db)
+    const { regras, fretePorItem, transporteSimples } = await obterCreditosFiscais(companyId, nota, db)
     if (regrasEsperadas && hash(regrasEsperadas) !== hash(regras)) throw new ErroDaAplicacao('As regras fiscais mudaram. Recarregue a grade antes de gravar os preços.', 409)
     const parametrizacao = await servicoParametrizacaoCustos.obter(companyId, db)
     const xml = lerValoresXml(nota.xmlConteudo)
     const vistos = new Set<string>()
-    const atualizacoes: { produtoId: string; precoVenda: number; antes: number | null; itemId: string }[] = []
+    const atualizacoes: { produtoId: string; precoVenda: number; antes: number | null; itemId: string; precoAtacado?: number | null; atacadoAntes: number | null; parametros?: { ajustes: AjustesPrecificacao; margemPercentual: number; margemAtacado: number | null }; revisao: number }[] = []
     for (const linha of linhas) {
       if (vistos.has(linha.produtoId)) throw new ErroDaAplicacao('Produto duplicado na grade de precificação; selecione uma linha por produto.', 400)
       vistos.add(linha.produtoId)
@@ -268,19 +322,60 @@ async function gravarPrecos(
       if (!linha.itemId && candidatos.length > 1) throw new ErroDaAplicacao('Selecione a linha que forma o preço deste produto.', 400)
       const item = linha.itemId ? candidatos.find(i => i.id === linha.itemId) : candidatos[0]
       if (!item?.produto || item.produto.companyId !== companyId) throw new ErroDaAplicacao('Produto não pertence a esta nota', 400)
-      const { custoContabil } = calcularLinha(nota, item, regras, fretePorItem, xml)
-      if (!Number.isFinite(linha.precoVenda) || linha.precoVenda <= 0) throw new ErroDaAplicacao('Preço de venda inválido.', 400)
-      const formacao = calcularPrecoSugerido(custoContabil, parametrizacao.totalVenda ?? 0, linha.margemPercentual ?? 0, linha.vrAdicPercentual ?? 0)
+      const calculo = calcularLinha(nota, item, regras, fretePorItem, xml)
+      let custoContabil = calculo.custoContabil
+      if (!Number.isFinite(linha.precoVenda) || linha.precoVenda <= 0 || linha.precoVenda > 1e10) throw new ErroDaAplicacao('Preço de venda inválido.', 400)
+      let parametros: typeof atualizacoes[number]['parametros']
+      if (linha.ajustes !== undefined) {
+        const parsed = esquemaAjustesPrecificacao.safeParse(linha.ajustes)
+        if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
+        const base = baseDaLinha(nota, item, calculo, xml, transporteSimples)
+        if (linha.revisao !== (item.precificacaoRevisao ?? 0) || linha.origem !== origemDaLinha(item, base, regras, parametrizacao.totalVenda ?? 0)) {
+          throw new ErroDaAplicacao('A precificação mudou. Recarregue a grade antes de gravar.', 409)
+        }
+        const aquisicao = calcularAquisicao(base, parsed.data)
+        if (aquisicao.erro) throw new ErroDaAplicacao(aquisicao.erro, 400)
+        custoContabil = aquisicao.custo
+        const validarPreco = (preco: number, margem: number | null | undefined) => {
+          const esperado = margem == null ? null : precoPorMargem(custoContabil, parametrizacao.totalVenda ?? 0, margem)
+          if (!Number.isFinite(preco) || preco <= 0 || preco > 1e10 || esperado == null || Math.abs(preco - esperado) > Math.max(0.005, preco * 0.00001)) throw new ErroDaAplicacao('Preço e margem incompatíveis ou carga igual ou superior a 100%.', 400)
+        }
+        validarPreco(linha.precoVenda, linha.margemPercentual)
+        if (linha.precoAtacado != null) validarPreco(linha.precoAtacado, linha.margemAtacado)
+        if (linha.margemAtacado != null && linha.precoAtacado == null) throw new ErroDaAplicacao('Informe o preço de atacado.', 400)
+        parametros = { ajustes: parsed.data, margemPercentual: margemPorPreco(custoContabil, parametrizacao.totalVenda ?? 0, linha.precoVenda)!,
+          margemAtacado: linha.precoAtacado == null ? null : margemPorPreco(custoContabil, parametrizacao.totalVenda ?? 0, linha.precoAtacado) }
+      } else if (linha.precoAtacado != null || linha.margemAtacado != null) throw new ErroDaAplicacao('Atacado exige os parâmetros e a revisão da precificação.', 400)
+      const formacao = calcularPrecoSugerido(custoContabil, parametrizacao.totalVenda ?? 0, linha.margemPercentual ?? 0, linha.ajustes ? 0 : linha.vrAdicPercentual ?? 0)
       if (!formacao.ok) throw new ErroDaAplicacao(formacao.motivo, 400)
-      atualizacoes.push({ produtoId: linha.produtoId, precoVenda: linha.precoVenda, antes: decimalNum(item.produto.precoVenda), itemId: item.id })
+      atualizacoes.push({ produtoId: linha.produtoId, precoVenda: linha.precoVenda, antes: decimalNum(item.produto.precoVenda), itemId: item.id,
+        atacadoAntes: decimalNum(item.produto.precoAtacado), precoAtacado: linha.precoAtacado, parametros, revisao: item.precificacaoRevisao ?? 0 })
     }
     for (const linha of atualizacoes) {
-      const mudou = await db.produto.updateMany({ where: { id: linha.produtoId, companyId }, data: { precoVenda: linha.precoVenda } })
+      if (linha.parametros) {
+        const itemAlterado = await db.nfeRecebidaItem.updateMany({ where: { id: linha.itemId, nfeRecebidaId: notaId, precificacaoRevisao: linha.revisao, nfeRecebida: { companyId } },
+          data: { precificacaoParametros: linha.parametros as Prisma.InputJsonValue, precificacaoRevisao: { increment: 1 } } })
+        if (itemAlterado.count !== 1) throw new ErroDaAplicacao('A precificação mudou. Recarregue a grade.', 409)
+      }
+      const mudou = await db.produto.updateMany({ where: { id: linha.produtoId, companyId }, data: { precoVenda: linha.precoVenda, ...(linha.precoAtacado !== undefined ? { precoAtacado: linha.precoAtacado } : {}) } })
       if (mudou.count !== 1) throw new ErroDaAplicacao('Produto não encontrado', 404)
-      await db.logDeAuditoria.create({ data: { usuarioId, acao: 'editar', entidade: 'produto', entidadeId: linha.produtoId, valoresAntes: { precoVenda: linha.antes }, valoresDepois: { precoVenda: linha.precoVenda, itemId: linha.itemId } } })
+      await db.logDeAuditoria.create({ data: { usuarioId, acao: 'editar', entidade: 'produto', entidadeId: linha.produtoId, valoresAntes: { precoVenda: linha.antes, precoAtacado: linha.atacadoAntes }, valoresDepois: { precoVenda: linha.precoVenda, ...(linha.precoAtacado !== undefined ? { precoAtacado: linha.precoAtacado } : {}), itemId: linha.itemId, ...(linha.parametros ? { parametros: linha.parametros as Prisma.InputJsonValue } : {}) } } })
     }
   })
   return obterGrade(companyId, notaId)
 }
 
-export const servicoPrecificacaoEntrada = { obterGrade, gravarPrecos }
+async function simular(companyId: string, notaId: string, entrada: { itemId: string; ajustes: AjustesPrecificacao; margemPercentual: number; margemAtacado: number | null }) {
+  const grade = await obterGrade(companyId, notaId)
+  const item = grade.itens.find(i => i.itemId === entrada.itemId)
+  if (!item) throw new ErroDaAplicacao('Item não pertence a esta nota.', 404)
+  const parsed = esquemaAjustesPrecificacao.safeParse(entrada.ajustes)
+  if (!parsed.success) throw new ErroDaAplicacao(parsed.error.errors[0].message, 400)
+  const aquisicao = calcularAquisicao(item.base, parsed.data)
+  const precoVenda = precoPorMargem(aquisicao.custo, grade.encargosPercentual, entrada.margemPercentual)
+  const precoAtacado = entrada.margemAtacado == null ? null : precoPorMargem(aquisicao.custo, grade.encargosPercentual, entrada.margemAtacado)
+  return { ...aquisicao, precoVenda, precoAtacado, origem: item.origem, revisao: item.revisao,
+    erro: aquisicao.erro ?? (precoVenda == null || (entrada.margemAtacado != null && precoAtacado == null) ? 'Carga deve ser menor que 100%.' : null) }
+}
+
+export const servicoPrecificacaoEntrada = { obterGrade, gravarPrecos, simular }

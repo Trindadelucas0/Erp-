@@ -71,7 +71,7 @@ function ConteudoDaPagina() {
       setAviso('Orçamento finalizado.')
       await carregar()
     } catch (falha: unknown) {
-      setErro(extrairMensagemApi(falha, 'Não foi possível finalizar o orçamento.'))
+      setErro(extrairMensagemApi(falha, 'Não foi possível fechar o pedido.'))
     } finally {
       setFinalizandoId(null)
       setConfirmarFinalizar(null)
@@ -162,7 +162,7 @@ function ConteudoDaPagina() {
                             setConfirmarFinalizar({ id: orcamento.id, numero: orcamento.numero })
                           }
                         >
-                          {finalizandoId === orcamento.id ? 'Finalizando…' : 'Finalizar'}
+                          {finalizandoId === orcamento.id ? 'Fechando…' : 'Fechar pedido'}
                         </Button>
                       ) : (
                         <span className="text-muted-foreground">—</span>
@@ -178,13 +178,13 @@ function ConteudoDaPagina() {
 
       <ModalConfirmacao
         aberto={confirmarFinalizar !== null}
-        titulo="Finalizar proposta?"
+        titulo="Fechar pedido?"
         mensagem={
           confirmarFinalizar
-            ? `A proposta ${confirmarFinalizar.numero} passará para status Enviado.`
+            ? `A proposta ${confirmarFinalizar.numero} será convertido em pedido de venda e ficará bloqueado para edição.`
             : ''
         }
-        textoConfirmar="Finalizar"
+        textoConfirmar="Fechar pedido"
         textoCancelar="Cancelar"
         aoConfirmar={() => {
           if (confirmarFinalizar) void executarFinalizar(confirmarFinalizar.id)

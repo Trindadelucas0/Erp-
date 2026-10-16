@@ -1,4 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import { opcoesPagamentoOrcamento } from './pagamento-orcamento.js'
+import { gerarPdfOrcamento } from './pdf-orcamento.js'
 import { readFile } from 'node:fs/promises'
 import { z } from 'zod'
 import { ErroDaAplicacao } from '../../compartilhado/erros/ErroDaAplicacao.js'
@@ -167,6 +169,13 @@ export async function rotasDeOrcamentos(aplicacao: FastifyInstance): Promise<voi
   const auth = [middlewareDeAutenticacao, middlewareEmpresaAtiva]
 
   aplicacao.get('/', { preHandler: [...auth, middlewareDeAutorizacao('vendas:view')] }, listar)
+  aplicacao.get('/opcoes-pagamento', { preHandler: [...auth, middlewareDeAutorizacao('vendas:view')] },
+    async (req) => opcoesPagamentoOrcamento(companyIdDaSessao(req)))
+  aplicacao.get('/:id/pdf', { preHandler: [...auth, middlewareDeAutorizacao('vendas:view')] }, async (req, reply) => {
+    const pdf = await gerarPdfOrcamento(companyIdDaSessao(req), idDaUrl(req))
+    return reply.header('Cache-Control', 'no-store').header('Content-Disposition', 'attachment; filename="orcamento.pdf"')
+      .type('application/pdf').send(pdf)
+  })
   aplicacao.get(
     '/proximo-numero',
     { preHandler: [...auth, middlewareDeAutorizacao('vendas:view')] },

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { ProtegerRota } from '@/components/compartilhado/proteger-rota'
@@ -8,619 +8,218 @@ import { usePermissao } from '@/hooks/use-permissao'
 import { clienteHttp } from '@/services/api'
 import { extrairMensagemApi } from '@/lib/extrair-mensagem-api'
 import { extrairSerieNumeroChave } from '@/lib/chave-acesso-nfe'
-import {
-  calcularDiferencaPercentualPreco,
-  calcularMargemDePreco,
-  calcularPrecoSugerido,
-  valorAdicionalReais,
-} from '@/lib/formacao-preco-venda'
+import { calcularAquisicao, margemPorPreco, percentualDe, precoPorMargem, type AjustesPrecificacao, type BasePrecificacao } from '@/lib/calculo-precificacao'
 import { CardPadrao } from '@/components/ui/card-padrao'
 import { GradeRolavel } from '@/components/ui/grade-rolavel'
 import { TituloPagina } from '@/components/ui/titulo-pagina'
 import { BotaoPrimario } from '@/components/ui/botao-primario'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { cn } from '@/lib/utils'
+import { SelectPadrao } from '@/components/ui/select-padrao'
 
-const LIMIAR_VARIACAO = 0.3
-const CLASSE_INPUT_GRADE =
-  'h-8 w-[6.25rem] px-1.5 py-1 text-right tabular-nums md:text-sm'
+type Item = {
+  itemId: string; nItem: number; produtoId: string | null; produtoNome: string | null; descricao: string | null; sku: string | null; vinculado: boolean
+  base: BasePrecificacao; revisao: number; origem: string; precoAtual: number | null; precoAtacadoAtual: number | null; estoqueDisponivel: number | null
+  parametros: { ajustes: AjustesPrecificacao; margemPercentual: number; margemAtacado: number | null }
+}
+type Grade = {
+  nota: { chaveNfe: string; nomeEmitente: string | null; dataEmissao: string | null }
+  encargosPercentual: number; parametrizacaoCadastrada: boolean; regrasFiscais: unknown
+  parametrizacao: { jurosMensaisCustoFinanOperac?: number | null; aliquotaCbs?: number | null; aliquotaIbs?: number | null }
+  itens: Item[]
+}
+type Linha = Item & { ajustes: AjustesPrecificacao; margem: string; preco: string; margemAtacado: string; precoAtacado: string; textos: Record<string, string>; erroServidor: string | null }
+type CampoNumerico = Exclude<keyof AjustesPrecificacao, 'tipoFrete' | 'tipoSt' | 'transporteSimples'>
+const numero = (texto: string) => texto.trim() && Number.isFinite(Number(texto.replace(',', '.'))) ? Number(texto.replace(',', '.')) : null
+const texto = (valor: number | null | undefined) => valor == null ? '' : String(valor)
+const moeda = (valor: number | null | undefined) => valor == null ? '—' : valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+const percentual = (valor: number | null) => valor == null ? '—' : `${valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`
+const camposNumericos: { campo: CampoNumerico; rotulo: string }[] = [
+  { campo: 'precoTabela', rotulo: 'Preço tabela' }, { campo: 'descontoPercentual', rotulo: '% Desc.' },
+  { campo: 'descontoDestaquePercentual', rotulo: '% Desc. destaque' }, { campo: 'ipiPercentual', rotulo: '% Custo IPI' },
+  { campo: 'outrasPercentual', rotulo: '% Outras despesas' }, { campo: 'fretePercentual', rotulo: '% Frete' },
+  { campo: 'freteValor', rotulo: 'Valor frete' }, { campo: 'stPercentual', rotulo: '% ST' },
+  { campo: 'creditoIcmsPercentual', rotulo: 'Créd. % ICMS' }, { campo: 'creditoIcmsFretePercentual', rotulo: 'Créd. % ICMS frete' },
+  { campo: 'pisCofinsPercentual', rotulo: '% PIS/COFINS' }, { campo: 'adicionalPercentual', rotulo: '% Custo adicional' },
+  { campo: 'adicionalValor', rotulo: 'Valor adicional' },
+]
 
-function CelulaLinha({
-  rotulo,
-  alinhamento = 'right',
-  children,
-}: {
-  rotulo: string
-  alinhamento?: 'left' | 'right'
-  children: ReactNode
-}) {
-  return (
-    <div
-      className={cn(
-        'min-w-[7.25rem] shrink-0 px-2 py-1',
-        alinhamento === 'right' ? 'text-right' : 'text-left'
-      )}
-    >
-      <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-        {rotulo}
-      </div>
-      <div className="mt-0.5 text-sm">{children}</div>
-    </div>
-  )
+function iniciar(item: Item, encargos: number): Linha {
+  const ajustes = item.parametros.ajustes
+  const custo = calcularAquisicao(item.base, ajustes).custo
+  return { ...item, ajustes, margem: texto(item.parametros.margemPercentual), preco: texto(precoPorMargem(custo, encargos, item.parametros.margemPercentual)),
+    margemAtacado: texto(item.parametros.margemAtacado), precoAtacado: texto(item.parametros.margemAtacado == null ? null : precoPorMargem(custo, encargos, item.parametros.margemAtacado)), textos: {}, erroServidor: null }
 }
 
-type ItemPrecificacaoApi = {
-  itemId: string
-  nItem: number
-  descricao: string | null
-  quantidade: number | null
-  produtoId: string | null
-  produtoNome: string | null
-  sku: string | null
-  vinculado: boolean
-  tipoFrete: string | null
-  tipoFreteRotulo: string | null
-  custoFreteRateado: number | null
-  despesasSeguro: number
-  outrasDespesas: number
-  creditoIcms: number
-  creditoIcmsFrete: number
-  creditoPis: number
-  creditoCofins: number
-  aliquotaIcms: number | null
-  aliquotaPis: number | null
-  aliquotaCofins: number | null
-  custoContabil: number | null
-  custoEntrada: number | null
-  custoAnterior: number | null
-  custoAnteriorData: string | null
-  variacaoPercentual: number | null
-  encargosPercentual: number
-  vrAdicPercentual: number
-  margemPercentual: number
-  precoSugerido: number | null
-  precoAtual: number | null
-  diferencaPercentual: number | null
-  estoqueDisponivel: number | null
-  recusa: string | null
-}
-
-type GradePrecificacao = {
-  regrasFiscais: Record<'mercadoria' | 'transporte', { modo: 'nota' | 'pre_definida'; aliquota: number | null }>
-  nota: {
-    id: string
-    chaveNfe: string
-    nomeEmitente: string | null
-    documentoEmitente: string | null
-    dataEmissao: string | null
-    valorTotal: number | null
+function erroDaLinha(linha: Linha, encargos: number) {
+  if (!linha.vinculado) return 'Sem produto vinculado.'
+  if (Object.values(linha.textos).some(t => numero(t) == null)) return 'Preencha os adicionais com números válidos.'
+  const custo = calcularAquisicao(linha.base, linha.ajustes)
+  if (custo.erro) return custo.erro
+  if (numero(linha.preco) == null || numero(linha.preco)! <= 0 || numero(linha.margem) == null || precoPorMargem(custo.custo, encargos, numero(linha.margem)!) == null) return 'Informe preço e margem válidos; a carga deve ser menor que 100%.'
+  if (linha.margemAtacado !== '' || linha.precoAtacado !== '') {
+    if (numero(linha.precoAtacado) == null || numero(linha.precoAtacado)! <= 0 || numero(linha.margemAtacado) == null || precoPorMargem(custo.custo, encargos, numero(linha.margemAtacado)!) == null) return 'Informe preço e margem de atacado válidos; a carga deve ser menor que 100%.'
   }
-  parametrizacaoCadastrada: boolean
-  encargosPercentual: number
-  parametrizacao: {
-    jurosMensaisCustoFinanOperac: number | null
-    aliquotaCbs: number | null
-    aliquotaIbs: number | null
-    totalVenda: number
-  }
-  itens: ItemPrecificacaoApi[]
+  return linha.erroServidor
 }
 
-type LinhaGrade = ItemPrecificacaoApi & {
-  vrAdicTexto: string
-  margemTexto: string
-  precoTexto: string
-  recusaLocal: string | null
+function Campo({ rotulo, children }: { rotulo: string; children: ReactNode }) {
+  return <div className="min-w-0 p-2 md:w-32 md:shrink-0 md:border-r"><div className="mb-1 text-xs font-medium text-muted-foreground">{rotulo}</div><div className="text-sm tabular-nums">{children}</div></div>
 }
 
-function formatarMoeda(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return '—'
-  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
-
-function formatarQtd(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return '—'
-  return n.toLocaleString('pt-BR', { maximumFractionDigits: 4 })
-}
-
-function formatarPct(pct: number | null | undefined): string {
-  if (pct == null || !Number.isFinite(pct)) return '—'
-  const sinal = pct > 0 ? '+' : ''
-  return `${sinal}${(pct * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`
-}
-
-function formatarPercentual(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return '—'
-  return `${n.toLocaleString('pt-BR', { maximumFractionDigits: 4 })}%`
-}
-
-function formatarData(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleDateString('pt-BR')
-}
-
-function parseDecimal(texto: string): number | null {
-  const t = texto.trim().replace(',', '.')
-  if (!t) return null
-  const n = Number(t)
-  return Number.isFinite(n) ? n : null
-}
-
-function textoDecimal(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return ''
-  return String(n)
-}
-
-function linhaDeApi(item: ItemPrecificacaoApi): LinhaGrade {
-  return {
-    ...item,
-    vrAdicTexto: textoDecimal(item.vrAdicPercentual ?? 0) || '0',
-    margemTexto: textoDecimal(item.margemPercentual),
-    precoTexto: textoDecimal(item.precoSugerido),
-    recusaLocal: item.recusa,
+function valorDoCampo(l: Linha, campo: CampoNumerico): number | null {
+  const b = l.base, a = l.ajustes, r = calcularAquisicao(b, a)
+  if (a[campo] != null) return a[campo]!
+  const base = r.mercadoria
+  switch (campo) {
+    case 'precoTabela': return b.precoTabela
+    case 'descontoPercentual': return percentualDe(b.desconto, a.precoTabela ?? b.precoTabela ?? 0)
+    case 'descontoDestaquePercentual': return 0
+    case 'ipiPercentual': return percentualDe(b.ipi, base)
+    case 'outrasPercentual': return percentualDe(b.outras, base)
+    case 'fretePercentual': return percentualDe(r.frete, base)
+    case 'freteValor': return r.frete
+    case 'stPercentual': return percentualDe(r.st, base)
+    case 'creditoIcmsPercentual': return percentualDe(b.creditoIcms, base)
+    case 'creditoIcmsFretePercentual': return percentualDe(r.creditoFrete, r.frete)
+    case 'pisCofinsPercentual': return percentualDe(b.creditoPisCofins, base)
+    case 'adicionalPercentual': return percentualDe(r.adicional, r.subtotal)
+    case 'adicionalValor': return r.adicional
   }
 }
 
 function ConteudoPrecificacao() {
-  const params = useParams()
-  const id = typeof params.id === 'string' ? params.id : ''
+  const { id: parametroId } = useParams()
+  const id = typeof parametroId === 'string' ? parametroId : ''
   const podeGravar = usePermissao('produtos:edit')
-  const [grade, setGrade] = useState<GradePrecificacao | null>(null)
-  const [linhas, setLinhas] = useState<LinhaGrade[]>([])
+  const [grade, setGrade] = useState<Grade | null>(null)
+  const [linhas, setLinhas] = useState<Linha[]>([])
   const [carregando, setCarregando] = useState(true)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
   const [mensagem, setMensagem] = useState('')
-  const [selecaoProduto, setSelecaoProduto] = useState<Record<string, string>>({})
-
-  function receberGrade(data: GradePrecificacao) {
-    setGrade(data)
-    setLinhas(atuais => data.itens.map(item => {
-      const anterior = atuais.find(l => l.itemId === item.itemId)
-      if (!anterior) return linhaDeApi(item)
-      const margem = parseDecimal(anterior.margemTexto) ?? 0
-      const vrAdic = parseDecimal(anterior.vrAdicTexto) ?? 0
-      const calculo = calcularPrecoSugerido(item.custoContabil, item.encargosPercentual, margem, vrAdic)
-      return { ...linhaDeApi(item), margemTexto: anterior.margemTexto, vrAdicTexto: anterior.vrAdicTexto, margemPercentual: margem, vrAdicPercentual: vrAdic,
-        precoTexto: calculo.ok ? textoDecimal(calculo.precoSugerido) : '', precoSugerido: calculo.ok ? calculo.precoSugerido : null,
-        recusaLocal: item.recusa ?? (calculo.ok ? null : calculo.motivo) }
-    }))
-  }
-
+  const [selecao, setSelecao] = useState<Record<string, string>>({})
+  const versoes = useRef<Record<string, number>>({})
+  const encargos = grade?.encargosPercentual ?? 0
+  const receber = useCallback((dados: Grade) => { setGrade(dados); setLinhas(dados.itens.map(item => iniciar(item, dados.encargosPercentual))) }, [])
   const carregar = useCallback(async () => {
-    if (!id) return
     setCarregando(true)
-    setErro('')
+    try { const { data } = await clienteHttp.get<Grade>(`/entrada-notas/${id}/precificacao`); receber(data); setErro('') }
+    catch (e) { setErro(extrairMensagemApi(e, 'Não foi possível abrir a precificação.')) }
+    finally { setCarregando(false) }
+  }, [id, receber])
+  useEffect(() => { if (id) void carregar() }, [id, carregar])
+
+  function alterar(itemId: string, atualizar: (linha: Linha) => Linha) {
+    versoes.current[itemId] = (versoes.current[itemId] ?? 0) + 1
+    setMensagem('')
+    setLinhas(atuais => atuais.map(l => l.itemId === itemId ? { ...atualizar(l), erroServidor: null } : l))
+  }
+  function recalcular(l: Linha): Linha {
+    const custo = calcularAquisicao(l.base, l.ajustes).custo
+    return { ...l, preco: texto(numero(l.margem) == null ? null : precoPorMargem(custo, encargos, numero(l.margem)!)), precoAtacado: texto(numero(l.margemAtacado) == null ? null : precoPorMargem(custo, encargos, numero(l.margemAtacado)!)) }
+  }
+  function editarAdicional(itemId: string, campo: CampoNumerico, valor: string) {
+    alterar(itemId, l => {
+      const ajustes = { ...l.ajustes }, textos = { ...l.textos, [campo]: valor }
+      const pares: Partial<Record<CampoNumerico, CampoNumerico>> = { freteValor: 'fretePercentual', fretePercentual: 'freteValor', adicionalValor: 'adicionalPercentual', adicionalPercentual: 'adicionalValor' }
+      const par = pares[campo]
+      if (par) { delete ajustes[par]; delete textos[par] }
+      const n = numero(valor)
+      if (n != null) ajustes[campo] = n
+      return recalcular({ ...l, ajustes, textos })
+    })
+  }
+  function editarPrecoMargem(itemId: string, campo: 'margem' | 'preco' | 'margemAtacado' | 'precoAtacado', valor: string) {
+    alterar(itemId, l => {
+      const custo = calcularAquisicao(l.base, l.ajustes).custo, n = numero(valor)
+      if (campo === 'margem') return { ...l, margem: valor, preco: texto(n == null ? null : precoPorMargem(custo, encargos, n)) }
+      if (campo === 'margemAtacado') return { ...l, margemAtacado: valor, precoAtacado: texto(n == null ? null : precoPorMargem(custo, encargos, n)) }
+      if (campo === 'preco') return { ...l, preco: valor, margem: texto(margemPorPreco(custo, encargos, n)) }
+      return { ...l, precoAtacado: valor, margemAtacado: texto(margemPorPreco(custo, encargos, n)) }
+    })
+  }
+  async function simular(l: Linha) {
+    if (erroDaLinha(l, encargos) || !podeGravar || salvando) return
+    const versao = versoes.current[l.itemId] ?? 0
     try {
-      const { data } = await clienteHttp.get<GradePrecificacao>(
-        `/entrada-notas/${id}/precificacao`
-      )
-      receberGrade(data)
+      const { data } = await clienteHttp.post<{ erro: string | null; origem: string }>(`/entrada-notas/${id}/precificacao/simular`, { itemId: l.itemId, ajustes: l.ajustes, margemPercentual: numero(l.margem), margemAtacado: numero(l.margemAtacado) })
+      if (versao === (versoes.current[l.itemId] ?? 0)) setLinhas(atuais => atuais.map(x => x.itemId === l.itemId ? { ...x, erroServidor: data.origem !== l.origem ? 'Os dados mudaram. Recarregue a tela antes de gravar.' : data.erro } : x))
     } catch (e) {
-      setGrade(null)
-      setLinhas([])
-      setErro(extrairMensagemApi(e, 'Não foi possível abrir a precificação desta nota.'))
-    } finally {
-      setCarregando(false)
+      if (versao === (versoes.current[l.itemId] ?? 0)) setLinhas(atuais => atuais.map(x => x.itemId === l.itemId ? { ...x, erroServidor: extrairMensagemApi(e, 'Não foi possível validar a simulação.') } : x))
     }
-  }, [id])
-
-  useEffect(() => {
-    void carregar()
-  }, [carregar])
-
-  function atualizarVrAdic(itemId: string, texto: string) {
-    setMensagem('')
-    setLinhas((atuais) =>
-      atuais.map((linha) => {
-        if (linha.itemId !== itemId) return linha
-        const vrAdic = parseDecimal(texto)
-        if (vrAdic == null) {
-          return { ...linha, vrAdicTexto: texto, recusaLocal: 'Valor adicional inválido.' }
-        }
-        const margem = parseDecimal(linha.margemTexto) ?? linha.margemPercentual
-        const r = calcularPrecoSugerido(
-          linha.custoContabil,
-          linha.encargosPercentual,
-          margem,
-          vrAdic
-        )
-        if (!r.ok) {
-          return {
-            ...linha,
-            vrAdicTexto: texto,
-            vrAdicPercentual: vrAdic,
-            precoSugerido: null,
-            precoTexto: '',
-            diferencaPercentual: null,
-            recusaLocal: r.motivo,
-          }
-        }
-        return {
-          ...linha,
-          vrAdicTexto: texto,
-          vrAdicPercentual: vrAdic,
-          margemPercentual: r.margemPercentual,
-          precoSugerido: r.precoSugerido,
-          precoTexto: textoDecimal(r.precoSugerido),
-          diferencaPercentual: calcularDiferencaPercentualPreco(r.precoSugerido, linha.precoAtual),
-          recusaLocal: null,
-        }
-      })
-    )
   }
-
-  function atualizarMargem(itemId: string, texto: string) {
-    setMensagem('')
-    setLinhas((atuais) =>
-      atuais.map((linha) => {
-        if (linha.itemId !== itemId) return linha
-        const margem = parseDecimal(texto)
-        if (margem == null) {
-          return { ...linha, margemTexto: texto, recusaLocal: 'Margem inválida.' }
-        }
-        const vrAdic = parseDecimal(linha.vrAdicTexto) ?? linha.vrAdicPercentual ?? 0
-        const r = calcularPrecoSugerido(
-          linha.custoContabil,
-          linha.encargosPercentual,
-          margem,
-          vrAdic
-        )
-        if (!r.ok) {
-          return {
-            ...linha,
-            margemTexto: texto,
-            precoSugerido: null,
-            precoTexto: '',
-            diferencaPercentual: null,
-            recusaLocal: r.motivo,
-          }
-        }
-        return {
-          ...linha,
-          margemTexto: texto,
-          margemPercentual: r.margemPercentual,
-          precoSugerido: r.precoSugerido,
-          precoTexto: textoDecimal(r.precoSugerido),
-          diferencaPercentual: calcularDiferencaPercentualPreco(r.precoSugerido, linha.precoAtual),
-          recusaLocal: null,
-        }
-      })
-    )
-  }
-
-  function atualizarPreco(itemId: string, texto: string) {
-    setMensagem('')
-    setLinhas((atuais) =>
-      atuais.map((linha) => {
-        if (linha.itemId !== itemId) return linha
-        const preco = parseDecimal(texto)
-        if (preco == null) {
-          return { ...linha, precoTexto: texto, recusaLocal: 'Preço inválido.' }
-        }
-        const vrAdic = parseDecimal(linha.vrAdicTexto) ?? linha.vrAdicPercentual ?? 0
-        const r = calcularMargemDePreco(
-          linha.custoContabil,
-          linha.encargosPercentual,
-          preco,
-          vrAdic
-        )
-        if (!r.ok) {
-          return {
-            ...linha,
-            precoTexto: texto,
-            precoSugerido: null,
-            diferencaPercentual: null,
-            recusaLocal: r.motivo,
-          }
-        }
-        return {
-          ...linha,
-          precoTexto: texto,
-          precoSugerido: r.precoSugerido,
-          margemPercentual: r.margemPercentual,
-          margemTexto: textoDecimal(r.margemPercentual),
-          diferencaPercentual: calcularDiferencaPercentualPreco(r.precoSugerido, linha.precoAtual),
-          recusaLocal: null,
-        }
-      })
-    )
-  }
-
-  const paraGravar = useMemo(
-    () =>
-      linhas.filter(
-        (l) =>
-          l.vinculado &&
-          l.produtoId &&
-          l.precoSugerido != null &&
-          l.precoSugerido > 0 &&
-          (linhas.filter(x => x.produtoId === l.produtoId).length === 1 || selecaoProduto[l.produtoId] === l.itemId) &&
-          !l.recusaLocal
-      ),
-    [linhas, selecaoProduto]
-  )
-
+  const repetido = (l: Linha) => linhas.filter(x => x.produtoId === l.produtoId).length > 1
+  const validas = linhas.filter(l => l.produtoId && !erroDaLinha(l, encargos) && (!repetido(l) || selecao[l.produtoId] === l.itemId))
   async function gravar() {
-    if (!id || !podeGravar) return
-    if (paraGravar.length === 0) {
-      setErro('Nenhum item com produto vinculado e preço válido para gravar.')
-      return
-    }
-    setSalvando(true)
-    setErro('')
-    setMensagem('')
+    if (!podeGravar || salvando || !validas.length) return
+    setSalvando(true); setErro(''); setMensagem('')
+    for (const l of linhas) versoes.current[l.itemId] = (versoes.current[l.itemId] ?? 0) + 1
     try {
-      const { data } = await clienteHttp.put<GradePrecificacao>(
-        `/entrada-notas/${id}/precificacao`,
-        {
-          itens: paraGravar.map((l) => ({
-            produtoId: l.produtoId,
-            itemId: l.itemId,
-            vrAdicPercentual: l.vrAdicPercentual,
-            precoVenda: l.precoSugerido,
-            margemPercentual: l.margemPercentual,
-          })),
-          regrasFiscais: grade?.regrasFiscais,
-        }
-      )
-      receberGrade(data)
-      setMensagem('Preço de venda gravado no cadastro do produto.')
-    } catch (e) {
-      setErro(extrairMensagemApi(e, 'Não foi possível gravar os preços.'))
-    } finally {
-      setSalvando(false)
-    }
+      const { data } = await clienteHttp.put<Grade>(`/entrada-notas/${id}/precificacao`, { regrasFiscais: grade?.regrasFiscais, itens: validas.map(l => ({
+        itemId: l.itemId, produtoId: l.produtoId, ajustes: l.ajustes, revisao: l.revisao, origem: l.origem,
+        precoVenda: numero(l.preco), margemPercentual: numero(l.margem), margemAtacado: numero(l.margemAtacado),
+        ...(numero(l.precoAtacado) != null ? { precoAtacado: numero(l.precoAtacado) } : {}),
+      })) })
+      const gravados = new Set(validas.map(l => l.itemId))
+      setGrade(data)
+      setLinhas(atuais => data.itens.map(i => gravados.has(i.itemId) ? iniciar(i, data.encargosPercentual) : atuais.find(l => l.itemId === i.itemId) ?? iniciar(i, data.encargosPercentual)))
+      setMensagem(`${validas.length} produto(s) com preços gravados. As demais linhas foram preservadas.`)
+    } catch (e) { setErro(extrairMensagemApi(e, 'Não foi possível gravar os preços.')) }
+    finally { setSalvando(false) }
   }
 
-  if (carregando) {
-    return <p className="text-sm text-muted-foreground">Carregando precificação…</p>
-  }
-
-  if (!grade) {
-    return (
-      <div className="space-y-3">
-        <p className="text-sm text-destructive">{erro || 'Nota não encontrada.'}</p>
-        <Button asChild variant="outline">
-          <Link href="/auditoria-entradas">Voltar</Link>
-        </Button>
-      </div>
-    )
-  }
-
-  const { serie, numero } = extrairSerieNumeroChave(grade.nota.chaveNfe)
-  const encargosDetalhe = grade.parametrizacao
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <TituloPagina>Precificação</TituloPagina>
-        <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline" size="sm">
-            <Link href={`/auditoria-entradas/${id}`}>Dossiê da nota</Link>
-          </Button>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/auditoria-entradas">Voltar à lista</Link>
-          </Button>
-        </div>
-      </div>
-
-      {erro && (
-        <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-          {erro}
-        </p>
-      )}
-      {mensagem && (
-        <p className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-800 dark:text-emerald-300">
-          {mensagem}
-        </p>
-      )}
-
-      <CardPadrao titulo="Nota">
-        <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <dt className="text-muted-foreground">Fornecedor</dt>
-            <dd className="font-medium">{grade.nota.nomeEmitente || '—'}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Nº / série</dt>
-            <dd className="font-medium tabular-nums">
-              {numero ?? '—'}
-              {serie ? ` / ${serie}` : ''}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Emissão</dt>
-            <dd className="font-medium">{formatarData(grade.nota.dataEmissao)}</dd>
-          </div>
-        </dl>
-      </CardPadrao>
-
-      <CardPadrao titulo="Determinante de Vendas">
-        <p className="mb-3 text-sm text-muted-foreground">
-          Total de encargos = soma de Configurações → Vendas (PIS, COFINS, Imp. renda, Contribuição
-          social, Custo fixo e Comissão). CBS, IBS e juros aparecem aqui e não entram no divisor.
-        </p>
-        {!grade.parametrizacaoCadastrada && (
-          <p className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm">
-            Não há percentuais gravados para esta empresa. Os encargos estão em 0%.{' '}
-            <Link href="/configuracoes?aba=vendas" className="text-primary underline">
-              Abrir Configurações → Vendas
-            </Link>
-          </p>
-        )}
-        <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <dt className="text-muted-foreground">Encargos (Total Venda)</dt>
-            <dd className="font-medium tabular-nums">
-              {formatarPercentual(grade.encargosPercentual)}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Juros mensais</dt>
-            <dd className="tabular-nums">{formatarPercentual(encargosDetalhe.jurosMensaisCustoFinanOperac)}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">CBS</dt>
-            <dd className="tabular-nums">{formatarPercentual(encargosDetalhe.aliquotaCbs)}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">IBS</dt>
-            <dd className="tabular-nums">{formatarPercentual(encargosDetalhe.aliquotaIbs)}</dd>
-          </div>
-        </dl>
-      </CardPadrao>
-
-      <CardPadrao titulo="Grade da nota">
-        <p className="mb-3 text-sm text-muted-foreground">
-          Arraste a barra embaixo para ver as colunas — todos os produtos deslizam juntos. Nome e SKU
-          ficam fixos à esquerda.
-        </p>
-        {linhas.length === 0 ? (
-          <p className="px-2 py-6 text-sm text-muted-foreground">Nenhum item nesta nota.</p>
-        ) : (
-          <GradeRolavel>
-            <div className="w-max min-w-full divide-y rounded-md border">
-              {linhas.map((linha) => {
-                const destaque =
-                  linha.variacaoPercentual != null &&
-                  Math.abs(linha.variacaoPercentual) >= LIMIAR_VARIACAO
-                const editavel = linha.vinculado && podeGravar && !salvando
-                const vrAdic = parseDecimal(linha.vrAdicTexto) ?? linha.vrAdicPercentual ?? 0
-                return (
-                  <div key={linha.itemId} className="flex w-max min-w-full items-stretch">
-                    <div className="grade-fixo-esquerda w-52 shrink-0 border-r border-border px-2 py-2">
-                      <div className="font-medium leading-snug">
-                        {linha.produtoNome || linha.descricao || '—'}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {linha.sku || (linha.vinculado ? '—' : 'Sem produto vinculado')}
-                      </div>
-                      {linha.produtoId && linhas.filter(l => l.produtoId === linha.produtoId).length > 1 && <label className="mt-2 flex items-center gap-2 text-xs"><input type="radio" name={`produto-${linha.produtoId}`} checked={selecaoProduto[linha.produtoId] === linha.itemId} disabled={!editavel} onChange={() => setSelecaoProduto(s => ({ ...s, [linha.produtoId!]: linha.itemId }))} />Usar esta linha para o preço</label>}
-                      {linha.recusaLocal && (
-                        <p className="mt-1 text-xs text-destructive">{linha.recusaLocal}</p>
-                      )}
-                    </div>
-                    <div className="flex w-max items-start py-1">
-                      <CelulaLinha rotulo="Qtd">{formatarQtd(linha.quantidade)}</CelulaLinha>
-                      <CelulaLinha rotulo="Tipo frete" alinhamento="left">
-                        {linha.tipoFreteRotulo || '—'}
-                      </CelulaLinha>
-                      <CelulaLinha rotulo="Frete lançado">
-                        {formatarMoeda(linha.custoFreteRateado)}
-                      </CelulaLinha>
-                      <CelulaLinha rotulo="Despesas">
-                        {formatarMoeda(linha.despesasSeguro)}
-                      </CelulaLinha>
-                      <CelulaLinha rotulo="Outras desp.">
-                        {formatarMoeda(linha.outrasDespesas)}
-                      </CelulaLinha>
-                      <CelulaLinha rotulo="Créd. ICMS">{formatarMoeda(linha.creditoIcms)}</CelulaLinha>
-                      <CelulaLinha rotulo="Créd. ICMS frete">{formatarMoeda(linha.creditoIcmsFrete)}</CelulaLinha>
-                      <CelulaLinha rotulo="Créd. PIS">{formatarMoeda(linha.creditoPis)}</CelulaLinha>
-                      <CelulaLinha rotulo="Créd. COFINS">
-                        {formatarMoeda(linha.creditoCofins)}
-                      </CelulaLinha>
-                      <CelulaLinha rotulo="% ICMS">{formatarPercentual(linha.aliquotaIcms)}</CelulaLinha>
-                      <CelulaLinha rotulo="% PIS">{formatarPercentual(linha.aliquotaPis)}</CelulaLinha>
-                      <CelulaLinha rotulo="% COFINS">
-                        {formatarPercentual(linha.aliquotaCofins)}
-                      </CelulaLinha>
-                      <CelulaLinha rotulo="Custo contábil">
-                        <span className="font-medium">{formatarMoeda(linha.custoContabil)}</span>
-                      </CelulaLinha>
-                      <CelulaLinha rotulo="Custo da entrada">
-                        {formatarMoeda(linha.custoEntrada)}
-                      </CelulaLinha>
-                      <CelulaLinha rotulo="Custo anterior">
-                        <div className="tabular-nums">{formatarMoeda(linha.custoAnterior)}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {formatarData(linha.custoAnteriorData)}
-                        </div>
-                      </CelulaLinha>
-                      <CelulaLinha rotulo="Variação">
-                        <span
-                          className={cn(
-                            'tabular-nums',
-                            destaque && 'font-semibold text-amber-700 dark:text-amber-400'
-                          )}
-                        >
-                          {formatarPct(linha.variacaoPercentual)}
-                        </span>
-                      </CelulaLinha>
-                      <CelulaLinha rotulo="Encargos %">
-                        {formatarPercentual(linha.encargosPercentual)}
-                      </CelulaLinha>
-                      <CelulaLinha rotulo="% Vr.adic">
-                        <Input
-                          aria-label={`% Vr.adic do item ${linha.nItem}`}
-                          className={CLASSE_INPUT_GRADE}
-                          inputMode="decimal"
-                          value={linha.vrAdicTexto}
-                          disabled={!editavel}
-                          onChange={(e) => atualizarVrAdic(linha.itemId, e.target.value)}
-                        />
-                      </CelulaLinha>
-                      <CelulaLinha rotulo="Vr.adic R$">
-                        {formatarMoeda(valorAdicionalReais(linha.custoContabil, vrAdic))}
-                      </CelulaLinha>
-                      <CelulaLinha rotulo="% Marg">
-                        <Input
-                          aria-label={`Margem % do item ${linha.nItem}`}
-                          className={CLASSE_INPUT_GRADE}
-                          inputMode="decimal"
-                          value={linha.margemTexto}
-                          disabled={!editavel}
-                          onChange={(e) => atualizarMargem(linha.itemId, e.target.value)}
-                        />
-                      </CelulaLinha>
-                      <CelulaLinha rotulo="Preço formado">
-                        <Input
-                          aria-label={`Preço formado do item ${linha.nItem}`}
-                          className={CLASSE_INPUT_GRADE}
-                          inputMode="decimal"
-                          value={linha.precoTexto}
-                          disabled={!editavel}
-                          onChange={(e) => atualizarPreco(linha.itemId, e.target.value)}
-                        />
-                      </CelulaLinha>
-                      <CelulaLinha rotulo="Preço atual">{formatarMoeda(linha.precoAtual)}</CelulaLinha>
-                      <CelulaLinha rotulo="Estoque disp.">
-                        {formatarQtd(linha.estoqueDisponivel)}
-                      </CelulaLinha>
-                    </div>
-                  </div>
-                )
-              })}
+  if (carregando) return <p className="text-sm text-muted-foreground">Carregando precificação…</p>
+  if (!grade) return <div role="alert">{erro}<Button onClick={() => void carregar()}>Tentar novamente</Button></div>
+  const { numero: numeroNota, serie } = extrairSerieNumeroChave(grade.nota.chaveNfe)
+  return <div className="space-y-4">
+    <div className="flex flex-wrap items-center justify-between gap-2"><TituloPagina>Precificação</TituloPagina><div className="flex gap-2"><Button asChild variant="outline"><Link href={`/auditoria-entradas/${id}`}>Dossiê da nota</Link></Button><Button asChild variant="outline"><Link href="/auditoria-entradas">Voltar à lista</Link></Button></div></div>
+    {erro && <p role="alert" className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">{erro}</p>}
+    {mensagem && <p role="status" className="rounded-md border border-emerald-500/30 p-3 text-sm">{mensagem}</p>}
+    <CardPadrao titulo="Nota"><div className="flex flex-wrap gap-6 text-sm"><span><span className="text-muted-foreground">Fornecedor: </span>{grade.nota.nomeEmitente || '—'}</span><span><span className="text-muted-foreground">Nº / série: </span>{numeroNota || '—'} / {serie || '—'}</span><span><span className="text-muted-foreground">Emissão: </span>{grade.nota.dataEmissao ? new Date(grade.nota.dataEmissao).toLocaleDateString('pt-BR') : '—'}</span></div></CardPadrao>
+    {!grade.parametrizacaoCadastrada && <p className="rounded-md border border-amber-400 p-3 text-sm">Não há percentuais gravados para esta empresa. O custo de venda está em 0%. <Link className="underline" href="/configuracoes?aba=vendas">Abrir Configurações → Vendas</Link></p>}
+    <CardPadrao titulo={`Produtos · ${linhas.length} produto(s)`}>
+      <p className="mb-3 text-xs text-muted-foreground">Ajuste margem ou preço. Abra Campos adicionais para conferir e ajustar a composição do custo. Os preços atuais são apenas para comparação.</p>
+      {!linhas.length ? <p>Nenhum item nesta nota.</p> : <GradeRolavel><div className="min-w-full divide-y rounded-md border md:w-max">
+        {linhas.map(l => {
+          const aquisicao = calcularAquisicao(l.base, l.ajustes), erroLinha = erroDaLinha(l, encargos)
+          const editavel = podeGravar && l.vinculado && !salvando
+          const entrada = (campo: 'margem' | 'preco' | 'margemAtacado' | 'precoAtacado', rotulo: string, aria: string) => <Campo rotulo={rotulo}><Input aria-label={`${aria} do item ${l.nItem}`} inputMode="decimal" className="h-11 text-right md:h-8" value={l[campo]} disabled={!editavel} onChange={e => editarPrecoMargem(l.itemId, campo, e.target.value)} onBlur={() => void simular(l)} /></Campo>
+          return <section key={l.itemId} aria-label={`Produto ${l.nItem}`} className="md:w-max md:min-w-full">
+            <div className="grid grid-cols-2 md:flex md:items-stretch">
+              <div className="col-span-2 border-b bg-background p-2 md:sticky md:left-0 md:z-10 md:w-72 md:shrink-0 md:border-b-0 md:border-r"><div className="flex gap-3"><div className="w-16 shrink-0"><div className="text-xs text-muted-foreground">Produto</div><div className="mt-1 text-sm">{l.sku || '—'}</div></div><div><div className="text-xs text-muted-foreground">Nome</div><div className="mt-1 text-sm font-medium">{l.produtoNome || l.descricao || '—'}</div></div></div>
+                {repetido(l) && l.produtoId && <label className="mt-2 flex items-center gap-2 text-xs"><input type="radio" name={`produto-${l.produtoId}`} checked={selecao[l.produtoId] === l.itemId} disabled={!editavel} onChange={() => setSelecao(s => ({ ...s, [l.produtoId!]: l.itemId }))} />Usar esta linha para o preço</label>}
+              </div>
+              <Campo rotulo="Custo de aquisição"><span className="font-semibold text-primary">{moeda(aquisicao.custo)}</span></Campo>
+              {entrada('margem', '% Margem', 'Margem %')}{entrada('preco', 'Preço de venda', 'Preço de venda')}
+              <Campo rotulo="Preço de venda atual">{moeda(l.precoAtual)}</Campo>
+              {entrada('margemAtacado', '% Margem atacado', 'Margem atacado %')}{entrada('precoAtacado', 'Preço atacado', 'Preço atacado')}
+              <Campo rotulo="Preço atacado atual">{moeda(l.precoAtacadoAtual)}</Campo>
+              <Campo rotulo="% Margem atual">{percentual(margemPorPreco(aquisicao.custo, encargos, l.precoAtual))}</Campo>
+              <Campo rotulo="% Margem atacado atual">{percentual(margemPorPreco(aquisicao.custo, encargos, l.precoAtacadoAtual))}</Campo>
+              <Campo rotulo="Estoque disponível">{l.estoqueDisponivel == null ? '—' : l.estoqueDisponivel.toLocaleString('pt-BR')}</Campo>
             </div>
-          </GradeRolavel>
-        )}
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <BotaoPrimario
-            type="button"
-            onClick={() => void gravar()}
-            disabled={!podeGravar || salvando || paraGravar.length === 0}
-          >
-            {salvando ? 'Gravando…' : 'Gravar preços válidos'}
-          </BotaoPrimario>
-          {!podeGravar && (
-            <p className="text-sm text-muted-foreground">
-              É preciso a permissão de editar produtos para gravar o preço de venda.
-            </p>
-          )}
-        </div>
-      </CardPadrao>
-    </div>
-  )
+            {erroLinha && <p role="alert" className="px-3 py-1 text-xs text-destructive">{erroLinha}</p>}
+            <details className="group border-t border-amber-300/60 bg-amber-50/70 dark:bg-amber-950/20">
+              <summary className="min-h-11 cursor-pointer list-none px-3 py-3 text-xs md:min-h-0 md:py-2 font-semibold text-amber-900 dark:text-amber-200"><span className="inline-block w-5 group-open:hidden" aria-hidden="true">+</span><span className="hidden w-5 group-open:inline-block" aria-hidden="true">−</span>Campos adicionais <span className="ml-2 font-normal">Abrir / recolher</span></summary>
+              <div className="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 md:max-w-[100rem] md:grid-cols-8">
+                {camposNumericos.map(({ campo, rotulo }) => <label key={campo} className="min-w-0 text-xs font-medium">{rotulo}<Input aria-label={`${rotulo} do item ${l.nItem}`} inputMode="decimal" className="mt-1 h-11 bg-background text-right md:h-8" value={l.textos[campo] ?? texto(valorDoCampo(l, campo) == null ? null : Math.round(valorDoCampo(l, campo)! * 1e6) / 1e6)} disabled={!editavel || (campo === 'stPercentual' && (l.ajustes.tipoSt ?? (l.base.st > 0 ? 'nota' : 'sem')) !== 'adicional')} onChange={e => editarAdicional(l.itemId, campo, e.target.value)} onBlur={() => void simular(l)} /></label>)}
+                <SelectPadrao id={`frete-${l.itemId}`} rotulo="Tipo frete" obrigatorio compacto className="h-11 md:h-8" valor={l.ajustes.tipoFrete ?? l.base.tipoFrete} disabled={!editavel} opcoes={[{ value: '0', label: 'Remetente' }, { value: '1', label: 'Destinatário' }, { value: '2', label: 'Terceiros' }, { value: '3', label: 'Próprio remetente' }, { value: '4', label: 'Próprio destinatário' }, { value: '9', label: 'Sem frete' }]} aoMudar={valor => alterar(l.itemId, x => recalcular({ ...x, ajustes: { ...x.ajustes, tipoFrete: valor } }))} />
+                <SelectPadrao id={`simples-${l.itemId}`} rotulo="Transp. no Simples" compacto className="h-11 md:h-8" valor={(l.ajustes.transporteSimples === undefined ? l.base.transporteSimples : l.ajustes.transporteSimples) == null ? '' : (l.ajustes.transporteSimples ?? l.base.transporteSimples) ? 'sim' : 'nao'} disabled={!editavel} opcoes={[{ value: 'sim', label: 'Sim' }, { value: 'nao', label: 'Não' }]} aoMudar={valor => alterar(l.itemId, x => recalcular({ ...x, ajustes: { ...x.ajustes, transporteSimples: valor === '' ? null : valor === 'sim' } }))} />
+                <SelectPadrao id={`st-${l.itemId}`} rotulo="Tipo ST" obrigatorio compacto className="h-11 md:h-8" valor={l.ajustes.tipoSt ?? (l.base.st > 0 ? 'nota' : 'sem')} disabled={!editavel} opcoes={[{ value: 'sem', label: 'Sem ST' }, { value: 'nota', label: 'ST na nota' }, { value: 'adicional', label: 'ST adicional' }]} aoMudar={valor => alterar(l.itemId, x => recalcular({ ...x, ajustes: { ...x.ajustes, tipoSt: valor as AjustesPrecificacao['tipoSt'] } }))} />
+                <div className="text-xs"><span className="font-medium">% Custo de venda</span><p className="mt-2 tabular-nums">{percentual(encargos)}</p><Link className="underline" href="/configuracoes?aba=vendas">Configurações → Vendas</Link></div>
+              </div>
+              <p className="px-3 pb-3 text-xs text-muted-foreground">Ajustes comerciais desta linha. Não alteram os dados da nota nem o estoque. Percentual e valor de frete/adicional representam o mesmo componente. ST adicional é ajuste comercial, sem apuração de imposto.</p>
+            </details>
+          </section>
+        })}
+      </div></GradeRolavel>}
+      <div className="mt-4 flex flex-wrap items-center gap-3"><BotaoPrimario onClick={() => void gravar()} disabled={!podeGravar || salvando || !validas.length}>{salvando ? 'Gravando…' : 'Gravar preços válidos'}</BotaoPrimario><span className="text-xs text-muted-foreground">{validas.length} de {linhas.length} linha(s) apta(s) para gravar.</span>{!podeGravar && <p className="text-xs">É preciso a permissão de editar produtos para gravar os preços.</p>}</div>
+    </CardPadrao>
+    <details className="rounded-md border px-3 py-2 text-xs"><summary className="cursor-pointer">Determinante de Vendas</summary><p className="mt-2">Custo de venda: {percentual(encargos)}. Juros mensais: {percentual(grade.parametrizacao.jurosMensaisCustoFinanOperac ?? null)}. CBS: {percentual(grade.parametrizacao.aliquotaCbs ?? null)}. IBS: {percentual(grade.parametrizacao.aliquotaIbs ?? null)}. Juros, CBS e IBS permanecem fora do cálculo.</p></details>
+  </div>
 }
 
 export default function PaginaPrecificacaoEntrada() {
-  return (
-    <ProtegerRota chaveDaPagina="auditoria-entradas">
-      <ConteudoPrecificacao />
-    </ProtegerRota>
-  )
+  return <ProtegerRota chaveDaPagina="auditoria-entradas"><ConteudoPrecificacao /></ProtegerRota>
 }

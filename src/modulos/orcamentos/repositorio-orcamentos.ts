@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client'
 import { clientePrisma } from '../../compartilhado/banco-dados/cliente-prisma.js'
+import { opcoesPagamentoOrcamento, validarPagamentoOrcamento, parcelasBoletoNoFechamento } from './pagamento-orcamento.js'
 import {
   enderecoPersistido,
   fretePersistido,
@@ -118,6 +119,9 @@ type RegistroOrcamento = {
   email: string
   contato: string
   condicaoPagamento: string
+  parametroBoletoId?: string | null
+  prazosBoleto?: number[]
+  parcelasCredito?: number | null
   prazoEntrega: string
   frete: string
   mensagem: string
@@ -189,6 +193,9 @@ function mapear(registro: RegistroOrcamento) {
     email: registro.email,
     contato: registro.contato,
     condicaoPagamento: registro.condicaoPagamento,
+    parametroBoletoId: registro.parametroBoletoId ?? null,
+    prazosBoleto: registro.prazosBoleto ?? [],
+    parcelasCredito: registro.parcelasCredito ?? null,
     prazoEntrega: registro.prazoEntrega,
     frete: registro.frete,
     mensagem: registro.mensagem,
@@ -262,6 +269,9 @@ function dadosEscalares(dados: DadosOrcamento, numero: string, status: string) {
     email: dados.email,
     contato: dados.contato,
     condicaoPagamento: dados.condicaoPagamento,
+    parametroBoletoId: dados.condicaoPagamento === 'boleto' ? dados.parametroBoletoId : null,
+    prazosBoleto: dados.condicaoPagamento === 'boleto' ? dados.prazosBoleto : [],
+    parcelasCredito: dados.condicaoPagamento === 'cartao_credito' ? dados.parcelasCredito : null,
     prazoEntrega: dados.prazoEntrega,
     frete,
     mensagem: dados.mensagem,
@@ -390,8 +400,9 @@ async function atualizar(
   status: string
 ) {
   return clientePrisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Orcamento" WHERE id = ${id} AND "companyId" = ${companyId} FOR UPDATE`
     const existente = await tx.orcamento.findFirst({
-      where: { id, companyId },
+      where: { id, companyId, status: 'em_aberto' },
       select: { id: true },
     })
     if (!existente) return null
@@ -467,6 +478,7 @@ async function aplicarDesconto(
   usuarioId?: string
 ) {
   return clientePrisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Orcamento" WHERE id = ${id} AND "companyId" = ${companyId} FOR UPDATE`
     const orcamento = await tx.orcamento.findFirst({
       where: { id, companyId },
       include: { itens: true },
@@ -508,6 +520,7 @@ async function aplicarDesconto(
 
 async function copiarItensPedido(companyId: string, id: string, pedidoVendaId: string, usuarioId?: string) {
   return clientePrisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Orcamento" WHERE id = ${id} AND "companyId" = ${companyId} FOR UPDATE`
     const [orcamento, pedido] = await Promise.all([
       tx.orcamento.findFirst({ where: { id, companyId }, select: { id: true, status: true } }),
       tx.pedidoVenda.findFirst({
@@ -561,6 +574,7 @@ async function finalizar(
   usuarioId?: string
 ) {
   return clientePrisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Orcamento" WHERE id = ${id} AND "companyId" = ${companyId} FOR UPDATE`
     const orcamento = await tx.orcamento.findFirst({
       where: { id, companyId },
       include: { itens: { orderBy: { ordem: 'asc' } }, pedidoVenda: true },
@@ -569,19 +583,6 @@ async function finalizar(
     if (orcamento.status !== 'em_aberto') return { bloqueado: orcamento.status }
     if (!orcamento.clienteNome.trim() || orcamento.itens.length === 0) {
       return { incompleto: true as const }
-    }
-    if (!orcamento.converterEmPedido) {
-      await tx.orcamentoHistorico.create({
-        data: {
-          orcamentoId: id,
-          usuarioId,
-          acao: 'finalizar',
-          descricao: 'Orçamento validado e mantido em aberto',
-        },
-      })
-      return mapear(
-        await tx.orcamento.findUniqueOrThrow({ where: { id }, include: includeOrcamento })
-      )
     }
     if (orcamento.pedidoVenda) return { duplicado: true as const }
     const totalSt = orcamento.itens.reduce((soma, item) => soma + decimalNum(item.valorSt), 0)
@@ -598,15 +599,24 @@ async function finalizar(
       outrasDespesas: decimalNum(orcamento.outrasDespesas),
       itens: itensParaTotal,
     })
+    const opcoes = await opcoesPagamentoOrcamento(companyId, tx)
+    validarPagamentoOrcamento(orcamento, total, opcoes)
+    const dataFechamento = new Date()
     const pedido = await tx.pedidoVenda.create({
       data: {
         companyId,
         orcamentoId: id,
         numero: `PV-${orcamento.numero.replace(/\D/g, '').padStart(6, '0')}`,
-        data: new Date(),
+        data: dataFechamento,
         clienteCodigo: orcamento.clienteCodigo,
         clienteNome: orcamento.clienteNome,
         condicaoPagamento: orcamento.condicaoPagamento,
+        parametroBoletoId: orcamento.condicaoPagamento === 'boleto' ? orcamento.parametroBoletoId : null,
+        parametroBoletoNome: opcoes.boletos.find((b) => b.id === orcamento.parametroBoletoId)?.nome ?? null,
+        prazosBoleto: orcamento.condicaoPagamento === 'boleto' ? orcamento.prazosBoleto : [],
+        parcelasCredito: orcamento.condicaoPagamento === 'cartao_credito' ? orcamento.parcelasCredito : null,
+        parcelasPagamento: orcamento.condicaoPagamento === 'boleto'
+          ? parcelasBoletoNoFechamento(total, orcamento.prazosBoleto, dataFechamento) : Prisma.DbNull,
         descontoTotal: orcamento.descontoTotal,
         valorFrete: orcamento.valorFrete,
         outrasDespesas: orcamento.outrasDespesas,

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { xmlCusto } from './formacao-custo-fixture.js'
+import { calcularAquisicao, precoPorMargem } from '../../compartilhado/precificacao/calculo-precificacao.js'
 vi.mock('./repositorio-entrada-notas.js', () => ({ repositorioEntradaNotas: { buscarNotaCompleta: vi.fn(), buscarUltimoPrecoConsolidadoPorProduto: vi.fn() } }))
 vi.mock('../configuracoes/servico-parametrizacao-custos.js', () => ({ servicoParametrizacaoCustos: { obter: vi.fn() } }))
 vi.mock('../configuracoes/servico-regras-fiscais.js', () => ({ servicoRegrasFiscais: { obter: vi.fn() } }))
@@ -7,6 +8,7 @@ vi.mock('../../compartilhado/auditoria/registrar-auditoria.js', () => ({ registr
 vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({ clientePrisma: {
   nfeCteVinculo: { findMany: vi.fn() }, estoqueSaldo: { findMany: vi.fn() },
   produto: { findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() }, $transaction: vi.fn(), $queryRaw: vi.fn(),
+  nfeRecebidaItem: { updateMany: vi.fn() },
   custoEntradaAjuste: { findFirst: vi.fn(), upsert: vi.fn() }, custoEntradaMemoria: { findMany: vi.fn(), createMany: vi.fn() }, logDeAuditoria: { create: vi.fn() },
   user: { findMany: vi.fn() },
 } }))
@@ -37,6 +39,7 @@ describe('integração das regras fiscais na grade e na gravação', () => {
     vi.mocked(clientePrisma.user.findMany).mockResolvedValue([])
     vi.mocked(clientePrisma.$queryRaw).mockResolvedValue([])
     vi.mocked(clientePrisma.produto.updateMany).mockResolvedValue({ count: 1 })
+    vi.mocked(clientePrisma.nfeRecebidaItem.updateMany).mockResolvedValue({ count: 1 })
     vi.mocked(clientePrisma.$transaction).mockImplementation((async (fn: (db: unknown) => unknown) => fn(clientePrisma)) as never)
   })
   it('aplica os dois créditos, filtra CT-es por empresa e não altera preços ao ler', async () => {
@@ -113,5 +116,60 @@ describe('integração das regras fiscais na grade e na gravação', () => {
     vi.mocked(repositorioEntradaNotas.buscarNotaCompleta).mockResolvedValue(atual as never)
     await expect(servicoPrecificacaoEntrada.obterGrade('a', 'n')).rejects.toMatchObject({ codigoHttp: 404 })
     expect(clientePrisma.custoEntradaMemoria.findMany).not.toHaveBeenCalled()
+  })
+  async function novaLinha() {
+    const grade = await servicoPrecificacaoEntrada.obterGrade('a', 'n')
+    const item = grade.itens[0]
+    const ajustes = { transporteSimples: false }
+    const custo = calcularAquisicao(item.base, ajustes).custo
+    return { produtoId: item.produtoId!, itemId: item.itemId, ajustes, revisao: item.revisao, origem: item.origem,
+      margemPercentual: 20, precoVenda: precoPorMargem(custo, 0, 20)!, margemAtacado: 10, precoAtacado: precoPorMargem(custo, 0, 10)! }
+  }
+  it('grava venda, atacado e parâmetros na mesma transação com revisão e empresa', async () => {
+    const linha = await novaLinha()
+    await servicoPrecificacaoEntrada.gravarPrecos('a', 'n', 'u', [linha])
+    expect(clientePrisma.nfeRecebidaItem.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'i0', nfeRecebidaId: 'n', precificacaoRevisao: 0, nfeRecebida: { companyId: 'a' } },
+      data: expect.objectContaining({ precificacaoRevisao: { increment: 1 }, precificacaoParametros: expect.objectContaining({ ajustes: linha.ajustes }) }),
+    }))
+    expect(clientePrisma.produto.updateMany).toHaveBeenCalledWith({ where: { id: 'p0', companyId: 'a' }, data: { precoVenda: linha.precoVenda, precoAtacado: linha.precoAtacado } })
+    expect(clientePrisma.logDeAuditoria.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ valoresDepois: expect.objectContaining({ precoAtacado: linha.precoAtacado, parametros: expect.any(Object) }) }) }))
+  })
+  it('reabre com os parâmetros salvos e preço atual de atacado', async () => {
+    const original = nota() as unknown as { itens: Array<Record<string, unknown>> }
+    original.itens[0].precificacaoParametros = { ajustes: { transporteSimples: false, descontoPercentual: 10 }, margemPercentual: 20, margemAtacado: 10 }
+    original.itens[0].precificacaoRevisao = 2
+    ;(original.itens[0].produto as Record<string, unknown>).precoAtacado = 150
+    vi.mocked(repositorioEntradaNotas.buscarNotaCompleta).mockResolvedValue(original as never)
+    const item = (await servicoPrecificacaoEntrada.obterGrade('a', 'n')).itens[0]
+    expect(item.revisao).toBe(2)
+    expect(item.parametros.ajustes.descontoPercentual).toBe(10)
+    expect(item.precoAtacadoAtual).toBe(150)
+    expect(item.precoAtacadoProposto).not.toBeNull()
+  })
+  it.each(['origem', 'revisao', 'precoVenda', 'precoAtacado'] as const)('recusa %s adulterado ou desatualizado sem alterar produtos', async campo => {
+    const linha = await novaLinha()
+    const adulterada = { ...linha, [campo]: campo === 'origem' ? 'invalida' : 999 }
+    await expect(servicoPrecificacaoEntrada.gravarPrecos('a', 'n', 'u', [adulterada])).rejects.toMatchObject({ codigoHttp: campo === 'origem' || campo === 'revisao' ? 409 : 400 })
+    expect(clientePrisma.produto.updateMany).not.toHaveBeenCalled()
+  })
+  it('conflito na revisão do item impede atualização dos preços', async () => {
+    const linha = await novaLinha()
+    vi.mocked(clientePrisma.nfeRecebidaItem.updateMany).mockResolvedValue({ count: 0 })
+    await expect(servicoPrecificacaoEntrada.gravarPrecos('a', 'n', 'u', [linha])).rejects.toMatchObject({ codigoHttp: 409 })
+    expect(clientePrisma.produto.updateMany).not.toHaveBeenCalled()
+  })
+  it('mudança dos encargos invalida a origem mesmo com as mesmas regras fiscais', async () => {
+    const linha = await novaLinha()
+    vi.mocked(servicoParametrizacaoCustos.obter).mockResolvedValue({ id: 'cfg', totalVenda: 5 } as never)
+    await expect(servicoPrecificacaoEntrada.gravarPrecos('a', 'n', 'u', [linha])).rejects.toMatchObject({ codigoHttp: 409 })
+  })
+  it('simula sem gravar e recusa item de outra nota', async () => {
+    const resultado = await servicoPrecificacaoEntrada.simular('a', 'n', { itemId: 'i0', ajustes: { transporteSimples: false }, margemPercentual: 20, margemAtacado: 10 })
+    expect(resultado.erro).toBeNull()
+    expect(resultado.precoVenda).toBeGreaterThan(resultado.precoAtacado!)
+    expect(clientePrisma.produto.updateMany).not.toHaveBeenCalled()
+    expect(clientePrisma.nfeRecebidaItem.updateMany).not.toHaveBeenCalled()
+    await expect(servicoPrecificacaoEntrada.simular('a', 'n', { itemId: 'externo', ajustes: {}, margemPercentual: 0, margemAtacado: null })).rejects.toMatchObject({ codigoHttp: 404 })
   })
 })

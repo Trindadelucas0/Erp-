@@ -2,6 +2,7 @@
  * Esquemas Zod — Entrada de Notas / pipeline.
  */
 import { z } from 'zod'
+import { esquemaAjustesPrecificacao } from './esquema-ajustes-precificacao.js'
 import { esquemaRegrasFiscais } from '../configuracoes/esquema-regras-fiscais.js'
 
 export const esquemaVincularItem = z.object({
@@ -184,16 +185,21 @@ export const esquemaGravarPrecificacao = z.object({
       z.object({
         produtoId: z.string().uuid('Produto inválido'),
         itemId: z.string().uuid('Item inválido').optional(),
+        ajustes: esquemaAjustesPrecificacao.optional(),
+        precoAtacado: z.number().finite().positive().max(1e10).nullable().optional(),
+        margemAtacado: z.number().finite().nullable().optional(),
+        revisao: z.number().int().min(0).optional(),
+        origem: z.string().regex(/^[a-f0-9]{64}$/).optional(),
         vrAdicPercentual: z.number().finite().min(0).optional(),
         precoVenda: z.coerce
           .number({ invalid_type_error: 'Preço de venda inválido' })
           .finite('Preço de venda inválido')
-          .positive('Preço de venda deve ser maior que zero'),
+          .positive('Preço de venda deve ser maior que zero').max(1e10, 'Preço de venda excede o limite'),
         margemPercentual: z.coerce
           .number({ invalid_type_error: 'Margem inválida' })
           .finite('Margem inválida')
           .optional(),
       })
     )
-    .min(1, 'Informe ao menos um produto para gravar'),
+    .min(1, 'Informe ao menos um produto para gravar').max(1000),
 })

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Copy, Eraser, Mail, Percent, Plus, Printer, Trash2 } from 'lucide-react'
+import { ArrowLeft, Copy, Eraser, MessageCircle, Percent, Plus, Printer, Trash2 } from 'lucide-react'
 import { AnexosContaReceber } from '@/components/contas-a-receber/anexos-conta-receber'
 import { MenuAcoesLinha } from '@/components/compartilhado/menu-acoes-linha'
 import { useSessaoDoUsuario } from '@/components/compartilhado/sessao-do-usuario'
@@ -62,6 +62,8 @@ import {
   type ModoClienteOrcamento,
   type OrcamentoLayout,
 } from '@/lib/orcamento-layout'
+import { compartilharPdfOrcamento, telefoneWhatsApp } from '@/lib/compartilhar-orcamento'
+import { notificarAberturaDropdownCatalogo, useFecharAoSairComMouse, useInstanciaDropdownCatalogo, useOuvirFechamentoDropdownCatalogo } from '@/lib/dropdown-catalogo'
 import { clienteHttp } from '@/services/api'
 import { cn } from '@/lib/utils'
 import { usePermissao } from '@/hooks/use-permissao'
@@ -153,6 +155,29 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
   const [clientesConsultados, setClientesConsultados] = useState(false)
   const [buscaCliente, setBuscaCliente] = useState('')
   const [buscaClienteAberta, setBuscaClienteAberta] = useState(false)
+  const zonaClienteRef = useRef<HTMLDivElement>(null)
+  const instanciaCliente = useInstanciaDropdownCatalogo()
+  const fecharCliente = useCallback(() => setBuscaClienteAberta(false), [])
+  const zonaCliente = useFecharAoSairComMouse(fecharCliente)
+  useOuvirFechamentoDropdownCatalogo(instanciaCliente, fecharCliente)
+  useEffect(() => {
+    const fora = (e: MouseEvent) => { if (!zonaClienteRef.current?.contains(e.target as Node)) fecharCliente() }
+    document.addEventListener('mousedown', fora)
+    return () => document.removeEventListener('mousedown', fora)
+  }, [fecharCliente])
+  const [opcoesPagamento, setOpcoesPagamento] = useState<{ boletos: Array<{ id: string; nome: string }>; parcelasCredito: number[] }>({ boletos: [], parcelasCredito: [] })
+  const [erroPagamento, setErroPagamento] = useState('')
+  const [carregandoPagamento, setCarregandoPagamento] = useState(true)
+  const [prazosTexto, setPrazosTexto] = useState((iniciais?.orcamento.prazosBoleto ?? []).join('/'))
+  const [whatsapp, setWhatsapp] = useState<string | null>(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    clienteHttp.get('/orcamentos/opcoes-pagamento', { signal: controller.signal })
+      .then(({ data }) => { setOpcoesPagamento(data); setErroPagamento('') })
+      .catch(() => { if (!controller.signal.aborted) setErroPagamento('Não foi possível carregar as opções de pagamento. Recarregue a página.') })
+      .finally(() => { if (!controller.signal.aborted) setCarregandoPagamento(false) })
+    return () => controller.abort()
+  }, [])
   const [erroClientes, setErroClientes] = useState('')
   const cepConsultado = useRef<string | null>(
     (iniciais?.endereco.cep ?? '').replace(/\D/g, '').length === 8
@@ -342,6 +367,7 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
   }
 
   function aplicarGravado(api: OrcamentoApi) {
+    setPrazosTexto((api.prazosBoleto ?? []).join('/'))
     const dados = deOrcamentoApi(api)
     setIdGravado(api.id)
     setOrcamento(dados.orcamento)
@@ -593,32 +619,28 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
       }
       setModalFinalizadoAberto(true)
     } catch (erro) {
-      avisoSeNaoValidacao(erro, 'Não foi possível finalizar o orçamento.')
+      avisoSeNaoValidacao(erro, 'Não foi possível fechar o pedido.')
     } finally {
       setOcupado(false)
     }
   }
 
-  async function enviarPorEmail() {
-    if (!idGravado) {
-      mostrarAviso('Salve o orçamento antes de enviar por e-mail.', true)
-      return
-    }
-    if (!orcamento.email.trim()) {
-      mostrarAviso('Informe o e-mail do cliente.', true)
-      return
-    }
+  async function enviarAoCliente() {
+    const telefone = telefoneWhatsApp(orcamento.telefone)
+    if (!telefone) { mostrarAviso('Informe um telefone válido do cliente com DDD para enviar pelo WhatsApp.', true); return }
     setOcupado(true)
+    setWhatsapp(null)
     try {
-      const gravado = await gravar()
-      aplicarGravado(gravado)
-      await clienteHttp.post(`/orcamentos/${gravado.id}/enviar-email`)
-      mostrarAviso('E-mail enviado.')
+      const gravado = bloqueado ? { id: idGravado!, numero: orcamento.numero } : await gravar()
+      if (!bloqueado) aplicarGravado(gravado as OrcamentoApi)
+      const { data } = await clienteHttp.get<Blob>('/orcamentos/' + gravado.id + '/pdf', { responseType: 'blob' })
+      const mensagem = await compartilharPdfOrcamento(data, gravado.numero, telefone)
+      mostrarAviso(mensagem)
+      if (mensagem.startsWith('PDF baixado')) setWhatsapp('https://wa.me/' + telefone + '?text=' + encodeURIComponent('Segue o orçamento ' + gravado.numero + '.'))
+      if (!orcamentoId && !bloqueado) window.history.replaceState(null, '', '/orcamentos/' + gravado.id)
     } catch (erro) {
-      avisoSeNaoValidacao(erro, 'Não foi possível enviar o e-mail.')
-    } finally {
-      setOcupado(false)
-    }
+      avisoSeNaoValidacao(erro, 'Não foi possível preparar o PDF para o cliente.')
+    } finally { setOcupado(false) }
   }
 
   return (
@@ -708,7 +730,7 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
           </Button>
         </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-          <div className="relative xl:col-span-2">
+          <div className="relative xl:col-span-2" ref={zonaClienteRef} {...zonaCliente}>
             {modoCliente === 'buscar' ? (
               <div className="space-y-1.5">
                 <Label htmlFor="busca-cliente-orcamento">Cliente</Label>
@@ -722,12 +744,12 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
                   disabled={bloqueado}
                   onFocus={() => {
                     setBuscaCliente('')
-                    setBuscaClienteAberta(true)
+                    notificarAberturaDropdownCatalogo(instanciaCliente); setBuscaClienteAberta(true)
                   }}
                   onBlur={() => setBuscaClienteAberta(false)}
                   onChange={(evento) => {
                     setBuscaCliente(evento.target.value)
-                    setBuscaClienteAberta(true)
+                    notificarAberturaDropdownCatalogo(instanciaCliente); setBuscaClienteAberta(true)
                   }}
                 />
                 {erroClientes && <p className="text-sm text-destructive">{erroClientes}</p>}
@@ -783,10 +805,32 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
           <SelectPadrao
             rotulo="Condição de pagamento"
             valor={orcamento.condicaoPagamento}
-            aoMudar={(valor) => atualizar('condicaoPagamento', valor)}
-            opcoes={OPCOES_CONDICAO_PAGAMENTO}
+            aoMudar={(valor) => {
+              setOrcamento((atual) => ({ ...atual, condicaoPagamento: valor, parametroBoletoId: null, prazosBoleto: [], parcelasCredito: null }))
+              setPrazosTexto('')
+            }}
+            opcoes={orcamento.condicaoPagamento && !OPCOES_CONDICAO_PAGAMENTO.some((o) => o.value === orcamento.condicaoPagamento)
+              ? [...OPCOES_CONDICAO_PAGAMENTO, { value: orcamento.condicaoPagamento, label: orcamento.condicaoPagamento + ' (legado — escolha uma nova condição)' }]
+              : OPCOES_CONDICAO_PAGAMENTO}
             disabled={bloqueado}
           />
+          {orcamento.condicaoPagamento === 'boleto' ? <>
+            <SelectPadrao rotulo="Parâmetro de boleto" valor={orcamento.parametroBoletoId ?? ''}
+              aoMudar={(id) => atualizar('parametroBoletoId', id)}
+              opcoes={opcoesPagamento.boletos.map((b) => ({ value: b.id, label: b.nome }))}
+              placeholder={carregandoPagamento ? 'Carregando…' : 'Escolha um parâmetro ativo'} disabled={bloqueado || carregandoPagamento} />
+            <InputPadrao rotulo="Prazos em dias" name="prazos-boleto" placeholder="28/56/84" value={prazosTexto}
+              disabled={bloqueado} onChange={(e) => {
+                const texto = e.target.value
+                setPrazosTexto(texto)
+                atualizar('prazosBoleto', /^\s*\d+(\s*\/\s*\d+)*\s*$/.test(texto) ? texto.split('/').map(Number) : [])
+              }} />
+          </> : null}
+          {orcamento.condicaoPagamento === 'cartao_credito' ? <SelectPadrao rotulo="Quantidade de parcelas"
+            valor={orcamento.parcelasCredito ? String(orcamento.parcelasCredito) : ''}
+            aoMudar={(valor) => atualizar('parcelasCredito', Number(valor))}
+            opcoes={opcoesPagamento.parcelasCredito.map((n) => ({ value: String(n), label: n + 'x' }))}
+            placeholder={carregandoPagamento ? 'Carregando…' : 'Selecione'} disabled={bloqueado || carregandoPagamento} /> : null}
           <SelectPadrao
             rotulo="Vendedor"
             valor={orcamento.vendedorId}
@@ -814,6 +858,10 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
         </div>
       </CardPadrao>
 
+      {erroPagamento ? <p role="alert" className="text-sm text-destructive">{erroPagamento}</p> : null}
+      {!carregandoPagamento && orcamento.condicaoPagamento === 'boleto' && !opcoesPagamento.boletos.length ? <p role="status" className="text-sm text-muted-foreground">Cadastre um parâmetro ativo em Configurações → Integrações → Boleto.</p> : null}
+      {!carregandoPagamento && orcamento.condicaoPagamento === 'cartao_credito' && !opcoesPagamento.parcelasCredito.length ? <p role="status" className="text-sm text-muted-foreground">Configure um cartão de crédito ativo e suas parcelas em Configurações → Financeiro → Cartões de Pagamento.</p> : null}
+      {whatsapp ? <a className="inline-flex min-h-11 items-center underline print:hidden" href={whatsapp} target="_blank" rel="noopener noreferrer">Abrir WhatsApp e anexar PDF baixado</a> : null}
       <CardPadrao compacto permitirOverflow>
         <Abas
           className="mb-4 print:hidden"
@@ -840,10 +888,6 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
               <Plus className="size-4" />
               Adicionar itens
             </Button>
-            <Button type="button" variant="outline" onClick={() => setModalCopiarAberto(true)} disabled={bloqueado}>
-              <Copy className="size-4" />
-              Copiar pedido
-            </Button>
             <Button type="button" variant="outline" onClick={() => setModalDescontoAberto(true)} disabled={bloqueado || !podeAprovar}>
               <Percent className="size-4" />
               Aplicar descontos
@@ -858,15 +902,9 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
                   onClick: limparItens,
                 },
                 {
-                  rotulo: 'Imprimir',
-                  icone: Printer,
-                  onClick: () => window.print(),
-                },
-                {
-                  rotulo: 'Enviar por e-mail',
-                  icone: Mail,
-                  desabilitado: ocupado,
-                  onClick: () => void enviarPorEmail(),
+                  rotulo: 'Copiar pedido', icone: Copy,
+                  desabilitado: ocupado || bloqueado || !podeEditar,
+                  onClick: () => setModalCopiarAberto(true),
                 },
               ]}
             />
@@ -1186,16 +1224,11 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
       </CardPadrao>
 
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="converter-pedido"
-            checked={orcamento.converterEmPedido}
-            disabled={bloqueado}
-            onCheckedChange={(marcado) => atualizar('converterEmPedido', marcado === true)}
-          />
-          <Label htmlFor="converter-pedido">Converter em pedido após aprovação</Label>
+        <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap">
+          <Button type="button" variant="outline" onClick={() => window.print()}><Printer className="size-4" />Imprimir orçamento</Button>
+          <Button type="button" variant="outline" onClick={() => void enviarAoCliente()} disabled={ocupado || (!bloqueado && !podeEditar)}><MessageCircle className="size-4" />Enviar ao cliente</Button>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap">
           <Button type="button" variant="outline" onClick={() => { if (window.confirm('Sair do orçamento? Alterações não salvas serão perdidas.')) roteador.push('/orcamentos') }}>
             Cancelar
           </Button>
@@ -1203,7 +1236,7 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
             Salvar orçamento
           </Button>
           <BotaoPrimario type="button" onClick={() => void finalizar()} disabled={ocupado || bloqueado || !podeAprovar || !orcamento.clienteNome.trim() || orcamento.itens.length === 0}>
-            Finalizar
+            Fechar pedido
           </BotaoPrimario>
         </div>
       </div>
@@ -1226,13 +1259,13 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
             aria-describedby="modal-orcamento-finalizado-mensagem"
           >
             <h2 id="modal-orcamento-finalizado-titulo" className="text-lg font-semibold">
-              Orçamento finalizado
+              Pedido fechado
             </h2>
             <p
               id="modal-orcamento-finalizado-mensagem"
               className="mt-2 text-sm text-muted-foreground"
             >
-              O orçamento foi validado. Se a conversão estava marcada, o pedido de venda foi criado. Deseja imprimir, ir para Receber
+              O pedido de venda foi criado e o orçamento está convertido. Deseja imprimir, ir para Receber
               pagamento ou permanecer neste orçamento?
             </p>
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
@@ -1241,7 +1274,7 @@ export function FormularioOrcamentoLayout({ orcamentoId, iniciais }: Props) {
               </Button>
               <Button type="button" variant="outline" onClick={() => window.print()}>
                 <Printer className="size-4" />
-                Imprimir proposta
+                Imprimir orçamento
               </Button>
               <BotaoPrimario
                 type="button"

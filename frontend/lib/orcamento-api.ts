@@ -48,6 +48,9 @@ export type OrcamentoApi = {
   telefone: string
   email: string
   contato: string
+  parametroBoletoId?: string | null
+  prazosBoleto?: number[]
+  parcelasCredito?: number | null
   condicaoPagamento: string
   prazoEntrega: string
   frete: string
@@ -115,7 +118,7 @@ export function orcamentoEmBranco(opcoes?: {
     telefone: '',
     email: '',
     contato: '',
-    condicaoPagamento: 'a_vista',
+    condicaoPagamento: '',
     prazoEntrega: 'no_ato',
     frete: '',
     mensagem: '',
@@ -159,6 +162,9 @@ export function montarCorpoOrcamento(
     email: orcamento.email,
     contato: orcamento.contato,
     condicaoPagamento: orcamento.condicaoPagamento,
+    parametroBoletoId: orcamento.parametroBoletoId ?? null,
+    prazosBoleto: orcamento.prazosBoleto ?? [],
+    parcelasCredito: orcamento.parcelasCredito ?? null,
     prazoEntrega: orcamento.prazoEntrega,
     frete: semFrete ? '' : orcamento.frete,
     mensagem: orcamento.mensagem,
@@ -206,6 +212,9 @@ export function deOrcamentoApi(api: OrcamentoApi): {
       email: api.email,
       contato: api.contato,
       condicaoPagamento: api.condicaoPagamento,
+      parametroBoletoId: api.parametroBoletoId ?? null,
+      prazosBoleto: api.prazosBoleto ?? [],
+      parcelasCredito: api.parcelasCredito ?? null,
       prazoEntrega: api.prazoEntrega,
       frete: api.frete,
       mensagem: api.mensagem,

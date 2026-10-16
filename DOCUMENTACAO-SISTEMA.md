@@ -1,7 +1,7 @@
 # ERP — Documentação do sistema
 
-**Versão do sistema:** 1.30.3 — Regras Fiscais
-**Última atualização:** 15/10/2026 (correção de tipagem da proteção de Pedidos de venda e do teste de opções WMS)
+**Versão do sistema:** 1.30.4 — Regras Fiscais
+**Última atualização:** 16/10/2026 (Precificação simplificada, adicionais por produto e preço de atacado)
 
 ## 1. Modo correção de bug
 
@@ -10,6 +10,8 @@ Reproduzir o sintoma com a empresa, a conta e o período informados. Conferir a 
 ## 2. Versões
 
 ### 2.1 Histórico
+
+- **1.30.4 — Regras Fiscais (16/10/2026):** Precificação com campos principais e adicionais recolhidos por produto, simulação comercial, margens independentes de venda/atacado e ajustes persistidos com revisão.
 
 - **1.30.3 — Regras Fiscais (15/10/2026):** retirada da Formação de custo, ajustes, rateio e memórias da Precificação; cálculo anterior restaurado e gravação direta dos preços válidos.
 - **1.30.1 — Regras Fiscais (14/10/2026):** Contas foi movido para Configurações → Financeiro → Contas. O endereço antigo redireciona; permissões e dados existentes são preservados. Perfil autorizado somente a Contas não recebe acesso às outras configurações.
@@ -49,7 +51,7 @@ flowchart LR
 
   Validação em 15/10/2026: TypeScript do frontend aprovado (`tsc --noEmit --incremental false`) e 4 testes de `requisicoes-wms.test.ts` aprovados. As verificações de opções ausentes usam `not.toContain`, evitando comparações entre literais incompatíveis. Build completo local bloqueado pela configuração de desenvolvimento de `NEXT_PUBLIC_API_URL` (localhost); publicação não realizada. Versão mantida: correção de compilação sem nova funcionalidade ou mudança de uso.
 
-- Precificação recusa preço: conferir produto vinculado, custo positivo, carga inferior a 100%, permissão e regras fiscais vigentes. Não existe etapa de confirmação de custo. Código: custo-comercial-entrada.ts e servico-precificacao-entrada.ts.
+- Precificação recusa preço: conferir produto vinculado, adicionais válidos, custo positivo, carga inferior a 100%, permissão e escolha de Transp. no Simples quando houver crédito de frete. Conflito 409 exige recarregar: dados, preços, parâmetros ou configurações mudaram. Não há confirmação de custo. Código: calculo-precificacao.ts e servico-precificacao-entrada.ts.
 
 - Linha vertical atravessando colunas na Precificação: conferir o contêiner da grade em frontend/app/auditoria-entradas/[id]/precificacao/page.tsx (ConteudoPrecificacao); borda e separadores devem envolver w-max min-w-full, acompanhando a largura das linhas.
 
@@ -65,19 +67,21 @@ flowchart LR
 
 ### 3.8 Mapa comercial
 
-**Precificação:** após consolidar uma NF-e de Revenda, o operador consulta o custo contábil, ajusta margem ou preço e grava os preços válidos no cadastro dos produtos. Não há painel de Formação de custo, ajustes, rateio manual, memórias ou confirmação de custo. Estoque e preços existentes não mudam automaticamente.
+**Precificação:** após consolidar uma NF-e de Revenda, o operador confere os campos principais por produto. Margens e preços de venda e atacado são independentes. **+ Campos adicionais** abre a composição comercial do custo; **−** recolhe. A simulação preserva nota, financeiro e estoque. Somente **Gravar preços válidos** atualiza o cadastro e guarda os ajustes da linha. Margens atuais usam o custo da simulação e os preços atuais do cadastro; não representam margem histórica.
 
 ```mermaid
 flowchart LR
   PNota[Nota de Revenda consolidada] --> PAbrir[Abrir Precificar na Auditoria]
-  PAbrir --> PConferir[Conferir custo e encargos]
-  PConferir --> PAjustar[Ajustar margem ou preço]
+  PAbrir --> PConferir[Conferir produto e custo de aquisição]
+  PConferir --> PAjustar[Ajustar margens ou preços de venda e atacado]
+  PConferir --> PAdicionais[Abrir Campos adicionais quando necessário]
+  PAdicionais --> PSimular[Simular descontos despesas e créditos comerciais]
+  PSimular --> PAjustar
   PAjustar --> PGravar[Gravar preços válidos]
-  PGravar --> PCadastro[Preço de venda atualizado no produto]
+  PGravar --> PCadastro[Preços atualizados e ajustes guardados por produto da nota]
 ```
 
-
-Precificação: na Grade da nota, os separadores acompanham cada produto até a última coluna. Ao deslizar as barras, nome e SKU permanecem à esquerda e a borda externa fica no fim da grade.
+Desktop: Produto e Nome fixos; os produtos deslizam juntos na grade. Mobile: dados em grupos de duas colunas, com adicionais expansíveis por produto.
 
 Auditoria de entradas: confira os documentos consolidados, conclua a conferência e consulte o histórico.
 
@@ -195,13 +199,13 @@ Concluir e desvincular registram usuário e data no histórico da conciliação 
 
 | Item               | Valor                                                                                  |
 | ------------------ | -------------------------------------------------------------------------------------- |
-| Versão do sistema  | 1.30.3 — Regras Fiscais |
-| Última atualização | 15/10/2026 (retirada da Formação de custo e restauração da Precificação anterior) |
+| Versão do sistema  | 1.30.4 — Regras Fiscais |
+| Última atualização | 16/10/2026 (Precificação simplificada e atacado) |
 | Formato            | Fonte oficial de comportamento: mapa, campos, regras, paths de código e roteiro de bug |
 | Fonte oficial      | Este arquivo (`DOCUMENTACAO-SISTEMA.md`)                                               |
 
 
-**Roadmap do ciclo de entrada (parcialmente entregue):** Fase 1 Kardex/estoque documentada abaixo (§6.17d). **Contagem cega web** (`/contagens`) entregue (§6.17e / §7.14). **Contas a Pagar** (`/contas-a-pagar`) — cadastro, lista, **baixas** e **geração automática na consolidação** da Entrada (§6.17f / §7.16). **Contas a Receber** (`/contas-a-receber`) — cadastro manual (Duplicata/Crédito), lista, **baixas** e anexos (§6.17h / §7.22); sem geração automática nesta fase. **Contas** (Configurações → Financeiro → Contas; `/contas` redireciona) — cadastro de conta **bancária** ou **caixa** da empresa (§6.23); na baixa de **Contas a Pagar** e **Contas a Receber** o operador escolhe a conta ativa (histórico antigo fica sem conta). **Recorrência** (Configurações → Financeiro) — serviços/consumo com valor esperado; NFS-e/documental auto-consolida (§6.11b / §7.23). **Cartões de Pagamento** e **Adquirentes** (Configurações → Financeiro) — bandeiras fixas e taxas por parcela; cadastro apenas nesta versão (§6.11d / §6.11e). **Parâmetros de Boleto** (Configurações → Financeiro → Boleto) — **vários** conjuntos nomeados por empresa (lista, Novo/Editar, ativo/inativo, **Padrão**); limites, encargos e credenciais da API; teste de conexão por registro só valida preenchimento; **não** emite boleto nem altera Contas a Receber nesta versão (§6.11f). **Plano financeiro automático via CFOP prevalente** na geração do título NFe entregue (§6.12 / §7.20). **Baixar contagem / Voltar para contagem** e **bloqueio temporário com desbloqueio** após divergência entregues (§6.17e / §7.14 / §7.17). **Conferência de preço/nome** em Aguardando chegada e tela **Auditoria de entradas** (`/auditoria-entradas`) entregues (§6.17c / §6.17g / §7.19). **Precificação** (`/auditoria-entradas/[id]/precificacao`) — grade da NFe consolidada forma o preço sobre o **custo contábil** (NF + frete lançado + seguro + outras despesas − créditos) e grava no produto; Configurações → Vendas é o determinante permanente da empresa (§6.16 / §6.17k / §7.26). **Status automático do Pedido de Compra pós-entrada** (Concluído / Entregue parcialmente) entregue (§6.10 / §7.18). **Status "Aguardando chegada"** (toda NFe 55 com produto retida até liberar para contagem) entregue (§6.17c / §7.19). **DDA** (Configurações → Financeiro → DDA + card na Aguardando chegada) entregue nesta versão — consulta C6 em segundo plano, casa boleto com a NF; **não** paga boleto e **não** gera Contas a pagar nesta fase (§6.11c / §7.24). **Pendências** (`/pendencias`) — sino no cabeçalho + dock de até 3 cards por tela + lista agregada do estado vivo (vencimentos, anexos, estoque bloqueado, filas da Entrada) entregue (§6.20). **Endereços WMS** (`/enderecos-wms`) — árvore Local → Área → Rua → Bloco → Andar → Apartamento; código `A-RC-20-01-2-05`; tipo (PP/CX/CH/BC) no apartamento (§6.17i / §6.17j / §7.25). Configurações → Logística → Estrutura WMS aponta para essa tela. **Não** é picking nem saldo por endereço. **Requisições** (`/requisicoes`) — fila operacional do armazém. **Separação de pedidos** (`/separacao`) bipa o produto e soma 1 unidade até a quantidade da ordem; reserva ao iniciar e baixa o físico ao concluir. Os outros tipos continuam em **Executar** (`/requisicoes/[id]/executar`). Reposição **não** altera o total (§6.17l / §7.27). **Guardar mercadorias** (`/guardar-mercadorias`) — após consolidar NFe 55 Revenda, uma ordem por produto para bipar EAN/DUN e o endereço; **não** relança estoque (§6.17m / §7.27). **Orçamentos** (`/orcamentos`) — lista e formulário gravam na empresa; cliente digitado ou buscado no cadastro; total ao vivo; CEP pela Brasil API; imprimir no navegador e e-mail; não vira pedido de venda (§6.21). **Receber pagamento** (`/receber-pagamento`) — um clique confirma a venda paga e cria uma Separação por produto, já Disponível em Separação de pedidos (§6.22). App Android, Hermes/IA, NF de devolução e crédito a receber na divergência — ainda futuros. **Não** inventar essas como prontas.
+**Roadmap do ciclo de entrada (parcialmente entregue):** Fase 1 Kardex/estoque documentada abaixo (§6.17d). **Contagem cega web** (`/contagens`) entregue (§6.17e / §7.14). **Contas a Pagar** (`/contas-a-pagar`) — cadastro, lista, **baixas** e **geração automática na consolidação** da Entrada (§6.17f / §7.16). **Contas a Receber** (`/contas-a-receber`) — cadastro manual (Duplicata/Crédito), lista, **baixas** e anexos (§6.17h / §7.22); sem geração automática nesta fase. **Contas** (Configurações → Financeiro → Contas; `/contas` redireciona) — cadastro de conta **bancária** ou **caixa** da empresa (§6.23); na baixa de **Contas a Pagar** e **Contas a Receber** o operador escolhe a conta ativa (histórico antigo fica sem conta). **Recorrência** (Configurações → Financeiro) — serviços/consumo com valor esperado; NFS-e/documental auto-consolida (§6.11b / §7.23). **Cartões de Pagamento** e **Adquirentes** (Configurações → Financeiro) — bandeiras fixas e taxas por parcela; cadastro apenas nesta versão (§6.11d / §6.11e). **Parâmetros de Boleto** (Configurações → Financeiro → Boleto) — **vários** conjuntos nomeados por empresa (lista, Novo/Editar, ativo/inativo, **Padrão**); limites, encargos e credenciais da API; teste de conexão por registro só valida preenchimento; **não** emite boleto nem altera Contas a Receber nesta versão (§6.11f). **Plano financeiro automático via CFOP prevalente** na geração do título NFe entregue (§6.12 / §7.20). **Baixar contagem / Voltar para contagem** e **bloqueio temporário com desbloqueio** após divergência entregues (§6.17e / §7.14 / §7.17). **Conferência de preço/nome** em Aguardando chegada e tela **Auditoria de entradas** (`/auditoria-entradas`) entregues (§6.17c / §6.17g / §7.19). **Precificação** (`/auditoria-entradas/[id]/precificacao`) — grade da NF-e consolidada forma preços de venda e atacado sobre o **custo de aquisição**, com adicionais comerciais expansíveis, e grava no produto por ação explícita; Configurações → Vendas é o determinante permanente da empresa (§6.16 / §6.17k / §7.26). **Status automático do Pedido de Compra pós-entrada** (Concluído / Entregue parcialmente) entregue (§6.10 / §7.18). **Status "Aguardando chegada"** (toda NFe 55 com produto retida até liberar para contagem) entregue (§6.17c / §7.19). **DDA** (Configurações → Financeiro → DDA + card na Aguardando chegada) entregue nesta versão — consulta C6 em segundo plano, casa boleto com a NF; **não** paga boleto e **não** gera Contas a pagar nesta fase (§6.11c / §7.24). **Pendências** (`/pendencias`) — sino no cabeçalho + dock de até 3 cards por tela + lista agregada do estado vivo (vencimentos, anexos, estoque bloqueado, filas da Entrada) entregue (§6.20). **Endereços WMS** (`/enderecos-wms`) — árvore Local → Área → Rua → Bloco → Andar → Apartamento; código `A-RC-20-01-2-05`; tipo (PP/CX/CH/BC) no apartamento (§6.17i / §6.17j / §7.25). Configurações → Logística → Estrutura WMS aponta para essa tela. **Não** é picking nem saldo por endereço. **Requisições** (`/requisicoes`) — fila operacional do armazém. **Separação de pedidos** (`/separacao`) bipa o produto e soma 1 unidade até a quantidade da ordem; reserva ao iniciar e baixa o físico ao concluir. Os outros tipos continuam em **Executar** (`/requisicoes/[id]/executar`). Reposição **não** altera o total (§6.17l / §7.27). **Guardar mercadorias** (`/guardar-mercadorias`) — após consolidar NFe 55 Revenda, uma ordem por produto para bipar EAN/DUN e o endereço; **não** relança estoque (§6.17m / §7.27). **Orçamentos** (`/orcamentos`) — lista e formulário gravam na empresa; cliente digitado ou buscado no cadastro; total ao vivo; CEP pela Brasil API; imprimir no navegador e e-mail; não vira pedido de venda (§6.21). **Receber pagamento** (`/receber-pagamento`) — um clique confirma a venda paga e cria uma Separação por produto, já Disponível em Separação de pedidos (§6.22). App Android, Hermes/IA, NF de devolução e crédito a receber na divergência — ainda futuros. **Não** inventar essas como prontas.
 
 ---
 
@@ -453,7 +457,9 @@ Próxima tela nova = **1.31.0** + nome. Não inventar versão sem tela/módulo. 
 | 1.30.1 | Regras Fiscais | Contas em Configurações → Financeiro → Contas; `/contas` redireciona. Permissões preservadas, sem liberar outras configurações ao perfil autorizado somente a Contas. | `/configuracoes?aba=financeiro&secao=contas` |
 | 1.30.3 | Regras Fiscais | Retirada da Formação de custo, ajustes, rateio, memórias e confirmação obrigatória; Precificação volta ao cálculo anterior e à gravação direta. Dados históricos e preços existentes preservados. | `/auditoria-entradas/[id]/precificacao` |
 
-**Versão vigente:** 1.30.3 — Regras Fiscais.
+| 1.30.4 | Regras Fiscais | Precificação simplificada: campos principais, adicionais expansíveis, simulação comercial, venda/atacado e ajustes por item com revisão. | `/auditoria-entradas/[id]/precificacao` |
+
+**Versão vigente:** 1.30.4 — Regras Fiscais.
 
 ### Endereços em desenvolvimento local
 
@@ -895,19 +901,22 @@ Pontos fixos:
 
 ### 3.8 Mapa comercial (apresentação a cliente)
 
-**Precificação:** após consolidar uma NF-e de Revenda, o operador consulta o custo contábil, ajusta margem ou preço e grava os preços válidos no cadastro dos produtos. Não há painel de Formação de custo, ajustes, rateio manual, memórias ou confirmação de custo. Estoque e preços existentes não mudam automaticamente.
+**Precificação:** após consolidar uma NF-e de Revenda, o operador confere os campos principais por produto. Margens e preços de venda e atacado são independentes. **+ Campos adicionais** abre a composição comercial do custo; **−** recolhe. A simulação preserva nota, financeiro e estoque. Somente **Gravar preços válidos** atualiza o cadastro e guarda os ajustes da linha. Margens atuais usam o custo da simulação e os preços atuais do cadastro; não representam margem histórica.
 
 ```mermaid
 flowchart LR
   PNota[Nota de Revenda consolidada] --> PAbrir[Abrir Precificar na Auditoria]
-  PAbrir --> PConferir[Conferir custo e encargos]
-  PConferir --> PAjustar[Ajustar margem ou preço]
+  PAbrir --> PConferir[Conferir produto e custo de aquisição]
+  PConferir --> PAjustar[Ajustar margens ou preços de venda e atacado]
+  PConferir --> PAdicionais[Abrir Campos adicionais quando necessário]
+  PAdicionais --> PSimular[Simular descontos despesas e créditos comerciais]
+  PSimular --> PAjustar
   PAjustar --> PGravar[Gravar preços válidos]
-  PGravar --> PCadastro[Preço de venda atualizado no produto]
+  PGravar --> PCadastro[Preços atualizados e ajustes guardados por produto da nota]
 ```
 
+Desktop: Produto e Nome fixos; os produtos deslizam juntos na grade. Mobile: dados em grupos de duas colunas, com adicionais expansíveis por produto.
 
-Precificação: na Grade da nota, os separadores acompanham cada produto até a última coluna. Ao deslizar as barras, nome e SKU permanecem à esquerda e a borda externa fica no fim da grade.
 
 Visão **comercial** do que o sistema já faz hoje, em linguagem para cliente leigo (sem jargão técnico). Atualizar **nesta seção** sempre que a documentação registrar tela, fluxo, módulo, automação ou diferencial novo/alterado/removido.
 
@@ -1272,7 +1281,7 @@ flowchart TD
 | Situação        | O que o operador vê                                                    | Estado                                                                                                                                                                                          |
 | --------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1. Estoque      | Tela **Estoque**                                                       | Pronto — quantidade e custo no kardex na consolidação                                                                                                                                           |
-| 2. Precificação | Auditoria → **Precificar**                                             | Grade da nota: uma barra horizontal para todos os itens (deslizam juntos); nome/SKU fixos à esquerda. Custo contábil + determinante de Vendas + margem → preço formado → **Gravar** no produto |
+| 2. Precificação | Auditoria → **Precificar**                                             | Grade da nota: uma barra horizontal para todos os itens (deslizam juntos); nome/SKU fixos à esquerda. Custo de aquisição e adicionais comerciais → margens independentes de venda/atacado → **Gravar preços válidos** no produto |
 | 3. Movimentação | Menu **Logística → Guardar mercadorias** (e cadastro em **Endereços WMS**) | Depois de consolidar Revenda, o operador **guarda** cada produto no endereço do cadastro (bip produto → destino). O cadastro do depósito continua em Endereços WMS; o produto escolhe o endereço na aba Logística. Ainda sem saldo por endereço |
 
 
@@ -3849,50 +3858,42 @@ Acesso sensível: reautenticação por senha (token curto ~15 min). UI embutida 
 
 ### 6.17k Precificação — `/auditoria-entradas/[id]/precificacao`
 
-**Crédito do transporte:** a coluna **Créd. ICMS frete** mostra o crédito do CT-e distribuído proporcionalmente ao frete lançado nos itens; só para frete destinatário e vínculos da mesma empresa. O retorno da grade inclui `regrasFiscais` (grupos, base e operações vigentes). A tela envia esse campo no PUT; se a configuração mudar enquanto a grade estiver aberta, o servidor retorna 409 e pede recarregar antes de gravar, sem alterar preços. O campo é opcional no contrato para preservar clientes anteriores.
+**Objetivo:** formar e gravar preços de venda e atacado de produtos de NF-e 55 Revenda consolidada, com simulação comercial por item. Não altera XML, financeiro, estoque, custo da Auditoria ou kardex.
 
-**Objetivo:** depois da NFe 55 consolidada, formar o **preço de venda** do produto a partir do **custo contábil** da linha e do determinante de Configurações → Vendas. Não altera o kardex nem o custo da Auditoria.
+**Acesso:** Auditoria de entradas → Precificar. Consulta exige acesso à Auditoria e à empresa da sessão; edição, simulação e gravação exigem `produtos:edit`. Outros documentos/finalidades/status ou outra empresa retornam 404.
 
-**Acesso:** pela Auditoria (`exibirNoMenu: false`). Ver a nota exige página `auditoria-entradas`. **Gravar** exige `produtos:edit`. Só NFe 55 de **Revenda** (`finalidadeEntrada=revenda`) em `entrada_consolidada` da empresa da sessão; NFS-e / CT-e / outro tenant → 404.
+**Cabeçalho:** fornecedor, número/série e emissão. Sem parametrização de Vendas, encargos iniciam em zero com aviso e link. O determinante detalhado fica recolhido no rodapé; CBS, IBS e juros continuam fora do divisor.
 
-**Duas telas:** Configurações → Vendas (só admin) é o determinante permanente da empresa. Esta grade puxa NF + despesas + créditos da empresa + cadastro e **Gravar preços válidos** grava `Produto.precoVenda`.
+**Produtos:** uma linha por item; Produto e Nome fixos no desktop. Campos principais: Custo de aquisição, % Margem, Preço de venda, Preço de venda atual, % Margem atacado, Preço atacado, Preço atacado atual, % Margem atual, % Margem atacado atual e Estoque disponível. No celular, grupos em duas colunas. Ausência de preço é —; zero conhecido é zero.
 
-**Cabeçalho:** fornecedor, nº/série, emissão. Percentuais lidos do único `ParametrizacaoCustoVenda` da empresa (sem cadastro → 0 e aviso para Configurações → Vendas). Encargos = Total Venda (PIS + COFINS + Imp. renda + Contribuição social + Custo fixo + Comissão). CBS, IBS e juros no cabeçalho, **fora do divisor**.
+**Campos adicionais:** seção amarela, fechada inicialmente e independente por produto. + abre; − fecha. Preço tabela, descontos, IPI, outras despesas (incluindo seguro), frete, tipo frete, regime do transportador, ST, créditos e custo adicional. % Custo de venda é consulta de Configurações → Vendas. Regras completas em §7.26.
 
-**Custo contábil:** (valor unitário × quantidade NF + frete lançado + IPI + seguro + outras despesas − créditos de ICMS, ICMS frete, PIS e COFINS) / (quantidade NF × multiplicador de embalagem). Seguro, outras despesas e PIS/COFINS vêm do XML; ausentes resultam em zero. ICMS usa a regra da empresa: valor da nota ou percentual sobre a mercadoria. Crédito de CT-e mantém o rateio por frete lançado quando destinatário. Não usa descontos, ajustes externos, rateio manual, regras por operação ou conferência NF-e/CT-e da funcionalidade retirada.
+**Edição:** margem recalcula preço; preço recalcula margem, separadamente para venda e atacado. Adicionais recalculam custo e preços preservando margens propostas. Percentual e reais de frete/adicional são duas formas do mesmo componente; o último editado prevalece. A interface calcula imediatamente com o mesmo módulo puro do servidor e valida a simulação ao sair de campo numérico. As alterações só são persistidas ao gravar. Erro mantém os campos digitados; linhas não gravadas também permanecem na tela.
 
-**Grade:** uma faixa por item; **uma barra horizontal** para a grade inteira (`GradeRolavel`) — todos os itens deslizam juntos. Nome/SKU ficam fixos à esquerda; cada coluna traz o rótulo na própria faixa. O contêiner com borda e separadores ocupa a largura completa das linhas (w-max min-w-full); a borda direita fica após a última coluna, sem atravessar os campos durante a rolagem. Só leitura: Produto/SKU, Qtd, Tipo frete (`modFrete`), Frete lançado, Despesas (`vSeg`), Outras desp. (`vOutro`), Créditos ICMS da mercadoria / ICMS frete / PIS / COFINS, % ICMS/PIS/COFINS do XML, Custo contábil, Custo da entrada (Auditoria, para conferir), Custo anterior + data da última consolidada + variação (destaque se |%| ≥ 30%), Encargos %, Preço atual (`Produto.precoVenda`), Estoque disponível. Editável: % Vr.adic (default 0; atualiza Vr.adic em R$ e o preço), % Marg (default 0), Preço formado. Item sem `produtoId`: créditos e custos visíveis se der para calcular; preço desabilitado; não grava. Editar margem atualiza preço; editar preço atualiza margem. Itens com custo e preço válidos podem ser gravados diretamente, sem confirmação de custo. Produto repetido exige selecionar uma linha.
+**Gravação:** somente linhas válidas e com produto vinculado. Produto repetido exige escolher Usar esta linha para o preço. Atacado é opcional: sem proposta, o preço de atacado existente é preservado. Reabrir recupera os ajustes e margens salvos. O servidor recalcula a aquisição e confere coerência dos preços, revisão e origem antes da transação. Não há confirmação de custo nem painel de memórias.
 
-**Fórmula:** `carga% = TotalVenda% + vrAdic% + margem%`; se `carga% >= 100` recusa a linha; `precoFormado = custoContabil / (1 − carga%/100)`. Se o operador edita o preço: `margem% = (1 − (encargos% + vrAdic%)/100 − custoContabil/precoDigitado) × 100`.
+| Aba / seção | Campo | O que é | Obrigatório | Quem preenche | De onde vem | Para onde conecta | Como funciona | Regra / bloqueio |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Produtos | Produto / Nome | Identificação | — | Sistema | Produto vinculado | Linha da nota | Só leitura | Sem vínculo não grava |
+| Produtos | Custo de aquisição | Custo comercial unitário | — | Sistema | Nota e adicionais | Preços e margens | Recalcula na simulação | Deve ser positivo |
+| Produtos | % Margem / Preço de venda | Proposta de varejo | Sim para gravar | Operador / cálculo | Simulação | Produto.precoVenda | Editar um atualiza o outro | Carga inferior a 100% |
+| Produtos | % Margem atacado / Preço atacado | Proposta de atacado | Não | Operador / cálculo | Simulação | Produto.precoAtacado | Independente do varejo | Se preenchido, par válido |
+| Produtos | Preço de venda atual / Preço atacado atual | Preços do cadastro | — | Sistema | Produto | Comparação | Só leitura | Sem preço mostra — |
+| Produtos | % Margem atual / % Margem atacado atual | Margem com custo simulado | — | Sistema | Custo e preços atuais | Comparação | Não é margem histórica | Sem preço mostra — |
+| Produtos | Estoque disponível | Saldo livre | — | Sistema | Estoque | Consulta | Só leitura | Não muda na precificação |
+| Campos adicionais | Preço tabela | Unitário de origem | Sim | Nota / operador | NF / embalagem | Mercadoria | Editável | Positivo |
+| Campos adicionais | % Desc. / % Desc. destaque | Descontos sucessivos | Não | Nota / operador | vDesc / ajuste | Mercadoria líquida | Segundo sobre o saldo | 0–100%; saldo positivo |
+| Campos adicionais | % Custo IPI / % Outras despesas | Despesas comerciais | Não | Nota / operador | IPI, vSeg e vOutro | Custo | Percentuais sobre mercadoria líquida | Não gera despesa financeira |
+| Campos adicionais | % Frete / Valor frete | Um único componente | Não | Sistema / operador | Frete lançado | Custo | Editar um atualiza o outro | Não somar percentual e reais |
+| Campos adicionais | Tipo frete | Responsável pelo frete | Sim | Nota / operador | modFrete | Custo de transporte | Remetente e Sem frete zeram frete separado | Não altera modFrete da nota |
+| Campos adicionais | Transp. no Simples | Regime para crédito comercial | Se houver crédito de frete | XML CT-e / operador | CRT do emitente do CT-e quando legível | Crédito frete | Sim zera crédito; desconhecido exige escolha | Não altera cadastro fiscal |
+| Campos adicionais | Tipo ST / % ST | Tratamento comercial da ST | Tipo preenchido automaticamente | Nota / operador | vICMSST / ajuste | Custo | Sem ST, ST na nota ou ST adicional | % ST editável só no adicional; não apura imposto |
+| Campos adicionais | Créd. % ICMS / Créd. % ICMS frete / % PIS/COFINS | Deduções comerciais | Não | Sistema / operador | Regras e valores da nota | Custo | Inicialização preserva valores monetários | Créditos percentuais 0–100% |
+| Campos adicionais | % Custo adicional / Valor adicional | Um único acréscimo | Não | Operador | Simulação | Custo | Base após despesas e créditos | Não duplicar percentual e reais |
+| Campos adicionais | % Custo de venda | Encargos da empresa | — | Sistema | Configurações → Vendas | Divisor dos preços | Só leitura | Não altera determinante |
+| Rodapé | Gravar preços válidos | Persistência explícita | — | Operador | Linhas válidas | Preços e parâmetros | Transação e auditoria | produtos:edit; conflito 409 |
 
-**Gravar preços válidos:** PUT `/entrada-notas/:id/precificacao` recebe itens com produtoId, itemId opcional, precoVenda, margemPercentual e vrAdicPercentual opcionais, além de regrasFiscais opcional para detectar alteração da configuração. Produto repetido exige uma linha explícita. Valida custo positivo e carga inferior a 100% mesmo sem margem informada. Só altera `Produto.precoVenda`, com auditoria e transação; não altera estoque, financeiro ou preços de outras linhas.
-
-**Fora desta fase:** recalcular automaticamente catálogo, unificar custo do estoque/Auditoria, CBS/IBS no divisor, geração de financeiro por despesa adicional ou concessão automática de créditos por regime tributário.
-
-**Decisão de uso:** ver §7.26 — restauração da precificação anterior por solicitação do cliente.
-
-
-| Aba / seção | Campo                     | O que é                     | Obrigatório             | Quem preenche       | De onde vem             | Para onde conecta          | Como funciona                                            | Regra / bloqueio                   |
-| ----------- | ------------------------- | --------------------------- | ----------------------- | ------------------- | ----------------------- | -------------------------- | -------------------------------------------------------- | ---------------------------------- |
-| Cabeçalho   | Fornecedor / Nº / Emissão | Identificação da NF         | —                       | Sistema             | NFe consolidada         | —                          | Só leitura                                               | Tenant da sessão                   |
-| Cabeçalho   | Encargos %                | Total Venda do determinante | —                       | Sistema             | Configurações → Vendas  | Divisor da fórmula         | Soma do bloco Venda                                      | CBS/IBS/juros fora                 |
-| Grade       | Tipo frete                | `modFrete` da NF            | —                       | Sistema             | XML / nota              | —                          | Só leitura                                               | Crédito de CT-e só quando destinatário                |
-| Grade       | Frete lançado             | Rateio do CT-e na linha     | —                       | Sistema             | `custoFreteRateado`     | Custo contábil             | Só leitura                                               | 0 se não houver                    |
-| Grade       | Despesas                  | Seguro do item (`vSeg`)     | —                       | Sistema             | XML `prod/vSeg`         | Custo contábil             | Só leitura                                               | Sem tag → 0                        |
-| Grade       | Outras desp.              | Outras despesas (`vOutro`)  | —                       | Sistema             | XML `prod/vOutro`       | Custo contábil             | Só leitura                                               | Sem tag → 0                        |
-| Grade       | Créd. ICMS / ICMS frete / PIS / COFINS | Imposto recuperável         | —                       | Sistema             | XML + Regras Fiscais  | Custo contábil             | ICMS pelas regras da empresa; PIS/COFINS do XML             | Valor ausente no XML → zero             |
-| Grade       | Custo contábil            | Custo da formação           | —                       | Cálculo             | NF + frete + desp. − créditos | Preço formado         | Fórmula §7.26                                            | ≤ 0 recusa                         |
-| Grade       | Custo da entrada          | Custo da Auditoria          | —                       | Sistema             | Mesma fórmula do dossiê | Conferência                | Só leitura                                               | Sem créditos                       |
-| Grade       | Custo anterior / data     | Última consolidada do SKU   | —                       | Sistema             | Outra NF consolidada    | Variação                   | Destaque se                                              | %                                  |
-| Grade       | % Vr.adic                 | Valor adicional %           | Não                     | Digitação           | Default 0               | Preço formado + Vr.adic R$ | Editar recalcula o preço                                 | Carga ≥ 100% recusa                |
-| Grade       | % Marg                    | Margem do operador          | Não                     | Digitação           | Default 0               | Preço formado              | Editar recalcula o preço                                 | Carga ≥ 100% recusa                |
-| Grade       | Preço formado             | Preço de venda              | Condicional para gravar | Cálculo / digitação | Fórmula §7.26           | `Produto.precoVenda`       | Editar recalcula a margem                                | Item sem produto desabilitado      |
-| Grade       | Preço atual               | Preço já no cadastro        | —                       | Sistema             | `Produto.precoVenda`    | —                          | Só leitura                                               | Após Gravar, igual ao formado      |
-| Grade       | Estoque disponível        | Saldo livre                 | —                       | Sistema             | Kardex                  | —                          | `qtdFisica − reservada − bloqueada`                      | Sem saldo → 0                      |
-| Rodapé      | Gravar preços válidos     | Persiste o preço de venda   | —                       | Clique              | Grade                   | Cadastro do produto        | PUT da nota                                              | `produtos:edit`; só produtos da NF |
-
-
-**Onde olhar no código:** `frontend/app/auditoria-entradas/[id]/precificacao/page.tsx`, `frontend/app/auditoria-entradas/page.tsx` (botão Precificar), `frontend/components/ui/grade-rolavel.tsx` (`GradeRolavel`), `frontend/app/globals.css` (`.grade-rolavel-viewport`, `.grade-fixo-esquerda`), `servico-precificacao-entrada.ts`, `custo-comercial-entrada.ts` (`calcularCustoContabilEntrada`, `creditoIcmsContabil`), `formacao-preco-venda.ts`, `parser-xml-nfe.ts` (`mapaImpostosPorNItemDoXml`, `mapaDespesasPorNItemDoXml`), `GET/PUT /entrada-notas/:id/precificacao`, `Produto.precoVenda` em `prisma/schema.prisma`.
+**Onde olhar no código:** `frontend/app/auditoria-entradas/[id]/precificacao/page.tsx`, `src/compartilhado/precificacao/calculo-precificacao.ts`, `src/modulos/entrada-notas/servico-precificacao-entrada.ts`, `esquema-ajustes-precificacao.ts`, `repositorio-entrada-notas.ts`, `controlador-entrada-notas.ts`, `rotas-entrada-notas.ts`, `prisma/schema.prisma`. Rotas: GET/PUT `/entrada-notas/:id/precificacao` e POST `/entrada-notas/:id/precificacao/simular`.
 
 ---
 
@@ -5326,23 +5327,33 @@ Regra de ouro: o código do endereço tem **sempre** 6 segmentos com hífen: `LO
 
 ### 7.26 Precificação pós-entrada (permanente)
 
-**Custo contábil:** (valor unitário × quantidade NF + frete lançado + IPI + seguro + outras despesas − créditos de ICMS, ICMS frete, PIS e COFINS) / (quantidade NF × multiplicador de embalagem). Seguro, outras despesas e PIS/COFINS vêm do XML; ausentes resultam em zero. ICMS usa a regra da empresa: valor da nota ou percentual sobre a mercadoria. Crédito de CT-e mantém o rateio por frete lançado quando destinatário. Não usa descontos, ajustes externos, rateio manual, regras por operação ou conferência NF-e/CT-e da funcionalidade retirada.
+**Decisão de 16/10/2026:** tela simplificada com adicionais comerciais editáveis e atacado. As seguintes premissas de cálculo foram aprovadas no plano. Não há apuração tributária de ST, alteração da nota, confirmação obrigatória de custo, rateio manual global ou reativação das antigas memórias.
 
-**Venda:** somente NF-e 55 de Revenda consolidada da empresa ativa. Preço = custo contábil / (1 − (Total Venda + % Vr.adic + % Marg)/100). Carga ≥ 100%, custo ≤ 0, preço inválido ou produto não vinculado impedem gravação. CBS, IBS e juros ficam fora do divisor. Custo da Auditoria e kardex permanecem inalterados.
+**Base:** preço unitário da nota / multiplicador de embalagem do fornecedor. Desconto, IPI, seguro, outras despesas, frete lançado, ST destacada e créditos são convertidos para a mesma unidade de venda. O valor original de cada componente permanece exato enquanto seu percentual não for explicitamente editado. Não reconstruir valores a partir dos percentuais arredondados da tela. Descontos e ST passam a integrar a aquisição; portanto notas com esses componentes podem ter custo diferente do cálculo legado, por mudança explícita aprovada.
 
-**Fluxo:** abrir Precificar, conferir a grade, ajustar margem ou preço e Gravar preços válidos. Sem confirmação de custo, pendências de composição adicional, despesas externas, simulação, memória por item ou histórico de memórias. A leitura não grava preços nem gera novas memórias. Preços existentes só mudam por gravação explícita.
+**Mercadoria líquida:** preço tabela menos desconto original (ou % Desc. editado), depois % Desc. destaque sobre o saldo. R$ 100 com 10% e 5% resulta em R$ 85,50.
 
-**Acesso e concorrência:** consulta exige acesso à Auditoria; gravação exige produtos:edit. Nota, produto e item devem pertencer à empresa da sessão. Produto repetido exige selecionar uma linha. Gravação transacional serializável, validação de todos os itens antes de atualizar e auditoria do preço anterior/novo. Mudança das regras enviadas pela grade ou conflito transacional retorna 409 sem gravação parcial.
+**Despesas:** IPI e outras despesas percentuais sobre mercadoria líquida; outras despesas incluem seguro original. Frete em percentual ou reais representa um só componente, sem duplicação. Remetente (modFrete=0) e Sem frete (9) não acrescentam frete separado nem crédito de frete; demais tipos utilizam o valor lançado inicialmente. Tipo frete é ajuste da simulação, não atualização da nota.
 
-**Contratos:** GET/PUT `/entrada-notas/:id/precificacao`. PUT recebe itens com produtoId, itemId opcional, precoVenda, margemPercentual e vrAdicPercentual opcionais, e regrasFiscais opcional. As rotas de ajustes, prévia de ajustes, confirmação de custo e memórias foram retiradas (404). Não existe revisaoCusto no contrato ativo.
+**Transporte:** CRT legível em todos os CT-es vinculados permite inicializar o regime; ausência ou regimes divergentes deixam a escolha pendente. Transp. no Simples=Sim zera o crédito de ICMS frete. Regime desconhecido com frete e crédito positivo impede precificar até escolher Sim/Não. Não exige escolha quando não existe crédito a aproveitar.
 
-**Dados preservados:** `CustoEntradaAjuste`, `CustoEntradaMemoria`, `NfeRecebidaItem.dadosCustoXml` e `previaCustoXml` permanecem no banco para preservar histórico, sem leitura ou escrita pelo fluxo atual. Migrations anteriores não são alteradas; não há migration destrutiva.
+**ST:** Sem ST=0; ST na nota usa somente vICMSST destacado, uma vez; ST adicional usa mercadoria líquida × percentual informado, substituindo a ST da nota. Não calcula MVA, FCP, diferencial ou obrigação tributária. % ST só é editável no modo adicional.
 
-**Onde olhar:** `servico-precificacao-entrada.ts` (`calcularLinha`, `obterGrade`, `gravarPrecos`), `custo-comercial-entrada.ts` (`calcularCustoContabilEntrada`, `creditoIcmsContabil`), `credito-icms-frete.ts`, `parser-xml-nfe.ts`, tela Precificação. Testes: `servico-precificacao-regras-fiscais.test.ts`, `servico-precificacao-acesso.test.ts`, `precificacao-formacao-custo.test.tsx`, `rotas-custo-aquisicao.test.ts`.
+**Créditos:** ICMS e PIS/COFINS percentuais sobre mercadoria líquida; crédito do frete sobre frete. Iniciam dos créditos monetários já calculados pelas regras atuais, inclusive o rateio de ICMS de CT-e por frete lançado, sem conceder crédito automaticamente por regime. Edições são ajustes comerciais locais; não modificam Regras Fiscais.
 
-**Decisão:** restauração do cálculo anterior solicitada pelo cliente em 15/10/2026. Não reintroduzir a confirmação obrigatória, o painel ou as memórias sem novo pedido.
+**Aquisição:** mercadoria líquida + IPI + outras despesas + frete + ST − créditos. Ao subtotal acrescentar custo adicional, em percentual sobre esse subtotal ou reais (uma única parcela). Custo precisa ser positivo. Percentuais editáveis entre 0 e 100%; valores monetários não negativos e finitos. Campo numérico vazio/inválido não é convertido silenciosamente em zero.
 
-**Validação local (15/10/2026):** 70 testes de backend e 5 testes de interface aprovados; tipagem do frontend aprovada. Checagem geral do backend aponta erros em arquivos fora desta alteração; nenhum diagnóstico nos arquivos alterados. Não houve migration, publicação nem validação visual em navegador de produção.
+**Venda e atacado:** preço = custo de aquisição / (1 − (Total Venda + margem)/100), com margens independentes. Margem de um preço = (1 − Total Venda/100 − custo/preço) × 100. Margens atuais usam os preços atuais do cadastro com o custo simulado; preço ausente mostra —. CBS/IBS/juros fora do divisor. Atacado opcional não muda pedidos, orçamentos, caixa ou política de descontos nesta entrega.
+
+**Persistência e concorrência:** parâmetros e margens por item em NfeRecebidaItem.precificacaoParametros; revisão em precificacaoRevisao; atacado opcional em Produto.precoAtacado. Gravação serializável, validação de todas as linhas antes de atualizar, revisão condicional e auditoria em transação. Origem inclui base monetária, produto, preços atuais, data de atualização, regras, encargos e revisão. Alteração concorrente ou configuração desatualizada retorna 409 sem gravação parcial. Erro preserva edição. Não gravar preço ao consultar ou simular.
+
+**Contratos:** GET/PUT `/entrada-notas/:id/precificacao`; POST `/entrada-notas/:id/precificacao/simular` recebe itemId, ajustes, margemPercentual e margemAtacado nullable e retorna custo, preços, erro, origem e revisão. Novo PUT inclui itemId, produtoId, ajustes, origem, revisão, preço/margem de venda e atacado opcional; servidor recalcula e valida preços. Clientes anteriores sem ajustes continuam usando o cálculo legado, incluindo vrAdicPercentual; não podem gravar atacado por esse caminho. Rotas antigas de ajustes, confirmação e memórias continuam 404.
+
+**Migração local:** `20261016120000_precificacao_simplificada` é aditiva e preserva preços e dados anteriores. Na máquina local, a pasta histórica incompleta impede migrate deploy; `scripts/aplicar-migracao-precificacao-local.ts` aplica exclusivamente esta migração em transação e registra checksum no histórico, recusando migração pendente ou checksum divergente. Restrito a localhost; não corrige nem remove migrations antigas. Produção não foi migrada por esse script.
+
+**Validação local (16/10/2026):** 81 testes de backend e 13 de interface aprovados; TypeScript do frontend aprovado, sem diagnóstico nos arquivos alterados do backend. A checagem geral do backend ainda aponta erros em outros módulos. Migração aditiva aplicada e registrada no PostgreSQL local; nenhum preço real foi gravado. Não havia NF-e de Revenda consolidada elegível no banco local para validar o fluxo real ou o visual em navegador. Build de produção bloqueado por NEXT_PUBLIC_API_URL local; publicação não realizada.
+
+**Onde olhar:** serviço de precificação, módulo compartilhado calculo-precificacao, esquema de ajustes e tela (§6.17k). Testes: calculo-precificacao.test.ts, servico-precificacao-regras-fiscais.test.ts, servico-precificacao-acesso.test.ts, rotas-custo-aquisicao.test.ts e frontend/lib/precificacao-formacao-custo.test.tsx.
 
 ### 7.27 Requisições WMS — execução e kardex (permanente)
 
@@ -5411,7 +5422,7 @@ Produto `controlaEstoque=false`: tarefa ok, zero movimento. Chaves: `reqwms:{id}
 
 **Como usar — Auditoria:** abra **Auditoria de entradas → Pendentes**, clique na nota e confira os detalhes. Clique **Auditada** para concluir; consulte **Concluídas** para ver responsável e data. Uso e consumo e serviço não exibem Precificar.
 
-**Como usar — Precificação:** Auditoria de entradas → abrir uma NF-e de Revenda consolidada → Precificar. Confira custo e encargos, ajuste % Vr.adic, % Marg ou Preço formado → Gravar preços válidos. Quando o produto se repetir, marque a linha que deve formar seu preço. Não há confirmação de custo ou consulta de memória. A barra horizontal única mantém nome/SKU fixos.
+**Como usar — Precificação:** Auditoria de entradas → NF-e de Revenda consolidada → Precificar. Confira custo e preços atuais; ajuste % Margem ou Preço de venda, e atacado se necessário. Abra + Campos adicionais para editar a composição; − recolhe. % Custo de venda vem de Configurações → Vendas. Se houver crédito de frete e regime desconhecido, escolha Transp. no Simples. Para produto repetido, selecione Usar esta linha para o preço. Gravar preços válidos salva somente as linhas aptas; confira a quantidade informada. Erro preserva os dados; conflito 409 exige recarregar. Reabrir recupera os ajustes salvos. Não altera nota, estoque ou financeiro.
 
 **Como usar — Finalidade da entrada (NFe 55):** se o fornecedor tiver **só Revenda** ou **só Uso e Consumo**, a nota já vem marcada e o fluxo segue sem clique. Se tiver os dois tipos, escolha no Resumo (clique de novo na marcada desmarca). Para mudar um tipo único, habilite o outro em Fornecedores → Outros.
 
@@ -5486,7 +5497,7 @@ Produto `controlaEstoque=false`: tarefa ok, zero movimento. Chaves: `reqwms:{id}
 | Endereço WMS                | Código físico do depósito no padrão `A-RC-20-01-2-05` (Local + Área + Rua + Bloco + Andar + Apartamento); tipo no AP; árvore em `/enderecos-wms` |
 | Requisição                  | Ordem operacional do armazém (`/requisicoes`). **Separação de pedidos** (`/separacao`) bipa o produto e soma 1 unidade; os outros tipos conferem em `/requisicoes/[id]/executar`. Separação reserva e baixa o kardex do produto; reposição não muda o total; **Contagem de entrada** nasce da Entrada (quem vai contar) e o bip fica em Contagens; **Guardar mercadorias** nasce na consolidação da NFe 55 Revenda (bip em `/guardar-mercadorias`); sem saldo por endereço |
 | Guardar mercadorias         | Tela `/guardar-mercadorias`: guardar no endereço o que consolidou na NFe 55 Revenda; bip EAN-13/DUN-14 e destino; não relança estoque |
-| Precificação                | Grade da NFe consolidada que forma o preço de venda sobre o custo contábil e grava no cadastro do produto (`/auditoria-entradas/[id]/precificacao`)                                                                                                                                                                      |
+| Precificação                | Grade da NF-e consolidada com custo de aquisição, adicionais expansíveis e preços de venda/atacado gravados por ação explícita (`/auditoria-entradas/[id]/precificacao`)                                                                                                                                                                      |
 | DDA                         | Débito Direto Autorizado — boletos a pagar listados pelo banco (C6); nesta fase só consulta e casa com a NF                                                                                                                                                                                                               |
 | Matcher (conferência)       | Regra determinística que casa item do pedido com item do documento (código de barras → código original → nome + preço)                                                                                                                                                                                                    |
 | statusConferencia           | Status da decisão do comprador sobre o anexo do fornecedor: `pendente`, `aprovado` ou `ajuste_solicitado`                                                                                                                                                                                                                 |

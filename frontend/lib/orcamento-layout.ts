@@ -25,9 +25,11 @@ export const OPCOES_VENDEDOR_ORCAMENTO: readonly OpcaoFixa[] = [
 ]
 
 export const OPCOES_CONDICAO_PAGAMENTO: readonly OpcaoFixa[] = [
-  { value: 'a_vista', label: 'À vista' },
-  { value: '30_dias', label: '30 dias' },
-  { value: '60_dias', label: '60 dias' },
+  { value: 'dinheiro', label: 'Dinheiro' },
+  { value: 'pix', label: 'Pix' },
+  { value: 'boleto', label: 'Boleto' },
+  { value: 'cartao_debito', label: 'Cartão de Débito' },
+  { value: 'cartao_credito', label: 'Cartão de Crédito' },
 ]
 
 export const OPCOES_TIPO_ENTREGA: readonly OpcaoFixa[] = [
@@ -100,6 +102,9 @@ export type OrcamentoLayout = {
   telefone: string
   email: string
   contato: string
+  parametroBoletoId?: string | null
+  prazosBoleto?: number[]
+  parcelasCredito?: number | null
   condicaoPagamento: string
   prazoEntrega: string
   frete: string

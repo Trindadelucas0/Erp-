@@ -706,6 +706,8 @@ model NfeRecebidaItem {
   valorUnitario     Decimal?    @db.Decimal(18, 4)
   valorTotal        Decimal?    @db.Decimal(18, 2)
   dadosCustoXml     Json?
+  precificacaoParametros Json?
+  precificacaoRevisao Int @default(0)
   previaCustoXml    Json?
   /// Peso líquido do item no XML (kg), se houver
   pesoKg            Decimal?    @db.Decimal(18, 4)
@@ -1271,6 +1273,7 @@ model Produto {
   nomeCompra              String?
   precoCusto              Decimal? @db.Decimal(15, 4)
   precoVenda              Decimal? @db.Decimal(15, 4)
+  precoAtacado            Decimal? @db.Decimal(15, 4)
   agruparSimilaresRuptura Boolean  @default(false)
 
   ncm          String?
@@ -2038,6 +2041,9 @@ model Orcamento {
   email             String               @default("")
   contato           String               @default("")
   condicaoPagamento String               @default("")
+  parametroBoletoId  String?
+  prazosBoleto       Int[]                @default([])
+  parcelasCredito   Int?
   prazoEntrega      String               @default("")
   frete             String               @default("")
   mensagem          String               @default("")
@@ -2097,6 +2103,11 @@ model PedidoVenda {
   clienteCodigo     String            @default("")
   clienteNome       String
   condicaoPagamento String            @default("")
+  parametroBoletoId  String?
+  parametroBoletoNome String?
+  prazosBoleto       Int[]             @default([])
+  parcelasCredito   Int?
+  parcelasPagamento Json?
   descontoTotal     Decimal           @default(0) @db.Decimal(15, 2)
   valorFrete        Decimal           @default(0) @db.Decimal(15, 2)
   outrasDespesas    Decimal           @default(0) @db.Decimal(15, 2)

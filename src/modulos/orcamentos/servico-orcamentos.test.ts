@@ -106,14 +106,14 @@ describe('servico de orçamentos', () => {
     vi.clearAllMocks()
   })
 
-  it('finalizar sem converter mantém em aberto', async () => {
+  it('fechar pedido devolve orçamento convertido mesmo sem checkbox', async () => {
     vi.mocked(repositorioDeOrcamentos.finalizar).mockResolvedValue(
-      orcamentoBase({ status: 'em_aberto' }) as never
+      orcamentoBase({ status: 'convertido', converterEmPedido: false }) as never
     )
 
     const resultado = await servicoDeOrcamentos.finalizar(EMPRESA, ID, 'u1')
 
-    expect(resultado.status).toBe('em_aberto')
+    expect(resultado.status).toBe('convertido')
     expect(repositorioDeOrcamentos.finalizar).toHaveBeenCalledWith(EMPRESA, ID, 'u1')
     expect(resultado).not.toHaveProperty('nomeEmpresa')
   })

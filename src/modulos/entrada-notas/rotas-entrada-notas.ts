@@ -48,6 +48,9 @@ export async function rotasEntradaNotas(aplicacao: FastifyInstance): Promise<voi
     },
     controladorEntradaNotas.gravarPrecificacao
   )
+  aplicacao.post('/:id/precificacao/simular', {
+    preHandler: [...autenticadoNota, middlewareDeAutorizacao('produtos:edit')],
+  }, controladorEntradaNotas.simularPrecificacao)
   aplicacao.post('/:id/analisar', { preHandler: autenticadoNota }, controladorEntradaNotas.analisar)
   aplicacao.post('/:id/vincular-item', { preHandler: autenticadoNota }, controladorEntradaNotas.vincularItem)
   aplicacao.post(
