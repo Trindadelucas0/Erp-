@@ -301,6 +301,62 @@ describe('servicoVinculoCte — caso Fortlev/KNA', () => {
     expect(vinculoCreate).not.toHaveBeenCalled()
   })
 
+  it('ao reanalisar a segunda NF-e, encontra CT-e já ligado à primeira e completa o vínculo', async () => {
+    findFirst.mockResolvedValue({
+      id: 'nfe-2',
+      companyId: 'emp-1',
+      tipoDocumento: 'nfe55',
+      chaveNfe: CHAVE_NFE_2,
+      xmlConteudo: xmlNfeCompleta(),
+      valorTotal: 30,
+      statusEntrada: 'em_analise',
+    })
+    findMany.mockImplementation(async ({ where }: { where?: Record<string, unknown> }) => {
+      if (where?.chaveNfeReferenciada) return []
+      if (where?.tipoDocumento === 'cte' && where?.xmlConteudo) {
+        return [{
+          id: 'cte-1',
+          chaveNfe: CHAVE_CTE,
+          chaveNfeReferenciada: CHAVE_NFE,
+          xmlConteudo: xmlCteDuasNfes(),
+          valorTotal: 638.71,
+        }]
+      }
+      return []
+    })
+    const vinculos: Array<Record<string, unknown>> = [{
+      id: 'vinculo-nfe-1',
+      nfeRecebidaId: 'nfe-1',
+      valorFrete: 638.71,
+      nfeRecebida: { valorTotal: 10, statusEntrada: 'em_analise' },
+    }]
+    vinculoFindMany.mockImplementation(async () => [...vinculos])
+    vinculoCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+      const criado = {
+        id: 'vinculo-nfe-2',
+        ...data,
+        nfeRecebida: { valorTotal: 30, statusEntrada: 'em_analise' },
+      }
+      vinculos.push(criado)
+      return criado
+    })
+    vinculoUpdate.mockResolvedValue({})
+
+    await servicoVinculoCte.tentarVincularNfesPendentesAoCte('emp-1', 'nfe-2', {
+      reanalisarAposVinculo: false,
+    })
+
+    expect(vinculoCreate).toHaveBeenCalledTimes(1)
+    expect(vinculoCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        nfeRecebidaId: 'nfe-2',
+        cteRecebidaId: 'cte-1',
+        origemVinculo: 'automatico',
+      }),
+    }))
+    expect(vinculoUpdate).toHaveBeenCalledTimes(2)
+  })
+
   it('repararVinculosCteTomadorIndevido remove vínculo automático Fortlev↔KNA', async () => {
     vinculoFindMany.mockResolvedValue([
       {

@@ -731,7 +731,11 @@ async function listarCtesAguardandoNf(companyId: string): Promise<CteAguardandoN
  * referenciam esta chave e reanalisa cada CT-e + a NF (gate frete).
  * Só auto-vincula se a NFe tiver itens (XML ou banco) e o tomador do CT-e = empresa.
  */
-async function tentarVincularNfesPendentesAoCte(companyId: string, nfeId: string): Promise<void> {
+async function tentarVincularNfesPendentesAoCte(
+  companyId: string,
+  nfeId: string,
+  opcoes?: { reanalisarAposVinculo?: boolean }
+): Promise<void> {
   const nfe = await clientePrisma.nfeRecebida.findFirst({
     where: { id: nfeId, companyId, tipoDocumento: 'nfe55' },
   })
@@ -817,11 +821,13 @@ async function tentarVincularNfesPendentesAoCte(companyId: string, nfeId: string
     await tentarCriar(cte, 'auto pós-NF (reparse)')
   }
 
-  for (const cteId of cteIdsVinculados) {
-    await reanalisarCteAposVinculo(companyId, cteId)
-  }
-  if (cteIdsVinculados.size > 0) {
-    await reanalisarCteAposVinculo(companyId, nfe.id)
+  if (opcoes?.reanalisarAposVinculo !== false) {
+    for (const cteId of cteIdsVinculados) {
+      await reanalisarCteAposVinculo(companyId, cteId)
+    }
+    if (cteIdsVinculados.size > 0) {
+      await reanalisarCteAposVinculo(companyId, nfe.id)
+    }
   }
 
   if (linhasTabela.length > 0) {

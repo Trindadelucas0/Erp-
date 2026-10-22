@@ -1428,6 +1428,12 @@ async function analisarNota(
     }
   }
 
+  // Reanalisar a própria NF-e também recupera CT-es já existentes que citam sua chave.
+  // Não reentra no pipeline aqui: o fluxo atual continuará abaixo já com o vínculo carregado.
+  await servicoVinculoCte.tentarVincularNfesPendentesAoCte(companyId, notaId, {
+    reanalisarAposVinculo: false,
+  })
+
   let nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
 
