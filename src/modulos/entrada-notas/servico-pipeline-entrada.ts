@@ -1428,12 +1428,6 @@ async function analisarNota(
     }
   }
 
-  // Reanalisar a própria NF-e também recupera CT-es já existentes que citam sua chave.
-  // Não reentra no pipeline aqui: o fluxo atual continuará abaixo já com o vínculo carregado.
-  await servicoVinculoCte.tentarVincularNfesPendentesAoCte(companyId, notaId, {
-    reanalisarAposVinculo: false,
-  })
-
   let nota = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
 
@@ -1474,8 +1468,29 @@ async function analisarNota(
   if (!nota) throw new ErroDaAplicacao('Nota não encontrada', 404)
   modFrete = nota.modFrete ?? modFrete
 
-  const qtdCtes = (nota.vinculosComoNfe ?? []).length
+  let qtdCtes = (nota.vinculosComoNfe ?? []).length
   const freteDestinatario = exigeCtePorModFrete(modFrete)
+
+  if (freteDestinatario && qtdCtes === 0) {
+    try {
+      // Reanalisar a NF-e recupera CT-es já existentes que citam sua chave antes do bloqueio.
+      // Não reentra no pipeline: o fluxo atual continua abaixo já com o vínculo carregado.
+      await servicoVinculoCte.tentarVincularNfesPendentesAoCte(companyId, notaId, {
+        reanalisarAposVinculo: false,
+      })
+      const notaComVinculo = await repositorioEntradaNotas.buscarNotaCompleta(companyId, notaId)
+      if (notaComVinculo) {
+        nota = notaComVinculo
+        qtdCtes = (nota.vinculosComoNfe ?? []).length
+      }
+    } catch (e) {
+      logFocus('warn', 'nfe_auto_vinculo_cte_ao_reanalisar_falhou', {
+        companyId,
+        notaId,
+        mensagem: e instanceof Error ? e.message : String(e),
+      })
+    }
+  }
 
   async function pararEmFreteBloqueante(bloqueio: string) {
     analise.frete = {
