@@ -18,6 +18,7 @@ import { servicoRegrasFiscais } from '../configuracoes/servico-regras-fiscais.js
 import type { RegrasFiscais } from '../configuracoes/esquema-regras-fiscais.js'
 import { extrairIcmsDoXmlCte } from '../focus-nfe/parser-xml-nfe.js'
 import { ratearCreditoIcmsFrete } from './credito-icms-frete.js'
+import { ratearProporcionalCentavos } from './rateio-cte-multiplas-nfes.js'
 import { calcularQtdDisponivel } from '../estoque/tipos-estoque.js'
 import { repositorioDeEstoque } from '../estoque/repositorio-estoque.js'
 import { repositorioEntradaNotas } from './repositorio-entrada-notas.js'
@@ -124,15 +125,43 @@ async function obterCreditosFiscais(companyId: string, nota: Awaited<ReturnType<
     ? await db.nfeCteVinculo.findMany({
         where: { companyId, nfeRecebidaId: nota.id, cteRecebida: { companyId } },
         orderBy: { id: 'asc' },
-        select: { valorFrete: true, cteRecebida: { select: { xmlConteudo: true, chaveNfe: true } } },
+        select: {
+          id: true,
+          valorFrete: true,
+          cteRecebida: {
+            select: {
+              xmlConteudo: true,
+              chaveNfe: true,
+              vinculosComoCte: {
+                select: { id: true, valorFrete: true },
+                orderBy: { id: 'asc' },
+              },
+            },
+          },
+        },
       })
     : []
   const fretePorItem = ratearCreditoIcmsFrete(nota.modFrete, nota.itens.map((item) => ({
     id: item.id, custoFreteRateado: decimalNum(item.custoFreteRateado) ?? 0,
-  })), vinculos.map((vinculo) => ({
-    valorFrete: decimalNum(vinculo.valorFrete) ?? 0,
-    valorIcms: vinculo.cteRecebida.xmlConteudo ? extrairIcmsDoXmlCte(vinculo.cteRecebida.xmlConteudo)?.valorIcms ?? null : null,
-  })), regras.transporte)
+  })), vinculos.map((vinculo) => {
+    const valorFrete = decimalNum(vinculo.valorFrete) ?? 0
+    const valorIcmsTotal = vinculo.cteRecebida.xmlConteudo
+      ? extrairIcmsDoXmlCte(vinculo.cteRecebida.xmlConteudo)?.valorIcms ?? null
+      : null
+    const vinculosMesmoCte = vinculo.cteRecebida.vinculosComoCte ?? []
+    const bases = (vinculosMesmoCte.length > 0
+      ? vinculosMesmoCte
+      : [{ id: vinculo.id, valorFrete: vinculo.valorFrete }])
+      .map((item) => ({ id: item.id, valorBase: decimalNum(item.valorFrete) ?? 0 }))
+      .filter((item) => item.valorBase > 0)
+    const valorIcms =
+      valorIcmsTotal == null || valorFrete <= 0
+        ? valorIcmsTotal == null
+          ? null
+          : 0
+        : ratearProporcionalCentavos(valorIcmsTotal, bases).get(vinculo.id) ?? 0
+    return { valorFrete, valorIcms }
+  }), regras.transporte)
   const regimes = vinculos.map(v => v.cteRecebida.xmlConteudo ? extrairCampoXml(extrairCampoXml(v.cteRecebida.xmlConteudo, 'emit') ?? '', 'CRT') : null)
   const transporteSimples = regimes.length && regimes.every(r => r === '1' || r === '2') ? true
     : regimes.length && regimes.every(r => r === '3') ? false : null

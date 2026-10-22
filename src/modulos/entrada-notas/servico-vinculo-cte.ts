@@ -19,6 +19,7 @@ import {
 } from '../focus-nfe/logs-focus-nfe.js'
 import { importarNfePorChave } from '../focus-nfe/importar-nfe-por-chave.js'
 import { repositorioFocusNfe } from '../focus-nfe/repositorio-focus-nfe.js'
+import { ratearProporcionalCentavos } from './rateio-cte-multiplas-nfes.js'
 
 export type CteAguardandoNf = {
   cteId: string
@@ -73,10 +74,16 @@ function oQueFazerPendente(motivo: string): string {
   return 'Aguarde sync ou importe o XML da NF'
 }
 
-function decimalNum(v: { toNumber?: () => number } | number | null | undefined): number | null {
+function decimalNum(v: unknown): number | null {
   if (v == null) return null
   if (typeof v === 'number') return v
-  if (typeof v.toNumber === 'function') return v.toNumber()
+  if (
+    typeof v === 'object' &&
+    'toNumber' in v &&
+    typeof (v as { toNumber?: unknown }).toNumber === 'function'
+  ) {
+    return (v as { toNumber: () => number }).toNumber()
+  }
   return Number(v)
 }
 
@@ -156,6 +163,77 @@ export type ResultadoVinculoCteAuto = {
   tomadorNaoEmpresa?: boolean
 }
 
+const STATUS_NFE_EDITAVEL_PARA_VINCULO = new Set(['pendente', 'em_analise', 'stand_by'])
+
+type VinculoCteComNfe = {
+  id: string
+  nfeRecebidaId: string
+  valorFrete: unknown
+  nfeRecebida: { valorTotal: unknown; statusEntrada: string }
+}
+
+async function recalcularRateioItensNfes(companyId: string, nfeIds: string[]) {
+  if (nfeIds.length === 0) return
+  try {
+    const { servicoEntradaNotas } = await import('./servico-pipeline-entrada.js')
+    for (const nfeId of [...new Set(nfeIds)]) {
+      await servicoEntradaNotas.recalcularRateioFreteNota(companyId, nfeId)
+    }
+  } catch (e) {
+    logFocus('warn', 'cte_rateio_nfes_apos_vinculo_falhou', {
+      companyId,
+      nfeIds,
+      mensagem: e instanceof Error ? e.message : String(e),
+    })
+  }
+}
+
+async function atualizarParcelasFreteCte(params: {
+  companyId: string
+  valorTotalCte: number | null
+  vinculos: VinculoCteComNfe[]
+}) {
+  if (params.vinculos.length === 0) return
+  if (params.vinculos.length === 1) {
+    await clientePrisma.nfeCteVinculo.update({
+      where: { id: params.vinculos[0].id },
+      data: { valorFrete: params.valorTotalCte },
+    })
+    await recalcularRateioItensNfes(params.companyId, [params.vinculos[0].nfeRecebidaId])
+    return
+  }
+  if (params.valorTotalCte == null || params.valorTotalCte <= 0) {
+    throw new ErroDaAplicacao(
+      'O CT-e precisa ter valor total positivo para ser vinculado a mais de uma NF-e.',
+      400
+    )
+  }
+
+  let parcelas: Map<string, number>
+  try {
+    parcelas = ratearProporcionalCentavos(
+      params.valorTotalCte,
+      params.vinculos.map((vinculo) => ({
+        id: vinculo.id,
+        valorBase: decimalNum(vinculo.nfeRecebida.valorTotal) ?? 0,
+      }))
+    )
+  } catch (e) {
+    throw new ErroDaAplicacao(e instanceof Error ? e.message : String(e), 400)
+  }
+
+  for (const vinculo of params.vinculos) {
+    await clientePrisma.nfeCteVinculo.update({
+      where: { id: vinculo.id },
+      data: { valorFrete: parcelas.get(vinculo.id) ?? 0 },
+    })
+  }
+  await recalcularRateioItensNfes(
+    params.companyId,
+    params.vinculos.map((vinculo) => vinculo.nfeRecebidaId)
+  )
+}
+
 async function criarVinculo(params: {
   companyId: string
   nfeRecebidaId: string
@@ -163,16 +241,48 @@ async function criarVinculo(params: {
   chaveNfeReferenciada: string | null
   origemVinculo: 'automatico' | 'manual'
   valorFrete: number | null
+  nfeValorTotal: unknown
+  nfeStatusEntrada: string
 }) {
-  const existente = await clientePrisma.nfeCteVinculo.findUnique({
-    where: { cteRecebidaId: params.cteRecebidaId },
-  })
-  if (existente) {
-    if (existente.nfeRecebidaId === params.nfeRecebidaId) return existente
-    throw new ErroDaAplicacao('Este CT-e já está vinculado a outra NF-e.', 409)
+  const existentes = (await clientePrisma.nfeCteVinculo.findMany({
+    where: { companyId: params.companyId, cteRecebidaId: params.cteRecebidaId },
+    include: {
+      nfeRecebida: { select: { valorTotal: true, statusEntrada: true } },
+    },
+    orderBy: { createdAt: 'asc' },
+  })) as VinculoCteComNfe[]
+  const existente = existentes.find(
+    (vinculo) => vinculo.nfeRecebidaId === params.nfeRecebidaId
+  )
+  if (existente) return existente
+
+  const algumFechado =
+    !STATUS_NFE_EDITAVEL_PARA_VINCULO.has(params.nfeStatusEntrada) ||
+    existentes.some(
+      (vinculo) => !STATUS_NFE_EDITAVEL_PARA_VINCULO.has(vinculo.nfeRecebida.statusEntrada)
+    )
+  if (algumFechado) {
+    throw new ErroDaAplicacao(
+      'Não é possível alterar o rateio do CT-e porque uma das NF-e relacionadas já saiu da análise.',
+      409
+    )
   }
 
-  return clientePrisma.nfeCteVinculo.create({
+  if (existentes.length > 0) {
+    try {
+      ratearProporcionalCentavos(params.valorFrete ?? 0, [
+        ...existentes.map((vinculo) => ({
+          id: vinculo.id,
+          valorBase: decimalNum(vinculo.nfeRecebida.valorTotal) ?? 0,
+        })),
+        { id: 'novo-vinculo', valorBase: decimalNum(params.nfeValorTotal) ?? 0 },
+      ])
+    } catch (e) {
+      throw new ErroDaAplicacao(e instanceof Error ? e.message : String(e), 400)
+    }
+  }
+
+  const criado = await clientePrisma.nfeCteVinculo.create({
     data: {
       id: randomUUID(),
       companyId: params.companyId,
@@ -184,6 +294,24 @@ async function criarVinculo(params: {
       updatedAt: new Date(),
     },
   })
+
+  await atualizarParcelasFreteCte({
+    companyId: params.companyId,
+    valorTotalCte: params.valorFrete,
+    vinculos: [
+      ...existentes,
+      {
+        id: criado.id,
+        nfeRecebidaId: params.nfeRecebidaId,
+        valorFrete: params.valorFrete,
+        nfeRecebida: {
+          valorTotal: params.nfeValorTotal,
+          statusEntrada: params.nfeStatusEntrada,
+        },
+      },
+    ],
+  })
+  return criado
 }
 
 /**
@@ -191,7 +319,7 @@ async function criarVinculo(params: {
  * Focus só é chamado se houver chave de NF (nota de frete/mercadoria) e a NF
  * ainda não estiver no ERP — e se `importarFocusSeAusente` for true.
  * Auto-vínculo exige: NFe com itens (XML `<det>` ou linhas no banco) + tomador do CT-e = CNPJ da empresa.
- * 1 CT-e → 1 NF (primeira chave que conseguir vincular).
+ * 1 CT-e → todas as NF-e referenciadas que estiverem aptas para vínculo.
  */
 async function tentarVincularCteAutomatico(
   companyId: string,
@@ -250,12 +378,8 @@ async function tentarVincularCteAutomatico(
     return { vinculado: false, semChaveNfe: true }
   }
 
-  const jaVinculado = await clientePrisma.nfeCteVinculo.findUnique({
-    where: { cteRecebidaId: cte.id },
-  })
-  if (jaVinculado) return { vinculado: true }
-
   let ultimaFalhaImport: string | undefined
+  let houveVinculo = false
   const chavesJaTentadasImport = new Set<string>()
 
   for (const chave of chaves) {
@@ -322,23 +446,26 @@ async function tentarVincularCteAutomatico(
         chaveNfeReferenciada: chave,
         origemVinculo: 'automatico',
         valorFrete: resumo.valorTotal ?? decimalNum(cte.valorTotal),
+        nfeValorTotal: nfe.valorTotal,
+        nfeStatusEntrada: nfe.statusEntrada,
       })
+      houveVinculo = true
       logFocus('info', 'cte_vinculado_automatico', {
         companyId,
         cteId: cte.id,
         nfeId: nfe.id,
         chaveNfe: chave.slice(-8),
       })
-      return { vinculado: true }
     } catch (e) {
       if (e instanceof ErroDaAplicacao && e.statusCode === 409) {
-        return { vinculado: true }
+        ultimaFalhaImport = e.message
+        continue
       }
       throw e
     }
   }
 
-  return { vinculado: false, falhaImport: ultimaFalhaImport }
+  return { vinculado: houveVinculo, falhaImport: ultimaFalhaImport }
 }
 
 /**
@@ -635,6 +762,8 @@ async function tentarVincularNfesPendentesAoCte(companyId: string, nfeId: string
         chaveNfeReferenciada: nfe.chaveNfe,
         origemVinculo: 'automatico',
         valorFrete: valor,
+        nfeValorTotal: nfe.valorTotal,
+        nfeStatusEntrada: nfe.statusEntrada,
       })
       cteIdsVinculados.add(cte.id)
       linhasTabela.push({
@@ -654,7 +783,6 @@ async function tentarVincularNfesPendentesAoCte(companyId: string, nfeId: string
       companyId,
       tipoDocumento: 'cte',
       chaveNfeReferenciada: nfe.chaveNfe,
-      vinculosComoCte: { none: {} },
     },
   })
 
@@ -668,7 +796,6 @@ async function tentarVincularNfesPendentesAoCte(companyId: string, nfeId: string
       companyId,
       tipoDocumento: 'cte',
       xmlConteudo: { not: null },
-      vinculosComoCte: { none: {} },
     },
     select: { id: true, chaveNfe: true, xmlConteudo: true, valorTotal: true },
     take: 200,
@@ -854,7 +981,7 @@ async function vincularCteManual(
       // permite vínculo manual mesmo com chave divergente (fallback humano)
       chaveRef = nfe.chaveNfe
     } else {
-      chaveRef = chaves[0] ?? nfe.chaveNfe
+      chaveRef = nfe.chaveNfe
     }
   } else {
     chaveRef = nfe.chaveNfe
@@ -867,15 +994,48 @@ async function vincularCteManual(
     chaveNfeReferenciada: chaveRef,
     origemVinculo: 'manual',
     valorFrete,
+    nfeValorTotal: nfe.valorTotal,
+    nfeStatusEntrada: nfe.statusEntrada,
   })
 }
 
 async function desvincularCte(companyId: string, nfeId: string, vinculoId: string) {
   const vinculo = await clientePrisma.nfeCteVinculo.findFirst({
     where: { id: vinculoId, companyId, nfeRecebidaId: nfeId },
+    include: {
+      cteRecebida: { select: { valorTotal: true, xmlConteudo: true } },
+    },
   })
   if (!vinculo) throw new ErroDaAplicacao('Vínculo não encontrado', 404)
+
+  const todos = (await clientePrisma.nfeCteVinculo.findMany({
+    where: { companyId, cteRecebidaId: vinculo.cteRecebidaId },
+    include: {
+      nfeRecebida: { select: { valorTotal: true, statusEntrada: true } },
+    },
+    orderBy: { createdAt: 'asc' },
+  })) as VinculoCteComNfe[]
+  if (
+    todos.some(
+      (item) => !STATUS_NFE_EDITAVEL_PARA_VINCULO.has(item.nfeRecebida.statusEntrada)
+    )
+  ) {
+    throw new ErroDaAplicacao(
+      'Não é possível alterar o rateio do CT-e porque uma das NF-e relacionadas já saiu da análise.',
+      409
+    )
+  }
+
   await clientePrisma.nfeCteVinculo.delete({ where: { id: vinculo.id } })
+  const totalXml = vinculo.cteRecebida.xmlConteudo
+    ? extrairCamposResumoDoXml(vinculo.cteRecebida.xmlConteudo).valorTotal
+    : null
+  await atualizarParcelasFreteCte({
+    companyId,
+    valorTotalCte: totalXml ?? decimalNum(vinculo.cteRecebida.valorTotal),
+    vinculos: todos.filter((item) => item.id !== vinculo.id),
+  })
+  await recalcularRateioItensNfes(companyId, [nfeId])
 }
 
 async function listarVinculosDaNfe(companyId: string, nfeId: string) {

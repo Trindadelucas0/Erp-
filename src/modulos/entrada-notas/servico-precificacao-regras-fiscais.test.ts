@@ -48,6 +48,26 @@ describe('integração das regras fiscais na grade e na gravação', () => {
     expect(clientePrisma.nfeCteVinculo.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { companyId: 'a', nfeRecebidaId: 'n', cteRecebida: { companyId: 'a' } } }))
     expect(clientePrisma.produto.update).not.toHaveBeenCalled()
   })
+  it('rateia o ICMS integral do CT-e entre as NF-e sem duplicar crédito', async () => {
+    vi.mocked(servicoRegrasFiscais.obter).mockResolvedValue({
+      mercadoria: { modo: 'pre_definida', aliquota: 12 },
+      transporte: { modo: 'nota', aliquota: null },
+      operacoes: ['icms', 'icms_frete'].map(tributo => ({ cfopEntradaId: 'c', tributo, cst: '00', recuperabilidade: 'aplicavel', composicao: 'embutido' })),
+    } as never)
+    vi.mocked(clientePrisma.nfeCteVinculo.findMany).mockResolvedValue([{
+      id: 'v1',
+      valorFrete: 25,
+      cteRecebida: {
+        chaveNfe: 'cte',
+        xmlConteudo: '<CTe><infCte><imp><ICMS><ICMS00><vBC>100</vBC><pICMS>18</pICMS><vICMS>18</vICMS></ICMS00></ICMS></imp></infCte></CTe>',
+        vinculosComoCte: [{ id: 'v1', valorFrete: 25 }, { id: 'v2', valorFrete: 75 }],
+      },
+    }] as never)
+
+    const grade = await servicoPrecificacaoEntrada.obterGrade('a', 'n')
+
+    expect(grade.itens.map((i) => i.creditoIcmsFrete)).toEqual([2.7, 1.8])
+  })
   it('grade retornada após gravar usa os mesmos créditos e consulta a regra vigente', async () => {
     const antes = await servicoPrecificacaoEntrada.obterGrade('a', 'n')
     const depois = await servicoPrecificacaoEntrada.gravarPrecos('a', 'n', 'u', antes.itens.map((i) => ({ produtoId: i.produtoId!, precoVenda: i.precoSugerido!, margemPercentual: 0 })))

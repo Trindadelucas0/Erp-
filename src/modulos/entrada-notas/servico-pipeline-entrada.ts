@@ -1979,6 +1979,11 @@ async function sincronizarRateioAposCadastro(
   return { bloqueiosPeso: [] }
 }
 
+/** Recalcula somente o custo de frete dos itens após rateio de um CT-e compartilhado. */
+async function recalcularRateioFreteNota(companyId: string, notaId: string) {
+  return sincronizarRateioAposCadastro(companyId, notaId)
+}
+
 /**
  * Rateia o custo do frete nos itens (prévia após vínculos completos).
  * Não cria DespesaEntradaDocumento — isso fica no lançamento.
@@ -2108,7 +2113,9 @@ async function aplicarRateioEDespesasFrete(companyId: string, notaId: string) {
   }
 
   for (const v of vinculos) {
-    const valor = parcelaFreteDoVinculo(v)
+    const valor =
+      decimalNum(v.cteRecebida?.valorTotal as { toNumber?: () => number } | number | null) ??
+      parcelaFreteDoVinculo(v)
     if (valor <= 0) continue
     const pessoaId = v.cteRecebida?.fornecedorPessoaId ?? null
     await clientePrisma.despesaEntradaDocumento.upsert({
@@ -4473,7 +4480,19 @@ async function salvarFinanceiroFrete(
 
   const parcelas = normalizarParcelasFinanceiroFrete(dados)
   const soma = Math.round(parcelas.reduce((s, p) => s + p.valor, 0) * 100) / 100
-  const totalTransporte = resolverTotalTransporteFrete(nota)
+  const vinculoSelecionado =
+    nota.tipoDocumento === 'cte'
+      ? null
+      : nota.vinculosComoNfe?.find((v) => v.cteRecebidaId === cteId)
+  const totalTransporte =
+    nota.tipoDocumento === 'cte'
+      ? resolverTotalTransporteFrete(nota)
+      : decimalNum(
+          vinculoSelecionado?.cteRecebida?.valorTotal as
+            | { toNumber?: () => number }
+            | number
+            | null
+        ) ?? parcelaFreteDoVinculo(vinculoSelecionado ?? {})
   if (totalTransporte <= 0) {
     throw new ErroDaAplicacao('Valor Frete (total do transporte) não encontrado na nota', 400)
   }
@@ -4658,6 +4677,7 @@ export const servicoEntradaNotas = {
   repararVinculosCteTomadorIndevido,
   repararCtesTomadorIndevido,
   listarCtesAguardandoNf,
+  recalcularRateioFreteNota,
   vincularCte,
   desvincularCte,
   salvarFinanceiroFrete,

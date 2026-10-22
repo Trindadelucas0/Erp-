@@ -765,7 +765,7 @@ function resolverTotalTransporteUi(nota: DetalheNota): number {
   }
   const ctes = nota.ctesVinculados ?? []
   const soma = ctes.reduce((acc, v) => {
-    const n = v.valorFrete ?? v.cte?.valorTotal ?? 0
+    const n = v.cte?.valorTotal ?? v.valorFrete ?? 0
     return acc + (Number.isFinite(n) ? n : 0)
   }, 0)
   if (soma > 0) return Math.round(soma * 100) / 100
@@ -2787,7 +2787,7 @@ function ConteudoDetalheEntrada() {
           )}
 
           {ehCte && (
-            <CardPadrao titulo="NF-e referenciada">
+            <CardPadrao titulo="NF-e referenciadas">
               <NegociacaoResumo etapa={nota.analise?.negociacao} />
               <p className="mt-2 text-sm break-all">
                 Chave no XML: {nota.chaveNfeReferenciada ?? 'não encontrada'}
@@ -2853,8 +2853,9 @@ function ConteudoDetalheEntrada() {
                           …{v.cte?.chaveNfe?.slice(-8)} · {v.cte?.nomeEmitente ?? '—'}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {v.origemVinculo} ·{' '}
-                          {formatMoedaBr(v.valorFrete ?? v.cte?.valorTotal ?? null)}
+                          {v.origemVinculo} · Parcela nesta NF:{' '}
+                          {formatMoedaBr(v.valorFrete ?? null)} · Valor total do CT-e:{' '}
+                          {formatMoedaBr(v.cte?.valorTotal ?? null)}
                         </p>
                         {v.cte?.id && (
                           <CfopEntradaFreteCampos

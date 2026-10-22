@@ -13,6 +13,7 @@ const deleteFn = vi.fn()
 const vinculoFindUnique = vi.fn()
 const vinculoFindMany = vi.fn()
 const vinculoCreate = vi.fn()
+const vinculoUpdate = vi.fn()
 const vinculoDelete = vi.fn()
 const itemCount = vi.fn()
 
@@ -28,6 +29,7 @@ vi.mock('../../compartilhado/banco-dados/cliente-prisma.js', () => ({
       findUnique: (...a: unknown[]) => vinculoFindUnique(...a),
       findMany: (...a: unknown[]) => vinculoFindMany(...a),
       create: (...a: unknown[]) => vinculoCreate(...a),
+      update: (...a: unknown[]) => vinculoUpdate(...a),
       delete: (...a: unknown[]) => vinculoDelete(...a),
     },
     nfeRecebidaItem: {
@@ -52,12 +54,14 @@ vi.mock('../focus-nfe/logs-focus-nfe.js', () => ({
 }))
 
 import { repositorioFocusNfe } from '../focus-nfe/repositorio-focus-nfe.js'
+import { ratearProporcionalCentavos } from './rateio-cte-multiplas-nfes.js'
 import { servicoVinculoCte } from './servico-vinculo-cte.js'
 
 const CNPJ_EMPRESA = '34221243000171'
 const CNPJ_FORTLEV = '10921911001004'
 const CNPJ_KNA = '52568377000145'
 const CHAVE_NFE = '52260810921911001004550010002649141156356287'
+const CHAVE_NFE_2 = '52260810921911001004550010002649221156356288'
 const CHAVE_CTE = '52260852568377000145570010000091741865753725'
 
 function xmlCteTomadorRemetente() {
@@ -92,6 +96,13 @@ function xmlCteTomadorDestinatario() {
     </cteProc>`
 }
 
+function xmlCteDuasNfes() {
+  return xmlCteTomadorDestinatario().replace(
+    `<infDoc><infNFe><chave>${CHAVE_NFE}</chave></infNFe></infDoc>`,
+    `<infDoc><infNFe><chave>${CHAVE_NFE}</chave></infNFe><infNFe><chave>${CHAVE_NFE_2}</chave></infNFe></infDoc>`
+  )
+}
+
 function xmlNfeCompleta() {
   return `<NFe><infNFe Id="NFe${CHAVE_NFE}">
     <ide><dhEmi>2026-08-03T10:00:00-03:00</dhEmi></ide>
@@ -111,6 +122,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   update.mockResolvedValue({})
   itemCount.mockResolvedValue(0)
+  vinculoFindMany.mockResolvedValue([])
+  vinculoUpdate.mockResolvedValue({})
   vinculoCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
     id: 'vinculo-1',
     ...data,
@@ -158,6 +171,8 @@ describe('servicoVinculoCte — caso Fortlev/KNA', () => {
       xmlConteudo: xmlNfeCompleta(),
       nfeCompleta: true,
       chaveNfe: CHAVE_NFE,
+      valorTotal: 10,
+      statusEntrada: 'em_analise',
     })
 
     const r = await servicoVinculoCte.tentarVincularCteAutomatico('emp-1', 'cte-1', {
@@ -185,6 +200,8 @@ describe('servicoVinculoCte — caso Fortlev/KNA', () => {
       xmlConteudo: xmlNfeResumo(),
       nfeCompleta: false,
       chaveNfe: CHAVE_NFE,
+      valorTotal: 4143.42,
+      statusEntrada: 'em_analise',
     })
 
     const r = await servicoVinculoCte.tentarVincularCteAutomatico('emp-1', 'cte-1', {
@@ -212,6 +229,8 @@ describe('servicoVinculoCte — caso Fortlev/KNA', () => {
       xmlConteudo: xmlNfeResumo(),
       nfeCompleta: false,
       chaveNfe: CHAVE_NFE,
+      valorTotal: 4143.42,
+      statusEntrada: 'em_analise',
     })
     itemCount.mockResolvedValue(1)
 
@@ -221,6 +240,65 @@ describe('servicoVinculoCte — caso Fortlev/KNA', () => {
 
     expect(r.vinculado).toBe(true)
     expect(vinculoCreate).toHaveBeenCalled()
+  })
+
+  it('auto-vincula um CT-e às duas NF-e referenciadas e rateia pelo valor das notas', async () => {
+    findFirst.mockResolvedValue({
+      id: 'cte-1',
+      companyId: 'emp-1',
+      tipoDocumento: 'cte',
+      chaveNfe: CHAVE_CTE,
+      chaveNfeReferenciada: CHAVE_NFE,
+      xmlConteudo: xmlCteDuasNfes(),
+      valorTotal: 638.71,
+    })
+    const nfes = new Map([
+      [CHAVE_NFE, { id: 'nfe-1', tipoDocumento: 'nfe55', xmlConteudo: xmlNfeCompleta(), chaveNfe: CHAVE_NFE, valorTotal: 10, statusEntrada: 'em_analise' }],
+      [CHAVE_NFE_2, { id: 'nfe-2', tipoDocumento: 'nfe55', xmlConteudo: xmlNfeCompleta(), chaveNfe: CHAVE_NFE_2, valorTotal: 30, statusEntrada: 'em_analise' }],
+    ])
+    findUnique.mockImplementation(async ({ where }: { where: { companyId_chaveNfe?: { chaveNfe: string } } }) =>
+      where.companyId_chaveNfe ? nfes.get(where.companyId_chaveNfe.chaveNfe) ?? null : null
+    )
+    const vinculos: Array<Record<string, unknown>> = []
+    vinculoFindMany.mockImplementation(async () => [...vinculos])
+    vinculoCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+      const nfe = [...nfes.values()].find((item) => item.id === data.nfeRecebidaId)!
+      const criado = { ...data, nfeRecebida: { valorTotal: nfe.valorTotal, statusEntrada: nfe.statusEntrada } }
+      vinculos.push(criado)
+      return criado
+    })
+    vinculoUpdate.mockImplementation(async ({ where, data }: { where: { id: string }; data: { valorFrete: number } }) => {
+      const vinculo = vinculos.find((item) => item.id === where.id)
+      if (vinculo) vinculo.valorFrete = data.valorFrete
+      return vinculo
+    })
+
+    const r = await servicoVinculoCte.tentarVincularCteAutomatico('emp-1', 'cte-1', {
+      importarFocusSeAusente: false,
+    })
+
+    expect(r.vinculado).toBe(true)
+    expect(vinculoCreate).toHaveBeenCalledTimes(2)
+    expect(vinculos.map((v) => v.valorFrete).sort()).toEqual([159.68, 479.03])
+  })
+
+  it('não inclui outra NF-e quando uma nota do mesmo CT-e já saiu da análise', async () => {
+    findFirst.mockResolvedValue({
+      id: 'cte-1', companyId: 'emp-1', tipoDocumento: 'cte', chaveNfe: CHAVE_CTE,
+      chaveNfeReferenciada: CHAVE_NFE, xmlConteudo: xmlCteDuasNfes(), valorTotal: 638.71,
+    })
+    findUnique.mockImplementation(async ({ where }: { where: { companyId_chaveNfe?: { chaveNfe: string } } }) => ({
+      id: where.companyId_chaveNfe?.chaveNfe === CHAVE_NFE ? 'nfe-1' : 'nfe-2',
+      tipoDocumento: 'nfe55', xmlConteudo: xmlNfeCompleta(), valorTotal: 100,
+      statusEntrada: 'em_analise', chaveNfe: where.companyId_chaveNfe?.chaveNfe,
+    }))
+    vinculoFindMany.mockResolvedValue([{ id: 'v-1', nfeRecebidaId: 'nfe-1', valorFrete: 638.71, nfeRecebida: { valorTotal: 100, statusEntrada: 'aguardando_chegada' } }])
+
+    await servicoVinculoCte.tentarVincularCteAutomatico('emp-1', 'cte-1', {
+      importarFocusSeAusente: false,
+    })
+
+    expect(vinculoCreate).not.toHaveBeenCalled()
   })
 
   it('repararVinculosCteTomadorIndevido remove vínculo automático Fortlev↔KNA', async () => {
@@ -288,5 +366,27 @@ describe('servicoVinculoCte — caso Fortlev/KNA', () => {
     expect(cancelados).toBe(0)
     expect(update).not.toHaveBeenCalled()
     expect(vinculoDelete).not.toHaveBeenCalled()
+  })
+})
+
+describe('rateio de CT-e entre várias NF-e', () => {
+  it('divide pelo valor total das notas e preserva o total em centavos', () => {
+    const parcelas = ratearProporcionalCentavos(1176.8, [
+      { id: 'nf-173934', valorBase: 983.51 },
+      { id: 'nf-173935', valorBase: 14751.92 },
+    ])
+
+    expect(parcelas.get('nf-173934')).toBe(73.55)
+    expect(parcelas.get('nf-173935')).toBe(1103.25)
+    expect([...parcelas.values()].reduce((soma, valor) => soma + valor, 0)).toBe(1176.8)
+  })
+
+  it('recusa NF-e sem valor positivo', () => {
+    expect(() =>
+      ratearProporcionalCentavos(100, [
+        { id: 'nf-1', valorBase: 100 },
+        { id: 'nf-2', valorBase: 0 },
+      ])
+    ).toThrow('Todas as NF-e vinculadas precisam ter valor total positivo')
   })
 })
