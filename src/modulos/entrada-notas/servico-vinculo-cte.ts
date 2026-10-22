@@ -269,8 +269,14 @@ async function criarVinculo(params: {
   }
 
   if (existentes.length > 0) {
+    if (params.valorFrete == null || params.valorFrete <= 0) {
+      throw new ErroDaAplicacao(
+        'O CT-e precisa ter valor total positivo para ser vinculado a mais de uma NF-e.',
+        400
+      )
+    }
     try {
-      ratearProporcionalCentavos(params.valorFrete ?? 0, [
+      ratearProporcionalCentavos(params.valorFrete, [
         ...existentes.map((vinculo) => ({
           id: vinculo.id,
           valorBase: decimalNum(vinculo.nfeRecebida.valorTotal) ?? 0,

@@ -133,6 +133,7 @@ async function obterCreditosFiscais(companyId: string, nota: Awaited<ReturnType<
               xmlConteudo: true,
               chaveNfe: true,
               vinculosComoCte: {
+                where: { companyId },
                 select: { id: true, valorFrete: true },
                 orderBy: { id: 'asc' },
               },

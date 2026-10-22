@@ -466,6 +466,7 @@ Próxima tela nova = **1.31.0** + nome. Não inventar versão sem tela/módulo. 
 
 | 1.30.4 | Regras Fiscais | Precificação simplificada: campos principais, adicionais expansíveis, simulação comercial, venda/atacado e ajustes por item com revisão. | `/auditoria-entradas/[id]/precificacao` |
 | 1.30.5 | Regras Fiscais | Orçamentos: Fechar pedido sem checkbox, condições com boleto e crédito validados, cópia no menu e PDF para WhatsApp no rodapé. | `/orcamentos`, `/pedidos-venda` |
+| 1.30.6 | Regras Fiscais | Um CT-e pode atender várias NF-e abertas; frete e crédito de ICMS proporcionais ao valor das notas, financeiro único no CT-e e bloqueio contra recálculo após saída da análise. | `/entrada-notas`, `/entrada-notas/[id]` |
 
 **Versão vigente:** 1.30.6 — Regras Fiscais.
 
